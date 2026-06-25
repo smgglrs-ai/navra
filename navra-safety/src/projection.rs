@@ -89,8 +89,8 @@ impl SparseProjectionMatrix {
 
     /// Apply the projection: map teacher logits → student logits.
     ///
-    /// For each student token j, the projected logit is:
-    ///   student_logits[j] = sum_i(teacher_logits[i] * P[i,j])
+    /// For each student token `j`, the projected logit is:
+    ///   `student_logits\[j\] = sum_i(teacher_logits\[i\] * P\[i,j\])`
     pub fn project(&self, teacher_logits: &[f32]) -> Result<Vec<f32>, ProjectionError> {
         if teacher_logits.len() != self.teacher_vocab_size {
             return Err(ProjectionError::DimensionMismatch {
@@ -101,10 +101,9 @@ impl SparseProjectionMatrix {
 
         let mut student_logits = vec![0.0f32; self.student_vocab_size];
 
-        for i in 0..self.teacher_vocab_size {
+        for (i, &teacher_val) in teacher_logits.iter().enumerate() {
             let start = self.row_ptr[i];
             let end = self.row_ptr[i + 1];
-            let teacher_val = teacher_logits[i];
 
             if teacher_val == 0.0 {
                 continue;

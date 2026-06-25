@@ -8,7 +8,8 @@
 
 use super::{Hook, HookDecision};
 use navra_auth::auth::CallContext;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::{CallToolResult, Content, RawContent};
 use std::sync::Arc;
 
 /// Trait for the storage backend used by `MemoryExtractionHook`.
@@ -80,7 +81,7 @@ impl MemoryExtractionHook {
 
     /// Decide whether to extract from this tool call result.
     fn should_extract(&self, tool_name: &str, result: &CallToolResult) -> bool {
-        if result.is_error {
+        if result.is_err() {
             return false;
         }
         if self.is_excluded(tool_name) {
@@ -150,7 +151,10 @@ fn extract_text_length(result: &CallToolResult) -> usize {
         .content
         .iter()
         .filter_map(|c| match c {
-            Content::Text(t) => Some(t.text.len()),
+            Content {
+                raw: RawContent::Text(t),
+                ..
+            } => Some(t.text.len()),
             _ => None,
         })
         .sum()
@@ -160,7 +164,11 @@ fn extract_text_length(result: &CallToolResult) -> usize {
 fn extract_text_content(result: &CallToolResult, max_len: usize) -> String {
     let mut buf = String::new();
     for content in &result.content {
-        if let Content::Text(t) = content {
+        if let Content {
+            raw: RawContent::Text(t),
+            ..
+        } = content
+        {
             if buf.len() + t.text.len() > max_len {
                 let remaining = max_len.saturating_sub(buf.len());
                 if remaining > 0 {
@@ -222,6 +230,7 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResultExt;
     use std::sync::Mutex;
 
     /// A test store that records extractions.
@@ -288,7 +297,7 @@ mod tests {
         let store = Arc::new(TestStore::new());
         let hook = make_hook(Arc::clone(&store));
 
-        let result = CallToolResult::error("something went wrong".repeat(20));
+        let result = CallToolResult::error_msg("something went wrong".repeat(20));
 
         let decision = hook
             .post_tool_use("file_read", &serde_json::json!({}), &result, &test_ctx())
@@ -358,7 +367,7 @@ mod tests {
         // Test with various scenarios — all must return Continue
         let scenarios: Vec<(&str, CallToolResult)> = vec![
             ("file_read", CallToolResult::text("x".repeat(200))),
-            ("file_read", CallToolResult::error("error")),
+            ("file_read", CallToolResult::error_msg("error")),
             ("file_read", CallToolResult::text("short")),
             ("memory_store", CallToolResult::text("x".repeat(200))),
         ];
@@ -369,7 +378,7 @@ mod tests {
                 .await;
             assert!(
                 matches!(decision, HookDecision::Continue),
-                "Expected Continue for tool={tool}, is_error={}",
+                "Expected Continue for tool={tool}, is_error={:?}",
                 result.is_error,
             );
         }

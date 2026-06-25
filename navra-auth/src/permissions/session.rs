@@ -55,7 +55,7 @@ impl SessionPermissions {
     fn gc(&mut self) {
         let now = now_epoch();
         self.grants
-            .retain(|g| g.expires_at.map_or(true, |exp| exp > now));
+            .retain(|g| g.expires_at.is_none_or(|exp| exp > now));
     }
 
     /// Check if a path operation is allowed by a dynamic grant.

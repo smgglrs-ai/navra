@@ -16,6 +16,7 @@ use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::{Module, ToolHandler};
+use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -105,7 +106,7 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
 fn resolve_path(raw: &str) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
-            Some(home) => home.join(&raw[2..]),
+            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
             None => return Err("Cannot resolve home directory".to_string()),
         }
     } else {
@@ -138,11 +139,11 @@ fn check_perm(
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, "Approval required");
-            Err(CallToolResult::error("Approval required".to_string()))
+            Err(CallToolResult::error_msg("Approval required".to_string()))
         }
         other => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, result = ?other, "Permission denied");
-            Err(CallToolResult::error("Permission denied".to_string()))
+            Err(CallToolResult::error_msg("Permission denied".to_string()))
         }
     }
 }
@@ -160,7 +161,7 @@ async fn handle_describe(
 ) -> CallToolResult {
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
@@ -169,7 +170,7 @@ async fn handle_describe(
 
     let image = match load_image(&resolved) {
         Ok(img) => img,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     let request = GenerateRequest {
@@ -182,7 +183,7 @@ async fn handle_describe(
 
     match state.vision_model.generate(&request).await {
         Ok(response) => CallToolResult::text(response.text),
-        Err(e) => CallToolResult::error(format!("Vision model failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Vision model failed: {e}")),
     }
 }
 
@@ -197,7 +198,7 @@ async fn handle_ocr(
 ) -> CallToolResult {
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
@@ -206,7 +207,7 @@ async fn handle_ocr(
 
     let image = match load_image(&resolved) {
         Ok(img) => img,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     let request = GenerateRequest {
@@ -219,7 +220,7 @@ async fn handle_ocr(
 
     match state.vision_model.generate(&request).await {
         Ok(response) => CallToolResult::text(response.text),
-        Err(e) => CallToolResult::error(format!("OCR failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("OCR failed: {e}")),
     }
 }
 
@@ -234,12 +235,12 @@ async fn handle_ask(
     #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
     if question.is_empty() {
-        return CallToolResult::error("Missing required parameter: question");
+        return CallToolResult::error_msg("Missing required parameter: question");
     }
 
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
@@ -248,7 +249,7 @@ async fn handle_ask(
 
     let image = match load_image(&resolved) {
         Ok(img) => img,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     let request = GenerateRequest {
@@ -261,7 +262,7 @@ async fn handle_ask(
 
     match state.vision_model.generate(&request).await {
         Ok(response) => CallToolResult::text(response.text),
-        Err(e) => CallToolResult::error(format!("Vision model failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Vision model failed: {e}")),
     }
 }
 
@@ -287,25 +288,25 @@ async fn handle_screen(
     // Capture screenshot via XDG portal
     let screenshot_path = match screenshot::capture_screen().await {
         Ok(path) => path,
-        Err(e) => return CallToolResult::error(format!("Screen capture failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Screen capture failed: {e}")),
     };
 
     let path = Path::new(&screenshot_path);
     // Verify screenshot is in a temp directory (prevent path injection from backend)
     let canonical = match path.canonicalize() {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(format!("Cannot resolve screenshot path: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Cannot resolve screenshot path: {e}")),
     };
     let in_tmp = canonical.starts_with("/tmp") || canonical.starts_with(std::env::temp_dir());
     if !in_tmp {
-        return CallToolResult::error("Screenshot path outside temp directory");
+        return CallToolResult::error_msg("Screenshot path outside temp directory");
     }
     let image = match load_image(&canonical) {
         Ok(img) => img,
         Err(e) => {
             // Clean up screenshot file
             let _ = std::fs::remove_file(&canonical);
-            return CallToolResult::error(e);
+            return CallToolResult::error_msg(e);
         }
     };
 
@@ -324,7 +325,7 @@ async fn handle_screen(
 
     let result = match state.vision_model.generate(&request).await {
         Ok(response) => CallToolResult::text(response.text),
-        Err(e) => CallToolResult::error(format!("Vision model failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Vision model failed: {e}")),
     };
 
     // Clean up screenshot file
@@ -455,7 +456,7 @@ mod tests {
 
         assert_eq!(module.name(), "vision");
         let tools = module.tools();
-        let names: Vec<_> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+        let names: Vec<_> = tools.iter().map(|(def, _)| &*def.name).collect();
         assert!(names.contains(&"vision_describe"));
         assert!(names.contains(&"vision_ocr"));
         assert!(names.contains(&"vision_ask"));
@@ -658,7 +659,7 @@ mod tests {
         let state = make_state();
         let (_, handler) = handle_describe_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -670,7 +671,7 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -682,7 +683,7 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -698,7 +699,10 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(!result.is_error, "describe should succeed with valid PNG");
+        assert!(
+            result.is_error != Some(true),
+            "describe should succeed with valid PNG"
+        );
     }
 
     #[tokio::test]
@@ -706,7 +710,7 @@ mod tests {
         let state = make_state();
         let (_, handler) = handle_ocr_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -722,7 +726,7 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(!result.is_error);
+        assert!(result.is_error != Some(true));
     }
 
     #[tokio::test]
@@ -730,7 +734,7 @@ mod tests {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
         let result = handler(serde_json::json!({"path": "/tmp/test.png"}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -746,7 +750,7 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -754,7 +758,7 @@ mod tests {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
         let result = handler(serde_json::json!({"question": "What is this?"}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     #[tokio::test]
@@ -773,7 +777,7 @@ mod tests {
             test_ctx(),
         )
         .await;
-        assert!(!result.is_error);
+        assert!(result.is_error != Some(true));
     }
 
     // --- Permission check tests ---
@@ -799,17 +803,24 @@ mod tests {
         let (_, handler) = handle_describe_handler(state);
         let result = handler(serde_json::json!({"path": path.to_str().unwrap()}), ctx).await;
         // With an unknown permission set, the engine should deny
-        assert!(result.is_error);
+        assert!(result.is_error == Some(true));
     }
 
     // --- Tool definition tests ---
+
+    fn get_required(def: &navra_protocol::ToolDefinition) -> Vec<String> {
+        def.input_schema
+            .get("required")
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            .unwrap_or_default()
+    }
 
     #[test]
     fn describe_tool_def_has_required_path() {
         let def = handle_describe_tool_def();
         assert_eq!(def.name, "vision_describe");
         assert!(def.description.is_some());
-        let required = def.input_schema.required.as_ref().unwrap();
+        let required = get_required(&def);
         assert!(required.contains(&"path".to_string()));
     }
 
@@ -817,7 +828,7 @@ mod tests {
     fn ocr_tool_def_has_required_path() {
         let def = handle_ocr_tool_def();
         assert_eq!(def.name, "vision_ocr");
-        let required = def.input_schema.required.as_ref().unwrap();
+        let required = get_required(&def);
         assert!(required.contains(&"path".to_string()));
     }
 
@@ -825,7 +836,7 @@ mod tests {
     fn ask_tool_def_has_required_fields() {
         let def = handle_ask_tool_def();
         assert_eq!(def.name, "vision_ask");
-        let required = def.input_schema.required.as_ref().unwrap();
+        let required = get_required(&def);
         assert!(required.contains(&"path".to_string()));
         assert!(required.contains(&"question".to_string()));
     }
@@ -834,6 +845,6 @@ mod tests {
     fn screen_tool_def_has_no_required_fields() {
         let def = handle_screen_tool_def();
         assert_eq!(def.name, "vision_screen");
-        assert!(def.input_schema.required.is_none());
+        assert!(!def.input_schema.contains_key("required"));
     }
 }

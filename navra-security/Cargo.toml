@@ -1,6 +1,8 @@
 [package]
 name = "navra-security"
 description = "Facade: re-exports navra-auth + navra-safety"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +10,14 @@ rust-version.workspace = true
 
 [dependencies]
 navra-auth = { path = "../navra-auth" }
-navra-core = { path = "../navra-core" }
-navra-safety-hooks = { path = "../navra-safety-hooks" }
+navra-core = { path = "../navra-core", default-features = false }
+navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
+default = ["onnx"]
+onnx = ["navra-core/onnx", "navra-safety-hooks/onnx"]
 cedar = ["navra-auth/cedar"]
 
 [dev-dependencies]
@@ -22,3 +26,6 @@ axum = { workspace = true }
 navra-protocol = { path = "../navra-protocol" }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true

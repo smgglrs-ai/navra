@@ -339,10 +339,7 @@ fn resolve_string(
 fn content_to_text(content: &[Content]) -> String {
     content
         .iter()
-        .filter_map(|c| match c {
-            Content::Text(t) => Some(t.text.as_str()),
-            _ => None,
-        })
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
         .collect::<Vec<_>>()
         .join("\n")
 }

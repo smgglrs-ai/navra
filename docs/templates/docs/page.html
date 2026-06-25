@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block seo %}
+  <title>{{ page.title }} | {{ config.title }}</title>
+  <meta name="description" content="{{ page.description | default(value=config.description) }}">
+{% endblock seo %}
+
+{% block body %}
+  {% set page_class = "docs" %}
+{% endblock body %}
+
+{% block header %}
+  {% set current_section = "docs" %}
+  {{ macros_header::header(current_section=current_section)}}
+{% endblock header %}
+
+{% block content %}
+<div class="wrap container" role="document">
+  <div class="content">
+    <div class="row">
+      {{ macros_sidebar::docs_sidebar(current_section="docs") }}
+      <div class="col-lg-7 col-xl-8">
+        <article>
+          <h1>{{ page.title }}</h1>
+          {{ page.content | safe }}
+        </article>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock content %}

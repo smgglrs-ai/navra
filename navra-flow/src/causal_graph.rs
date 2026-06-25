@@ -97,6 +97,108 @@ pub struct CausalSubgraph {
     pub edges: Vec<CausalEdge>,
 }
 
+impl CausalSubgraph {
+    /// Serialize the subgraph to a JSON structure suitable for React Flow
+    /// visualization. Nodes include type, label, and placeholder coordinates.
+    /// Edges include source, target, edge type, and a human-readable label.
+    pub fn to_viz_json(&self) -> serde_json::Value {
+        let nodes: Vec<serde_json::Value> = self
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, node)| {
+                let (node_type, label) = match &node.node_type {
+                    CausalNodeType::ToolCall {
+                        tool_name,
+                        agent_id,
+                        ..
+                    } => ("activity", format!("{tool_name} ({agent_id})")),
+                    CausalNodeType::AgentAction {
+                        agent_id,
+                        action_type,
+                    } => ("activity", format!("{action_type} ({agent_id})")),
+                    CausalNodeType::BlackboardWrite { key, version } => {
+                        ("entity", format!("{key} v{version}"))
+                    }
+                    CausalNodeType::FlowNodeOutput { task_id, .. } => {
+                        ("entity", format!("output:{task_id}"))
+                    }
+                    CausalNodeType::Message { sender, receiver } => {
+                        ("entity", format!("{sender} -> {receiver}"))
+                    }
+                };
+                serde_json::json!({
+                    "id": node.id,
+                    "type": node_type,
+                    "label": label,
+                    "status": "complete",
+                    "x": (i % 4) * 250,
+                    "y": (i / 4) * 150,
+                })
+            })
+            .collect();
+
+        let edges: Vec<serde_json::Value> = self
+            .edges
+            .iter()
+            .map(|edge| {
+                let label = match edge.edge_type {
+                    CausalEdgeType::WasDerivedFrom => "derived",
+                    CausalEdgeType::WasGeneratedBy => "generated",
+                    CausalEdgeType::Used => "used",
+                    CausalEdgeType::WasInformedBy => "informed",
+                    CausalEdgeType::WasTriggeredBy => "triggered",
+                };
+                serde_json::json!({
+                    "source": edge.source_id,
+                    "target": edge.target_id,
+                    "type": edge.edge_type.as_str(),
+                    "label": label,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "nodes": nodes,
+            "edges": edges,
+        })
+    }
+
+    /// Render the subgraph as a Graphviz DOT string.
+    pub fn to_dot(&self) -> String {
+        let mut out = String::from("digraph causal {\n  rankdir=LR;\n");
+        for node in &self.nodes {
+            let (shape, label) = match &node.node_type {
+                CausalNodeType::ToolCall { tool_name, .. } => ("box", tool_name.clone()),
+                CausalNodeType::AgentAction { action_type, .. } => ("box", action_type.clone()),
+                CausalNodeType::BlackboardWrite { key, version } => {
+                    ("ellipse", format!("{key} v{version}"))
+                }
+                CausalNodeType::FlowNodeOutput { task_id, .. } => {
+                    ("ellipse", format!("output:{task_id}"))
+                }
+                CausalNodeType::Message { sender, receiver } => {
+                    ("note", format!("{sender}->{receiver}"))
+                }
+            };
+            out.push_str(&format!(
+                "  \"{}\" [shape={}, label=\"{}\"];\n",
+                node.id, shape, label
+            ));
+        }
+        for edge in &self.edges {
+            out.push_str(&format!(
+                "  \"{}\" -> \"{}\" [label=\"{}\"];\n",
+                edge.source_id,
+                edge.target_id,
+                edge.edge_type.as_str()
+            ));
+        }
+        out.push_str("}\n");
+        out
+    }
+}
+
 /// SQLite-backed causal graph storage.
 pub struct CausalGraphStore {
     db: Mutex<Connection>,
@@ -630,6 +732,118 @@ mod tests {
         assert_eq!(graph.nodes.len(), 2);
         assert_eq!(graph.edges.len(), 1);
         assert_eq!(graph.edges[0].edge_type, CausalEdgeType::WasGeneratedBy);
+    }
+
+    #[test]
+    fn to_viz_json_simple_graph() {
+        let subgraph = CausalSubgraph {
+            nodes: vec![
+                CausalNode {
+                    id: "n1".to_string(),
+                    node_type: CausalNodeType::ToolCall {
+                        tool_name: "file_read".to_string(),
+                        agent_id: "agent-a".to_string(),
+                        session_id: "s1".to_string(),
+                    },
+                    flow_id: Some("f1".to_string()),
+                    timestamp_ms: 100,
+                },
+                CausalNode {
+                    id: "n2".to_string(),
+                    node_type: CausalNodeType::FlowNodeOutput {
+                        flow_id: "f1".to_string(),
+                        task_id: "task-1".to_string(),
+                    },
+                    flow_id: Some("f1".to_string()),
+                    timestamp_ms: 200,
+                },
+            ],
+            edges: vec![CausalEdge {
+                source_id: "n2".to_string(),
+                target_id: "n1".to_string(),
+                edge_type: CausalEdgeType::WasGeneratedBy,
+                flow_id: Some("f1".to_string()),
+                timestamp_ms: 200,
+            }],
+        };
+
+        let json = subgraph.to_viz_json();
+
+        let nodes = json["nodes"].as_array().unwrap();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0]["id"], "n1");
+        assert_eq!(nodes[0]["type"], "activity");
+        assert!(nodes[0]["label"].as_str().unwrap().contains("file_read"));
+        assert_eq!(nodes[1]["id"], "n2");
+        assert_eq!(nodes[1]["type"], "entity");
+
+        let edges = json["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["source"], "n2");
+        assert_eq!(edges[0]["target"], "n1");
+        assert_eq!(edges[0]["type"], "was_generated_by");
+        assert_eq!(edges[0]["label"], "generated");
+    }
+
+    #[test]
+    fn to_viz_json_empty_graph() {
+        let subgraph = CausalSubgraph::default();
+        let json = subgraph.to_viz_json();
+        assert_eq!(json["nodes"].as_array().unwrap().len(), 0);
+        assert_eq!(json["edges"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn to_dot_format() {
+        let subgraph = CausalSubgraph {
+            nodes: vec![
+                CausalNode {
+                    id: "a".to_string(),
+                    node_type: CausalNodeType::ToolCall {
+                        tool_name: "file_read".to_string(),
+                        agent_id: "agent-a".to_string(),
+                        session_id: "s1".to_string(),
+                    },
+                    flow_id: None,
+                    timestamp_ms: 0,
+                },
+                CausalNode {
+                    id: "b".to_string(),
+                    node_type: CausalNodeType::BlackboardWrite {
+                        key: "findings".to_string(),
+                        version: 1,
+                    },
+                    flow_id: None,
+                    timestamp_ms: 0,
+                },
+            ],
+            edges: vec![CausalEdge {
+                source_id: "b".to_string(),
+                target_id: "a".to_string(),
+                edge_type: CausalEdgeType::Used,
+                flow_id: None,
+                timestamp_ms: 0,
+            }],
+        };
+
+        let dot = subgraph.to_dot();
+        assert!(dot.starts_with("digraph causal {"));
+        assert!(dot.contains("rankdir=LR"));
+        assert!(dot.contains("\"a\""));
+        assert!(dot.contains("shape=box"));
+        assert!(dot.contains("\"b\""));
+        assert!(dot.contains("shape=ellipse"));
+        assert!(dot.contains("\"b\" -> \"a\""));
+        assert!(dot.contains("label=\"used\""));
+        assert!(dot.ends_with("}\n"));
+    }
+
+    #[test]
+    fn to_dot_empty_graph() {
+        let subgraph = CausalSubgraph::default();
+        let dot = subgraph.to_dot();
+        assert!(dot.starts_with("digraph causal {"));
+        assert!(dot.ends_with("}\n"));
     }
 }
 

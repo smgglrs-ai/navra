@@ -469,3 +469,160 @@
     exit_reason: "No unblocked items remaining in approve scope"
     branch: "loop/2026-06-19-3"
     tag: "loop-run/2026-06-19-3-9"
+
+- timestamp: "2026-06-19T21:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-051"
+  summary: "Paper significant fixes — updated LoC (~150K), Kani proofs (146), tests (2,800+), navra-security split to auth/safety/facade, removed stale tool crate references"
+  iteration: 1
+  max_iterations: 20
+
+- timestamp: "2026-06-19T21:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-052"
+  summary: "Missing related work — numbered refs across all 6 papers (12-92 each), MorphAgent/c-CRAB/FadeMem/Mem0/FIDES cited in persona paper body, 4 new May-June 2026 systems in PAPER.md §2, audit-blackbox Related Work section added"
+  iteration: 2
+  max_iterations: 20
+
+- timestamp: "2026-06-19T21:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-053"
+  summary: "Paper restructuring decisions — all 5 papers standalone, venue targets assigned, submission ordering defined, review notes updated, contribution list finalized for review paper"
+  iteration: 3
+  max_iterations: 20
+
+- timestamp: "2026-06-19T22:15:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-057"
+  summary: "Lazy-loading specialization YAML — SpecializationPartial for metadata-only parse, Mutex cache for on-demand loading, validate() uses catalog. Also fixed navra-protocol TLS feature gating."
+  iteration: 4
+  max_iterations: 20
+
+- timestamp: "2026-06-19T22:45:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-060"
+  summary: "Operator libraries — scan_libraries, merge_libraries with main-wins + conflict detection, CLI list-libraries subcommand, 10 unit tests"
+  iteration: 5
+  max_iterations: 20
+
+- timestamp: "2026-06-19T23:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-063"
+  summary: "PrivacyRouter — unified coordinator for 5 privacy detectors, builder pattern, short-circuit optimization, PrivacyRouterConfig, Prometheus counter, 15 unit tests"
+  iteration: 6
+  max_iterations: 20
+
+- timestamp: "2026-06-19T23:05:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 6 items completed (NAVRA-051, NAVRA-052, NAVRA-053, NAVRA-057, NAVRA-060, NAVRA-063). Exit: No unblocked items remaining in approve scope"
+  details:
+    iterations: 6
+    max_iterations: 20
+    completed: [NAVRA-051, NAVRA-052, NAVRA-053, NAVRA-057, NAVRA-060, NAVRA-063]
+    exit_reason: "No unblocked items remaining in approve scope"
+    branch: "loop/2026-06-19-4"
+    tag: "loop-run/2026-06-19-4-6"
+
+- date: 2026-06-23
+  type: manual
+  summary: "NAVRA-149: rmcp SDK migration — complete"
+  details: |
+    Full migration from custom MCP implementation to rmcp SDK.
+    17 commits, 113 files changed, -7207 net lines.
+    Types, transports (stdio/HTTP/WebSocket), upstream client, agent
+    subsystem all migrated. Legacy Upstream type and dispatch deleted.
+    NavraHandler wraps McpServer as rmcp ServerHandler.
+    IFC security pipeline preserved, all 2676 tests pass.
+    Created NAVRA-150 (backlog): contribute rate limiting to rmcp.
+  branch: "loop/2026-06-19-4"
+- timestamp: "2026-06-25T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-156"
+  summary: "Made ONNX Runtime optional via cargo feature gate across 16 crates"
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-25T14:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-155"
+  summary: "Added navra wrap CLI subcommand — one-liner secure MCP proxy"
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-25T15:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-155"
+  summary: "Enhanced navra wrap with --discover (tool/resource listing + policy scaffold), --allow-all, --sandbox"
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-25T15:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-153"
+  summary: "Wrote 5 integration guides: Claude Code, Goose, OpenAI clients, LangGraph, custom MCP"
+  iteration: 4
+  max_iterations: 20
+- timestamp: "2026-06-25T15:45:00Z"
+  actor: claude
+  action: loop-complete
+  summary: "Loop finished: 3 items completed (NAVRA-156, NAVRA-155, NAVRA-153). Exit: no unblocked items in approve scope"
+  details:
+    iterations: 4
+    max_iterations: 20
+    completed: [NAVRA-156, NAVRA-155, NAVRA-153]
+    exit_reason: "No unblocked items remaining in approve scope — remaining items need CI, macOS, or multi-day design work"
+    branch: "loop/2026-06-19-4"
+    tag: null
+- timestamp: "2026-06-25T16:30:00Z"
+  actor: claude
+  action: item-complete
+  item: "NAVRA-160"
+  summary: "Network policy discovery and egress enforcement for navra wrap --sandbox. Known-server registry, tool description scanning, EgressFilterHook wiring, --allow-domain CLI flag."
+
+- date: 2026-06-25
+  action: design-session
+  summary: "CLI & architecture redesign — split model server from gateway, daemon, agent bundles/instances, credential brokering, per-step permissions. Created NAVRA-161 through NAVRA-168."
+  items_created:
+    - "NAVRA-161: Architecture: split model server from gateway"
+    - "NAVRA-162: navra daemon: unified persistent process"
+    - "NAVRA-163: Agent bundle format and directory convention"
+    - "NAVRA-164: Agent instances and navra agent init"
+    - "NAVRA-165: navra run: self-contained agent execution"
+    - "NAVRA-166: Credential brokering: daemon injects credentials into MCP servers"
+    - "NAVRA-167: Cross-bundle workflow composition and transitive permissions"
+    - "NAVRA-168: navra agent upgrade: versioned bundles and permission diff"
+
+- date: 2026-06-25
+  action: item-complete
+  item: "NAVRA-161"
+  summary: "Split model server from gateway. Created navra-model-server crate with ModelRegistry, OpenAI-compatible HTTP API, hardware auto-detection. Added 'navra model serve' CLI. Refactored gateway to use ModelRegistry (removed 270 lines of inline model loading). 11 new tests."
+
+- date: 2026-06-25
+  action: loop-batch
+  summary: "Completed NAVRA-163 (agent bundle format v2), NAVRA-164 (agent init), NAVRA-165 (navra run workflow flags). New: bundle_dir.rs with per-step permissions, config-template.yaml schema, local directory install, agent instance config generation."
+  items:
+    - "NAVRA-163: done"
+    - "NAVRA-164: done"
+    - "NAVRA-165: done"
+
+- date: 2026-06-25
+  action: loop-complete
+  summary: "Loop complete: 7 items done (NAVRA-161..168 minus 162). New CLI: navra model serve, navra agent init/upgrade, navra run --workflow. New crate: navra-model-server. Gateway model loading refactored to use ModelRegistry (-270 lines). Credential brokering wired to MCP upstream spawn. Permission intersection, visibility enforcement, and upgrade diff."
+  items:
+    - "NAVRA-161: done (model server split)"
+    - "NAVRA-163: done (bundle format v2)"
+    - "NAVRA-164: done (agent instances)"
+    - "NAVRA-165: done (navra run workflow)"
+    - "NAVRA-166: done (credential brokering)"
+    - "NAVRA-167: done (cross-bundle permissions)"
+    - "NAVRA-168: done (agent upgrade diff)"
+  remaining:
+    - "NAVRA-162: daemon (scheduler, events) — deferred, needs full design"

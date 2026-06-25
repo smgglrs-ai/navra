@@ -1,5 +1,6 @@
 mod agents;
 pub mod import;
+pub mod libraries;
 mod models;
 mod modules;
 mod permissions;
@@ -7,10 +8,19 @@ mod server;
 
 use serde::Deserialize;
 use std::collections::HashMap;
+
+pub(crate) fn default_pii_model_dir(name: &str) -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra")
+        .join("models")
+        .join(name)
+}
 use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
 pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
+pub use libraries::LibraryConfig;
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
 pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
@@ -52,6 +62,13 @@ pub struct Config {
     /// Named model definitions (embedding, classification, chat, generate).
     #[serde(default)]
     pub models: HashMap<String, ModelConfig>,
+    /// URL of an external navra model server.
+    /// When set, the gateway connects to the model server instead of
+    /// loading models in-process. When absent, models are loaded
+    /// directly (backward-compatible behavior).
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub model_server: Option<String>,
     /// Path to cognitive core directory (personas, heuristics, directives).
     #[serde(default)]
     pub cognitive_core: Option<String>,
@@ -94,7 +111,11 @@ pub struct Config {
     /// Enterprise-managed authorization (MCP extension).
     /// Configures ID-JAG authenticator for corporate IdP integration.
     #[serde(default)]
+    #[allow(dead_code)]
     pub enterprise_auth: Option<navra_core::auth::idjag::IdJagConfig>,
+    /// Operator library directories for conf.d-style config composition.
+    #[serde(default)]
+    pub libraries: LibraryConfig,
 }
 
 impl Config {
@@ -106,7 +127,28 @@ impl Config {
 
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
-            let config: Config = toml::from_str(&content)?;
+            let mut value: toml::Value = toml::from_str(&content)?;
+
+            // Resolve library dirs from the raw TOML (before full deserialization)
+            // so library fragments participate in the final Config struct.
+            let lib_dirs = value
+                .get("libraries")
+                .and_then(|v| v.get("library_dirs"))
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec!["~/.config/navra/libraries".to_string()]);
+
+            let resolved = libraries::resolve_dirs(&lib_dirs);
+            let libs = libraries::scan_libraries(&resolved)?;
+            if !libs.is_empty() {
+                libraries::merge_libraries(&mut value, libs)?;
+            }
+
+            let config: Config = value.try_into()?;
             Ok(config)
         } else {
             Ok(Self::default())
@@ -200,16 +242,15 @@ impl Config {
             .pii_model_path
             .as_ref()
             .map(|p| {
-                let expanded = if p.starts_with("~/") {
+                if p.starts_with("~/") {
                     dirs::home_dir()
                         .map(|h| h.join(&p[2..]))
                         .unwrap_or_else(|| std::path::PathBuf::from(p))
                 } else {
                     std::path::PathBuf::from(p)
-                };
-                expanded
+                }
             })
-            .unwrap_or_else(navra_core::safety::default_pii_ner_model_dir)
+            .unwrap_or_else(|| default_pii_model_dir("pii-ner"))
     }
 
     pub fn pii_multilingual_model_dir(&self) -> std::path::PathBuf {
@@ -225,7 +266,7 @@ impl Config {
                     std::path::PathBuf::from(p)
                 }
             })
-            .unwrap_or_else(navra_core::safety::default_pii_ner_multilingual_model_dir)
+            .unwrap_or_else(|| default_pii_model_dir("pii-ner-multilingual"))
     }
 
     pub fn rag_db_path(&self) -> String {
@@ -301,6 +342,7 @@ impl Default for Config {
             upstream: Vec::new(),
             credentials: HashMap::new(),
             models: HashMap::new(),
+            model_server: None,
             cognitive_core: None,
             flow_dirs: Vec::new(),
             discover: Vec::new(),
@@ -314,6 +356,7 @@ impl Default for Config {
             routing: navra_core::hooks::RoutingConfig::default(),
             triggers: Vec::new(),
             enterprise_auth: None,
+            libraries: LibraryConfig::default(),
         }
     }
 }

@@ -43,6 +43,14 @@ pub struct ValidationFinding {
     pub message: String,
 }
 
+/// Minimal struct for partial YAML parse — only reads metadata fields.
+#[derive(serde::Deserialize)]
+struct SpecializationPartial {
+    base_persona: String,
+    #[serde(default)]
+    description: String,
+}
+
 /// Metadata for a specialization — loaded at startup without full content.
 #[derive(Debug, Clone)]
 pub struct SpecializationMeta {
@@ -62,8 +70,7 @@ pub struct ForgeService {
     personas: HashMap<String, Persona>,
     heuristics: HashMap<String, HeuristicModule>,
     directives: HashMap<String, Directive>,
-    /// Eagerly loaded specializations (backward compat).
-    specializations: HashMap<String, Specialization>,
+    spec_cache: std::sync::Mutex<HashMap<String, Specialization>>,
     /// Lazy catalog: metadata only, full YAML loaded on demand.
     specialization_catalog: Vec<SpecializationMeta>,
 }
@@ -100,28 +107,13 @@ impl ForgeService {
             cognitive_core_dir,
             &checksums,
         )?;
-        // Load specializations eagerly (backward compat) and build lazy catalog
         let spec_dir = cognitive_core_dir.join("persona_specializations");
-        let specializations = load_dir::<Specialization>(
-            &spec_dir,
-            |s| {
-                format!(
-                    "{}_{}",
-                    s.base_persona,
-                    s.description.replace(' ', "_").to_lowercase()
-                )
-            },
-            cognitive_core_dir,
-            &checksums,
-        )?;
-
         let specialization_catalog = build_catalog(&spec_dir);
 
         tracing::info!(
             personas = personas.len(),
             directives = directives.len(),
             heuristics = heuristics.len(),
-            specializations = specializations.len(),
             catalog = specialization_catalog.len(),
             "Cognitive core loaded"
         );
@@ -130,7 +122,7 @@ impl ForgeService {
             personas,
             heuristics,
             directives,
-            specializations,
+            spec_cache: std::sync::Mutex::new(HashMap::new()),
             specialization_catalog,
         })
     }
@@ -142,7 +134,7 @@ impl ForgeService {
             personas: HashMap::new(),
             heuristics: HashMap::new(),
             directives: HashMap::new(),
-            specializations: HashMap::new(),
+            spec_cache: std::sync::Mutex::new(HashMap::new()),
             specialization_catalog: Vec::new(),
         }
     }
@@ -154,14 +146,18 @@ impl ForgeService {
 
     /// Load a specialization on demand from its YAML file.
     pub fn load_specialization(&self, key: &str) -> Option<Specialization> {
-        // Check eagerly loaded first
-        if let Some(spec) = self.specializations.get(key) {
-            return Some(spec.clone());
+        {
+            let cache = self.spec_cache.lock().unwrap();
+            if let Some(spec) = cache.get(key) {
+                return Some(spec.clone());
+            }
         }
-        // Fall back to catalog (lazy load from disk)
         let meta = self.specialization_catalog.iter().find(|m| m.key == key)?;
         let content = std::fs::read_to_string(&meta.path).ok()?;
-        serde_yaml::from_str(&content).ok()
+        let spec: Specialization = serde_yaml::from_str(&content).ok()?;
+        let mut cache = self.spec_cache.lock().unwrap();
+        cache.insert(key.to_string(), spec.clone());
+        Some(spec)
     }
 
     /// Get a persona by name.
@@ -351,13 +347,13 @@ impl ForgeService {
         }
 
         // Check specialization base_persona references
-        for (key, spec) in &self.specializations {
-            if !self.personas.contains_key(&spec.base_persona) {
+        for meta in &self.specialization_catalog {
+            if !self.personas.contains_key(&meta.base_persona) {
                 findings.push(ValidationFinding {
                     severity: Severity::Error,
                     message: format!(
                         "specialization '{}' references base_persona '{}' which does not exist",
-                        key, spec.base_persona
+                        meta.key, meta.base_persona
                     ),
                 });
             }
@@ -457,17 +453,16 @@ fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
             continue;
         }
         if let Ok(content) = std::fs::read_to_string(&path) {
-            // Parse just enough to get metadata
-            if let Ok(spec) = serde_yaml::from_str::<Specialization>(&content) {
+            if let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content) {
                 let key = format!(
                     "{}_{}",
-                    spec.base_persona,
-                    spec.description.replace(' ', "_").to_lowercase()
+                    meta.base_persona,
+                    meta.description.replace(' ', "_").to_lowercase()
                 );
                 catalog.push(SpecializationMeta {
                     key,
-                    base_persona: spec.base_persona,
-                    description: spec.description,
+                    base_persona: meta.base_persona,
+                    description: meta.description,
                     path: path.clone(),
                 });
             }
@@ -787,13 +782,12 @@ directives:
         setup_test_dir(tmp.path());
 
         let forge = ForgeService::load(tmp.path()).unwrap();
-        // Find the specialization key
         let spec_key = forge
-            .specializations
-            .keys()
-            .find(|k| k.contains("backend"))
-            .unwrap()
-            .clone();
+            .specialization_catalog()
+            .iter()
+            .find(|m| m.key.contains("backend"))
+            .map(|m| m.key.clone())
+            .unwrap();
 
         let merged = forge
             .get_persona_specialized("developer", &spec_key)

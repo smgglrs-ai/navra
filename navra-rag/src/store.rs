@@ -54,6 +54,7 @@ pub struct CascadeConfig {
 
 /// Counters for cascade gate decisions.
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct CascadeMetrics {
     pub queries_total: std::sync::atomic::AtomicU64,
     pub vector_skips: std::sync::atomic::AtomicU64,
@@ -84,6 +85,7 @@ fn init_sqlite_vec() {
         // SQLite extensions and is safe as long as the function signature matches the
         // sqlite3_auto_extension ABI contract, which sqlite-vec guarantees.
         unsafe {
+            #[allow(clippy::missing_transmute_annotations)]
             rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
                 sqlite_vec::sqlite3_vec_init as *const (),
             )));
@@ -659,7 +661,7 @@ impl ChunkStore {
         );
 
         let mut stmt = conn.prepare(&sql)?;
-        let n_fixed = 2;
+        let _n_fixed = 2;
         let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         params_vec.push(Box::new(query_embedding.as_bytes().to_vec()));
         params_vec.push(Box::new(limit as i64));

@@ -11,6 +11,18 @@ use std::process::Stdio;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 
+const MCP_ACCEPT: &str = "application/json, text/event-stream";
+
+fn parse_sse_json(body: &str) -> serde_json::Value {
+    // Try plain JSON first, then extract from SSE "data: " line
+    serde_json::from_str(body).unwrap_or_else(|_| {
+        body.lines()
+            .find(|l| l.starts_with("data: {"))
+            .and_then(|l| serde_json::from_str(&l[6..]).ok())
+            .unwrap_or_else(|| panic!("Cannot parse MCP response:\n{body}"))
+    })
+}
+
 /// Spawn a navra server with a given config, wait for it to be ready.
 async fn spawn_navra(config_toml: &str) -> (Child, u16, String, tempfile::TempDir) {
     // Pick a free port
@@ -105,6 +117,7 @@ operations = ["read", "write", "list", "search", "store", "scan"]
 async fn init_session(client: &reqwest::Client, url: &str) -> String {
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -112,7 +125,7 @@ async fn init_session(client: &reqwest::Client, url: &str) -> String {
             "params": {
                 "protocolVersion": "2026-07-28",
                 "capabilities": {},
-                "clientInfo": {"name": "e2e-test"}
+                "clientInfo": {"name": "e2e-test", "version": "0.1.0"}
             }
         }))
         .send()
@@ -137,6 +150,7 @@ async fn call_tool(
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -156,9 +170,7 @@ async fn call_tool(
         !body.is_empty(),
         "tool call '{tool_name}' returned empty body (HTTP {status})"
     );
-    serde_json::from_str(&body).unwrap_or_else(|e| {
-        panic!("tool call '{tool_name}' returned invalid JSON (HTTP {status}): {e}\nbody: {body}")
-    })
+    parse_sse_json(&body)
 }
 
 // --- MCP Protocol Tests ---
@@ -170,6 +182,7 @@ async fn mcp_initialize_returns_capabilities() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -177,7 +190,7 @@ async fn mcp_initialize_returns_capabilities() {
             "params": {
                 "protocolVersion": "2026-07-28",
                 "capabilities": {},
-                "clientInfo": {"name": "e2e-test"}
+                "clientInfo": {"name": "e2e-test", "version": "0.1.0"}
             }
         }))
         .send()
@@ -185,7 +198,8 @@ async fn mcp_initialize_returns_capabilities() {
         .unwrap();
 
     assert_eq!(resp.status(), 200);
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     assert_eq!(json["result"]["protocolVersion"], "2026-07-28");
     assert!(json["result"]["capabilities"]["tools"].is_object());
 
@@ -199,6 +213,7 @@ async fn mcp_tools_list_requires_session() {
     let client = reqwest::Client::new();
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/list",
@@ -208,11 +223,15 @@ async fn mcp_tools_list_requires_session() {
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
-    // Stateless mode (2026-07-28 default): succeeds without session
+    // rmcp requires initialize as the first request — tools/list
+    // without a session should be rejected
+    let status = resp.status().as_u16();
     assert!(
-        json["result"].is_object(),
-        "stateless mode should allow tools/list without session"
+        status == 400 || status == 406 || {
+            let body = resp.text().await.unwrap_or_default();
+            body.contains("initialize") || body.contains("error")
+        },
+        "un-initialized tools/list should be rejected"
     );
 
     child.kill().await.ok();
@@ -226,6 +245,7 @@ async fn mcp_full_session_list_tools() {
     // Initialize — get session ID from response header
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -233,7 +253,7 @@ async fn mcp_full_session_list_tools() {
             "params": {
                 "protocolVersion": "2026-07-28",
                 "capabilities": {},
-                "clientInfo": {"name": "e2e-test"}
+                "clientInfo": {"name": "e2e-test", "version": "0.1.0"}
             }
         }))
         .send()
@@ -250,6 +270,7 @@ async fn mcp_full_session_list_tools() {
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/list",
@@ -259,7 +280,8 @@ async fn mcp_full_session_list_tools() {
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     let tools = json["result"]["tools"].as_array().unwrap();
     assert!(
         tools.len() >= 3,
@@ -343,6 +365,7 @@ async fn tool_call_recorded_in_blackbox() {
     // Initialize
     let resp = client
         .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -350,7 +373,7 @@ async fn tool_call_recorded_in_blackbox() {
             "params": {
                 "protocolVersion": "2026-07-28",
                 "capabilities": {},
-                "clientInfo": {"name": "e2e-blackbox-test"}
+                "clientInfo": {"name": "e2e-blackbox-test", "version": "0.1.0"}
             }
         }))
         .send()
@@ -367,6 +390,7 @@ async fn tool_call_recorded_in_blackbox() {
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -380,7 +404,8 @@ async fn tool_call_recorded_in_blackbox() {
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     // Should succeed (docs module enabled, default root set)
     assert!(json["result"].is_object(), "expected result, got: {json}");
 
@@ -390,6 +415,7 @@ async fn tool_call_recorded_in_blackbox() {
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/call",
@@ -403,7 +429,8 @@ async fn tool_call_recorded_in_blackbox() {
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     // audit_query should return something (even if no run_id filter)
     assert!(json["result"].is_object());
 
@@ -650,6 +677,7 @@ async fn memory_tools_visible_in_tools_list() {
     let resp = client
         .post(format!("{url}/mcp"))
         .header("mcp-session-id", &session_id)
+        .header("accept", MCP_ACCEPT)
         .json(&serde_json::json!({
             "jsonrpc": "2.0",
             "method": "tools/list",
@@ -659,7 +687,8 @@ async fn memory_tools_visible_in_tools_list() {
         .await
         .unwrap();
 
-    let json: serde_json::Value = resp.json().await.unwrap();
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
     let tools = json["result"]["tools"].as_array().unwrap();
     let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 

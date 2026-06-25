@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use navra_mcp::protocol::{ToolAnnotations, ToolDefinition, ToolInputSchema};
+use navra_mcp::protocol::{ToolAnnotations, ToolDefinition};
 use openapiv3::{
     OpenAPI, Operation, Parameter, ParameterSchemaOrContent, ReferenceOr, Schema, SchemaKind, Type,
 };
@@ -144,25 +144,24 @@ pub fn generate_tools(
 
             let annotations = annotations_from_method(method);
 
-            let definition = ToolDefinition {
-                name: tool_name,
-                description,
-                input_schema: ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: if properties.is_empty() {
-                        None
-                    } else {
-                        Some(properties)
-                    },
-                    required: if required.is_empty() {
-                        None
-                    } else {
-                        Some(required)
-                    },
-                },
-                annotations: Some(annotations),
-                ttl_ms: None,
-                cache_scope: None,
+            let definition = {
+                let props = if properties.is_empty() {
+                    None
+                } else {
+                    Some(properties)
+                };
+                let req = if required.is_empty() {
+                    None
+                } else {
+                    Some(required)
+                };
+                let mut tool = ToolDefinition::new_with_raw(
+                    tool_name,
+                    description.map(std::borrow::Cow::Owned),
+                    navra_protocol::compat::tool_input_schema(props, req),
+                );
+                tool.annotations = Some(annotations);
+                tool
             };
 
             let meta = OperationMeta {
@@ -233,34 +232,18 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 
 fn annotations_from_method(method: &Method) -> ToolAnnotations {
     match method {
-        Method::Get | Method::Head | Method::Options => ToolAnnotations {
-            read_only_hint: Some(true),
-            destructive_hint: Some(false),
-            idempotent_hint: Some(true),
-            open_world_hint: Some(true),
-            title: None,
-        },
-        Method::Put => ToolAnnotations {
-            read_only_hint: Some(false),
-            destructive_hint: Some(false),
-            idempotent_hint: Some(true),
-            open_world_hint: Some(true),
-            title: None,
-        },
-        Method::Post | Method::Patch => ToolAnnotations {
-            read_only_hint: Some(false),
-            destructive_hint: Some(false),
-            idempotent_hint: Some(false),
-            open_world_hint: Some(true),
-            title: None,
-        },
-        Method::Delete => ToolAnnotations {
-            read_only_hint: Some(false),
-            destructive_hint: Some(true),
-            idempotent_hint: Some(true),
-            open_world_hint: Some(true),
-            title: None,
-        },
+        Method::Get | Method::Head | Method::Options => {
+            ToolAnnotations::from_raw(None, Some(true), Some(false), Some(true), Some(true))
+        }
+        Method::Put => {
+            ToolAnnotations::from_raw(None, Some(false), Some(false), Some(true), Some(true))
+        }
+        Method::Post | Method::Patch => {
+            ToolAnnotations::from_raw(None, Some(false), Some(false), Some(false), Some(true))
+        }
+        Method::Delete => {
+            ToolAnnotations::from_raw(None, Some(false), Some(true), Some(true), Some(true))
+        }
     }
 }
 
@@ -518,7 +501,7 @@ mod tests {
         let spec = parse_spec(petstore_spec()).unwrap();
         let tools = generate_tools(&spec, "petstore", &[]);
         assert_eq!(tools.len(), 4);
-        let names: Vec<&str> = tools.iter().map(|t| t.definition.name.as_str()).collect();
+        let names: Vec<&str> = tools.iter().map(|t| &*t.definition.name).collect();
         assert!(names.contains(&"petstore_listpets"));
         assert!(names.contains(&"petstore_createpet"));
         assert!(names.contains(&"petstore_getpetbyid"));
@@ -581,7 +564,15 @@ mod tests {
             .iter()
             .find(|t| t.definition.name == "ps_getpetbyid")
             .unwrap();
-        let required = get_by_id.definition.input_schema.required.as_ref().unwrap();
+        let required: Vec<String> = serde_json::from_value(
+            get_by_id
+                .definition
+                .input_schema
+                .get("required")
+                .cloned()
+                .unwrap(),
+        )
+        .unwrap();
         assert!(required.contains(&"petId".to_string()));
     }
 
@@ -593,10 +584,20 @@ mod tests {
             .iter()
             .find(|t| t.definition.name == "ps_listpets")
             .unwrap();
-        let props = list.definition.input_schema.properties.as_ref().unwrap();
+        let props = list
+            .definition
+            .input_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .unwrap();
         assert!(props.contains_key("limit"));
-        let required = &list.definition.input_schema.required;
-        assert!(required.is_none() || !required.as_ref().unwrap().contains(&"limit".to_string()));
+        let required: Vec<String> = list
+            .definition
+            .input_schema
+            .get("required")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        assert!(!required.contains(&"limit".to_string()));
     }
 
     #[test]
@@ -607,7 +608,12 @@ mod tests {
             .iter()
             .find(|t| t.definition.name == "ps_createpet")
             .unwrap();
-        let props = create.definition.input_schema.properties.as_ref().unwrap();
+        let props = create
+            .definition
+            .input_schema
+            .get("properties")
+            .and_then(|v| v.as_object())
+            .unwrap();
         assert!(props.contains_key("body"));
         assert!(create.meta.has_body);
     }
@@ -632,7 +638,7 @@ mod tests {
     fn filter_with_glob() {
         let spec = parse_spec(petstore_spec()).unwrap();
         let tools = generate_tools(&spec, "ps", &["ps_*pet".to_string()]);
-        let names: Vec<&str> = tools.iter().map(|t| t.definition.name.as_str()).collect();
+        let names: Vec<&str> = tools.iter().map(|t| &*t.definition.name).collect();
         assert!(names.contains(&"ps_createpet"));
         assert!(names.contains(&"ps_deletepet"));
         assert!(!names.contains(&"ps_listpets"));

@@ -116,6 +116,8 @@ pub struct SubjectTokenClaims {
     pub auth_time: Option<i64>,
 }
 
+type SubjectTokenValidator = dyn Fn(&str) -> Result<SubjectTokenClaims, String>;
+
 /// JWT header (minimal, Ed25519).
 #[derive(Debug, Serialize, Deserialize)]
 struct JwtHeader {
@@ -335,7 +337,7 @@ impl OAuthProvider {
     pub fn exchange_token(
         &self,
         request: &TokenExchangeRequest,
-        validate_subject: Option<&dyn Fn(&str) -> Result<SubjectTokenClaims, String>>,
+        validate_subject: Option<&SubjectTokenValidator>,
     ) -> Result<TokenExchangeResponse, String> {
         // Validate grant type
         if request.grant_type != "urn:ietf:params:oauth:grant-type:token-exchange" {

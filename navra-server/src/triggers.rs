@@ -12,6 +12,7 @@ use axum::{
     routing::post,
     Router,
 };
+use navra_protocol::compat::{content_as_text, CallToolResultExt};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -56,6 +57,7 @@ pub struct TriggerRegistry {
 }
 
 struct ActiveTrigger {
+    #[allow(dead_code)]
     config: TriggerConfig,
     handle: tokio::task::JoinHandle<()>,
 }
@@ -205,6 +207,7 @@ impl TriggerRegistry {
     }
 
     /// Shut down all trigger background tasks.
+    #[allow(dead_code)]
     pub fn shutdown(&self) {
         for trigger in &self.triggers {
             trigger.handle.abort();
@@ -272,17 +275,11 @@ async fn handle_webhook(
     let response_text = result
         .content
         .iter()
-        .filter_map(|c| {
-            if let navra_core::protocol::Content::Text(tc) = c {
-                Some(tc.text.as_str())
-            } else {
-                None
-            }
-        })
+        .filter_map(|c| content_as_text(c))
         .collect::<Vec<_>>()
         .join("\n");
 
-    if result.is_error {
+    if result.is_err() {
         (StatusCode::INTERNAL_SERVER_ERROR, response_text)
     } else {
         (StatusCode::OK, response_text)
@@ -497,7 +494,7 @@ async fn run_cron_trigger(
         // Spawn so the cron loop isn't blocked by flow execution
         tokio::spawn(async move {
             let result = crate::flow_tools::handle_flow_start(args, ctx, "cron-trigger").await;
-            if result.is_error {
+            if result.is_err() {
                 tracing::warn!(flow = %flow_owned, "Cron-triggered flow failed");
             }
         });
@@ -524,7 +521,7 @@ async fn run_file_watch_trigger(
 
     // Compile glob pattern
     let glob_pattern = pattern
-        .map(|p| glob::Pattern::new(p))
+        .map(glob::Pattern::new)
         .transpose()
         .map_err(|e| anyhow::anyhow!("Invalid glob pattern: {e}"))?;
 
@@ -627,7 +624,7 @@ async fn run_file_watch_trigger(
         tokio::spawn(async move {
             let result =
                 crate::flow_tools::handle_flow_start(args, ctx, "file-watch-trigger").await;
-            if result.is_error {
+            if result.is_err() {
                 tracing::warn!(flow = %flow, "File-watch-triggered flow failed");
             }
         });

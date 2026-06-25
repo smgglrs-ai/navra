@@ -1,0 +1,28 @@
+id: NAVRA-155
+title: "navra wrap one-liner UX"
+status: done
+priority: medium
+effort: 3-5d
+tags: [cli, ux, onboarding]
+description: |
+  Add a `navra wrap` subcommand that wraps any MCP server with
+  auto-generated secure config in one command:
+
+    navra wrap -- npx @modelcontextprotocol/server-filesystem /tmp
+
+  This should:
+  1. Generate a temporary token
+  2. Auto-detect tool names from the upstream's tools/list
+  3. Apply default-deny ACLs with sensible allow rules
+  4. Start navra with the upstream proxied through auth + safety
+  5. Print the MCP endpoint URL + token for the client
+
+  Upstream proxying already works via config. This is a UX layer
+  that removes the TOML editing step for quick secure-by-default
+  setups.
+acceptance:
+  - navra wrap -- <command> starts a secured MCP proxy
+  - Auto-generates token and prints connection info
+  - Default-deny ACLs applied
+  - Safety filters active
+  - Ctrl-C cleanly shuts down upstream + gateway

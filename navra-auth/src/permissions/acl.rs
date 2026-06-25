@@ -354,7 +354,7 @@ impl PermissionEngine {
     /// If a pattern ends with `/**`, the parent directory itself also
     /// matches. This is intuitive: allowing `~/Documents/**` should
     /// let you list `~/Documents`.
-    fn glob_matches(pattern: &str, path: &PathBuf) -> bool {
+    fn glob_matches(pattern: &str, path: &Path) -> bool {
         let path_str = path.to_string_lossy();
         if glob::Pattern::new(pattern)
             .map(|p| p.matches(&path_str))

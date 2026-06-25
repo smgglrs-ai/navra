@@ -79,7 +79,7 @@ fn module_registers_four_tools() {
 fn module_registers_expected_tool_names() {
     let module = build_rag_module();
     let tools = module.tools();
-    let names: Vec<&str> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+    let names: Vec<&str> = tools.iter().map(|(def, _)| &*def.name).collect();
 
     let expected = ["rag_index", "rag_query", "rag_similar", "rag_status"];
     for name in &expected {
@@ -110,7 +110,10 @@ fn all_tools_have_descriptions_and_object_schema() {
             "Tool '{}' missing description",
             def.name
         );
-        assert_eq!(def.input_schema.schema_type, "object");
+        assert_eq!(
+            def.input_schema.get("type").and_then(|v| v.as_str()),
+            Some("object")
+        );
     }
 }
 

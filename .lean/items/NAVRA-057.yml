@@ -1,6 +1,6 @@
 id: NAVRA-057
 title: Lazy-loading tool and persona metadata
-status: planned
+status: done
 priority: medium
 effort: M
 depends_on: []

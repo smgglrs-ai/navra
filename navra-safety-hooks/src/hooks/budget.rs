@@ -6,12 +6,13 @@
 
 use super::{Hook, HookDecision};
 use navra_auth::auth::CallContext;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::{CallToolResult, Content, RawContent};
 
 /// Strategy for reducing oversized tool outputs.
 #[derive(Debug, Clone)]
 pub enum TruncationStrategy {
-    /// Hard truncate at token limit, add "[truncated]" marker.
+    /// Hard truncate at token limit, add "\[truncated\]" marker.
     Truncate,
     /// Keep first `head_ratio` of the budget at the start and
     /// the remainder at the end, eliding the middle.
@@ -157,7 +158,7 @@ impl Hook for BudgetHook {
         _ctx: &CallContext,
     ) -> HookDecision {
         // Never truncate error results — error messages must be complete
-        if result.is_error {
+        if result.is_err() {
             return HookDecision::Continue;
         }
 
@@ -165,8 +166,8 @@ impl Hook for BudgetHook {
         let total_tokens: usize = result
             .content
             .iter()
-            .filter_map(|c| match c {
-                Content::Text(t) => Some(estimate_tokens(&t.text)),
+            .filter_map(|c| match &c.raw {
+                RawContent::Text(t) => Some(estimate_tokens(&t.text)),
                 _ => None,
             })
             .sum();
@@ -186,7 +187,7 @@ impl Hook for BudgetHook {
         let text_count = result
             .content
             .iter()
-            .filter(|c| matches!(c, Content::Text(_)))
+            .filter(|c| matches!(&c.raw, RawContent::Text(_)))
             .count();
 
         // If only one text item, give it the full budget.
@@ -195,8 +196,8 @@ impl Hook for BudgetHook {
         let mut any_changed = false;
 
         for content in &result.content {
-            match content {
-                Content::Text(t) => {
+            match &content.raw {
+                RawContent::Text(t) => {
                     let item_tokens = estimate_tokens(&t.text);
                     let item_budget = if text_count == 1 {
                         self.max_tool_output_tokens
@@ -229,8 +230,8 @@ impl Hook for BudgetHook {
         // Add a metadata note about truncation
         let new_total: usize = truncated_content
             .iter()
-            .filter_map(|c| match c {
-                Content::Text(t) => Some(estimate_tokens(&t.text)),
+            .filter_map(|c| match &c.raw {
+                RawContent::Text(t) => Some(estimate_tokens(&t.text)),
                 _ => None,
             })
             .sum();
@@ -240,11 +241,9 @@ impl Hook for BudgetHook {
             total_tokens, new_total,
         )));
 
-        HookDecision::ModifyResult(CallToolResult {
-            content: truncated_content,
-            is_error: result.is_error,
-            label: result.label,
-        })
+        let mut new_result = CallToolResult::success(truncated_content);
+        new_result.is_error = result.is_error;
+        HookDecision::ModifyResult(new_result)
     }
 }
 
@@ -364,13 +363,13 @@ mod tests {
             .await;
         match decision {
             HookDecision::ModifyResult(r) => {
-                assert!(!r.is_error);
+                assert!(!r.is_err());
                 // Should have truncation metadata
                 let all_text: String = r
                     .content
                     .iter()
-                    .filter_map(|c| match c {
-                        Content::Text(t) => Some(t.text.as_str()),
+                    .filter_map(|c| match &c.raw {
+                        RawContent::Text(t) => Some(t.text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -385,7 +384,7 @@ mod tests {
     async fn error_results_not_truncated() {
         let hook = BudgetHook::new(1, TruncationStrategy::Truncate);
         let mut result = CallToolResult::text("a]".repeat(500));
-        result.is_error = true;
+        result.is_error = Some(true);
         let decision = hook
             .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
             .await;
@@ -426,7 +425,10 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content::Text(t) => Some(&t.text),
+                        Content {
+                            raw: RawContent::Text(t),
+                            ..
+                        } => Some(&t.text),
                         _ => None,
                     })
                     .collect();
@@ -459,7 +461,10 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content::Text(t) => Some(t.text.as_str()),
+                        Content {
+                            raw: RawContent::Text(t),
+                            ..
+                        } => Some(t.text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()

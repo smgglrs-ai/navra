@@ -17,7 +17,7 @@
 pub mod engine;
 mod error;
 pub mod format;
-mod gpu;
+pub mod gpu;
 pub mod hardware;
 mod npu;
 

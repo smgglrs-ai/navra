@@ -12,7 +12,6 @@
 //!     --output results/s9-eval
 
 use navra_agent::{CallToolResult, McpClient};
-use navra_protocol::Upstream;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -26,6 +25,7 @@ struct EvalConfig {
     projects: Vec<(String, PathBuf)>,
     runs_per_project: usize,
     output_dir: PathBuf,
+    #[allow(dead_code)]
     poll_interval: Duration,
 }
 
@@ -75,10 +75,15 @@ impl EvalConfig {
 }
 
 async fn connect(endpoint: &str) -> Result<McpClient, String> {
-    let upstream = Upstream::http("eval", endpoint)
+    let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint);
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
         .await
         .map_err(|e| format!("connect failed: {e}"))?;
-    Ok(McpClient::new(upstream))
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+    Ok(McpClient::new(peer))
 }
 
 async fn start_flow(
@@ -113,6 +118,7 @@ async fn start_flow(
     Ok(text)
 }
 
+#[allow(dead_code)]
 async fn poll_flow(
     client: &mut McpClient,
     flow_id: &str,

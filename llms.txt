@@ -1,10 +1,8 @@
 # navra
 
-> navra is a secure MCP (Model Context Protocol) gateway for AI agents on Linux. It is a Rust workspace of 22 crates that sits between AI agents and local resources, enforcing authentication (BLAKE3 tokens, capability tokens, DID:key), deny-wins path ACLs, Information Flow Control (IFC), content safety filtering (regex + ML + NER), and hash-chained audit logging on every tool call. It proxies both built-in tool modules and upstream MCP servers through a unified security layer. The project has 2400+ tests and 138 Kani formal verification proofs. Licensed under Apache-2.0.
+> navra is a secure agentic AI framework for Rust. It combines an MCP gateway, a Rust agent SDK (navra-agent), and a multi-agent flow engine (navra-flow) in a 22-crate workspace. Security is enforced at the gateway layer — Information Flow Control, deny-wins ACLs, content safety filtering (regex + NER + ML), BLAKE3 authentication, capability tokens, and hash-chained audit logging — so agents don't need to be trusted. The SDK provides a builder API, 5 model backends (Ollama, Mistral, Anthropic, OGX, CLI), deterministic replay, and Hermes-format trace export. Flows support DAG execution, handoff routing, and mesh communication. 2400+ tests, 34 adversarial security tests, 138 Kani formal verification proofs. Apache-2.0.
 
-navra is not an agent framework or SDK. It is infrastructure — a gateway daemon that enforces security at the transport layer. Orchestration belongs in the agent. Modules like navra-rag can also run as standalone microservices for composability.
-
-Default config path: `~/.config/navra/config.toml`. Build requires ONNX Runtime (`onnxruntime-devel` on Fedora) and environment variables `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1`.
+Default config path: `~/.config/navra/config.toml`. Run `navra init` for interactive setup. Build requires ONNX Runtime (`onnxruntime-devel` on Fedora) and environment variables `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1`.
 
 ## Docs
 
@@ -35,12 +33,18 @@ Default config path: `~/.config/navra/config.toml`. Build requires ONNX Runtime 
 - [navra-rag](https://github.com/smgglrs-ai/navra/blob/main/navra-rag/README.md): Hybrid FTS5+vector search, RRF fusion, cross-encoder reranking, confidence gating
 - [navra-memory](https://github.com/smgglrs-ai/navra/blob/main/navra-memory/README.md): Working memory and knowledge store with FTS5
 - [navra-cognitive](https://github.com/smgglrs-ai/navra/blob/main/navra-cognitive/README.md): Persona/directive/heuristic YAML loader and prompt weaver
-- [navra-tools-file](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-file/README.md): File tools, SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs
-- [navra-tools-git](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-git/README.md): Git tools — status, diff, log, branch, commit, push, pull, fetch
-- [navra-tools-github](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-github/README.md): GitHub forge tools — PR create/list/view, issue create/list/comment via gh CLI
-- [navra-tools-gitlab](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-gitlab/README.md): GitLab forge tools — MR create/list/view, issue create/list/comment via glab CLI
-- [navra-tools-exec](https://github.com/smgglrs-ai/navra/blob/main/navra-tools-exec/README.md): Command execution inside OpenShell sandboxes or directly on host
+- [navra-auth](https://github.com/smgglrs-ai/navra/blob/main/navra-auth/README.md): Authentication, authorization, identity, and permission primitives
+- [navra-safety-hooks](https://github.com/smgglrs-ai/navra/blob/main/navra-safety-hooks/README.md): Content hooks and integrity monitoring for the gateway
+- [navra-mcp](https://github.com/smgglrs-ai/navra/blob/main/navra-mcp/README.md): Module trait and type definitions for MCP tool crates
+- [navra-openapi](https://github.com/smgglrs-ai/navra/blob/main/navra-openapi/README.md): OpenAPI-to-MCP runtime bridge
 - [navra-macros](https://github.com/smgglrs-ai/navra/blob/main/navra-macros/README.md): #[tool] proc macro for generating tool definitions from async functions
+
+## SDK and Examples
+
+- [Agent SDK Guide](https://github.com/smgglrs-ai/navra/blob/main/docs/content/docs/sdk/_index.md): Building agents with navra-agent — builder API, model backends, IFC, traces, flows
+- [Standalone Agent Example](https://github.com/smgglrs-ai/navra/blob/main/examples/standalone-agent/): Complete CLI agent binary using the SDK
+- [Agent Bundles](https://github.com/smgglrs-ai/navra/blob/main/examples/agent-bundles/): Reference OCI bundle manifests (researcher, code-reviewer, security-auditor)
+- [Flow Definitions](https://github.com/smgglrs-ai/navra/blob/main/examples/flows/): DAG flows — review, deep-research, security-audit, improve, self-improve
 
 ## Guides
 

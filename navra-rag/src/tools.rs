@@ -16,6 +16,7 @@ use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::Module;
+use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -136,7 +137,7 @@ impl Module for RagModule {
 fn resolve_path(raw: &str) -> Result<PathBuf, String> {
     let expanded = if raw.starts_with("~/") {
         match dirs::home_dir() {
-            Some(home) => home.join(&raw[2..]),
+            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
             None => return Err("Cannot resolve home directory".to_string()),
         }
     } else {
@@ -169,11 +170,11 @@ fn check_perm(
         PermissionResult::Allowed => Ok(()),
         PermissionResult::NeedsApproval => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, "Approval required");
-            Err(CallToolResult::error("Approval required".to_string()))
+            Err(CallToolResult::error_msg("Approval required".to_string()))
         }
         other => {
             tracing::info!(op, path = %path.display(), agent = %ctx.agent.name, result = ?other, "Permission denied");
-            Err(CallToolResult::error("Permission denied".to_string()))
+            Err(CallToolResult::error_msg("Permission denied".to_string()))
         }
     }
 }
@@ -191,7 +192,7 @@ async fn handle_index(
 ) -> CallToolResult {
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     if let Err(e) = check_perm(&state, &ctx, "read", &resolved) {
@@ -199,13 +200,13 @@ async fn handle_index(
     }
 
     if !resolved.is_file() {
-        return CallToolResult::error(format!("Not a file: {}", resolved.display()));
+        return CallToolResult::error_msg(format!("Not a file: {}", resolved.display()));
     }
 
     let content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
         Err(e) => {
-            return CallToolResult::error(format!("Failed to read {}: {e}", resolved.display()))
+            return CallToolResult::error_msg(format!("Failed to read {}: {e}", resolved.display()))
         }
     };
 
@@ -246,7 +247,7 @@ async fn handle_index(
         match state.embedding_model.embed(&request).await {
             Ok(response) => embeddings.push(response.embedding),
             Err(e) => {
-                return CallToolResult::error(format!(
+                return CallToolResult::error_msg(format!(
                     "Embedding failed for chunk {}: {e}",
                     chunk.index
                 ))
@@ -263,7 +264,7 @@ async fn handle_index(
             count,
             embeddings.first().map(|e| e.len()).unwrap_or(0),
         )),
-        Err(e) => CallToolResult::error(format!("Failed to index {}: {e}", resolved.display())),
+        Err(e) => CallToolResult::error_msg(format!("Failed to index {}: {e}", resolved.display())),
     }
 }
 
@@ -281,11 +282,11 @@ async fn handle_query(
         .perm_engine
         .has_operation(&ctx.agent.permissions, "search")
     {
-        return CallToolResult::error("Permission denied");
+        return CallToolResult::error_msg("Permission denied");
     }
 
     if query.is_empty() {
-        return CallToolResult::error("Missing required parameter: query");
+        return CallToolResult::error_msg("Missing required parameter: query");
     }
 
     let limit = limit.unwrap_or(5) as usize;
@@ -296,7 +297,7 @@ async fn handle_query(
     };
     let embed_response = match state.embedding_model.embed(&request).await {
         Ok(r) => r,
-        Err(e) => return CallToolResult::error(format!("Embedding failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Embedding failed: {e}")),
     };
 
     if let Some(ref m) = state.metrics {
@@ -358,7 +359,7 @@ async fn handle_query(
             }
             CallToolResult::text(output)
         }
-        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Search failed: {e}")),
     }
 }
 
@@ -374,7 +375,7 @@ async fn handle_similar(
 ) -> CallToolResult {
     let resolved = match resolve_path(&path) {
         Ok(p) => p,
-        Err(e) => return CallToolResult::error(e),
+        Err(e) => return CallToolResult::error_msg(e),
     };
 
     let limit = limit.unwrap_or(5) as usize;
@@ -385,7 +386,7 @@ async fn handle_similar(
 
     let path_str = resolved.to_string_lossy().to_string();
     if !state.store.is_indexed(&path_str).unwrap_or(false) {
-        return CallToolResult::error(format!(
+        return CallToolResult::error_msg(format!(
             "Document not indexed: {}. Run rag_index first.",
             resolved.display()
         ));
@@ -408,7 +409,7 @@ async fn handle_similar(
             }
             CallToolResult::text(output)
         }
-        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Search failed: {e}")),
     }
 }
 
@@ -425,7 +426,7 @@ async fn handle_status(_ctx: CallContext, #[state] state: Arc<RagState>) -> Call
              Dimensions: {}",
             stats.document_count, stats.chunk_count, stats.dimensions,
         )),
-        Err(e) => CallToolResult::error(format!("Failed to get stats: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Failed to get stats: {e}")),
     }
 }
 
@@ -488,7 +489,7 @@ mod tests {
 
         assert_eq!(module.name(), "rag");
         let tools = module.tools();
-        let names: Vec<_> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+        let names: Vec<_> = tools.iter().map(|(def, _)| &*def.name).collect();
         assert!(names.contains(&"rag_index"));
         assert!(names.contains(&"rag_query"));
         assert!(names.contains(&"rag_similar"));
@@ -532,14 +533,11 @@ mod tests {
 
         let (_, handler) = handle_status_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(t.text.contains("Documents: 0"));
-                assert!(t.text.contains("Chunks:    0"));
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let text = navra_protocol::compat::content_as_text(&result.content[0])
+            .expect("expected text content");
+        assert!(text.contains("Documents: 0"));
+        assert!(text.contains("Chunks:    0"));
     }
 
     // --- Pipeline integration tests: reranking + caching ---
@@ -663,21 +661,18 @@ mod tests {
         )
         .await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                // The reversing reranker should put the last vector-search
-                // result first. With our fixed embedding close to [1,0,0,0],
-                // the original order is Alpha, Beta, Gamma. Reversed: Gamma first.
-                let gamma_pos = t.text.find("Gamma").expect("Gamma should appear");
-                let alpha_pos = t.text.find("Alpha").expect("Alpha should appear");
-                assert!(
-                    gamma_pos < alpha_pos,
-                    "Reversing reranker should put Gamma before Alpha"
-                );
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let text = navra_protocol::compat::content_as_text(&result.content[0])
+            .expect("expected text content");
+        // The reversing reranker should put the last vector-search
+        // result first. With our fixed embedding close to [1,0,0,0],
+        // the original order is Alpha, Beta, Gamma. Reversed: Gamma first.
+        let gamma_pos = text.find("Gamma").expect("Gamma should appear");
+        let alpha_pos = text.find("Alpha").expect("Alpha should appear");
+        assert!(
+            gamma_pos < alpha_pos,
+            "Reversing reranker should put Gamma before Alpha"
+        );
     }
 
     #[tokio::test]
@@ -701,20 +696,17 @@ mod tests {
         )
         .await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                // With noop reranker and embedding close to [1,0,0,0],
-                // Alpha (embedding [1,0,0,0]) should come first.
-                let alpha_pos = t.text.find("Alpha").expect("Alpha should appear");
-                let gamma_pos = t.text.find("Gamma").expect("Gamma should appear");
-                assert!(
-                    alpha_pos < gamma_pos,
-                    "Without reranker, Alpha should come before Gamma"
-                );
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let text = navra_protocol::compat::content_as_text(&result.content[0])
+            .expect("expected text content");
+        // With noop reranker and embedding close to [1,0,0,0],
+        // Alpha (embedding [1,0,0,0]) should come first.
+        let alpha_pos = text.find("Alpha").expect("Alpha should appear");
+        let gamma_pos = text.find("Gamma").expect("Gamma should appear");
+        assert!(
+            alpha_pos < gamma_pos,
+            "Without reranker, Alpha should come before Gamma"
+        );
     }
 
     #[tokio::test]
@@ -772,15 +764,12 @@ mod tests {
         let (_, handler) = handle_query_handler(state);
         let result = handler(serde_json::json!({"query": "test", "limit": 1}), test_ctx()).await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(
-                    t.text.contains("Found 1 result"),
-                    "Should return exactly 1 result despite overfetching"
-                );
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let text = navra_protocol::compat::content_as_text(&result.content[0])
+            .expect("expected text content");
+        assert!(
+            text.contains("Found 1 result"),
+            "Should return exactly 1 result despite overfetching"
+        );
     }
 }

@@ -51,6 +51,7 @@ pub struct Metrics {
     pub monitoring_escalations_total: AtomicU64,
     pub monitoring_verdicts_total: AtomicU64,
     pub monitoring_verdicts_confirmed_total: AtomicU64,
+    pub privacy_router_skipped: AtomicU64,
 }
 
 impl Metrics {
@@ -100,6 +101,7 @@ impl Metrics {
             monitoring_escalations_total: AtomicU64::new(0),
             monitoring_verdicts_total: AtomicU64::new(0),
             monitoring_verdicts_confirmed_total: AtomicU64::new(0),
+            privacy_router_skipped: AtomicU64::new(0),
         }
     }
 
@@ -407,6 +409,13 @@ impl Metrics {
                 .load(Ordering::Relaxed),
         );
 
+        prom_counter(
+            &mut out,
+            "navra_privacy_router_skipped_total",
+            "Expensive detectors skipped by privacy router short-circuit",
+            self.privacy_router_skipped.load(Ordering::Relaxed),
+        );
+
         out
     }
 }
@@ -488,6 +497,7 @@ mod tests {
         assert!(output.contains("navra_monitoring_escalations_total"));
         assert!(output.contains("navra_monitoring_verdicts_total"));
         assert!(output.contains("navra_monitoring_verdicts_confirmed_total"));
+        assert!(output.contains("navra_privacy_router_skipped_total"));
     }
 
     #[test]

@@ -10,7 +10,7 @@ def handle(request):
     if method == "initialize":
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": "2025-03-26",
-            "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}, "resources": {"listChanged": False}},
             "serverInfo": {"name": "test-upstream", "version": "0.1.0"}
         }}
     elif method == "notifications/initialized":
@@ -40,7 +40,13 @@ def handle(request):
             "messages": [{"role": "user", "content": {"type": "text", "text": "Hello from upstream!"}}]
         }}
     elif method == "resources/list":
-        return {"jsonrpc": "2.0", "id": rid, "result": {"resources": []}}
+        return {"jsonrpc": "2.0", "id": rid, "result": {"resources": [
+            {"uri": "test://status", "name": "status", "description": "Server status"},
+        ]}}
+    elif method == "resources/read":
+        return {"jsonrpc": "2.0", "id": rid, "result": {
+            "contents": [{"uri": request["params"]["uri"], "mimeType": "text/plain", "text": "ok"}]
+        }}
     else:
         return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 

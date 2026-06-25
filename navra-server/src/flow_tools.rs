@@ -4,7 +4,8 @@
 //! so a planner agent can define, launch, monitor, and read results from
 //! multi-agent flows — all through standard MCP tool calls.
 
-use navra_core::protocol::{ToolDefinition, ToolInputSchema};
+use navra_core::protocol::ToolDefinition;
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -24,6 +25,12 @@ pub struct NodeStatus {
     pub specialist: String,
     pub status: String, // "pending", "running", "done", "failed"
     pub output: Option<String>,
+    /// When the node transitioned to "running".
+    #[serde(skip)]
+    pub started_at: Option<Instant>,
+    /// When the node transitioned to "done" or "failed".
+    #[serde(skip)]
+    pub completed_at: Option<Instant>,
 }
 
 /// A tracked flow execution.
@@ -140,6 +147,9 @@ impl FlowRegistry {
     }
 
     /// Update a single node's status and output.
+    ///
+    /// Automatically records `started_at` when transitioning to "running"
+    /// and `completed_at` when transitioning to "done" or "failed".
     pub fn update_node_status(
         &self,
         flow_id: &str,
@@ -154,6 +164,13 @@ impl FlowRegistry {
             .get_mut(flow_id)
         {
             if let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
+                // Track timing transitions
+                if status == "running" && node.started_at.is_none() {
+                    node.started_at = Some(Instant::now());
+                }
+                if matches!(status, "done" | "failed") && node.completed_at.is_none() {
+                    node.completed_at = Some(Instant::now());
+                }
                 node.status = status.to_string();
                 if output.is_some() {
                     node.output = output;
@@ -209,6 +226,52 @@ impl FlowRegistry {
         }))
     }
 
+    /// Build a graph JSON representation of a flow for React Flow consumption.
+    ///
+    /// Combines node definitions (with current status and timing) and edges
+    /// inferred from the flow's node dependency chain.
+    pub fn flow_graph_json(&self, flow_id: &str) -> Option<serde_json::Value> {
+        let flows = self.flows.lock().unwrap_or_else(|e| e.into_inner());
+        let run = flows.get(flow_id)?;
+
+        let nodes: Vec<serde_json::Value> = run
+            .node_statuses
+            .iter()
+            .enumerate()
+            .map(|(i, node)| {
+                let duration_ms = match (node.started_at, node.completed_at) {
+                    (Some(start), Some(end)) => Some(end.duration_since(start).as_millis() as u64),
+                    (Some(start), None) => Some(start.elapsed().as_millis() as u64),
+                    _ => None,
+                };
+                serde_json::json!({
+                    "id": node.id,
+                    "type": "task",
+                    "label": if node.specialist.is_empty() { &node.id } else { &node.specialist },
+                    "status": node.status,
+                    "x": (i % 4) * 250,
+                    "y": (i / 4) * 150,
+                    "duration_ms": duration_ms,
+                })
+            })
+            .collect();
+
+        // Edges are not stored directly in FlowRun, so we produce an
+        // empty edges list. Callers that need dependency edges should
+        // parse the flow YAML or supply them from the DagConfig.
+        Some(serde_json::json!({
+            "flow_id": run.flow_id,
+            "name": run.name,
+            "status": match &run.status {
+                FlowRunStatus::Running => "running",
+                FlowRunStatus::Completed => "completed",
+                FlowRunStatus::Failed(_) => "failed",
+            },
+            "nodes": nodes,
+            "edges": [],
+        }))
+    }
+
     /// Get result of a completed flow, optionally for a specific node.
     pub fn get_result(&self, flow_id: &str, node_id: Option<&str>) -> Option<serde_json::Value> {
         let flows = self.flows.lock().unwrap_or_else(|e| e.into_inner());
@@ -244,6 +307,7 @@ impl FlowRegistry {
 /// Queries team state for timing/token data and the blackbox sqlite
 /// for tool call counts. Returns a markdown block to append to the
 /// flow's final output.
+#[allow(clippy::too_many_arguments)]
 pub fn build_run_summary(
     team_reg: &crate::team_tools::TeamRegistry,
     team_id: &str,
@@ -422,13 +486,13 @@ pub async fn handle_flow_status(
     use navra_core::protocol::CallToolResult;
     let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing required parameter: flow_id"),
+        None => return CallToolResult::error_msg("Missing required parameter: flow_id"),
     };
     match registry.get_status(flow_id) {
         Some(status) => {
             CallToolResult::text(serde_json::to_string_pretty(&status).unwrap_or_default())
         }
-        None => CallToolResult::error(format!("Unknown flow: {flow_id}")),
+        None => CallToolResult::error_msg(format!("Unknown flow: {flow_id}")),
     }
 }
 
@@ -441,7 +505,7 @@ pub async fn handle_flow_result(
     use navra_core::protocol::CallToolResult;
     let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
         Some(id) => id,
-        None => return CallToolResult::error("Missing required parameter: flow_id"),
+        None => return CallToolResult::error_msg("Missing required parameter: flow_id"),
     };
     let node_id = args.get("node_id").and_then(|v| v.as_str());
     let include_tasks = args
@@ -457,7 +521,9 @@ pub async fn handle_flow_result(
             if let Some(ref audit) = audit_log {
                 if let Ok(tasks) = audit.get_flow_results(flow_id) {
                     if tasks.is_empty() {
-                        return CallToolResult::error(format!("No results for flow: {flow_id}"));
+                        return CallToolResult::error_msg(format!(
+                            "No results for flow: {flow_id}"
+                        ));
                     }
                     if let Some(nid) = node_id {
                         if let Some(task) = tasks.iter().find(|t| t.task_id == nid) {
@@ -472,7 +538,7 @@ pub async fn handle_flow_result(
                                 .unwrap_or_default(),
                             );
                         }
-                        return CallToolResult::error(format!(
+                        return CallToolResult::error_msg(format!(
                             "No results for node {nid} in flow {flow_id}"
                         ));
                     }
@@ -514,7 +580,7 @@ pub async fn handle_flow_result(
                     );
                 }
             }
-            return CallToolResult::error(format!("No results for flow: {flow_id}"));
+            return CallToolResult::error_msg(format!("No results for flow: {flow_id}"));
         }
     };
 
@@ -662,6 +728,7 @@ pub struct FlowContext {
 }
 
 /// Record completed/failed task results to the audit log.
+#[allow(clippy::too_many_arguments)]
 fn record_task_results_to_audit(
     audit_log: &Option<std::sync::Arc<navra_memory::AuditLog>>,
     team_reg: &crate::team_tools::TeamRegistry,
@@ -782,6 +849,7 @@ fn compute_file_tree(docs_root: &Option<String>) -> String {
 
 /// Poll until all given task IDs complete or fail, with a timeout check.
 /// Returns updated completed and failed sets.
+#[allow(clippy::too_many_arguments)]
 async fn poll_tasks_until_done(
     team_reg: &std::sync::Arc<crate::team_tools::TeamRegistry>,
     flow_reg: &std::sync::Arc<FlowRegistry>,
@@ -841,6 +909,7 @@ async fn poll_tasks_until_done(
 
 /// Spawn ready tasks as teammates and wait for them to complete.
 /// Returns the IDs of tasks that were spawned.
+#[allow(clippy::too_many_arguments)]
 async fn spawn_and_track_tasks(
     ctx: &FlowContext,
     team_id: &str,
@@ -867,17 +936,13 @@ async fn spawn_and_track_tasks(
             Some(task.specialist.clone())
         };
 
-        let ops = task
-            .operations
-            .as_ref()
-            .map(|o| o.clone())
-            .unwrap_or_else(|| {
-                crate::team_tools::DEFAULT_OPERATIONS
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            });
-        let tools = task.tools.as_ref().map(|t| t.clone()).unwrap_or_else(|| {
+        let ops = task.operations.clone().unwrap_or_else(|| {
+            crate::team_tools::DEFAULT_OPERATIONS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        });
+        let tools = task.tools.clone().unwrap_or_else(|| {
             crate::team_tools::DEFAULT_TOOLS
                 .iter()
                 .map(|s| s.to_string())
@@ -981,7 +1046,7 @@ async fn spawn_and_track_tasks(
                     &project_file_tree[..end]
                 }
             } else {
-                &project_file_tree
+                project_file_tree
             };
             message.push_str(&format!(
                 "\n\n--- Project files (verified, use file_tree for full list) ---\n{}\n\nUse file_read to read files. Use file_tree if you need the full listing.",
@@ -1017,6 +1082,10 @@ async fn spawn_and_track_tasks(
             openshell_gateway: ctx.openshell_gateway.clone(),
             exec_state: ctx.exec_state.clone(),
             workspace_provider: ctx.workspace_provider.clone(),
+            max_tokens_per_run: ctx.budget_cfg.max_tokens_per_run,
+            compression_start_ratio: ctx.budget_cfg.compression_start_ratio,
+            compaction_keep_recent: ctx.budget_cfg.compaction_keep_recent,
+            compaction_trigger_ratio: ctx.budget_cfg.compaction_trigger_ratio,
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
@@ -1062,7 +1131,7 @@ pub async fn handle_flow_start(
 
     let prompt = match args.get("prompt").and_then(|v| v.as_str()) {
         Some(p) => p.to_string(),
-        None => return CallToolResult::error("Missing required parameter: prompt"),
+        None => return CallToolResult::error_msg("Missing required parameter: prompt"),
     };
 
     let params: std::collections::HashMap<String, String> = args
@@ -1082,7 +1151,7 @@ pub async fn handle_flow_start(
             .chars()
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
         {
-            return CallToolResult::error(
+            return CallToolResult::error_msg(
                 "Invalid flow_name: only alphanumeric characters, hyphens, and underscores are allowed"
             );
         }
@@ -1111,7 +1180,7 @@ pub async fn handle_flow_start(
         match found {
             Some(c) => c,
             None => {
-                return CallToolResult::error(format!(
+                return CallToolResult::error_msg(format!(
                     "Flow '{name}' not found in flow_dirs. Use flow_list to see available flows."
                 ))
             }
@@ -1119,7 +1188,7 @@ pub async fn handle_flow_start(
     } else if let Some(def) = args.get("flow_definition").and_then(|v| v.as_str()) {
         def.to_string()
     } else {
-        return CallToolResult::error(
+        return CallToolResult::error_msg(
             "Provide either flow_name (from flow_list) or flow_definition (inline YAML)",
         );
     };
@@ -1127,7 +1196,7 @@ pub async fn handle_flow_start(
     // Parse the YAML flow
     let dag_config = match navra_flow::yaml_loader::load_flow_yaml(&yaml_content, &params) {
         Ok(d) => d,
-        Err(e) => return CallToolResult::error(format!("Invalid flow YAML: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Invalid flow YAML: {e}")),
     };
 
     let flow_id = ctx.flow_registry.register(&dag_config.name);
@@ -1152,6 +1221,8 @@ pub async fn handle_flow_start(
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
+            started_at: None,
+            completed_at: None,
         })
         .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
@@ -1177,7 +1248,7 @@ pub async fn handle_flow_start(
         Ok(id) => id,
         Err(e) => {
             ctx.flow_registry.fail(&flow_id, e.clone());
-            return CallToolResult::error(format!("Failed to create flow team: {e}"));
+            return CallToolResult::error_msg(format!("Failed to create flow team: {e}"));
         }
     };
     ctx.flow_registry.set_team_id(&flow_id, &team_id);
@@ -1410,8 +1481,8 @@ async fn run_dag_execution(
                 match navra_agent::Agent::builder()
                     .endpoint(&mcp_url)
                     .await
-                    .and_then(|b| {
-                        Ok(b.model(navra_model::OpenAiBackend::new(
+                    .map(|b| {
+                        b.model(navra_model::OpenAiBackend::new(
                             "http://localhost:11434/v1",
                             &correction_model,
                             None,
@@ -1422,7 +1493,7 @@ async fn run_dag_execution(
                         )
                         .max_iterations(0)
                         .max_tokens(8192)
-                        .temperature(0.0))
+                        .temperature(0.0)
                     }) {
                     Ok(builder) => {
                         if let Ok(mut agent) = builder.build().await {
@@ -1473,6 +1544,8 @@ async fn run_dag_execution(
                         specialist: new_task.specialist.clone(),
                         status: "pending".to_string(),
                         output: None,
+                        started_at: None,
+                        completed_at: None,
                     }],
                 );
                 task_defs.push(new_task);
@@ -1559,13 +1632,13 @@ pub async fn handle_flow_escalate(
 
     let mandate = match args.get("mandate").and_then(|v| v.as_str()) {
         Some(m) => m.to_string(),
-        None => return CallToolResult::error("Missing required parameter: mandate"),
+        None => return CallToolResult::error_msg("Missing required parameter: mandate"),
     };
 
     // Bound mandate length to prevent context stuffing
     const MAX_MANDATE_LEN: usize = 10_000;
     if mandate.len() > MAX_MANDATE_LEN {
-        return CallToolResult::error(format!(
+        return CallToolResult::error_msg(format!(
             "Mandate too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your request.",
             mandate.len()
         ));
@@ -1577,7 +1650,7 @@ pub async fn handle_flow_escalate(
         .map(String::from);
     if let Some(ref ctx_text) = context {
         if ctx_text.len() > MAX_MANDATE_LEN {
-            return CallToolResult::error(format!(
+            return CallToolResult::error_msg(format!(
                 "Context too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your context.",
                 ctx_text.len()
             ));
@@ -1628,7 +1701,7 @@ pub async fn handle_flow_escalate(
 
     let new_depth = current_depth + 1;
     if new_depth > max_depth {
-        return CallToolResult::error(format!(
+        return CallToolResult::error_msg(format!(
             "Escalation depth limit reached ({new_depth}/{max_depth}). \
              Cannot create deeper subflows. Handle this task directly."
         ));
@@ -1640,15 +1713,15 @@ pub async fn handle_flow_escalate(
         for t in tasks_val {
             let id = match t.get("id").and_then(|v| v.as_str()) {
                 Some(id) => id.to_string(),
-                None => return CallToolResult::error("Each task must have an 'id'"),
+                None => return CallToolResult::error_msg("Each task must have an 'id'"),
             };
             let specialist = match t.get("specialist").and_then(|v| v.as_str()) {
                 Some(s) => s.to_string(),
-                None => return CallToolResult::error("Each task must have a 'specialist'"),
+                None => return CallToolResult::error_msg("Each task must have a 'specialist'"),
             };
             let task_mandate = match t.get("mandate").and_then(|v| v.as_str()) {
                 Some(m) => m.to_string(),
-                None => return CallToolResult::error("Each task must have a 'mandate'"),
+                None => return CallToolResult::error_msg("Each task must have a 'mandate'"),
             };
             let model = t
                 .get("model")
@@ -1723,6 +1796,8 @@ pub async fn handle_flow_escalate(
             specialist: t.specialist.clone(),
             status: "pending".to_string(),
             output: None,
+            started_at: None,
+            completed_at: None,
         })
         .collect();
     ctx.flow_registry.update_nodes(&flow_id, nodes);
@@ -1748,7 +1823,7 @@ pub async fn handle_flow_escalate(
         Ok(id) => id,
         Err(e) => {
             ctx.flow_registry.fail(&flow_id, e.clone());
-            return CallToolResult::error(format!("Failed to create subflow team: {e}"));
+            return CallToolResult::error_msg(format!("Failed to create subflow team: {e}"));
         }
     };
     ctx.flow_registry.set_team_id(&flow_id, &team_id);
@@ -1799,7 +1874,7 @@ pub async fn handle_flow_escalate(
                 tracing::error!(flow_id = %flow_id, "{msg}");
                 ctx.flow_registry.fail(&flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(&team_id);
-                return CallToolResult::error(msg);
+                return CallToolResult::error_msg(msg);
             }
             break;
         }
@@ -1845,7 +1920,7 @@ pub async fn handle_flow_escalate(
                 tracing::warn!(flow_id = %flow_id, "{}", msg);
                 ctx.flow_registry.fail(&flow_id, msg.clone());
                 let _ = ctx.team_registry.shutdown(&team_id);
-                return CallToolResult::error(msg);
+                return CallToolResult::error_msg(msg);
             }
         }
 
@@ -1908,20 +1983,16 @@ pub async fn handle_flow_escalate(
 // --- Tool definitions ---
 
 pub fn flow_start_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_start".to_string(),
-        description: Some(
-            "Start a multi-agent flow. Either specify flow_name to run a \
+    ToolDefinition::new(
+        "flow_start",
+        "Start a multi-agent flow. Either specify flow_name to run a \
              predefined template (from flow_list), or flow_definition to \
              define inline. Templates are recommended — they encode proven \
              orchestration patterns (e.g. scout → planner → specialists → \
              synthesizer). Returns a flow_id for tracking via flow_status \
-             and flow_result."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             and flow_result.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "flow_name".to_string(),
                     serde_json::json!({
@@ -1961,68 +2032,44 @@ pub fn flow_start_tool_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["prompt".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["prompt".to_string()]),
+        ),
+    )
 }
 
 pub fn flow_list_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_list".to_string(),
-        description: Some(
-            "List available YAML flow files from configured flow directories. \
-             Returns flow names, descriptions, and parameter definitions."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::new()),
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    ToolDefinition::new(
+        "flow_list",
+        "List available YAML flow files from configured flow directories. \
+             Returns flow names, descriptions, and parameter definitions.",
+        tool_input_schema(Some(HashMap::new()), None),
+    )
 }
 
 pub fn flow_status_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_status".to_string(),
-        description: Some(
-            "Check the status of a running or completed flow. Returns node \
-             statuses (pending/running/done/failed) and elapsed time."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+    ToolDefinition::new(
+        "flow_status",
+        "Check the status of a running or completed flow. Returns node \
+             statuses (pending/running/done/failed) and elapsed time.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "flow_id".to_string(),
                 serde_json::json!({"type": "string", "description": "Flow ID from flow_start"}),
             )])),
-            required: Some(vec!["flow_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["flow_id".to_string()]),
+        ),
+    )
 }
 
 pub fn flow_result_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_result".to_string(),
-        description: Some(
-            "Get the output of a completed flow or a specific node within it. \
+    ToolDefinition::new(
+        "flow_result",
+        "Get the output of a completed flow or a specific node within it. \
              Returns the full report with all task outputs if no node specified, \
              or a single node's output if node_id is given. Results are persisted \
-             to disk and survive server restarts."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             to disk and survive server restarts.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "flow_id".to_string(),
                     serde_json::json!({"type": "string", "description": "Flow ID from flow_start"}),
@@ -2036,27 +2083,20 @@ pub fn flow_result_tool_def() -> ToolDefinition {
                     serde_json::json!({"type": "boolean", "default": true, "description": "Include individual task outputs in the response (default: true)"}),
                 ),
             ])),
-            required: Some(vec!["flow_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["flow_id".to_string()]),
+        ),
+    )
 }
 
 pub fn flow_escalate_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_escalate".to_string(),
-        description: Some(
-            "Escalate a complex task by spawning a sub-leader. Use when your \
+    ToolDefinition::new(
+        "flow_escalate",
+        "Escalate a complex task by spawning a sub-leader. Use when your \
              task requires multiple specialists or parallel investigation. \
              Returns the synthesized result. This call blocks until the \
-             subflow completes."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+             subflow completes.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "mandate".to_string(),
                     serde_json::json!({
@@ -2094,37 +2134,27 @@ pub fn flow_escalate_tool_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["mandate".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["mandate".to_string()]),
+        ),
+    )
 }
 
 pub fn flow_resume_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "flow_resume".to_string(),
-        description: Some(
-            "Resume a timed-out or failed flow. Skips completed tasks \
-             (read from audit.db) and runs only the remaining ones."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([(
+    ToolDefinition::new(
+        "flow_resume",
+        "Resume a timed-out or failed flow. Skips completed tasks \
+             (read from audit.db) and runs only the remaining ones.",
+        tool_input_schema(
+            Some(HashMap::from([(
                 "flow_id".to_string(),
                 serde_json::json!({
                     "type": "string",
                     "description": "ID of the flow to resume"
                 }),
             )])),
-            required: Some(vec!["flow_id".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["flow_id".to_string()]),
+        ),
+    )
 }
 
 /// Resume a timed-out flow by loading checkpoint state (preferred) or
@@ -2138,7 +2168,7 @@ pub async fn handle_flow_resume(
 
     let flow_id = match args.get("flow_id").and_then(|v| v.as_str()) {
         Some(id) => id.to_string(),
-        None => return CallToolResult::error("Missing required parameter: flow_id"),
+        None => return CallToolResult::error_msg("Missing required parameter: flow_id"),
     };
 
     // Try checkpoint first — it has the most complete state
@@ -2200,7 +2230,7 @@ pub async fn handle_flow_resume(
             ) {
                 Ok(id) => id,
                 Err(e) => {
-                    return CallToolResult::error(format!("Failed to create resume team: {e}"))
+                    return CallToolResult::error_msg(format!("Failed to create resume team: {e}"))
                 }
             };
             ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
@@ -2254,14 +2284,18 @@ pub async fn handle_flow_resume(
         Some(audit) => match audit.load_flow_metadata(&flow_id) {
             Ok(Some(m)) => m,
             Ok(None) => {
-                return CallToolResult::error(format!(
+                return CallToolResult::error_msg(format!(
                     "Flow {flow_id} not found in audit.db or checkpoint"
                 ))
             }
-            Err(e) => return CallToolResult::error(format!("Failed to load flow metadata: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to load flow metadata: {e}"))
+            }
         },
         None => {
-            return CallToolResult::error("Audit log not configured and no checkpoint available")
+            return CallToolResult::error_msg(
+                "Audit log not configured and no checkpoint available",
+            )
         }
     };
 
@@ -2269,7 +2303,9 @@ pub async fn handle_flow_resume(
     let completed_results = match &ctx.audit_log {
         Some(audit) => match audit.get_flow_results(&flow_id) {
             Ok(r) => r,
-            Err(e) => return CallToolResult::error(format!("Failed to load flow results: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to load flow results: {e}"))
+            }
         },
         None => Vec::new(),
     };
@@ -2277,9 +2313,9 @@ pub async fn handle_flow_resume(
     let already_done: std::collections::HashMap<String, String> = completed_results
         .iter()
         .filter(|r| r.status == "done")
-        .filter_map(|r| {
+        .map(|r| {
             let output = r.output.clone().unwrap_or_default();
-            Some((r.task_id.clone(), output))
+            (r.task_id.clone(), output)
         })
         .collect();
 
@@ -2292,7 +2328,7 @@ pub async fn handle_flow_resume(
     // Re-parse the YAML to get the task definitions
     let yaml_content = match metadata.yaml_content {
         Some(ref y) => y.clone(),
-        None => return CallToolResult::error("Flow has no saved YAML content — cannot resume"),
+        None => return CallToolResult::error_msg("Flow has no saved YAML content — cannot resume"),
     };
 
     let params: std::collections::HashMap<String, String> = metadata
@@ -2303,7 +2339,7 @@ pub async fn handle_flow_resume(
 
     let dag_config = match navra_flow::yaml_loader::load_flow_yaml(&yaml_content, &params) {
         Ok(c) => c,
-        Err(e) => return CallToolResult::error(format!("Failed to parse flow YAML: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Failed to parse flow YAML: {e}")),
     };
 
     // Filter to only tasks not already completed
@@ -2369,7 +2405,9 @@ pub async fn handle_flow_resume(
             .create_team(&metadata.name, None, agent_name, 0, team_budget)
         {
             Ok(id) => id,
-            Err(e) => return CallToolResult::error(format!("Failed to create resume team: {e}")),
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to create resume team: {e}"))
+            }
         };
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 
@@ -2482,6 +2520,8 @@ mod tests {
                 specialist: "analyst".to_string(),
                 status: "pending".to_string(),
                 output: None,
+                started_at: None,
+                completed_at: None,
             }],
         );
 

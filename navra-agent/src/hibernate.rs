@@ -58,6 +58,7 @@ impl ConversationSnapshot {
     }
 
     /// Create a snapshot from the current tool loop state.
+    #[allow(clippy::too_many_arguments)]
     pub fn capture(
         agent_id: &str,
         run_id: &str,

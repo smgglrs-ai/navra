@@ -9,14 +9,14 @@ use async_trait::async_trait;
 use navra_core::hooks::Hook;
 use navra_memory::{KnowledgeStore, TemporalTree, TreeType, WorkingMemory};
 use std::path::PathBuf;
-use std::sync::Arc;
-
+#[allow(dead_code)]
 pub struct SessionDistillationHook {
     working_path: PathBuf,
     knowledge_path: PathBuf,
     temporal_path: Option<PathBuf>,
 }
 
+#[allow(dead_code)]
 impl SessionDistillationHook {
     pub fn new(working_path: PathBuf, knowledge_path: PathBuf) -> Self {
         Self {

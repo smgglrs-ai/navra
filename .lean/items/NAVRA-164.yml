@@ -1,0 +1,55 @@
+id: NAVRA-164
+title: "Agent instances and navra agent init"
+status: done
+priority: high
+effort: 3-5d
+tags: [agents, cli, credentials, onboarding]
+depends_on: [NAVRA-163]
+description: |
+  Implement agent instances: same bundle installed multiple times
+  with different credentials and permissions.
+
+  `navra agent init <bundle> --name <instance-name>` reads the
+  bundle's config-template.yaml, walks the user through setup,
+  and writes an instance config.
+
+  Flow:
+  1. Read config-template.yaml for credential requirements
+  2. For each credential:
+     - List existing navra credentials that match the type
+     - Offer to reuse or create new
+     - If new: drive OAuth flow (browser) or prompt for token
+     - Store in OS keyring via existing navra-auth credential store
+  3. Write instance config with credential label references
+  4. Show permission envelope, ask user to confirm
+  5. Write per-workflow permission config (translates bundle
+     declarations into navra's existing permission engine)
+
+  Credentials are global by label. Multiple agents reference
+  the same credential:
+
+    [credentials."gmail-work"]
+    source = "keyring"
+    path = "navra/gmail-work"
+
+  Agent instances bind to credentials by label:
+
+    [agents.work-assistant.credentials]
+    gmail = "gmail-work"
+    slack = "slack-team"
+
+  Instance configs stored at:
+    ~/.config/navra/agents/<instance-name>/
+
+  `navra agent list` shows instances with their bundle origin.
+  `navra agent remove <instance>` removes instance config but
+  preserves shared credentials.
+acceptance:
+  - navra agent init walks through config-template interactively
+  - Offers to reuse existing credentials or create new ones
+  - OAuth2 browser flow works for supported providers
+  - Credentials stored in OS keyring via existing navra-auth
+  - Multiple instances of same bundle with different credentials
+  - Instance config written with credential label references
+  - Permission config generated from bundle declarations
+  - navra agent list shows instances and their bundles

@@ -1,0 +1,45 @@
+id: NAVRA-168
+title: "navra agent upgrade: versioned bundles and permission diff"
+status: done
+priority: medium
+effort: 3-5d
+tags: [bundles, agents, upgrades, security]
+depends_on: [NAVRA-163, NAVRA-164]
+description: |
+  When a bundle publishes a new version, `navra agent upgrade`
+  pulls the new version and re-runs approval only for the
+  permission diff.
+
+  Flow:
+  1. Pull new bundle version from OCI registry
+  2. Verify signature
+  3. Diff permission envelope: old vs new
+  4. If no permission changes: upgrade in place, done
+  5. If permissions added: show diff, ask user to approve
+     new permissions only
+  6. If permissions removed: upgrade in place, note removed perms
+  7. Update instance configs to reference new bundle version
+
+  Example:
+
+    $ navra agent upgrade work-assistant
+
+    admin-assistant v1.2 → v1.3
+
+    New permissions requested:
+      + gmail: [draft]  (workflow: respond, step: draft-reply)
+
+    Removed permissions:
+      - calendar: [delete]  (no longer used)
+
+    Approve new permissions? [Y/n]
+
+  No runtime elevation — all permissions fixed at init/upgrade
+  time. Bundles declare their full envelope upfront.
+acceptance:
+  - navra agent upgrade pulls new version and verifies signature
+  - Permission diff shown to user
+  - Only new permissions require approval
+  - Removed permissions noted but don't require action
+  - Instance configs updated to new bundle version
+  - No runtime permission elevation exists

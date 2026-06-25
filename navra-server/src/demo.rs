@@ -262,6 +262,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
 ///
 /// Unlike `run_demo` (scripted), this actually calls a model for each
 /// task. It requires Ollama running with the specified model pulled.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_demo_live(
     project: &str,
     model_name: &str,

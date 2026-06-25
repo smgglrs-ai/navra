@@ -10,7 +10,11 @@ fn default_cognitive_core_path() -> String {
 }
 
 #[derive(Parser)]
-#[command(name = "navra", about = "Composable MCP server")]
+#[command(
+    name = "navra",
+    about = "navra \u{2014} secure MCP gateway for AI agents",
+    version
+)]
 pub(crate) struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -29,6 +33,42 @@ pub(crate) enum Commands {
         /// Enable anonymous access (dev only — do not use in production)
         #[arg(long)]
         dev_mode: bool,
+    },
+    /// Interactive first-time setup
+    Init {
+        /// Skip interactive prompts, use defaults + flags
+        #[arg(long)]
+        quiet: bool,
+        /// Agent name (default: auto-detect)
+        #[arg(long)]
+        agent_name: Option<String>,
+        /// Safety level: standard, strict, minimal
+        #[arg(long, default_value = "standard")]
+        safety: String,
+        /// Project type: dev, data, ops, custom
+        #[arg(long, default_value = "dev")]
+        project: String,
+        /// Model backend: ollama, mistral, anthropic, openai-compat, none
+        #[arg(long, default_value = "none")]
+        model: String,
+        /// Base URL for openai-compat backend
+        #[arg(long)]
+        model_url: Option<String>,
+        /// API key for model backend
+        #[arg(long)]
+        api_key: Option<String>,
+        /// Allowed directories (comma-separated globs)
+        #[arg(long)]
+        allow: Option<String>,
+        /// Install systemd user service
+        #[arg(long)]
+        install_service: bool,
+        /// Output config to stdout instead of writing to file
+        #[arg(long)]
+        dry_run: bool,
+        /// Config output path
+        #[arg(short, long)]
+        output: Option<String>,
     },
     /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
     Stdio {
@@ -83,7 +123,7 @@ pub(crate) enum Commands {
     },
     /// Run an agent task against a running navra instance
     Run {
-        /// Prompt for the agent
+        /// Prompt for the agent (or instance/workflow for named workflows)
         prompt: String,
         /// Model to use (default: auto-detect from Ollama)
         #[arg(short, long)]
@@ -106,6 +146,15 @@ pub(crate) enum Commands {
         /// Can be repeated.
         #[arg(long = "upstream-prompt")]
         upstream_prompts: Vec<String>,
+        /// Run a named workflow from an agent instance (e.g., work-assistant/day-planner)
+        #[arg(long)]
+        workflow: Option<String>,
+        /// Path to a standalone workflow file (for development)
+        #[arg(long)]
+        file: Option<String>,
+        /// Path to agent instance config (overrides default resolution)
+        #[arg(long)]
+        config: Option<String>,
         /// Preview the constructed prompt without executing
         #[arg(long)]
         dry_run: bool,
@@ -145,6 +194,36 @@ pub(crate) enum Commands {
         /// Path to cognitive core directory
         #[arg(long, default_value_t = default_cognitive_core_path())]
         cognitive_core: String,
+    },
+    /// Wrap an MCP server with secure-by-default gateway in one command
+    Wrap {
+        /// Bind address for the gateway (default: 127.0.0.1:9315)
+        #[arg(short, long, default_value = "127.0.0.1:9315")]
+        bind: String,
+        /// Safety profile: standard, block, secrets-only, none
+        #[arg(short, long, default_value = "standard")]
+        safety: String,
+        /// Name for the upstream server (default: derived from command)
+        #[arg(short, long)]
+        name: Option<String>,
+        /// Disable system tray icon
+        #[arg(long)]
+        no_tray: bool,
+        /// Connect, list tools/resources/prompts, suggest policy, then exit
+        #[arg(long)]
+        discover: bool,
+        /// Skip safety filters entirely (fast iteration, no content scanning)
+        #[arg(long)]
+        allow_all: bool,
+        /// Run upstream in a container sandbox (openshell or podman)
+        #[arg(long)]
+        sandbox: Option<String>,
+        /// Allow egress to specific domains (can be repeated, merged with auto-discovered)
+        #[arg(long = "allow-domain")]
+        allow_domains: Vec<String>,
+        /// Command and args to start the upstream MCP server
+        #[arg(trailing_var_arg = true, required = true)]
+        command: Vec<String>,
     },
     /// Run the end-to-end security audit demo
     Demo {
@@ -194,13 +273,19 @@ pub(crate) enum ConfigAction {
         #[arg(long)]
         no_redact: bool,
     },
+    /// List installed operator libraries and what they provide
+    ListLibraries {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
 pub(crate) enum AgentAction {
-    /// Install an agent bundle from an OCI registry
+    /// Install an agent bundle from an OCI registry or local directory
     Install {
-        /// OCI reference (e.g., oci://quay.io/navra/agent:v1)
+        /// OCI reference (e.g., oci://quay.io/navra/agent:v1) or local directory path
         oci_ref: String,
         /// Skip signature verification for this install
         #[arg(long)]
@@ -214,7 +299,23 @@ pub(crate) enum AgentAction {
         /// OCI reference
         oci_ref: String,
     },
-    /// List installed agent bundles
+    /// Initialize an agent instance from an installed bundle
+    Init {
+        /// Bundle name (must be installed)
+        bundle: String,
+        /// Instance name (defaults to bundle name)
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Upgrade an installed agent bundle to a new version
+    Upgrade {
+        /// Bundle name or OCI reference
+        bundle: String,
+        /// Skip signature verification
+        #[arg(long)]
+        allow_unsigned: bool,
+    },
+    /// List installed agent bundles and instances
     List,
     /// Remove an installed agent bundle
     Remove {
@@ -225,6 +326,21 @@ pub(crate) enum AgentAction {
 
 #[derive(Subcommand)]
 pub(crate) enum ModelAction {
+    /// Start a standalone model inference server
+    Serve {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+        /// Bind address
+        #[arg(short, long, default_value = "127.0.0.1:9316")]
+        bind: String,
+        /// Auto-detect hardware and propose resource allocation
+        #[arg(long)]
+        auto: bool,
+        /// Maximum VRAM budget (e.g., 24GB, 16GB)
+        #[arg(long)]
+        budget: Option<String>,
+    },
     /// Download a model from HuggingFace
     Pull {
         /// Model name (e.g., guardian-hap, granite-embed)
@@ -398,6 +514,12 @@ pub(crate) async fn agent_install(
 ) -> anyhow::Result<()> {
     use crate::agent_bundle::{compare, cosign, fetch, install, registry};
 
+    // Local directory install (v2 bundle format)
+    let path = std::path::Path::new(oci_ref);
+    if path.is_dir() {
+        return agent_install_local(path);
+    }
+
     let policy = if allow_unsigned {
         cosign::SignaturePolicy::Skip
     } else {
@@ -481,6 +603,216 @@ pub(crate) async fn agent_install(
     Ok(())
 }
 
+fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    // Check for existing bundle to show permission diff
+    let new_bundle = bundle_dir::load_bundle(dir)?;
+    let existing_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(&new_bundle.meta.name);
+    if existing_dir.exists() {
+        if let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
+            let diff =
+                bundle_dir::diff_permissions(&old_bundle.permissions, &new_bundle.permissions);
+            if !diff.is_empty() {
+                println!(
+                    "Upgrading {} v{} → v{}",
+                    old_bundle.meta.name, old_bundle.meta.version, new_bundle.meta.version
+                );
+                print!("{diff}");
+                println!();
+            }
+        }
+    }
+
+    let installed = bundle_dir::install_from_dir(dir)?;
+    println!("Installed: {} v{}", installed.name, installed.version);
+    println!("Location: {}", installed.path.display());
+
+    if !installed.workflows.is_empty() {
+        println!("\nWorkflows:");
+        for wf in &installed.workflows {
+            println!("  navra run {}/{}", installed.name, wf);
+        }
+    }
+
+    if let Ok(Some(template)) = bundle_dir::load_config_template(dir) {
+        if !template.credentials.is_empty() {
+            println!("\nThis agent needs credentials. Run:");
+            println!("  navra agent init {}", installed.name);
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    let bundles_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(bundle_name);
+
+    if !bundles_dir.exists() {
+        anyhow::bail!(
+            "bundle '{}' not installed. Run: navra agent install <path-or-oci-ref>",
+            bundle_name
+        );
+    }
+
+    let bundle = bundle_dir::load_bundle(&bundles_dir)?;
+    let template = bundle_dir::load_config_template(&bundles_dir)?;
+    let instance = instance_name.unwrap_or(bundle_name);
+    let instance_dir = dirs::config_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agents")
+        .join(instance);
+
+    std::fs::create_dir_all(&instance_dir)?;
+
+    // Generate instance config
+    let mut config = String::new();
+    config.push_str(&format!("# Agent instance: {instance}\n"));
+    config.push_str(&format!(
+        "# Bundle: {} v{}\n\n",
+        bundle.meta.name, bundle.meta.version
+    ));
+    config.push_str(&format!("bundle = \"{}\"\n", bundle.meta.name));
+
+    // Model preferences
+    if let Some(ref preferred) = bundle.model.preferred {
+        config.push_str(&format!("model = \"{preferred}\"\n"));
+    }
+
+    // Credential references
+    if let Some(ref tmpl) = template {
+        if !tmpl.credentials.is_empty() {
+            config.push_str("\n[credentials]\n");
+            for cred in &tmpl.credentials {
+                let required = if cred.required { "" } else { "  # optional" };
+                config.push_str(&format!("# {} ({}){}", cred.name, cred.cred_type, required));
+                if let Some(ref desc) = cred.description {
+                    config.push_str(&format!(" — {desc}"));
+                }
+                config.push('\n');
+                if !cred.scopes.is_empty() {
+                    config.push_str(&format!("# scopes: {}\n", cred.scopes.join(", ")));
+                }
+                config.push_str(&format!(
+                    "{} = \"navra/{instance}/{}\"\n\n",
+                    cred.name, cred.name
+                ));
+            }
+        }
+    }
+
+    // Permission envelope
+    if !bundle.permissions.operations.is_empty() || !bundle.permissions.default.is_empty() {
+        config.push_str("[permissions]\n");
+        if !bundle.permissions.operations.is_empty() {
+            config.push_str(&format!(
+                "operations = [{}]\n",
+                bundle
+                    .permissions
+                    .operations
+                    .iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        for (upstream, ops) in &bundle.permissions.default {
+            config.push_str(&format!(
+                "{upstream} = [{}]\n",
+                ops.iter()
+                    .map(|o| format!("\"{o}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
+    // Workflow triggers
+    if !bundle.workflows.is_empty() {
+        config.push_str("\n# Triggers (uncomment and configure as needed)\n");
+        config.push_str("# [[triggers]]\n");
+        config.push_str("# type = \"schedule\"\n");
+        config.push_str("# cron = \"0 9 * * 1-5\"\n");
+        if let Some(wf_name) = bundle.workflows.keys().next() {
+            config.push_str(&format!("# workflow = \"{wf_name}\"\n"));
+        }
+    }
+
+    let config_path = instance_dir.join("config.toml");
+    std::fs::write(&config_path, &config)?;
+
+    println!(
+        "Instance '{instance}' initialized from bundle '{}'",
+        bundle.meta.name
+    );
+    println!("Config: {}", config_path.display());
+
+    if let Some(ref tmpl) = template {
+        if !tmpl.credentials.is_empty() {
+            println!("\nCredentials needed:");
+            for cred in &tmpl.credentials {
+                let req = if cred.required {
+                    "(required)"
+                } else {
+                    "(optional)"
+                };
+                println!("  {} — {} {}", cred.name, cred.cred_type, req);
+            }
+            println!("\nStore credentials in your OS keyring under 'navra/{instance}/<name>'");
+        }
+    }
+
+    if !bundle.workflows.is_empty() {
+        println!("\nAvailable workflows:");
+        for (wf_name, wf) in &bundle.workflows {
+            let desc = wf.description.as_deref().unwrap_or("");
+            println!("  navra run {instance}/{wf_name}  {desc}");
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn agent_upgrade(bundle_name: &str) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    let bundles_dir = dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("navra/agent-bundles")
+        .join(bundle_name);
+
+    if !bundles_dir.exists() {
+        anyhow::bail!("bundle '{}' not installed. Cannot upgrade.", bundle_name);
+    }
+
+    let old_bundle = bundle_dir::load_bundle(&bundles_dir)?;
+
+    // For local upgrades, the user re-installs from the new directory.
+    // For OCI upgrades, we'd pull the new version first (TODO).
+    // For now, show the current state and diff mechanism.
+    println!(
+        "Bundle: {} v{}",
+        old_bundle.meta.name, old_bundle.meta.version
+    );
+    println!("Location: {}", bundles_dir.display());
+    println!();
+    println!(
+        "To upgrade, re-install from the new source:\n  \
+         navra agent install ./path-to-new-version/\n\n\
+         The permission diff will be shown automatically."
+    );
+
+    Ok(())
+}
+
 pub(crate) async fn agent_inspect(oci_ref: &str) -> anyhow::Result<()> {
     use crate::agent_bundle::fetch;
 
@@ -509,12 +841,12 @@ pub(crate) fn agent_list() -> anyhow::Result<()> {
     }
 
     println!(
-        "{:<20} {:<10} {:<15} {:<6} {}",
-        "NAME", "VERSION", "PUBLISHER", "SIGNED", "OCI REF"
+        "{:<20} {:<10} {:<15} {:<6} OCI REF",
+        "NAME", "VERSION", "PUBLISHER", "SIGNED"
     );
     println!(
-        "{:<20} {:<10} {:<15} {:<6} {}",
-        "----", "-------", "---------", "------", "-------"
+        "{:<20} {:<10} {:<15} {:<6} -------",
+        "----", "-------", "---------", "------"
     );
     for agent in &agents {
         println!(
@@ -711,7 +1043,7 @@ pub(crate) async fn pii_download(multilingual: bool) -> anyhow::Result<()> {
 /// This model (dslim/bert-base-NER converted to ONNX by ProtectAI) detects
 /// PERSON, LOCATION, ORGANIZATION, and MISC entities in natural language.
 async fn pii_download_english() -> anyhow::Result<()> {
-    let model_dir = navra_core::safety::default_pii_ner_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner");
     std::fs::create_dir_all(&model_dir)?;
 
     println!("Pulling protectai/bert-base-NER-onnx — semantic PII detection (PER, LOC, ORG, MISC)");
@@ -757,7 +1089,7 @@ async fn pii_download_english() -> anyhow::Result<()> {
 /// of Davlan/xlm-roberta-base-ner-hrl. Covers 10+ languages including
 /// English, French, German, Spanish, Italian, Portuguese, and Dutch.
 pub(crate) async fn pii_download_multilingual() -> anyhow::Result<()> {
-    let model_dir = navra_core::safety::default_pii_ner_multilingual_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner-multilingual");
     std::fs::create_dir_all(&model_dir)?;
 
     println!(
@@ -817,7 +1149,7 @@ pub(crate) async fn pii_download_multilingual() -> anyhow::Result<()> {
 /// Check if the PII NER model is installed.
 pub(crate) fn pii_status() {
     // English model (protectai)
-    let model_dir = navra_core::safety::default_pii_ner_model_dir();
+    let model_dir = super::config::default_pii_model_dir("pii-ner");
     let has_model = model_dir.join("model.onnx").exists();
     let has_tokenizer = model_dir.join("tokenizer.json").exists();
 
@@ -840,7 +1172,7 @@ pub(crate) fn pii_status() {
     println!();
 
     // Multilingual model
-    let ml_dir = navra_core::safety::default_pii_ner_multilingual_model_dir();
+    let ml_dir = super::config::default_pii_model_dir("pii-ner-multilingual");
     let ml_has_model = ml_dir.join("model.onnx").exists();
     let ml_has_tokenizer = ml_dir.join("tokenizer.json").exists();
 
@@ -939,6 +1271,66 @@ mod tests {
                 assert!(upstream_prompts.is_empty());
             }
             _ => panic!("Expected Run command"),
+        }
+    }
+
+    #[test]
+    fn cli_init_default() {
+        let cli = Cli::try_parse_from(["navra", "init"]).unwrap();
+        match cli.command {
+            Commands::Init {
+                quiet,
+                safety,
+                project,
+                model,
+                dry_run,
+                ..
+            } => {
+                assert!(!quiet);
+                assert_eq!(safety, "standard");
+                assert_eq!(project, "dev");
+                assert_eq!(model, "none");
+                assert!(!dry_run);
+            }
+            _ => panic!("Expected Init command"),
+        }
+    }
+
+    #[test]
+    fn cli_init_quiet() {
+        let cli = Cli::try_parse_from([
+            "navra",
+            "init",
+            "--quiet",
+            "--agent-name",
+            "foo",
+            "--project",
+            "data",
+            "--safety",
+            "strict",
+            "--model",
+            "ollama",
+            "--dry-run",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Init {
+                quiet,
+                agent_name,
+                safety,
+                project,
+                model,
+                dry_run,
+                ..
+            } => {
+                assert!(quiet);
+                assert_eq!(agent_name.as_deref(), Some("foo"));
+                assert_eq!(safety, "strict");
+                assert_eq!(project, "data");
+                assert_eq!(model, "ollama");
+                assert!(dry_run);
+            }
+            _ => panic!("Expected Init command"),
         }
     }
 

@@ -17,7 +17,6 @@ pub use navra_safety_hooks::hooks;
 pub use navra_safety_hooks::safety;
 
 pub use navra_protocol as protocol;
-pub use navra_protocol::upstream;
 
 pub use navra_model as models;
 
@@ -37,11 +36,9 @@ mod upstream_module;
 pub use grpc_module::GrpcModule;
 pub use module::serve_module;
 pub use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
-pub use navra_protocol::{RetryConfig, Upstream};
-pub use server::{McpServer, McpServerBuilder, ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use navra_protocol::RetryConfig;
+pub use server::{
+    McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker, UsagePruningFilter,
+};
 pub use session::Session;
 pub use upstream_module::UpstreamModule;
-
-/// Re-export dispatch for unit tests (not part of public API).
-#[cfg(test)]
-pub(crate) use transport::streamable::dispatch::dispatch as dispatch_for_test;

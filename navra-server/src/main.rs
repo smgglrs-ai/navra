@@ -16,10 +16,13 @@ mod demo;
 mod direct_transport;
 mod discover;
 mod exec_tools;
+mod flow_api;
 mod flow_tools;
 mod grpc_manager;
+mod init;
 mod mdns;
 mod memory_tools;
+mod network_discovery;
 mod plan_execute;
 mod rag_retriever;
 mod registry_tools;
@@ -34,9 +37,11 @@ pub(crate) mod workspace;
 
 use clap::Parser;
 use navra_core::auth::{AgentIdentity, TokenAuthenticator};
+use navra_core::credentials::CredentialStore as _;
 use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
 use navra_core::Module;
+use navra_protocol::compat::CallToolResultExt;
 use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
@@ -103,6 +108,34 @@ async fn main() -> anyhow::Result<()> {
     init_tracing()?;
 
     match cli.command {
+        Commands::Init {
+            quiet,
+            agent_name,
+            safety,
+            project,
+            model,
+            model_url,
+            api_key,
+            allow,
+            install_service,
+            dry_run,
+            output,
+        } => {
+            init::run_init(
+                quiet,
+                agent_name,
+                safety,
+                project,
+                model,
+                model_url,
+                api_key,
+                allow,
+                install_service,
+                dry_run,
+                output,
+            )
+            .await?;
+        }
         Commands::Serve {
             config: config_path,
             no_tray,
@@ -191,6 +224,15 @@ async fn main() -> anyhow::Result<()> {
             AgentAction::Inspect { oci_ref } => {
                 cli::agent_inspect(&oci_ref).await?;
             }
+            AgentAction::Init { bundle, name } => {
+                cli::agent_init(&bundle, name.as_deref())?;
+            }
+            AgentAction::Upgrade {
+                bundle,
+                allow_unsigned: _,
+            } => {
+                cli::agent_upgrade(&bundle)?;
+            }
             AgentAction::List => {
                 cli::agent_list()?;
             }
@@ -199,6 +241,14 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Model { action } => match action {
+            ModelAction::Serve {
+                config: config_path,
+                bind,
+                auto,
+                budget,
+            } => {
+                model_serve(config_path, bind, auto, budget).await?;
+            }
             ModelAction::Pull { name } => {
                 cli::model_pull(&name).await?;
             }
@@ -245,12 +295,33 @@ async fn main() -> anyhow::Result<()> {
                     import_mcp_file(p, redact)?;
                 }
             }
+            ConfigAction::ListLibraries { config: cfg_path } => {
+                let cfg = config::Config::load(cfg_path.as_deref())
+                    .unwrap_or_else(|_| config::Config::default());
+                let dirs = config::libraries::resolve_dirs(&cfg.libraries.library_dirs);
+                let libs = config::libraries::scan_libraries(&dirs)?;
+                if libs.is_empty() {
+                    println!("No operator libraries found.");
+                    println!("Library directories:");
+                    for d in &dirs {
+                        println!("  {}", d.display());
+                    }
+                } else {
+                    let summaries = config::libraries::summarize_libraries(&libs);
+                    for s in &summaries {
+                        println!("{}:", s.path.display());
+                        for key in &s.keys {
+                            println!("  {key}");
+                        }
+                    }
+                }
+            }
         },
         Commands::Improve {
             target,
             cycles,
             branch,
-            config,
+            config: _,
         } => {
             println!("navra self-improvement: {} cycles on {}", cycles, target);
             println!("Branch: {branch}");
@@ -343,8 +414,20 @@ async fn main() -> anyhow::Result<()> {
             token,
             max_iterations,
             upstream_prompts,
+            workflow,
+            file: _file,
+            config: _run_config,
             dry_run,
         } => {
+            // If prompt looks like instance/workflow, treat as workflow run
+            let (prompt, _workflow_name) = if let Some(wf) = workflow {
+                (format!("Run workflow: {wf}"), Some(wf))
+            } else if prompt.contains('/') && !prompt.contains(' ') {
+                let wf = prompt.clone();
+                (format!("Run workflow: {wf}"), Some(wf))
+            } else {
+                (prompt, None)
+            };
             if dry_run {
                 println!("--- Dry Run ---");
                 println!("Endpoint: {endpoint}");
@@ -401,6 +484,30 @@ async fn main() -> anyhow::Result<()> {
                 policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
             }
         },
+        Commands::Wrap {
+            bind,
+            safety,
+            name,
+            no_tray,
+            discover,
+            allow_all,
+            sandbox,
+            allow_domains,
+            command,
+        } => {
+            wrap_command(
+                command,
+                bind,
+                safety,
+                name,
+                no_tray,
+                discover,
+                allow_all,
+                sandbox,
+                allow_domains,
+            )
+            .await?;
+        }
         Commands::Demo {
             project,
             live,
@@ -431,6 +538,391 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn wrap_command(
+    command: Vec<String>,
+    bind: String,
+    safety: String,
+    name: Option<String>,
+    no_tray: bool,
+    discover: bool,
+    allow_all: bool,
+    sandbox: Option<String>,
+    allow_domains: Vec<String>,
+) -> anyhow::Result<()> {
+    if command.is_empty() {
+        anyhow::bail!("No command specified. Usage: navra wrap -- <command> [args...]");
+    }
+
+    let upstream_name = name.unwrap_or_else(|| {
+        std::path::Path::new(&command[0])
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("upstream")
+            .to_string()
+    });
+
+    if discover {
+        return wrap_discover(&upstream_name, &command).await;
+    }
+
+    let effective_safety = if allow_all { "none" } else { &safety };
+
+    let token = config::generate_token();
+    let token_hash = TokenAuthenticator::hash_token(&token);
+
+    let command_str = command
+        .iter()
+        .map(|s| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sandbox_section = match sandbox.as_deref() {
+        Some("openshell") => {
+            format!(
+                "\n[server]\ntcp = \"{bind}\"\ncontainerized = true\nopenshell_gateway = \"http://127.0.0.1:50051\"\n"
+            )
+        }
+        Some("podman") => {
+            format!("\n[server]\ntcp = \"{bind}\"\ncontainerized = true\n")
+        }
+        Some(other) => {
+            anyhow::bail!("Unknown sandbox type '{other}'. Use 'openshell' or 'podman'.");
+        }
+        None => {
+            format!("[server]\ntcp = \"{bind}\"\n")
+        }
+    };
+
+    // Discover network requirements when sandbox is active
+    let mut egress_domains: Vec<String> = allow_domains;
+    let egress_active = sandbox.is_some() && !allow_all;
+
+    if egress_active {
+        if let Some(known) = network_discovery::known_server_domains(&upstream_name, &command) {
+            for d in known {
+                if !egress_domains.contains(&d) {
+                    egress_domains.push(d);
+                }
+            }
+        }
+    }
+
+    let egress_section = if egress_active {
+        let domain_list = egress_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("egress_deny_all_external = true\negress_allowed_domains = [{domain_list}]\n")
+    } else {
+        String::new()
+    };
+
+    let network_section = if egress_active && !egress_domains.is_empty() {
+        let domain_list = egress_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "\n[upstream.network]\nallowed_domains = [{domain_list}]\ndeny_all_external = true\n"
+        )
+    } else if egress_active {
+        "\n[upstream.network]\ndeny_all_external = true\n".to_string()
+    } else {
+        String::new()
+    };
+
+    let toml_str = format!(
+        r#"{sandbox_section}
+[[agents]]
+name = "wrap-client"
+token_hash = "{token_hash}"
+permissions = "wrap"
+
+[permissions.wrap]
+safety = "{effective_safety}"
+ring = 2
+allow = ["*"]
+deny = []
+operations = ["read", "write"]
+{egress_section}
+[[upstream]]
+name = "{upstream_name}"
+transport = "stdio"
+command = [{command_str}]
+{network_section}"#
+    );
+
+    let cfg: config::Config = toml::from_str(&toml_str)?;
+
+    let sandbox_label = sandbox.as_deref().unwrap_or("none (direct)");
+
+    eprintln!("navra wrap: starting secured proxy for '{upstream_name}'");
+    eprintln!();
+    eprintln!("  Upstream:  {}", command.join(" "));
+    eprintln!("  Gateway:   http://{bind}/mcp");
+    eprintln!("  Safety:    {effective_safety}");
+    eprintln!("  Sandbox:   {sandbox_label}");
+    if egress_active {
+        if egress_domains.is_empty() {
+            eprintln!("  Egress:    deny-all (no domains allowed)");
+        } else {
+            eprintln!("  Egress:    {} domain(s) allowed", egress_domains.len());
+            for d in &egress_domains {
+                eprintln!("             - {d}");
+            }
+        }
+    }
+    eprintln!("  Token:     {token}");
+    if allow_all {
+        eprintln!();
+        eprintln!("  WARNING: --allow-all disables safety filters and egress filtering");
+    }
+    eprintln!();
+    eprintln!("Use with any MCP client:");
+    eprintln!("  export MCPD_TOKEN={token}");
+    eprintln!("  # endpoint: http://{bind}/mcp");
+    eprintln!();
+    eprintln!("Press Ctrl-C to stop.");
+
+    serve(cfg, no_tray, false).await
+}
+
+async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
+    eprintln!("navra wrap --discover: connecting to '{name}'...");
+    eprintln!("  Command: {}", command.join(" "));
+    eprintln!();
+
+    let mut cmd = tokio::process::Command::new(&command[0]);
+    for arg in &command[1..] {
+        cmd.arg(arg);
+    }
+
+    let transport = rmcp::transport::TokioChildProcess::new(cmd)
+        .map_err(|e| anyhow::anyhow!("Failed to spawn upstream: {e}"))?;
+
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+        .await
+        .map_err(|e| anyhow::anyhow!("MCP handshake failed: {e}"))?;
+
+    let peer = client.peer().clone();
+
+    let tools = peer
+        .list_all_tools()
+        .await
+        .map_err(|e| anyhow::anyhow!("tools/list failed: {e}"))?;
+    let prompts = peer.list_all_prompts().await.unwrap_or_default();
+    let resources = peer.list_all_resources().await.unwrap_or_default();
+
+    println!("Upstream: {name}");
+    println!("Command: {}", command.join(" "));
+    println!();
+
+    // --- Tools ---
+    println!("Tools ({}):", tools.len());
+    let mut read_tools = Vec::new();
+    let mut write_tools = Vec::new();
+    let mut unknown_tools = Vec::new();
+
+    for tool in &tools {
+        let desc = tool
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .chars()
+            .take(60)
+            .collect::<String>();
+
+        let is_read = tool
+            .annotations
+            .as_ref()
+            .and_then(|a| a.read_only_hint)
+            .unwrap_or(false);
+        let is_destructive = tool
+            .annotations
+            .as_ref()
+            .and_then(|a| a.destructive_hint)
+            .unwrap_or(false);
+
+        let classification = if is_read {
+            "read"
+        } else if is_destructive {
+            "write (destructive)"
+        } else if navra_core::ifc::is_write_tool(&tool.name, tool.annotations.as_ref()) {
+            "write"
+        } else {
+            "read"
+        };
+
+        println!("  {:<30} [{classification}]  {desc}", tool.name);
+
+        match classification {
+            "read" => read_tools.push(tool.name.clone()),
+            _ => {
+                if classification.contains("write") || classification.contains("destructive") {
+                    write_tools.push(tool.name.clone());
+                } else {
+                    unknown_tools.push(tool.name.clone());
+                }
+            }
+        }
+    }
+
+    // --- Prompts ---
+    if !prompts.is_empty() {
+        println!();
+        println!("Prompts ({}):", prompts.len());
+        for prompt in &prompts {
+            let desc = prompt
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect::<String>();
+            println!("  {:<30} {desc}", prompt.name);
+        }
+    }
+
+    // --- Resources ---
+    if !resources.is_empty() {
+        println!();
+        println!("Resources ({}):", resources.len());
+        for resource in &resources {
+            let desc = resource
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(60)
+                .collect::<String>();
+            println!("  {:<30} {desc}", resource.name);
+        }
+    }
+
+    // --- Network requirements ---
+    let net_reqs = network_discovery::discover_all(name, command, &tools);
+    println!();
+    println!("Network requirements:");
+    if net_reqs.is_empty() {
+        println!("  No external endpoints detected (likely offline-only).");
+    } else {
+        for d in &net_reqs.known {
+            println!("  {d:<40} (known server registry)");
+        }
+        for d in &net_reqs.from_descriptions {
+            if !net_reqs.known.contains(d) {
+                println!("  {d:<40} (extracted from tool description)");
+            }
+        }
+        if !net_reqs.url_accepting_tools.is_empty() {
+            println!();
+            println!("  Tools that accept URLs (may need arbitrary egress):");
+            for t in &net_reqs.url_accepting_tools {
+                println!("    - {t}");
+            }
+        }
+    }
+
+    // --- Policy suggestion ---
+    println!();
+    println!("--- Suggested policy ---");
+    println!();
+    println!("[[upstream]]");
+    println!("name = \"{name}\"");
+    println!("transport = \"stdio\"");
+    println!(
+        "command = [{}]",
+        command
+            .iter()
+            .map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    if !write_tools.is_empty() {
+        println!();
+        println!("[upstream.tool_overrides]");
+        for t in &write_tools {
+            println!("{t} = \"write\"");
+        }
+    }
+
+    let all_domains = net_reqs.all_domains();
+    if !all_domains.is_empty() || net_reqs.url_accepting_tools.is_empty() {
+        println!();
+        println!("[upstream.network]");
+        if all_domains.is_empty() {
+            println!("# No external endpoints needed — full network isolation recommended.");
+            println!("deny_all_external = true");
+        } else {
+            let domain_list = all_domains
+                .iter()
+                .map(|d| format!("\"{d}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            println!("allowed_domains = [{domain_list}]");
+            println!("deny_all_external = true");
+        }
+    } else {
+        println!();
+        println!("# [upstream.network]");
+        println!("# WARNING: this server accepts URLs as input — cannot determine");
+        println!("# a fixed domain allowlist. Review tool usage and add domains manually.");
+        println!("# allowed_domains = [\"api.example.com\"]");
+        println!("# deny_all_external = true");
+    }
+
+    println!();
+    println!("[permissions.{name}]");
+    println!("safety = \"standard\"");
+    println!("ring = 2");
+    if write_tools.is_empty() {
+        println!("allow = [\"*\"]");
+        println!("operations = [\"read\"]");
+    } else {
+        let read_patterns: Vec<String> = read_tools.iter().map(|t| format!("\"{t}\"")).collect();
+        let write_patterns: Vec<String> = write_tools.iter().map(|t| format!("\"{t}\"")).collect();
+        println!(
+            "allow = [{}]",
+            read_tools
+                .iter()
+                .chain(write_tools.iter())
+                .chain(unknown_tools.iter())
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        if !read_patterns.is_empty() {
+            println!("# Read-only tools: {}", read_patterns.join(", "));
+        }
+        if !write_patterns.is_empty() {
+            println!(
+                "# Write tools (review carefully): {}",
+                write_patterns.join(", ")
+            );
+        }
+        println!("operations = [\"read\", \"write\"]");
+        println!("approve = [{}]", write_patterns.join(", "));
+    }
+    if !all_domains.is_empty() {
+        let domain_list = all_domains
+            .iter()
+            .map(|d| format!("\"{d}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("egress_deny_all_external = true");
+        println!("egress_allowed_domains = [{domain_list}]");
+    }
+
+    // Shut down the client
+    drop(peer);
+    drop(client);
 
     Ok(())
 }
@@ -527,7 +1019,7 @@ async fn start_model_server_container(
     let hub = navra_model_hub::ModelHub::new().ok();
     let mut model_path: Option<std::path::PathBuf> = None;
 
-    for (_name, model_cfg) in &cfg.models {
+    for model_cfg in cfg.models.values() {
         if !matches!(model_cfg.task.as_str(), "chat" | "generate") {
             continue;
         }
@@ -649,6 +1141,51 @@ async fn stdio(cfg: config::Config) -> anyhow::Result<()> {
     serve_inner(cfg, TransportMode::Stdio, false).await
 }
 
+async fn model_serve(
+    config_path: Option<String>,
+    bind: String,
+    auto: bool,
+    budget: Option<String>,
+) -> anyhow::Result<()> {
+    let cfg = config::Config::load(config_path.as_deref())?;
+
+    if auto {
+        let desktop_res = 2 * 1024 * 1024 * 1024; // 2 GB
+        let summary = navra_model_server::hardware::detect(desktop_res);
+        navra_model_server::hardware::print_summary(&summary);
+        println!();
+    }
+
+    let vram_budget = budget
+        .map(|b| parse_size_bytes(&b))
+        .transpose()?
+        .unwrap_or(0);
+
+    let server_config = navra_model_server::ModelServerConfig {
+        models: convert_model_configs(&cfg.models),
+        bind: bind.clone(),
+        vram_budget,
+        desktop_reservation: 2 * 1024 * 1024 * 1024,
+    };
+
+    let server = navra_model_server::ModelServer::new(server_config).await?;
+    server.serve(&bind).await
+}
+
+fn parse_size_bytes(s: &str) -> anyhow::Result<u64> {
+    let s = s.trim();
+    if let Some(gb) = s.strip_suffix("GB").or_else(|| s.strip_suffix("gb")) {
+        let n: u64 = gb.trim().parse()?;
+        Ok(n * 1024 * 1024 * 1024)
+    } else if let Some(mb) = s.strip_suffix("MB").or_else(|| s.strip_suffix("mb")) {
+        let n: u64 = mb.trim().parse()?;
+        Ok(n * 1024 * 1024)
+    } else {
+        s.parse::<u64>()
+            .map_err(|_| anyhow::anyhow!("invalid size: {s} (use e.g. 24GB, 16GB, 512MB)"))
+    }
+}
+
 async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
     serve_inner(cfg, TransportMode::Http { no_tray }, dev_mode).await
 }
@@ -658,6 +1195,17 @@ async fn serve_inner(
     mode: TransportMode,
     dev_mode: bool,
 ) -> anyhow::Result<()> {
+    // Branded startup banner (before tracing, so it's always visible)
+    {
+        let version = env!("CARGO_PKG_VERSION");
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
+        eprintln!("navra v{version} ({profile})");
+    }
+
     tracing::info!("Starting navra");
 
     // Bootstrap root identity (DID:key from Ed25519)
@@ -669,7 +1217,7 @@ async fn serve_inner(
     );
 
     // Build credential store from config mappings
-    let _credential_store = Arc::new(navra_core::credentials::MappedCredentialStore::new(
+    let credential_store = Arc::new(navra_core::credentials::MappedCredentialStore::new(
         cfg.credentials.clone(),
     ));
     if !cfg.credentials.is_empty() {
@@ -1048,275 +1596,31 @@ async fn serve_inner(
     }
 
     // --- Load models into registry ---
-    let mut models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
-        std::collections::HashMap::new();
+    // The model registry is owned by navra-model-server and manages
+    // model lifecycle (loading, unloading, runtime process tracking).
+    // The gateway extracts the model backends for direct use.
+    let model_entries = convert_model_configs(&cfg.models);
+    let model_registry = navra_model_server::ModelRegistry::from_config(&model_entries)
+        .await
+        .context("failed to build model registry")?;
+    let models = model_registry.models().clone();
+
+    // Keep the registry alive for runtime process management.
+    // When the registry is dropped, it logs but doesn't stop runtimes
+    // (shutdown is handled below via running_endpoints for backward compat).
+    let _model_registry = model_registry;
+
+    // Legacy endpoint tracking for shutdown — still needed for team
+    // models added later in containerized mode.
     let mut running_endpoints: Vec<(
         Box<dyn navra_model_runtime::ModelRuntime>,
         navra_model_runtime::Endpoint,
     )> = Vec::new();
 
-    let hub = navra_model_hub::ModelHub::new().ok();
-
-    for (name, model_cfg) in &cfg.models {
-        // --- Resolve model path: hub source or local file ---
-        let resolved_path = if let Some(ref source) = model_cfg.source {
-            // Pull from hub
-            let Some(ref hub) = hub else {
-                tracing::error!(model = %name, "Model hub unavailable, skipping");
-                continue;
-            };
-            let uri = match navra_model_hub::ModelUri::parse(source) {
-                Ok(u) => u,
-                Err(e) => {
-                    tracing::error!(model = %name, source = %source, error = %e, "Invalid model URI, skipping");
-                    continue;
-                }
-            };
-            match hub.pull(&uri).await {
-                Ok(p) => {
-                    tracing::info!(model = %name, source = %source, path = %p.display(), "Model pulled from hub");
-                    p
-                }
-                Err(e) => {
-                    tracing::error!(model = %name, source = %source, error = %e, "Failed to pull model, skipping");
-                    continue;
-                }
-            }
-        } else if let Some(ref path_str) = model_cfg.model_path {
-            let expanded = expand_tilde(path_str);
-            std::path::PathBuf::from(&expanded)
-        } else {
-            tracing::warn!(model = %name, "No source or model_path, skipping");
-            continue;
-        };
-
-        if !resolved_path.exists() {
-            tracing::warn!(
-                model = %name,
-                path = %resolved_path.display(),
-                "Model file not found, skipping"
-            );
-            continue;
-        }
-
-        // --- Choose backend based on execution mode ---
-        let device = model_cfg
-            .device
-            .as_deref()
-            .map(navra_model::Device::parse)
-            .unwrap_or_default();
-
-        let execution_mode = model_cfg
-            .execution_mode
-            .unwrap_or_else(|| navra_model_runtime::ExecutionMode::from_task(&model_cfg.task));
-
-        let backend: Arc<dyn navra_model::ModelBackend> = match execution_mode {
-            navra_model_runtime::ExecutionMode::InProcess => {
-                let (task, tokenizer_path) = match model_cfg.task.as_str() {
-                    "embedding" => {
-                        let dims = model_cfg.dimensions.unwrap_or(768);
-                        (
-                            navra_model::ModelTask::Embedding { dimensions: dims },
-                            model_cfg
-                                .tokenizer_path
-                                .as_ref()
-                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                        )
-                    }
-                    "classification" => {
-                        let labels = if model_cfg.labels.is_empty() {
-                            vec!["safe".to_string(), "unsafe".to_string()]
-                        } else {
-                            model_cfg.labels.clone()
-                        };
-                        (
-                            navra_model::ModelTask::Classification { labels },
-                            model_cfg
-                                .tokenizer_path
-                                .as_ref()
-                                .map(|p| std::path::PathBuf::from(expand_tilde(p))),
-                        )
-                    }
-                    other => {
-                        tracing::warn!(
-                            model = %name, task = %other,
-                            "execution_mode=in_process but task is not embedding/classification, skipping"
-                        );
-                        continue;
-                    }
-                };
-
-                match navra_model::OnnxBackend::load(
-                    name,
-                    &resolved_path,
-                    tokenizer_path.as_deref(),
-                    task,
-                    device.clone(),
-                ) {
-                    Ok(model) => Arc::new(model),
-                    Err(e) => {
-                        tracing::error!(model = %name, error = %e, "Failed to load ONNX model, skipping");
-                        continue;
-                    }
-                }
-            }
-            navra_model_runtime::ExecutionMode::Served => {
-                // Serve via runtime and wrap in OpenAiBackend
-                let runtime_kind = model_cfg.runtime.as_deref().unwrap_or("auto");
-                let runtime: Box<dyn navra_model_runtime::ModelRuntime> = match runtime_kind {
-                    "auto" => match navra_model_runtime::auto_runtime().await {
-                        Ok(r) => r,
-                        Err(e) => {
-                            tracing::error!(model = %name, error = %e, "No runtime available, skipping");
-                            continue;
-                        }
-                    },
-                    "llama-cpp" | "direct" => {
-                        Box::new(navra_model_runtime::direct::DirectRuntime::new(
-                            navra_model_runtime::Engine::LlamaCpp,
-                        ))
-                    }
-                    "llama-cpp-podman" | "podman" => {
-                        Box::new(navra_model_runtime::podman::PodmanRuntime::new(
-                            navra_model_runtime::Engine::LlamaCpp,
-                        ))
-                    }
-                    "vllm" => Box::new(navra_model_runtime::direct::DirectRuntime::new(
-                        navra_model_runtime::Engine::Vllm,
-                    )),
-                    "vllm-podman" => Box::new(navra_model_runtime::podman::PodmanRuntime::new(
-                        navra_model_runtime::Engine::Vllm,
-                    )),
-                    "ollama" => {
-                        let model_id = model_cfg
-                            .model_name
-                            .clone()
-                            .or_else(|| {
-                                model_cfg
-                                    .source
-                                    .as_ref()
-                                    .and_then(|s| s.strip_prefix("ollama://").map(String::from))
-                            })
-                            .unwrap_or_else(|| name.clone());
-                        let backend: Arc<dyn navra_model::ModelBackend> =
-                            Arc::new(navra_model::OpenAiBackend::new(
-                                "http://localhost:11434/v1",
-                                &model_id,
-                                None,
-                                navra_model::Locality::Local,
-                            ));
-                        tracing::info!(model = %name, model_id = %model_id, "Model served via Ollama");
-                        models.insert(name.clone(), backend);
-                        continue;
-                    }
-                    "ogx" => {
-                        let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
-                        let base_url = model_cfg
-                            .base_url
-                            .as_deref()
-                            .unwrap_or(navra_model::DEFAULT_OGX_URL);
-                        let locality = if model_cfg.locality.as_deref() == Some("remote") {
-                            navra_model::Locality::Remote
-                        } else {
-                            navra_model::Locality::Local
-                        };
-                        let backend: Arc<dyn navra_model::ModelBackend> =
-                            if model_cfg.task == "classification" {
-                                Arc::new(navra_model::OgxBackend::new(
-                                    base_url,
-                                    &model_id,
-                                    model_cfg.api_key.clone(),
-                                    locality,
-                                ))
-                            } else {
-                                Arc::new(navra_model::OpenAiBackend::new(
-                                    base_url,
-                                    &model_id,
-                                    model_cfg.api_key.clone(),
-                                    locality,
-                                ))
-                            };
-                        tracing::info!(model = %name, model_id = %model_id, base_url = %base_url, task = %model_cfg.task, "Model served via OGX");
-                        models.insert(name.clone(), backend);
-                        continue;
-                    }
-                    "none" => {
-                        tracing::warn!(model = %name, "Task is chat/generate but runtime=none, skipping");
-                        continue;
-                    }
-                    other => {
-                        tracing::warn!(model = %name, runtime = %other, "Unknown runtime, skipping");
-                        continue;
-                    }
-                };
-
-                let gpus = navra_model_runtime::detect_gpus();
-                let target = navra_model_runtime::HardwareTarget::from_gpus(&gpus);
-                let format = model_cfg
-                    .format
-                    .as_deref()
-                    .and_then(|s| s.parse::<navra_model_runtime::ModelFormat>().ok())
-                    .or_else(|| navra_model_runtime::ModelFormat::detect(&resolved_path));
-                let speculative = model_cfg.speculative.as_ref().map(|s| {
-                    navra_model_runtime::SpeculativeConfig {
-                        draft_model: std::path::PathBuf::from(crate::expand_tilde(&s.draft_model)),
-                        draft_tokens: s.draft_tokens,
-                        draft_min_p: s.draft_min_p,
-                    }
-                });
-                let serve_cfg = navra_model_runtime::ServeConfig {
-                    model_path: resolved_path,
-                    gpus,
-                    target,
-                    format,
-                    context_size: model_cfg.context_size.unwrap_or(4096),
-                    parallel: model_cfg.parallel.unwrap_or(1),
-                    cache_type: model_cfg.cache_type,
-                    speculative,
-                    ..Default::default()
-                };
-
-                let endpoint = match runtime.serve(&serve_cfg).await {
-                    Ok(ep) => ep,
-                    Err(e) => {
-                        tracing::error!(model = %name, error = %e, "Failed to start model runtime, skipping");
-                        continue;
-                    }
-                };
-
-                tracing::info!(
-                    model = %name,
-                    url = %endpoint.url,
-                    backend = ?endpoint.backend,
-                    "Model served via runtime"
-                );
-
-                let model_id = model_cfg.model_name.clone().unwrap_or_else(|| name.clone());
-                let backend: Arc<dyn navra_model::ModelBackend> =
-                    Arc::new(navra_model::OpenAiBackend::new(
-                        &endpoint.url,
-                        &model_id,
-                        None,
-                        navra_model::Locality::Local,
-                    ));
-
-                running_endpoints.push((runtime, endpoint));
-                backend
-            }
-        };
-
-        tracing::info!(model = %name, task = %model_cfg.task, "Model loaded");
-        models.insert(name.clone(), backend);
-    }
-
-    tracing::info!(count = models.len(), "Model registry ready");
-
-    // Try to load PII NER models.
-    // Prefer the multilingual model (better coverage), fall back to English-only.
-    let pii_ml_dir = cfg.pii_multilingual_model_dir();
-    let pii_en_dir = cfg.pii_model_dir();
-
-    let pii_ner_filter: Option<Arc<navra_core::safety::NerFilter>> =
+    #[cfg(feature = "onnx")]
+    let pii_ner_filter: Option<Arc<navra_core::safety::NerFilter>> = {
+        let pii_ml_dir = cfg.pii_multilingual_model_dir();
+        let pii_en_dir = cfg.pii_model_dir();
         match navra_core::safety::load_ner_filter(&pii_ml_dir) {
             Some(filter) => {
                 tracing::info!(
@@ -1340,11 +1644,12 @@ async fn serve_inner(
                     None
                 }
             },
-        };
+        }
+    };
 
-    // Load OpenAI privacy-filter (address, date, secret detection)
-    let privacy_filter_dir = navra_core::safety::default_privacy_filter_model_dir();
-    let privacy_filter: Option<Arc<navra_core::safety::PrivacyFilterModel>> =
+    #[cfg(feature = "onnx")]
+    let privacy_filter: Option<Arc<navra_core::safety::PrivacyFilterModel>> = {
+        let privacy_filter_dir = navra_core::safety::default_privacy_filter_model_dir();
         match navra_core::safety::load_privacy_filter(&privacy_filter_dir) {
             Some(filter) => {
                 tracing::info!(
@@ -1359,7 +1664,8 @@ async fn serve_inner(
                 );
                 None
             }
-        };
+        }
+    };
 
     // Build custom PII filter from global pii_patterns config (shared across all pipelines)
     let custom_pii_filter: Option<Arc<navra_core::safety::CustomPiiFilter>> =
@@ -1459,7 +1765,7 @@ async fn serve_inner(
             }
         }
 
-        // Add PII NER filter to profiles that use content filtering
+        #[cfg(feature = "onnx")]
         if let Some(ref ner) = pii_ner_filter {
             match pset.safety.as_str() {
                 "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -1473,7 +1779,7 @@ async fn serve_inner(
             }
         }
 
-        // Add privacy-filter (address, date, secret) to content-filtering profiles
+        #[cfg(feature = "onnx")]
         if let Some(ref pf) = privacy_filter {
             match pset.safety.as_str() {
                 "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -1658,7 +1964,7 @@ async fn serve_inner(
         cfg.approval.timeout_secs,
         cfg.approval.grant_ttl_secs,
     ));
-    let notifier: Arc<dyn navra_core::notify::Notifier> = match cfg.approval.notify.as_str() {
+    let _notifier: Arc<dyn navra_core::notify::Notifier> = match cfg.approval.notify.as_str() {
         "dbus" => match navra_core::notify::DbusNotifier::new().await {
             Ok(n) => {
                 tracing::info!("D-Bus notifier connected");
@@ -1911,39 +2217,37 @@ async fn serve_inner(
                 auth = ?endpoint.auth,
                 "Discovered MCP endpoint"
             );
-            match navra_core::Upstream::http(&endpoint.domain, &endpoint.url).await {
-                Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
-                        .await
-                    {
-                        Ok(module) => {
-                            tracing::info!(
-                                domain = %endpoint.domain,
-                                "Connected discovered upstream"
-                            );
-                            for prompt_def in module.discovered_prompts() {
-                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
-                                {
-                                    let description =
-                                        prompt_def.description.as_deref().unwrap_or("");
-                                    forge.register_upstream_persona(
-                                        persona_name,
-                                        module.upstream_name(),
-                                        &prompt_def.name,
-                                        description,
-                                    );
-                                }
-                            }
-                            builder = builder.module(module);
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                domain = %endpoint.domain,
-                                error = %e,
-                                "Failed to discover capabilities of AID endpoint"
+            let transport =
+                rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                Ok(client) => {
+                    let peer = client.peer().clone();
+                    tokio::spawn(async move {
+                        let _ = client.waiting().await;
+                    });
+                    let module = navra_core::UpstreamModule::discover(
+                        &endpoint.domain,
+                        peer,
+                        None,
+                        &Default::default(),
+                    )
+                    .await;
+                    tracing::info!(
+                        domain = %endpoint.domain,
+                        "Connected discovered upstream (rmcp)"
+                    );
+                    for prompt_def in module.discovered_prompts() {
+                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                            let description = prompt_def.description.as_deref().unwrap_or("");
+                            forge.register_upstream_persona(
+                                persona_name,
+                                module.upstream_name(),
+                                &prompt_def.name,
+                                description,
                             );
                         }
                     }
+                    builder = builder.module(module);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -1981,40 +2285,37 @@ async fn serve_inner(
 
         for server in &lan_servers {
             let url = server.url();
-            match navra_core::Upstream::http(&server.name, &url).await {
-                Ok(upstream) => {
-                    match navra_core::UpstreamModule::discover(upstream, None, &Default::default())
-                        .await
-                    {
-                        Ok(module) => {
-                            tracing::info!(
-                                name = %server.name,
-                                url = %url,
-                                "Connected LAN upstream"
-                            );
-                            for prompt_def in module.discovered_prompts() {
-                                if let Some(persona_name) = prompt_def.name.strip_prefix("persona:")
-                                {
-                                    let description =
-                                        prompt_def.description.as_deref().unwrap_or("");
-                                    forge.register_upstream_persona(
-                                        persona_name,
-                                        module.upstream_name(),
-                                        &prompt_def.name,
-                                        description,
-                                    );
-                                }
-                            }
-                            builder = builder.module(module);
-                        }
-                        Err(e) => {
-                            tracing::debug!(
-                                name = %server.name,
-                                error = %e,
-                                "Failed to discover LAN upstream capabilities"
+            let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.clone());
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                Ok(client) => {
+                    let peer = client.peer().clone();
+                    tokio::spawn(async move {
+                        let _ = client.waiting().await;
+                    });
+                    let module = navra_core::UpstreamModule::discover(
+                        &server.name,
+                        peer,
+                        None,
+                        &Default::default(),
+                    )
+                    .await;
+                    tracing::info!(
+                        name = %server.name,
+                        url = %url,
+                        "Connected LAN upstream (rmcp)"
+                    );
+                    for prompt_def in module.discovered_prompts() {
+                        if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                            let description = prompt_def.description.as_deref().unwrap_or("");
+                            forge.register_upstream_persona(
+                                persona_name,
+                                module.upstream_name(),
+                                &prompt_def.name,
+                                description,
                             );
                         }
                     }
+                    builder = builder.module(module);
                 }
                 Err(e) => {
                     tracing::debug!(
@@ -2129,70 +2430,100 @@ async fn serve_inner(
             continue;
         }
 
-        let retry_config = upstream_cfg.retry_config();
-        let connect_result = match upstream_cfg.transport.as_str() {
+        let module_result = match upstream_cfg.transport.as_str() {
             "stdio" => {
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::spawn_resilient(
-                        &upstream_cfg.name,
-                        &upstream_cfg.command,
-                        upstream_cfg.cwd.as_deref(),
-                        rc,
-                    )
-                    .await
-                } else {
-                    navra_core::Upstream::spawn(
-                        &upstream_cfg.name,
-                        &upstream_cfg.command,
-                        upstream_cfg.cwd.as_deref(),
-                    )
-                    .await
+                let mut cmd = tokio::process::Command::new(&upstream_cfg.command[0]);
+                for arg in &upstream_cfg.command[1..] {
+                    cmd.arg(arg);
+                }
+                if let Some(ref cwd) = upstream_cfg.cwd {
+                    cmd.current_dir(cwd);
+                }
+                // Inject plain environment variables
+                for (key, val) in &upstream_cfg.env {
+                    cmd.env(key, val);
+                }
+                // Resolve credentials from store and inject as env vars
+                for (env_var, label) in &upstream_cfg.credentials {
+                    match credential_store.resolve(label) {
+                        Ok(secret) => {
+                            if let Some(val) = secret.as_str() {
+                                cmd.env(env_var, val);
+                                tracing::debug!(
+                                    upstream = %upstream_cfg.name,
+                                    env = %env_var,
+                                    label = %label,
+                                    "Credential injected"
+                                );
+                            } else {
+                                tracing::warn!(
+                                    upstream = %upstream_cfg.name,
+                                    label = %label,
+                                    "Credential is not valid UTF-8, skipping"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                upstream = %upstream_cfg.name,
+                                label = %label,
+                                error = %e,
+                                "Failed to resolve credential, upstream may fail"
+                            );
+                        }
+                    }
+                }
+                match rmcp::transport::TokioChildProcess::new(cmd) {
+                    Ok(transport) => {
+                        match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+                            .await
+                        {
+                            Ok(client) => {
+                                let peer = client.peer().clone();
+                                tokio::spawn(async move {
+                                    let _ = client.waiting().await;
+                                });
+                                Ok(navra_core::UpstreamModule::discover(
+                                    &upstream_cfg.name,
+                                    peer,
+                                    None,
+                                    &upstream_cfg.tool_overrides,
+                                )
+                                .await)
+                            }
+                            Err(e) => Err(format!("rmcp init failed: {e}")),
+                        }
+                    }
+                    Err(e) => Err(format!("spawn failed: {e}")),
                 }
             }
-            "http" | "streamable-http" => {
+            "http" | "streamable-http" | "sse" => {
                 let url = match &upstream_cfg.url {
                     Some(u) => u.as_str(),
                     None => {
                         tracing::error!(
                             upstream = %upstream_cfg.name,
-                            "HTTP upstream requires 'url' field, skipping"
+                            "HTTP/SSE upstream requires 'url' field, skipping"
                         );
                         continue;
                     }
                 };
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::http_resilient(&upstream_cfg.name, url, rc).await
-                } else {
-                    navra_core::Upstream::http(&upstream_cfg.name, url).await
-                }
-            }
-            "sse" => {
-                let url = match &upstream_cfg.url {
-                    Some(u) => u.as_str(),
-                    None => {
-                        tracing::error!(
-                            upstream = %upstream_cfg.name,
-                            "SSE upstream requires 'url' field, skipping"
-                        );
-                        continue;
+                let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url);
+                match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+                    Ok(client) => {
+                        let peer = client.peer().clone();
+                        tokio::spawn(async move {
+                            let _ = client.waiting().await;
+                        });
+                        Ok(navra_core::UpstreamModule::discover(
+                            &upstream_cfg.name,
+                            peer,
+                            None,
+                            &upstream_cfg.tool_overrides,
+                        )
+                        .await)
                     }
-                };
-                if let Some(rc) = retry_config {
-                    tracing::info!(
-                        upstream = %upstream_cfg.name,
-                        "Using resilient transport (retry enabled)"
-                    );
-                    navra_core::Upstream::sse_resilient(&upstream_cfg.name, url, rc).await
-                } else {
-                    navra_core::Upstream::sse(&upstream_cfg.name, url).await
+                    Err(e) => Err(format!("rmcp init failed: {e}")),
                 }
             }
             other => {
@@ -2205,80 +2536,59 @@ async fn serve_inner(
             }
         };
 
-        match connect_result {
-            Ok(upstream) => {
-                match navra_core::UpstreamModule::discover(
-                    upstream,
-                    None,
-                    &upstream_cfg.tool_overrides,
-                )
-                .await
-                {
-                    Ok(module) => {
-                        tracing::info!(
-                            upstream = %upstream_cfg.name,
-                            transport = %upstream_cfg.transport,
-                            "Connected upstream"
-                        );
+        match module_result {
+            Ok(module) => {
+                tracing::info!(
+                    upstream = %upstream_cfg.name,
+                    transport = %upstream_cfg.transport,
+                    "Connected upstream (rmcp)"
+                );
 
-                        for prompt_def in module.discovered_prompts() {
-                            if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
-                                let description = prompt_def.description.as_deref().unwrap_or("");
-                                forge.register_upstream_persona(
-                                    persona_name,
-                                    module.upstream_name(),
-                                    &prompt_def.name,
-                                    description,
-                                );
-                            }
-                        }
-
-                        builder = builder.merge_tool_operations(module.tool_operations().clone());
-                        builder = builder
-                            .merge_tool_classifications(module.tool_classifications().clone());
-
-                        // Apply upstream tool_class overrides
-                        if !upstream_cfg.tool_class.is_empty() {
-                            let mut classes = std::collections::HashMap::new();
-                            for (tool_name, tc) in &upstream_cfg.tool_class {
-                                match (tc.domain.parse(), tc.operation.parse()) {
-                                    (Ok(domain), Ok(operation)) => {
-                                        classes.insert(
-                                            tool_name.clone(),
-                                            navra_core::permissions::ResourceClass::new(
-                                                domain, operation,
-                                            ),
-                                        );
-                                    }
-                                    (Err(e), _) | (_, Err(e)) => {
-                                        tracing::error!(
-                                            upstream = %upstream_cfg.name,
-                                            tool = %tool_name,
-                                            "Invalid tool_class: {e}, skipping"
-                                        );
-                                    }
-                                }
-                            }
-                            if !classes.is_empty() {
-                                tracing::info!(
-                                    upstream = %upstream_cfg.name,
-                                    overrides = classes.len(),
-                                    "Upstream tool classification overrides"
-                                );
-                                builder = builder.merge_tool_classifications(classes);
-                            }
-                        }
-
-                        builder = builder.module(module);
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            upstream = %upstream_cfg.name,
-                            error = %e,
-                            "Failed to discover upstream capabilities, skipping"
+                for prompt_def in module.discovered_prompts() {
+                    if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
+                        let description = prompt_def.description.as_deref().unwrap_or("");
+                        forge.register_upstream_persona(
+                            persona_name,
+                            module.upstream_name(),
+                            &prompt_def.name,
+                            description,
                         );
                     }
                 }
+
+                builder = builder.merge_tool_operations(module.tool_operations().clone());
+                builder = builder.merge_tool_classifications(module.tool_classifications().clone());
+
+                if !upstream_cfg.tool_class.is_empty() {
+                    let mut classes = std::collections::HashMap::new();
+                    for (tool_name, tc) in &upstream_cfg.tool_class {
+                        match (tc.domain.parse(), tc.operation.parse()) {
+                            (Ok(domain), Ok(operation)) => {
+                                classes.insert(
+                                    tool_name.clone(),
+                                    navra_core::permissions::ResourceClass::new(domain, operation),
+                                );
+                            }
+                            (Err(e), _) | (_, Err(e)) => {
+                                tracing::error!(
+                                    upstream = %upstream_cfg.name,
+                                    tool = %tool_name,
+                                    "Invalid tool_class: {e}, skipping"
+                                );
+                            }
+                        }
+                    }
+                    if !classes.is_empty() {
+                        tracing::info!(
+                            upstream = %upstream_cfg.name,
+                            overrides = classes.len(),
+                            "Upstream tool classification overrides"
+                        );
+                        builder = builder.merge_tool_classifications(classes);
+                    }
+                }
+
+                builder = builder.module(module);
             }
             Err(e) => {
                 tracing::error!(
@@ -2321,16 +2631,12 @@ async fn serve_inner(
             .unwrap_or(3600);
 
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "cap_delegate".to_string(),
-                description: Some(
-                    "Issue an attenuated capability token for a sub-agent. \
-                     The new token grants a subset of the caller's capabilities."
-                        .to_string(),
-                ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: {
+            navra_core::protocol::ToolDefinition::new(
+                "cap_delegate",
+                "Issue an attenuated capability token for a sub-agent. \
+                     The new token grants a subset of the caller's capabilities.",
+                navra_protocol::compat::tool_input_schema(
+                    {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
                             "subject_did".to_string(),
@@ -2383,12 +2689,9 @@ async fn serve_inner(
                         );
                         Some(props)
                     },
-                    required: Some(vec!["subject_did".to_string()]),
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+                    Some(vec!["subject_did".to_string()]),
+                ),
+            ),
             move |args, ctx| {
                 let signer = Arc::clone(&delegate_signer);
                 let permissions = delegate_permissions.clone();
@@ -2406,7 +2709,7 @@ async fn serve_inner(
                     let parent_caps = match &ctx.agent.capabilities {
                         Some(caps) => {
                             if !caps.tools.iter().any(|t| t == "cap_delegate") {
-                                return CallToolResult::error(
+                                return CallToolResult::error_msg(
                                     "Permission denied: cap_delegate must be explicitly \
                                      listed in capability token tools (wildcard not accepted)",
                                 );
@@ -2421,12 +2724,12 @@ async fn serve_inner(
                                 .map(|ps| ps.can_delegate)
                                 .unwrap_or(false);
                             if !can_delegate {
-                                return CallToolResult::error(
+                                return CallToolResult::error_msg(
                                     "Permission denied: delegation not allowed for this agent",
                                 );
                             }
                             // Build a pseudo-parent from permission set for validation
-                            return CallToolResult::error(
+                            return CallToolResult::error_msg(
                                 "Delegation requires a capability token. \
                                  Use a capability-token-authenticated session.",
                             );
@@ -2439,7 +2742,7 @@ async fn serve_inner(
                         .unwrap_or("")
                         .to_string();
                     if subject_did.is_empty() {
-                        return CallToolResult::error("subject_did is required");
+                        return CallToolResult::error_msg("subject_did is required");
                     }
 
                     let ring = args
@@ -2535,7 +2838,7 @@ async fn serve_inner(
                     // Validate attenuation
                     if let Err(e) = validate_delegation(&parent_payload, &child_payload, max_depth)
                     {
-                        return CallToolResult::error(format!("Delegation denied: {e}"));
+                        return CallToolResult::error_msg(format!("Delegation denied: {e}"));
                     }
 
                     // Sign with root key (navra signs all tokens)
@@ -2549,7 +2852,7 @@ async fn serve_inner(
                             );
                             CallToolResult::text(token)
                         }
-                        Err(e) => CallToolResult::error(format!("Failed to sign token: {e}")),
+                        Err(e) => CallToolResult::error_msg(format!("Failed to sign token: {e}")),
                     }
                 })
             },
@@ -2560,22 +2863,12 @@ async fn serve_inner(
     // Register sys_status tool (process table viewer)
     {
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "sys_status".to_string(),
-                description: Some(
-                    "Show AI OS process table: active agents, their rings, \
-                     call counts, and active tool calls."
-                        .to_string(),
-                ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+            navra_core::protocol::ToolDefinition::new(
+                "sys_status",
+                "Show AI OS process table: active agents, their rings, \
+                     call counts, and active tool calls.",
+                navra_protocol::compat::tool_input_schema(None, None),
+            ),
             |_args, _ctx| {
                 // The actual data comes from the server's process table,
                 // but the handler doesn't have access to &self.
@@ -2993,9 +3286,11 @@ async fn serve_inner(
             });
             if has_pii_profile {
                 let mut pipeline = navra_core::safety::build_pipeline("standard");
+                #[cfg(feature = "onnx")]
                 if let Some(ref ner) = pii_ner_filter {
                     pipeline.add_ner_filter_shared(Arc::clone(ner));
                 }
+                #[cfg(feature = "onnx")]
                 if let Some(ref pf) = privacy_filter {
                     pipeline.add_privacy_filter_shared(Arc::clone(pf));
                 }
@@ -3032,6 +3327,10 @@ async fn serve_inner(
             openshell_gateway: cfg.server.openshell_gateway.clone(),
             exec_state: exec_module.clone(),
             workspace_provider: None,
+            max_tokens_per_run: cfg.budget.max_tokens_per_run,
+            compression_start_ratio: cfg.budget.compression_start_ratio,
+            compaction_keep_recent: cfg.budget.compaction_keep_recent,
+            compaction_trigger_ratio: cfg.budget.compaction_trigger_ratio,
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -3405,18 +3704,14 @@ async fn serve_inner(
     {
         let audit = Arc::clone(&audit_log);
         builder = builder.tool(
-            navra_core::protocol::ToolDefinition {
-                name: "audit_query".to_string(),
-                description: Some(
-                    "Query the structured audit log. Returns tool calls, model calls, \
+            navra_core::protocol::ToolDefinition::new(
+                "audit_query",
+                "Query the structured audit log. Returns tool calls, model calls, \
                      and run summaries from past agent executions. Use to inspect \
                      what tools were called, with what arguments, and what results \
-                     were returned."
-                        .to_string(),
-                ),
-                input_schema: navra_core::protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: {
+                     were returned.",
+                navra_protocol::compat::tool_input_schema(
+                    {
                         let mut props = std::collections::HashMap::new();
                         props.insert(
                             "run_id".to_string(),
@@ -3431,12 +3726,9 @@ async fn serve_inner(
                         }));
                         Some(props)
                     },
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+                    None,
+                ),
+            ),
             move |args, _ctx| {
                 let audit = Arc::clone(&audit);
                 Box::pin(async move {
@@ -3454,14 +3746,18 @@ async fn serve_inner(
                                 Ok(s) => CallToolResult::text(
                                     serde_json::to_string_pretty(&s).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                                Err(e) => {
+                                    CallToolResult::error_msg(format!("Audit query failed: {e}"))
+                                }
                             }
                         } else {
                             match audit.get_tool_calls(rid) {
                                 Ok(calls) => CallToolResult::text(
                                     serde_json::to_string_pretty(&calls).unwrap_or_default(),
                                 ),
-                                Err(e) => CallToolResult::error(format!("Audit query failed: {e}")),
+                                Err(e) => {
+                                    CallToolResult::error_msg(format!("Audit query failed: {e}"))
+                                }
                             }
                         }
                     } else {
@@ -3494,9 +3790,9 @@ async fn serve_inner(
                     Some(server) => {
                         plan_execute::handle_plan_execute(args, server, ctx, allow_direct).await
                     }
-                    None => {
-                        navra_core::protocol::CallToolResult::error("Server not yet initialized")
-                    }
+                    None => navra_core::protocol::CallToolResult::error_msg(
+                        "Server not yet initialized",
+                    ),
                 }
             })
         });
@@ -3519,18 +3815,14 @@ async fn serve_inner(
     {
         let flow_audit = Arc::clone(&audit_log);
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "flow://".to_string(),
-                name: "Flow task results".to_string(),
-                description: Some(
-                    "Read flow task outputs. Use flow://list for all flows, \
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("flow://", "Flow task results")
+                    .with_description("Read flow task outputs. Use flow://list for all flows, \
                      flow://<flow_id>/tasks for task list, \
-                     flow://<flow_id>/task/<task_id> for a specific output."
-                        .to_string(),
-                ),
-                mime_type: Some("text/plain".to_string()),
-                size: None,
-            },
+                     flow://<flow_id>/task/<task_id> for a specific output.")
+                    .with_mime_type("text/plain"),
+                None,
+            ),
             std::sync::Arc::new(move |uri: String, _ctx| {
                 let audit = Arc::clone(&flow_audit);
                 Box::pin(async move {
@@ -3576,14 +3868,14 @@ async fn serve_inner(
                     } else {
                         format!("Invalid URI: {uri}")
                     };
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(
+                        vec![navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("text/plain".to_string()),
-                            text: Some(text),
-                            blob: None,
+                            text,
+                            meta: None,
                         }],
-                    }
+                    )
                 })
             }),
         );
@@ -3598,26 +3890,25 @@ async fn serve_inner(
     {
         let pt = process_table.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://proc".to_string(),
-                name: "Process Table".to_string(),
-                description: Some("Active agent sessions and call counts".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://proc", "Process Table")
+                    .with_description("Active agent sessions and call counts")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 Box::pin(async move {
                     let agents = pt.snapshot();
                     let json = serde_json::json!({ "agents": agents });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
-                        }],
-                    }
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
+                        },
+                    ])
                 })
             }),
         );
@@ -3627,13 +3918,12 @@ async fn serve_inner(
     {
         let ss = session_store.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://sessions".to_string(),
-                name: "Active Sessions".to_string(),
-                description: Some("List of active MCP sessions".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://sessions", "Active Sessions")
+                    .with_description("List of active MCP sessions")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let ss = ss.clone();
                 Box::pin(async move {
@@ -3653,14 +3943,14 @@ async fn serve_inner(
                         "count": count,
                         "sessions": session_list,
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
-                        }],
-                    }
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
+                        },
+                    ])
                 })
             }),
         );
@@ -3672,13 +3962,12 @@ async fn serve_inner(
         let ss = session_store.clone();
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://metrics".to_string(),
-                name: "Gateway Metrics".to_string(),
-                description: Some("Gateway metrics: call counts, sessions, uptime".to_string()),
-                mime_type: Some("text/plain".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://metrics", "Gateway Metrics")
+                    .with_description("Gateway metrics: call counts, sessions, uptime")
+                    .with_mime_type("text/plain"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 let ss = ss.clone();
@@ -3697,14 +3986,14 @@ async fn serve_inner(
                          navra_tool_calls_denied_total {total_denied}\n",
                         snapshot.len(),
                     );
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("text/plain".to_string()),
-                            text: Some(text),
-                            blob: None,
-                        }],
-                    }
+                            text,
+                            meta: None,
+                        },
+                    ])
                 })
             }),
         );
@@ -3714,13 +4003,12 @@ async fn serve_inner(
     {
         let cell = Arc::clone(&server_cell);
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://tools".to_string(),
-                name: "Registered Tools".to_string(),
-                description: Some("List of all registered MCP tools".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://tools", "Registered Tools")
+                    .with_description("List of all registered MCP tools")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 let cell = Arc::clone(&cell);
                 Box::pin(async move {
@@ -3735,14 +4023,14 @@ async fn serve_inner(
                         "count": count,
                         "tools": tools,
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
-                        }],
-                    }
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
+                        },
+                    ])
                 })
             }),
         );
@@ -3752,13 +4040,12 @@ async fn serve_inner(
     {
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition {
-                uri: "navra://version".to_string(),
-                name: "Server Version".to_string(),
-                description: Some("Server name, version, protocol version, uptime".to_string()),
-                mime_type: Some("application/json".to_string()),
-                size: None,
-            },
+            navra_core::protocol::ResourceDefinition::new(
+                navra_protocol::RawResource::new("navra://version", "Server Version")
+                    .with_description("Server name, version, protocol version, uptime")
+                    .with_mime_type("application/json"),
+                None,
+            ),
             Arc::new(move |uri: String, _ctx| {
                 Box::pin(async move {
                     let json = serde_json::json!({
@@ -3768,14 +4055,14 @@ async fn serve_inner(
                         "crates": 20,
                         "uptime_secs": boot.elapsed().as_secs(),
                     });
-                    navra_core::protocol::ReadResourceResult {
-                        contents: vec![navra_core::protocol::ResourceContent {
+                    navra_core::protocol::ReadResourceResult::new(vec![
+                        navra_core::protocol::ResourceContent::TextResourceContents {
                             uri,
                             mime_type: Some("application/json".to_string()),
-                            text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                            blob: None,
-                        }],
-                    }
+                            text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                            meta: None,
+                        },
+                    ])
                 })
             }),
         );
@@ -3867,7 +4154,7 @@ async fn serve_inner(
                     }
                 }
             }
-            // Re-add PII NER filter
+            #[cfg(feature = "onnx")]
             if let Some(ref ner) = pii_ner_filter {
                 match pset.safety.as_str() {
                     "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -3876,7 +4163,7 @@ async fn serve_inner(
                     _ => {}
                 }
             }
-            // Re-add privacy-filter
+            #[cfg(feature = "onnx")]
             if let Some(ref pf) = privacy_filter {
                 match pset.safety.as_str() {
                     "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" => {
@@ -3888,6 +4175,31 @@ async fn serve_inner(
             safety_hook.add_pipeline(name.clone(), pipeline);
         }
         builder = builder.hook(safety_hook);
+
+        // Egress endpoint filtering from permission set config
+        {
+            let mut allowed = Vec::new();
+            let mut blocked = Vec::new();
+            let mut deny_all = false;
+            for pset in cfg.permissions.values() {
+                allowed.extend(pset.egress_allowed_domains.iter().cloned());
+                blocked.extend(pset.egress_blocked_domains.iter().cloned());
+                if pset.egress_deny_all_external {
+                    deny_all = true;
+                }
+            }
+            if deny_all || !allowed.is_empty() || !blocked.is_empty() {
+                let egress_config = navra_core::hooks::EgressConfig {
+                    enabled: true,
+                    allowed_domains: allowed,
+                    blocked_domains: blocked,
+                    deny_all_external: deny_all,
+                    block_tainted_egress: true,
+                };
+                builder = builder.hook(navra_core::hooks::EgressFilterHook::new(egress_config));
+                tracing::info!("Egress endpoint filtering enabled from permission config");
+            }
+        }
 
         builder = builder.hook(BudgetHook::new(cfg.budget.max_tool_output_tokens, strategy));
         tracing::info!(
@@ -4104,8 +4416,7 @@ async fn serve_inner(
 
     match mode {
         TransportMode::Stdio => {
-            let agent = navra_core::auth::AgentIdentity::new("stdio", "readonly");
-            navra_core::transport::run_stdio_server(server, agent)
+            navra_core::transport::run_stdio_server(server)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
         }
@@ -4335,6 +4646,11 @@ async fn serve_inner(
 
             // /v1/chat/completions is mounted by ui.rs — agents route model calls
             // through the gateway for safety filters, blackbox audit, and persona injection.
+
+            // --- Flow graph API ---
+            let flow_api = flow_api::flow_api_router(Arc::clone(&flow_registry), None);
+            let router = router.merge(flow_api);
+            tracing::info!("Flow graph API at /flows/{{id}}/graph, /flows/{{id}}/graph/dot, /flows/{{id}}/events");
 
             // --- Web UI: shared state + API routes ---
             // Detect first available Ollama model for UI chat fallback
@@ -4589,7 +4905,7 @@ async fn query_status(addr: &str) -> anyhow::Result<()> {
 }
 
 /// Install systemd user units for navra.
-fn install_systemd_units() -> anyhow::Result<()> {
+pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
     let unit_dir = dirs::config_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
         .join("systemd/user");
@@ -4665,7 +4981,19 @@ fn uninstall_systemd_units() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Expand `~` to the user's home directory in a path string.
+macro_rules! authed_transport {
+    ($endpoint:expr, $token:expr) => {{
+        let mut config =
+            rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
+                $endpoint,
+            );
+        if let Some(t) = $token {
+            config = config.auth_header(t);
+        }
+        rmcp::transport::StreamableHttpClientTransport::from_config(config)
+    }};
+}
+
 async fn run_agent(
     prompt: &str,
     model_name: Option<&str>,
@@ -4758,18 +5086,21 @@ async fn run_agent(
 
     // Discover upstream personas from the running navra server
     if let Some(ref mut f) = forge {
-        let discover_token = token
-            .map(String::from)
-            .or_else(|| std::env::var("MCPD_TOKEN").ok());
-        let discover_upstream = if let Some(ref t) = discover_token {
-            navra_agent::Upstream::http_with_auth("discover", endpoint, t)
+        let discover_peer = {
+            let transport = authed_transport!(endpoint, token);
+            rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
                 .await
                 .ok()
-        } else {
-            navra_agent::Upstream::http("discover", endpoint).await.ok()
+                .map(|c| {
+                    let peer = c.peer().clone();
+                    tokio::spawn(async move {
+                        let _ = c.waiting().await;
+                    });
+                    peer
+                })
         };
-        if let Some(upstream) = discover_upstream {
-            let mut client = navra_agent::McpClient::new(upstream);
+        if let Some(peer) = discover_peer {
+            let client = navra_agent::McpClient::new(peer);
             if let Ok(prompts) = client.list_prompts().await {
                 for p in &prompts {
                     if let Some(persona_name) = p.name.strip_prefix("persona:") {
@@ -4887,12 +5218,17 @@ async fn run_agent(
 
             if has_source || !all_refs.is_empty() {
                 // Need an MCP connection to resolve source and/or prompts
-                let temp_upstream = if let Some(ref t) = auth_token {
-                    navra_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
-                } else {
-                    navra_agent::Upstream::http("resolver", endpoint).await?
+                let resolver_peer = {
+                    let transport = authed_transport!(endpoint, token);
+                    let c =
+                        rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+                    let peer = c.peer().clone();
+                    tokio::spawn(async move {
+                        let _ = c.waiting().await;
+                    });
+                    peer
                 };
-                let mut resolver_client = navra_agent::McpClient::new(temp_upstream);
+                let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
 
                 if has_source {
                     // MCP-sourced persona: resolve source + mcp_prompts together
@@ -4938,12 +5274,16 @@ async fn run_agent(
         }
     } else if !cli_prompt_refs.is_empty() {
         // No persona loaded but CLI prompts were specified — resolve and append
-        let temp_upstream = if let Some(ref t) = auth_token {
-            navra_agent::Upstream::http_with_auth("resolver", endpoint, t).await?
-        } else {
-            navra_agent::Upstream::http("resolver", endpoint).await?
+        let resolver_peer = {
+            let transport = authed_transport!(endpoint, token);
+            let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+            let peer = c.peer().clone();
+            tokio::spawn(async move {
+                let _ = c.waiting().await;
+            });
+            peer
         };
-        let mut resolver_client = navra_agent::McpClient::new(temp_upstream);
+        let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
 
         let resolved = navra_agent::resolve::resolve_mcp_prompts(
             &mut resolver_client,
@@ -5047,6 +5387,46 @@ pub(crate) fn expand_tilde(path: &str) -> String {
     out
 }
 
+fn convert_model_configs(
+    models: &std::collections::HashMap<String, config::ModelConfig>,
+) -> std::collections::HashMap<String, navra_model_server::config::ModelEntry> {
+    models
+        .iter()
+        .map(|(name, mc)| {
+            (
+                name.clone(),
+                navra_model_server::config::ModelEntry {
+                    model_path: mc.model_path.clone(),
+                    source: mc.source.clone(),
+                    tokenizer_path: mc.tokenizer_path.clone(),
+                    task: mc.task.clone(),
+                    device: mc.device.clone(),
+                    dimensions: mc.dimensions,
+                    labels: mc.labels.clone(),
+                    threshold: mc.threshold,
+                    format: mc.format.clone(),
+                    execution_mode: mc.execution_mode,
+                    runtime: mc.runtime.clone(),
+                    context_size: mc.context_size,
+                    parallel: mc.parallel,
+                    model_name: mc.model_name.clone(),
+                    cache_type: mc.cache_type,
+                    speculative: mc.speculative.as_ref().map(|s| {
+                        navra_model_server::config::SpeculativeEntry {
+                            draft_model: s.draft_model.clone(),
+                            draft_tokens: s.draft_tokens,
+                            draft_min_p: s.draft_min_p,
+                        }
+                    }),
+                    base_url: mc.base_url.clone(),
+                    api_key: mc.api_key.clone(),
+                    locality: mc.locality.clone(),
+                },
+            )
+        })
+        .collect()
+}
+
 fn audit_command(
     limit: usize,
     detail: bool,
@@ -5082,8 +5462,8 @@ fn audit_command(
     let filtered: Vec<_> = entries
         .iter()
         .rev()
-        .filter(|e| agent.as_ref().map_or(true, |a| e.agent_name == *a))
-        .filter(|e| tool.as_ref().map_or(true, |t| e.tool_name == *t))
+        .filter(|e| agent.as_ref().is_none_or(|a| e.agent_name == *a))
+        .filter(|e| tool.as_ref().is_none_or(|t| e.tool_name == *t))
         .collect();
 
     if detail {
@@ -5109,8 +5489,8 @@ fn audit_command(
         }
     } else {
         println!(
-            "{:<6} {:<12} {:<12} {:<20} {:<8} {}",
-            "SEQ", "AGENT", "OUTCOME", "TOOL", "US", "IFC"
+            "{:<6} {:<12} {:<12} {:<20} {:<8} IFC",
+            "SEQ", "AGENT", "OUTCOME", "TOOL", "US"
         );
         println!("{}", "-".repeat(80));
         for e in &filtered {
@@ -5163,7 +5543,7 @@ fn policy_suggest(
         .iter()
         .filter(|e| e.outcome.starts_with("denied"))
         .filter(|e| e.timestamp_ms >= cutoff_ms)
-        .filter(|e| agent_filter.map_or(true, |a| e.agent_name == a))
+        .filter(|e| agent_filter.is_none_or(|a| e.agent_name == a))
         .collect();
 
     if denials.is_empty() {
@@ -5239,7 +5619,7 @@ fn policy_suggest(
                     println!(
                         "# [permissions.{}]\n# operations = [..., \"{}\"]\n",
                         permissions,
-                        tool_name.split('_').last().unwrap_or(tool_name)
+                        tool_name.split('_').next_back().unwrap_or(tool_name)
                     );
                 }
             }
@@ -5342,7 +5722,7 @@ fn resolve_openapi_auth(
         return navra_openapi::auth::AuthConfig::default();
     };
 
-    let bearer = auth.bearer.as_deref().map(|s| resolve_env_vars(s));
+    let bearer = auth.bearer.as_deref().map(resolve_env_vars);
 
     let api_key = match (&auth.api_key_name, &auth.api_key_value) {
         (Some(name), Some(value)) => {
@@ -5387,6 +5767,14 @@ fn resolve_env_vars(s: &str) -> String {
 mod tests {
     use super::*;
     use navra_core::protocol::{ReadResourceResult, ResourceContent};
+    use navra_protocol::compat::CallToolResultExt;
+
+    fn extract_resource_text(rc: &ResourceContent) -> String {
+        match rc {
+            ResourceContent::TextResourceContents { text, .. } => text.clone(),
+            ResourceContent::BlobResourceContents { blob, .. } => blob.clone(),
+        }
+    }
 
     /// Helper: build a resource handler closure for navra://proc.
     fn proc_handler(pt: &navra_core::process::ProcessTable) -> navra_core::ResourceHandler {
@@ -5396,14 +5784,12 @@ mod tests {
             Box::pin(async move {
                 let agents = pt.snapshot();
                 let json = serde_json::json!({ "agents": agents });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
-                    }],
-                }
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5430,14 +5816,12 @@ mod tests {
                     "count": count,
                     "sessions": session_list,
                 });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
-                    }],
-                }
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5454,14 +5838,12 @@ mod tests {
                     "crates": 20,
                     "uptime_secs": boot.elapsed().as_secs(),
                 });
-                ReadResourceResult {
-                    contents: vec![ResourceContent {
-                        uri,
-                        mime_type: Some("application/json".to_string()),
-                        text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                        blob: None,
-                    }],
-                }
+                ReadResourceResult::new(vec![ResourceContent::TextResourceContents {
+                    uri,
+                    mime_type: Some("application/json".to_string()),
+                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                    meta: None,
+                }])
             })
         })
     }
@@ -5481,8 +5863,8 @@ mod tests {
         let result = handler("navra://proc".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         let agents = parsed["agents"].as_array().unwrap();
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0]["name"], "claude");
@@ -5496,10 +5878,7 @@ mod tests {
         ss.create(navra_core::session::Session {
             id: "abc-123".to_string(),
             agent: navra_core::auth::AgentIdentity::new("claude", "dev"),
-            client_info: navra_core::protocol::ClientInfo {
-                name: "test".to_string(),
-                version: None,
-            },
+            client_info: navra_core::protocol::ClientInfo::new("test", ""),
             initialized: true,
             context_label: navra_core::ifc::DataLabel::TRUSTED_PUBLIC,
             created_at: 1715000000,
@@ -5514,8 +5893,8 @@ mod tests {
         let result = handler("navra://sessions".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["count"], 1);
         let sessions = parsed["sessions"].as_array().unwrap();
         assert_eq!(sessions[0]["id"], "abc-123");
@@ -5533,8 +5912,8 @@ mod tests {
         let result = handler("navra://version".to_string(), ctx).await;
 
         assert_eq!(result.contents.len(), 1);
-        let text = result.contents[0].text.as_deref().unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let text = extract_resource_text(&result.contents[0]);
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["name"], "navra");
         assert!(parsed["version"].is_string());
         assert_eq!(
@@ -5549,40 +5928,18 @@ mod tests {
     async fn kernel_tools_via_server() {
         // Build a minimal server with a couple of tools, then verify
         // the tool_names() method that navra://tools relies on.
-        use navra_core::protocol::{ToolDefinition, ToolInputSchema};
+        use navra_core::protocol::ToolDefinition;
 
         let server = navra_core::McpServer::builder()
             .name("test")
             .version("0.1.0")
             .allow_anonymous()
             .tool(
-                ToolDefinition {
-                    name: "file_read".to_string(),
-                    description: Some("Read a file".to_string()),
-                    input_schema: ToolInputSchema {
-                        schema_type: "object".to_string(),
-                        properties: None,
-                        required: None,
-                    },
-                    annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
-                },
+                ToolDefinition::new("file_read", "Read a file", tool_input_schema(None, None)),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .tool(
-                ToolDefinition {
-                    name: "git_status".to_string(),
-                    description: Some("Git status".to_string()),
-                    input_schema: ToolInputSchema {
-                        schema_type: "object".to_string(),
-                        properties: None,
-                        required: None,
-                    },
-                    annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
-                },
+                ToolDefinition::new("git_status", "Git status", tool_input_schema(None, None)),
                 |_args, _ctx| Box::pin(async { navra_core::protocol::CallToolResult::text("ok") }),
             )
             .build();

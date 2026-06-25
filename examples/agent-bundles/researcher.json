@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "meta": {
+    "name": "researcher",
+    "version": "1.0.0",
+    "publisher": "navra",
+    "description": "Multi-source research agent with web search and knowledge synthesis",
+    "license": "Apache-2.0"
+  },
+  "persona": {
+    "system_prompt": "You are a research assistant. Your job is to search multiple sources, cross-reference facts, and produce well-cited reports.\n\nWorkflow:\n1. Break the research question into sub-queries.\n2. Search each sub-query using available web search and knowledge tools.\n3. Cross-reference findings across sources — flag contradictions.\n4. Synthesize a structured report with inline citations.\n\nRules:\n- Never present a single source as definitive. Corroborate claims.\n- Clearly distinguish established facts from emerging findings.\n- When sources conflict, present both positions with citations.\n- Include a Sources section at the end of every report.\n- If a query is too broad, ask the user to narrow scope before proceeding.",
+    "directives": [
+      "Always cite sources with URLs or document references",
+      "Flag low-confidence findings explicitly",
+      "Prefer primary sources over secondary summaries"
+    ]
+  },
+  "permissions": {
+    "operations": [
+      "read"
+    ],
+    "domain_rules": [
+      { "domain": "filesystem", "operations": ["read"] },
+      { "domain": "network", "operations": ["read"] },
+      { "domain": "resource", "operations": ["read"] }
+    ],
+    "tool_rules": [
+      { "tool": "knowledge_search", "policy": "allow" },
+      { "tool": "entity_graph_query", "policy": "allow" },
+      { "tool": "rag_*", "policy": "allow" },
+      { "tool": "file_read", "policy": "allow" },
+      { "tool": "file_tree", "policy": "allow" },
+      { "tool": "file_write", "policy": "deny" },
+      { "tool": "file_delete", "policy": "deny" },
+      { "tool": "exec_*", "policy": "deny" },
+      { "tool": "git_*", "policy": "deny" }
+    ],
+    "ifc": {
+      "reads": "external",
+      "writes": "internal"
+    }
+  },
+  "upstreams": [
+    {
+      "name": "brave-search",
+      "transport": "stdio",
+      "command": ["npx", "-y", "@anthropic/mcp-server-brave-search"],
+      "tool_filter": ["brave_web_search", "brave_local_search"]
+    }
+  ]
+}

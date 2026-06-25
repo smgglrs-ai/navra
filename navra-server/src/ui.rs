@@ -429,7 +429,7 @@ pub(crate) fn attach_ui_routes(
                     let srv = proxy_server.clone();
                     async move {
                         let start = std::time::Instant::now();
-                        let Some(backend) = backend else {
+                        let Some(_backend) = backend else {
                             return axum::Json(serde_json::json!({
                                 "error": {"message": "no model configured", "type": "server_error"}
                             }))

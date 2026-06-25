@@ -5,18 +5,31 @@ export ORT_PREFER_DYNAMIC_LINK := "1"
 build:
     cargo build
 
-# Run all tests (serialized to prevent OOM from concurrent server instances)
-test:
+# Run all tests safely (workspace parallel, then server serialized one binary at a time)
+test: test-workspace test-server
+
+# Run workspace tests (excludes navra-server)
+test-workspace:
     cargo test --workspace --exclude navra-server
-    cargo test -p navra-server -- --test-threads=1
+
+# Run navra-server tests (one binary at a time, serialized, with cleanup)
+test-server:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cleanup() { pkill -f 'target/debug/navra' 2>/dev/null || true; }
+    trap cleanup EXIT
+    for bin in e2e adversarial_eval ifc_benchmark_e2e openshell_integration; do
+        echo "=== navra-server: $bin ==="
+        cargo test -p navra-server --test "$bin" -- --test-threads=1
+        cleanup
+        sleep 1
+    done
+    echo "=== navra-server: unit tests ==="
+    cargo test -p navra-server --bin navra -- --test-threads=1
 
 # Run tests for a single crate
 test-crate crate:
     cargo test -p {{crate}}
-
-# Run navra-server tests only (serialized)
-test-server:
-    cargo test -p navra-server -- --test-threads=1
 
 # Run clippy with warnings as errors
 clippy:
@@ -60,3 +73,7 @@ assert-eval *ARGS:
 # Validate ASSERT config and behavior specs
 assert-check:
     ./eval/assert/run-compliance.sh --dry-run
+
+# Kill any leaked navra test processes
+kill-leaked:
+    pkill -f 'target/debug/navra' 2>/dev/null || echo "no leaked processes"

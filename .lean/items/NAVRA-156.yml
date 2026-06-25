@@ -1,0 +1,26 @@
+id: NAVRA-156
+title: "Optional ONNX (cargo feature gate)"
+status: done
+priority: medium
+effort: 1-3d
+tags: [build, onboarding]
+description: |
+  Make ONNX-based ML safety filters a cargo feature rather than
+  a build requirement. Users who only need the gateway + ACLs + IFC
+  should not need libonnxruntime installed.
+
+  Steps:
+  1. Gate navra-safety ONNX imports behind a feature flag
+  2. Gate navra-model OnnxBackend behind the same flag
+  3. Make navra-server default features include "onnx"
+  4. Ensure `cargo build --no-default-features` produces a working
+     binary with regex + ACL + IFC safety (no ML classifiers)
+  5. Update docs to explain the two tiers
+
+  This reduces the install surface for users who want security
+  without ML, while preserving full ML safety as the default.
+acceptance:
+  - cargo build -p navra-server --no-default-features succeeds without libonnxruntime
+  - Gateway starts and enforces ACLs + IFC without ONNX models
+  - Default build unchanged (ONNX included)
+  - Feature documented in CONFIG.md

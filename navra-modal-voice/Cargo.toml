@@ -1,13 +1,15 @@
 [package]
 name = "navra-modal-voice"
 description = "Voice I/O module for navra (ASR + TTS)"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-macros = { path = "../navra-macros" }
 navra-protocol = { path = "../navra-protocol" }
 serde = { workspace = true }
@@ -17,5 +19,12 @@ tracing = { workspace = true }
 cpal = "0.15"
 dirs = "6"
 
+[features]
+default = ["onnx"]
+onnx = ["navra-mcp/onnx"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[lints]
+workspace = true

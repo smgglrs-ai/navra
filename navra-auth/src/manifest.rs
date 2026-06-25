@@ -141,34 +141,12 @@ fn canonical_json_bytes(value: &serde_json::Value) -> Vec<u8> {
 mod tests {
     use super::*;
     use crate::identity::Ed25519Signer;
-    use navra_protocol::ToolInputSchema;
+    use navra_protocol::compat::empty_input_schema;
 
     fn test_tools() -> Vec<ToolDefinition> {
         vec![
-            ToolDefinition {
-                name: "file_read".to_string(),
-                description: Some("Read a file".to_string()),
-                input_schema: ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
-            ToolDefinition {
-                name: "git_status".to_string(),
-                description: Some("Show git status".to_string()),
-                input_schema: ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+            ToolDefinition::new("file_read", "Read a file", empty_input_schema()),
+            ToolDefinition::new("git_status", "Show git status", empty_input_schema()),
         ]
     }
 
@@ -195,7 +173,7 @@ mod tests {
         let sig = manifest.sign(&signer);
 
         let mut tampered = manifest.clone();
-        tampered.tools[0].name = "file_write".to_string();
+        tampered.tools[0].name = "file_write".into();
         assert!(!tampered.verify(&sig, &signer));
     }
 

@@ -133,6 +133,7 @@ impl Blackbox {
     ///
     /// When a PII filter is attached, tool_args and tool_result are
     /// sanitized before being written to the database.
+    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &self,
         agent_name: &str,
@@ -160,6 +161,7 @@ impl Blackbox {
     }
 
     /// Record a tool call with optional on-behalf-of human identity.
+    #[allow(clippy::too_many_arguments)]
     pub fn record_with_obo(
         &self,
         agent_name: &str,
@@ -515,6 +517,7 @@ pub fn chain_preimage(
 }
 
 /// Verify a single chain link: recompute hash and check prev_hash linkage.
+#[allow(clippy::too_many_arguments)]
 pub fn verify_chain_link(
     seq: u64,
     prev_hash: &str,

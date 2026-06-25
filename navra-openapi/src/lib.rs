@@ -119,8 +119,8 @@ impl OpenApiModule {
     /// Remove tools marked "deny" in tool_overrides so they never
     /// appear in tools/list or tool_operations().
     pub fn apply_overrides(&mut self, overrides: &HashMap<String, String>) {
-        self.tools
-            .retain(|parsed| match overrides.get(&parsed.definition.name) {
+        self.tools.retain(
+            |parsed| match overrides.get(parsed.definition.name.as_ref()) {
                 Some(v) if v == "deny" => {
                     tracing::info!(
                         tool = %parsed.definition.name,
@@ -129,7 +129,8 @@ impl OpenApiModule {
                     false
                 }
                 _ => true,
-            });
+            },
+        );
     }
 
     pub fn tool_operations(&self) -> HashMap<String, ToolOperation> {
@@ -142,7 +143,7 @@ impl OpenApiModule {
                         ToolOperation::Write
                     }
                 };
-                (parsed.definition.name.clone(), op)
+                (parsed.definition.name.to_string(), op)
             })
             .collect()
     }
@@ -296,7 +297,7 @@ mod tests {
 
         let tools = module.tools();
         assert_eq!(tools.len(), 2);
-        let names: Vec<&str> = tools.iter().map(|t| t.0.name.as_str()).collect();
+        let names: Vec<&str> = tools.iter().map(|t| &*t.0.name).collect();
         assert!(names.contains(&"petstore_listpets"));
         assert!(names.contains(&"petstore_createpet"));
 

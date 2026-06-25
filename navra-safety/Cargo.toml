@@ -5,7 +5,8 @@ edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.91"
 description = "PII detection, content safety filters, and pseudonymization for Rust applications"
-repository = "https://github.com/smgglrs-ai/navra"
+homepage.workspace = true
+repository.workspace = true
 keywords = ["pii", "safety", "content-filter", "ner", "privacy"]
 categories = ["text-processing", "accessibility"]
 readme = "README.md"
@@ -31,3 +32,6 @@ tokenizers = { version = "0.22", default-features = false, features = ["onig"], 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
 tempfile = "3"
+
+[lints]
+workspace = true

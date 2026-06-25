@@ -1,6 +1,6 @@
 id: NAVRA-054
 title: Interactive flow DAG visualization
-status: backlog
+status: done
 priority: low
 effort: M
 depends_on:

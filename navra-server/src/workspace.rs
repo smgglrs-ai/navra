@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 pub enum WorkspaceError {
     Io(std::io::Error),
+    #[allow(dead_code)]
     Source(String),
 }
 
@@ -33,6 +34,7 @@ pub trait WorkspaceProvider: Send + Sync {
 }
 
 /// Populates a workspace by recursively copying from a host directory.
+#[allow(dead_code)]
 pub struct DirectoryWorkspace {
     pub source_path: PathBuf,
 }
@@ -55,6 +57,7 @@ impl WorkspaceProvider for DirectoryWorkspace {
     }
 }
 
+#[allow(dead_code)]
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), WorkspaceError> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -70,6 +73,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), WorkspaceError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn collect_files(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), WorkspaceError> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;

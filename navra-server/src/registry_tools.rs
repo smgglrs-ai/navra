@@ -10,7 +10,8 @@
 //! - `registry_list` — list configured registries and their status
 //! - `registry_describe` — get details about a specific entry
 
-use navra_core::protocol::{CallToolResult, ToolDefinition, ToolInputSchema};
+use navra_core::protocol::{CallToolResult, ToolDefinition};
+use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -74,17 +75,13 @@ impl RegistryState {
 // --- Tool definitions ---
 
 pub fn registry_search_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "registry_search".to_string(),
-        description: Some(
-            "Search across all configured external registries for agents, \
-             tools, or MCP servers matching a query. Returns merged results \
-             from all registries, ranked by relevance."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "registry_search",
+        "Search across all configured external registries for agents, \
+         tools, or MCP servers matching a query. Returns merged results \
+         from all registries, ranked by relevance.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "query".to_string(),
                     serde_json::json!({
@@ -107,45 +104,28 @@ pub fn registry_search_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["query".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["query".to_string()]),
+        ),
+    )
 }
 
 pub fn registry_list_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "registry_list".to_string(),
-        description: Some(
-            "List all configured external registries and their capabilities. \
-             Shows name, type, endpoint, and status for each registry."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    ToolDefinition::new(
+        "registry_list",
+        "List all configured external registries and their capabilities. \
+         Shows name, type, endpoint, and status for each registry.",
+        tool_input_schema(None, None),
+    )
 }
 
 pub fn registry_describe_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "registry_describe".to_string(),
-        description: Some(
-            "Get detailed information about a specific agent, tool, or MCP \
-             server from a registry. Provide the entry name and optionally \
-             the registry to query."
-                .to_string(),
-        ),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: Some(HashMap::from([
+    ToolDefinition::new(
+        "registry_describe",
+        "Get detailed information about a specific agent, tool, or MCP \
+         server from a registry. Provide the entry name and optionally \
+         the registry to query.",
+        tool_input_schema(
+            Some(HashMap::from([
                 (
                     "name".to_string(),
                     serde_json::json!({
@@ -161,12 +141,9 @@ pub fn registry_describe_def() -> ToolDefinition {
                     }),
                 ),
             ])),
-            required: Some(vec!["name".to_string()]),
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+            Some(vec!["name".to_string()]),
+        ),
+    )
 }
 
 // --- Handlers ---
@@ -177,7 +154,7 @@ pub async fn handle_registry_search(
 ) -> CallToolResult {
     let query = match args.get("query").and_then(|v| v.as_str()) {
         Some(q) => q.to_string(),
-        None => return CallToolResult::error("Missing required parameter: query"),
+        None => return CallToolResult::error_msg("Missing required parameter: query"),
     };
     let registry_filter = args.get("registry").and_then(|v| v.as_str());
     let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
@@ -190,9 +167,9 @@ pub async fn handle_registry_search(
 
     if entries.is_empty() {
         if let Some(filter) = &registry_filter {
-            return CallToolResult::error(format!("No registry found with name '{filter}'"));
+            return CallToolResult::error_msg(format!("No registry found with name '{filter}'"));
         }
-        return CallToolResult::error("No registries configured");
+        return CallToolResult::error_msg("No registries configured");
     }
 
     let mut all_results: Vec<serde_json::Value> = Vec::new();
@@ -264,7 +241,7 @@ pub async fn handle_registry_describe(
 ) -> CallToolResult {
     let name = match args.get("name").and_then(|v| v.as_str()) {
         Some(n) => n.to_string(),
-        None => return CallToolResult::error("Missing required parameter: name"),
+        None => return CallToolResult::error_msg("Missing required parameter: name"),
     };
     let registry_filter = args.get("registry").and_then(|v| v.as_str());
 
@@ -275,7 +252,7 @@ pub async fn handle_registry_describe(
     };
 
     if entries.is_empty() {
-        return CallToolResult::error("No registries configured");
+        return CallToolResult::error_msg("No registries configured");
     }
 
     let mut details: Vec<serde_json::Value> = Vec::new();
@@ -296,7 +273,7 @@ pub async fn handle_registry_describe(
     }
 
     if details.is_empty() {
-        return CallToolResult::error(format!(
+        return CallToolResult::error_msg(format!(
             "No entry found with name '{}' in any registry",
             name
         ));
@@ -604,27 +581,26 @@ mod tests {
 
     #[test]
     fn search_requires_query() {
-        assert!(registry_search_def()
-            .input_schema
-            .required
-            .as_ref()
+        let schema = serde_json::to_value(&*registry_search_def().input_schema).unwrap();
+        assert!(schema["required"]
+            .as_array()
             .unwrap()
-            .contains(&"query".to_string()));
+            .contains(&serde_json::json!("query")));
     }
 
     #[test]
     fn describe_requires_name() {
-        assert!(registry_describe_def()
-            .input_schema
-            .required
-            .as_ref()
+        let schema = serde_json::to_value(&*registry_describe_def().input_schema).unwrap();
+        assert!(schema["required"]
+            .as_array()
             .unwrap()
-            .contains(&"name".to_string()));
+            .contains(&serde_json::json!("name")));
     }
 
     #[test]
     fn list_has_no_required_params() {
-        assert!(registry_list_def().input_schema.required.is_none());
+        let schema = serde_json::to_value(&*registry_list_def().input_schema).unwrap();
+        assert!(schema.get("required").is_none() || schema["required"].is_null());
     }
 
     #[test]
@@ -682,18 +658,14 @@ mod tests {
 
     /// Extract text from the first content item of a CallToolResult.
     fn result_text(result: &CallToolResult) -> &str {
-        use navra_core::protocol::Content;
-        match &result.content[0] {
-            Content::Text(tc) => &tc.text,
-            _ => panic!("expected text content"),
-        }
+        navra_protocol::compat::content_as_text(&result.content[0]).expect("expected text content")
     }
 
     #[tokio::test]
     async fn handle_list_shows_all_registries() {
         let state = test_state();
         let result = handle_registry_list(serde_json::json!({}), state).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
         let parsed: serde_json::Value = serde_json::from_str(result_text(&result)).unwrap();
         assert_eq!(parsed["count"], 2);
         assert_eq!(parsed["registries"][0]["name"], "mcp_registry");
@@ -704,7 +676,7 @@ mod tests {
     async fn handle_search_missing_query() {
         let state = test_state();
         let result = handle_registry_search(serde_json::json!({}), state).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -715,21 +687,21 @@ mod tests {
             state,
         )
         .await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn handle_describe_missing_name() {
         let state = test_state();
         let result = handle_registry_describe(serde_json::json!({}), state).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn handle_list_empty_registries() {
         let state = Arc::new(RegistryState::new(vec![], 3600));
         let result = handle_registry_list(serde_json::json!({}), state).await;
-        assert!(!result.is_error);
+        assert!(!result.is_err());
         let parsed: serde_json::Value = serde_json::from_str(result_text(&result)).unwrap();
         assert_eq!(parsed["count"], 0);
     }
@@ -738,7 +710,7 @@ mod tests {
     async fn handle_search_no_registries() {
         let state = Arc::new(RegistryState::new(vec![], 3600));
         let result = handle_registry_search(serde_json::json!({"query": "test"}), state).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[test]

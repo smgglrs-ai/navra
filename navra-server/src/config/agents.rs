@@ -48,12 +48,15 @@ pub struct UpstreamConfig {
     pub enabled: Option<bool>,
     /// Retry base delay in milliseconds (default: 1000)
     #[serde(default)]
+    #[allow(dead_code)]
     pub retry_base_delay_ms: Option<u64>,
     /// Maximum retry delay in milliseconds (default: 30000)
     #[serde(default)]
+    #[allow(dead_code)]
     pub retry_max_delay_ms: Option<u64>,
     /// Total retry budget in seconds (default: 600)
     #[serde(default)]
+    #[allow(dead_code)]
     pub retry_budget_secs: Option<u64>,
     /// Request timeout in seconds (default: 45)
     #[serde(default)]
@@ -96,7 +99,55 @@ pub struct UpstreamConfig {
     /// When set, navra acts as an OAuth client and handles token acquisition,
     /// refresh, and 401/403 challenges automatically.
     #[serde(default)]
+    #[allow(dead_code)]
     pub oauth: Option<UpstreamOAuthConfig>,
+    /// Network egress policy for sandboxed execution.
+    /// When absent and `--sandbox` is used, defaults to deny-all.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub network: Option<NetworkPolicy>,
+    /// Environment variables to set when launching this upstream.
+    /// Values support credential store references: `"${credential:label}"`
+    /// resolves the label via the navra credential store (OS keyring or env).
+    /// Plain values are passed through as-is.
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+    /// Credential label mappings: env var name → credential store label.
+    /// The credential is resolved from the OS keyring at launch time
+    /// and injected as an environment variable into the server process.
+    /// Credentials are zeroized in navra's memory after injection.
+    #[serde(default)]
+    pub credentials: std::collections::HashMap<String, String>,
+}
+
+/// Network egress policy controlling which external endpoints a sandboxed
+/// upstream MCP server can reach.
+///
+/// Both domains and IP addresses are supported. When `deny_all_external`
+/// is true (the default), raw IP addresses are blocked unless they appear
+/// in `allowed_ips`. This prevents bypassing domain-based rules by
+/// resolving to an IP and connecting directly.
+#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+pub struct NetworkPolicy {
+    /// Domains the upstream is allowed to reach (e.g., `"*.googleapis.com"`).
+    /// Supports wildcard prefix matching (`*.example.com`).
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub allowed_domains: Vec<String>,
+    /// Domains explicitly blocked (deny wins over allow).
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub blocked_domains: Vec<String>,
+    /// IP addresses or CIDR ranges allowed (e.g., `"10.0.0.0/8"`).
+    /// Raw IP access is blocked by default when `deny_all_external` is true.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub allowed_ips: Vec<String>,
+    /// When true, only `allowed_domains` and `allowed_ips` are reachable.
+    /// Default: true.
+    #[serde(default = "super::default_true")]
+    #[allow(dead_code)]
+    pub deny_all_external: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
@@ -131,10 +182,12 @@ pub struct UpstreamOAuthConfig {
     /// Pre-registered OAuth client ID. If absent, navra uses Dynamic
     /// Client Registration (RFC 7591) to obtain credentials.
     #[serde(default)]
+    #[allow(dead_code)]
     pub client_id: Option<String>,
     /// Pre-registered client secret (or env var reference like "${SECRET}").
     /// Required for Client Credentials flow.
     #[serde(default)]
+    #[allow(dead_code)]
     pub client_secret: Option<String>,
     /// OAuth flow preference: "auto" (default), "code", "client_credentials", "device".
     ///
@@ -144,15 +197,18 @@ pub struct UpstreamOAuthConfig {
     /// - "client_credentials": Machine-to-machine, no user interaction.
     /// - "device": Device Authorization Flow (RFC 8628).
     #[serde(default)]
+    #[allow(dead_code)]
     pub flow: Option<String>,
     /// OAuth scopes to request.
     #[serde(default)]
+    #[allow(dead_code)]
     pub scopes: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl UpstreamConfig {
     /// Returns a RetryConfig if any retry fields are set, otherwise None.
-    pub fn retry_config(&self) -> Option<navra_core::upstream::RetryConfig> {
+    pub fn retry_config(&self) -> Option<navra_protocol::RetryConfig> {
         if self.retry_base_delay_ms.is_none()
             && self.retry_max_delay_ms.is_none()
             && self.retry_budget_secs.is_none()
@@ -161,7 +217,7 @@ impl UpstreamConfig {
             return None;
         }
 
-        let mut config = navra_core::upstream::RetryConfig::default();
+        let mut config = navra_protocol::RetryConfig::default();
         if let Some(ms) = self.retry_base_delay_ms {
             config.base_delay = std::time::Duration::from_millis(ms);
         }

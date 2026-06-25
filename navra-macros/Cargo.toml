@@ -5,7 +5,8 @@ edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.91"
 description = "Proc macros for defining MCP tools with the navra gateway"
-repository = "https://github.com/smgglrs-ai/navra"
+homepage.workspace = true
+repository.workspace = true
 keywords = ["mcp", "tool", "proc-macro", "gateway"]
 categories = ["development-tools::procedural-macro-helpers"]
 
@@ -19,7 +20,10 @@ proc-macro2 = "1"
 
 [dev-dependencies]
 navra-protocol = { path = "../navra-protocol" }
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }
 trybuild = "1"
+
+[lints]
+workspace = true

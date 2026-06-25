@@ -1,6 +1,8 @@
 [package]
 name = "navra-cognitive"
 description = "Cognitive core: YAML persona/directive/heuristic loader and prompt weaver"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,3 +21,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true

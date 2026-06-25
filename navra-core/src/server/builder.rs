@@ -136,7 +136,7 @@ impl McpServerBuilder {
             + Sync
             + 'static,
     ) -> Self {
-        let name = definition.name.clone();
+        let name = definition.name.to_string();
         self.tools.insert(
             name,
             RegisteredTool {
@@ -183,7 +183,7 @@ impl McpServerBuilder {
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();
         for (definition, handler) in module.tools() {
-            let tool_name = definition.name.clone();
+            let tool_name = definition.name.to_string();
             if self.tools.contains_key(&tool_name) {
                 panic!(
                     "Tool name conflict: '{}' from module '{}' already registered by another module",
@@ -456,27 +456,19 @@ impl McpServerBuilder {
 
         // Register gateway IFC tools
         {
-            use crate::protocol::{ToolDefinition, ToolInputSchema};
+            use crate::protocol::ToolDefinition;
+            use navra_protocol::compat::CallToolResultExt;
 
             // navra_var_list — list all variables in the session
             let vs = value_stores.clone();
             tools.insert(
                 "navra_var_list".to_string(),
                 RegisteredTool {
-                    definition: ToolDefinition {
-                        name: "navra_var_list".to_string(),
-                        description: Some(
-                            "List all IFC-tracked variables in the current session".to_string(),
-                        ),
-                        input_schema: ToolInputSchema {
-                            schema_type: "object".to_string(),
-                            properties: None,
-                            required: None,
-                        },
-                        annotations: None,
-                        ttl_ms: None,
-                        cache_scope: None,
-                    },
+                    definition: ToolDefinition::new(
+                        "navra_var_list",
+                        "List all IFC-tracked variables in the current session",
+                        navra_protocol::compat::empty_input_schema(),
+                    ),
                     handler: Arc::new(move |_args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
@@ -507,44 +499,36 @@ impl McpServerBuilder {
             tools.insert(
                 "navra_var_inspect".to_string(),
                 RegisteredTool {
-                    definition: ToolDefinition {
-                        name: "navra_var_inspect".to_string(),
-                        description: Some(
-                            "Read a variable's content into the LLM context (taints session)"
-                                .to_string(),
-                        ),
-                        input_schema: ToolInputSchema {
-                            schema_type: "object".to_string(),
-                            properties: Some(std::collections::HashMap::from([(
+                    definition: ToolDefinition::new(
+                        "navra_var_inspect",
+                        "Read a variable's content into the LLM context (taints session)",
+                        navra_protocol::compat::tool_input_schema(
+                            Some(std::collections::HashMap::from([(
                                 "id".to_string(),
                                 serde_json::json!({"type": "string", "description": "Variable ID"}),
                             )])),
-                            required: Some(vec!["id".to_string()]),
-                        },
-                        annotations: None,
-                        ttl_ms: None,
-                        cache_scope: None,
-                    },
+                            Some(vec!["id".to_string()]),
+                        ),
+                    ),
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();
                         let sess = sess.clone();
                         Box::pin(async move {
                             let var_id = match args.get("id").and_then(|v| v.as_str()) {
                                 Some(id) => id,
-                                None => return CallToolResult::error("Missing 'id' argument"),
+                                None => return CallToolResult::error_msg("Missing 'id' argument"),
                             };
                             let store = vs.get_or_create(&ctx.session_id);
                             match store.get(var_id) {
                                 Some(stored) => {
                                     // Taint the session context label
                                     sess.update_context_label(&ctx.session_id, stored.label);
-                                    let mut result = CallToolResult::success(stored.content);
-                                    result.label = stored.label;
-                                    result
+                                    // label tracking placeholder: stored.label not propagated via CallToolResult
+                                    CallToolResult::success(stored.content)
                                 }
-                                None => {
-                                    CallToolResult::error(format!("Variable not found: {var_id}"))
-                                }
+                                None => CallToolResult::error_msg(format!(
+                                    "Variable not found: {var_id}"
+                                )),
                             }
                         })
                     }),
@@ -556,36 +540,32 @@ impl McpServerBuilder {
             tools.insert(
                 "navra_var_drop".to_string(),
                 RegisteredTool {
-                    definition: ToolDefinition {
-                        name: "navra_var_drop".to_string(),
-                        description: Some("Remove a variable from the session store".to_string()),
-                        input_schema: ToolInputSchema {
-                            schema_type: "object".to_string(),
-                            properties: Some(std::collections::HashMap::from([(
+                    definition: ToolDefinition::new(
+                        "navra_var_drop",
+                        "Remove a variable from the session store",
+                        navra_protocol::compat::tool_input_schema(
+                            Some(std::collections::HashMap::from([(
                                 "id".to_string(),
                                 serde_json::json!({"type": "string", "description": "Variable ID"}),
                             )])),
-                            required: Some(vec!["id".to_string()]),
-                        },
-                        annotations: None,
-                        ttl_ms: None,
-                        cache_scope: None,
-                    },
+                            Some(vec!["id".to_string()]),
+                        ),
+                    ),
                     handler: Arc::new(move |args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
                             let var_id = match args.get("id").and_then(|v| v.as_str()) {
                                 Some(id) => id,
-                                None => return CallToolResult::error("Missing 'id' argument"),
+                                None => return CallToolResult::error_msg("Missing 'id' argument"),
                             };
                             let store = vs.get_or_create(&ctx.session_id);
                             match store.remove(var_id) {
                                 Some(_) => {
                                     CallToolResult::text(format!("Variable {var_id} removed"))
                                 }
-                                None => {
-                                    CallToolResult::error(format!("Variable not found: {var_id}"))
-                                }
+                                None => CallToolResult::error_msg(format!(
+                                    "Variable not found: {var_id}"
+                                )),
                             }
                         })
                     }),
@@ -607,27 +587,24 @@ impl McpServerBuilder {
                 "navra://proc".to_string(),
                 RegisteredResource {
                     definition: crate::protocol::ResourceDefinition {
-                        uri: "navra://proc".to_string(),
-                        name: "Process table".to_string(),
-                        description: Some(
-                            "Connected agents, privilege rings, call counts".to_string(),
-                        ),
-                        mime_type: Some("application/json".to_string()),
-                        size: None,
+                        raw: crate::protocol::RawResource::new("navra://proc", "Process table")
+                            .with_description("Connected agents, privilege rings, call counts")
+                            .with_mime_type("application/json"),
+                        annotations: None,
                     },
                     handler: Arc::new(move |uri, _ctx| {
                         let pt = pt.clone();
                         Box::pin(async move {
                             let snapshot = pt.snapshot();
                             let json = serde_json::to_string_pretty(&snapshot).unwrap_or_default();
-                            crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(json),
-                                    blob: None,
-                                }],
-                            }
+                                    text: json,
+                                    meta: None,
+                                },
+                            ])
                         })
                     }),
                 },
@@ -641,11 +618,10 @@ impl McpServerBuilder {
                 "navra://ifc/labels".to_string(),
                 RegisteredResource {
                     definition: crate::protocol::ResourceDefinition {
-                        uri: "navra://ifc/labels".to_string(),
-                        name: "IFC labels".to_string(),
-                        description: Some("Current IFC taint labels for all sessions".to_string()),
-                        mime_type: Some("application/json".to_string()),
-                        size: None,
+                        raw: crate::protocol::RawResource::new("navra://ifc/labels", "IFC labels")
+                            .with_description("Current IFC taint labels for all sessions")
+                            .with_mime_type("application/json"),
+                        annotations: None,
                     },
                     handler: Arc::new(move |uri, _ctx| {
                         let sess = sess.clone();
@@ -662,14 +638,14 @@ impl McpServerBuilder {
                                 })
                                 .collect();
                             let json = serde_json::to_string_pretty(&labels).unwrap_or_default();
-                            crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(json),
-                                    blob: None,
-                                }],
-                            }
+                                    text: json,
+                                    meta: None,
+                                },
+                            ])
                         })
                     }),
                 },
@@ -683,11 +659,13 @@ impl McpServerBuilder {
                 "navra://audit/recent".to_string(),
                 RegisteredResource {
                     definition: crate::protocol::ResourceDefinition {
-                        uri: "navra://audit/recent".to_string(),
-                        name: "Recent audit entries".to_string(),
-                        description: Some("Last 50 blackbox audit entries".to_string()),
-                        mime_type: Some("application/json".to_string()),
-                        size: None,
+                        raw: crate::protocol::RawResource::new(
+                            "navra://audit/recent",
+                            "Recent audit entries",
+                        )
+                        .with_description("Last 50 blackbox audit entries")
+                        .with_mime_type("application/json"),
+                        annotations: None,
                     },
                     handler: Arc::new(move |uri, _ctx| {
                         let bb = bb.clone();
@@ -699,14 +677,14 @@ impl McpServerBuilder {
                                     serde_json::to_string_pretty(&recent).unwrap_or_default()
                                 })
                                 .unwrap_or_else(|| "[]".to_string());
-                            crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(entries),
-                                    blob: None,
-                                }],
-                            }
+                                    text: entries,
+                                    meta: None,
+                                },
+                            ])
                         })
                     }),
                 },
@@ -719,25 +697,24 @@ impl McpServerBuilder {
                 "navra://budget/gpu".to_string(),
                 RegisteredResource {
                     definition: crate::protocol::ResourceDefinition {
-                        uri: "navra://budget/gpu".to_string(),
-                        name: "GPU budget".to_string(),
-                        description: Some("GPU semaphore: permits used/available".to_string()),
-                        mime_type: Some("application/json".to_string()),
-                        size: None,
+                        raw: crate::protocol::RawResource::new("navra://budget/gpu", "GPU budget")
+                            .with_description("GPU semaphore: permits used/available")
+                            .with_mime_type("application/json"),
+                        annotations: None,
                     },
                     handler: Arc::new(|uri, _ctx| {
                         Box::pin(async move {
                             let json = serde_json::json!({
                                 "note": "GPU semaphore is managed per-flow; query flow executor for live permit state"
                             });
-                            crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(serde_json::to_string_pretty(&json).unwrap_or_default()),
-                                    blob: None,
-                                }],
-                            }
+                                    text: serde_json::to_string_pretty(&json).unwrap_or_default(),
+                                    meta: None,
+                                },
+                            ])
                         })
                     }),
                 },
@@ -749,15 +726,13 @@ impl McpServerBuilder {
             let sess = sessions.clone();
             resource_templates.push(RegisteredResourceTemplate {
                 template: crate::protocol::ResourceTemplate {
-                    uri_template: "navra://proc/{agent}/taint".to_string(),
-                    name: "Agent taint label".to_string(),
-                    description: Some(
-                        "Current IFC taint label for a specific agent session".to_string(),
-                    ),
-                    mime_type: Some("application/json".to_string()),
+                    raw: crate::protocol::RawResourceTemplate::new(
+                        "navra://proc/{agent}/taint",
+                        "Agent taint label",
+                    )
+                    .with_description("Current IFC taint label for a specific agent session")
+                    .with_mime_type("application/json"),
                     annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
                 },
                 handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
@@ -781,23 +756,23 @@ impl McpServerBuilder {
                                     .collect();
                                 let json =
                                     serde_json::to_string_pretty(&matching).unwrap_or_default();
-                                crate::protocol::ReadResourceResult {
-                                    contents: vec![crate::protocol::ResourceContent {
+                                crate::protocol::ReadResourceResult::new(vec![
+                                    crate::protocol::ResourceContent::TextResourceContents {
                                         uri,
                                         mime_type: Some("application/json".to_string()),
-                                        text: Some(json),
-                                        blob: None,
-                                    }],
-                                }
+                                        text: json,
+                                        meta: None,
+                                    },
+                                ])
                             }
-                            None => crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            None => crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(r#"{"error": "Invalid URI"}"#.to_string()),
-                                    blob: None,
-                                }],
-                            },
+                                    text: r#"{"error": "Invalid URI"}"#.to_string(),
+                                    meta: None,
+                                },
+                            ]),
                         }
                     })
                 }),
@@ -809,13 +784,13 @@ impl McpServerBuilder {
             let sess = sessions.clone();
             resource_templates.push(RegisteredResourceTemplate {
                 template: crate::protocol::ResourceTemplate {
-                    uri_template: "navra://proc/{agent}/capabilities".to_string(),
-                    name: "Agent capabilities".to_string(),
-                    description: Some("Active capability set for a specific agent".to_string()),
-                    mime_type: Some("application/json".to_string()),
+                    raw: crate::protocol::RawResourceTemplate::new(
+                        "navra://proc/{agent}/capabilities",
+                        "Agent capabilities",
+                    )
+                    .with_description("Active capability set for a specific agent")
+                    .with_mime_type("application/json"),
                     annotations: None,
-                    ttl_ms: None,
-                    cache_scope: None,
                 },
                 handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
@@ -853,23 +828,23 @@ impl McpServerBuilder {
                                     .collect();
                                 let json =
                                     serde_json::to_string_pretty(&matching).unwrap_or_default();
-                                crate::protocol::ReadResourceResult {
-                                    contents: vec![crate::protocol::ResourceContent {
+                                crate::protocol::ReadResourceResult::new(vec![
+                                    crate::protocol::ResourceContent::TextResourceContents {
                                         uri,
                                         mime_type: Some("application/json".to_string()),
-                                        text: Some(json),
-                                        blob: None,
-                                    }],
-                                }
+                                        text: json,
+                                        meta: None,
+                                    },
+                                ])
                             }
-                            None => crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            None => crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("application/json".to_string()),
-                                    text: Some(r#"{"error": "Invalid URI"}"#.to_string()),
-                                    blob: None,
-                                }],
-                            },
+                                    text: r#"{"error": "Invalid URI"}"#.to_string(),
+                                    meta: None,
+                                },
+                            ]),
                         }
                     })
                 }),

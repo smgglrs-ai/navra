@@ -49,8 +49,8 @@ impl SkillHook {
         if pattern == "*" {
             return true;
         }
-        if pattern.ends_with('*') {
-            tool_name.starts_with(&pattern[..pattern.len() - 1])
+        if let Some(prefix) = pattern.strip_suffix('*') {
+            tool_name.starts_with(prefix)
         } else {
             tool_name == pattern
         }
@@ -61,8 +61,8 @@ impl SkillHook {
             return true;
         };
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-        if pattern.ends_with('*') {
-            path.starts_with(&pattern[..pattern.len() - 1])
+        if let Some(prefix) = pattern.strip_suffix('*') {
+            path.starts_with(prefix)
         } else {
             path == pattern
         }
