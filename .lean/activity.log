@@ -604,3 +604,11 @@
   action: item-complete
   item: "NAVRA-161"
   summary: "Split model server from gateway. Created navra-model-server crate with ModelRegistry, OpenAI-compatible HTTP API, hardware auto-detection. Added 'navra model serve' CLI. Refactored gateway to use ModelRegistry (removed 270 lines of inline model loading). 11 new tests."
+
+- date: 2026-06-25
+  action: loop-batch
+  summary: "Completed NAVRA-163 (agent bundle format v2), NAVRA-164 (agent init), NAVRA-165 (navra run workflow flags). New: bundle_dir.rs with per-step permissions, config-template.yaml schema, local directory install, agent instance config generation."
+  items:
+    - "NAVRA-163: done"
+    - "NAVRA-164: done"
+    - "NAVRA-165: done"
