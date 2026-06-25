@@ -515,6 +515,7 @@ pub fn build_auth_url(
 /// Exchange an authorization code for tokens.
 ///
 /// Validates the `iss` parameter per SEP-2468 before exchanging.
+#[allow(clippy::too_many_arguments)]
 pub async fn exchange_code(
     http: &reqwest::Client,
     as_metadata: &AsMetadata,

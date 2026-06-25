@@ -218,6 +218,19 @@ pub struct BudgetConfig {
     /// Ratio of budget allocated to head in head_tail strategy.
     #[serde(default = "default_head_ratio")]
     pub head_ratio: f32,
+    /// Maximum total tokens (input + output) per agent run.
+    /// When set, acts as a circuit breaker. Unlimited by default.
+    #[serde(default)]
+    pub max_tokens_per_run: Option<u64>,
+    /// Context fill ratio to enable tool output compression. Disabled by default.
+    #[serde(default)]
+    pub compression_start_ratio: Option<f32>,
+    /// Recent items kept verbatim during conversation compaction.
+    #[serde(default)]
+    pub compaction_keep_recent: Option<usize>,
+    /// Context fill ratio to trigger conversation compaction.
+    #[serde(default)]
+    pub compaction_trigger_ratio: Option<f32>,
     /// Enable SQLite-backed checkpointing for DAG execution crash resilience.
     #[serde(default)]
     pub checkpoint: bool,
@@ -237,6 +250,10 @@ impl Default for BudgetConfig {
             max_tool_output_tokens: default_max_tool_output_tokens(),
             truncation_strategy: default_truncation_strategy(),
             head_ratio: default_head_ratio(),
+            max_tokens_per_run: None,
+            compression_start_ratio: None,
+            compaction_keep_recent: None,
+            compaction_trigger_ratio: None,
             checkpoint: false,
             checkpoint_db: default_checkpoint_db(),
         }

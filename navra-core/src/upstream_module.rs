@@ -1,19 +1,16 @@
-//! Adapts an Upstream into the Module trait.
+//! Adapts an upstream MCP server into the Module trait via rmcp.
 //!
-//! An `UpstreamModule` wraps an `Upstream` client and presents its
-//! discovered tools, prompts, and resources as if they were a built-in
-//! module. This lets the server builder, dispatch, and safety filtering
-//! work unchanged.
+//! An `UpstreamModule` connects to an external MCP server using rmcp's
+//! client transports, discovers its tools/prompts/resources, and
+//! presents them as a navra Module.
 
 use crate::protocol::{
     CallToolParams, CallToolResult, GetPromptParams, PromptDefinition, ReadResourceParams,
     ResourceDefinition, ToolDefinition,
 };
-use crate::upstream::{Upstream, UpstreamError};
 use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     if let Some(ref ann) = def.annotations {
@@ -35,6 +32,7 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
 /// Returns the best-matching domain if cosine similarity exceeds the threshold,
 /// otherwise returns `None` (caller falls back to heuristic).
 /// Runs at discovery time only — results are cached.
+#[allow(dead_code)]
 async fn classify_domain_semantic(
     tool: &ToolDefinition,
     embed_backend: &dyn navra_model::ModelBackend,
@@ -75,6 +73,7 @@ async fn classify_domain_semantic(
     best_domain
 }
 
+#[allow(dead_code)]
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
@@ -98,6 +97,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// Pre-compute embeddings for all domain exemplars.
 ///
 /// Returns empty vec if embedding fails (graceful degradation).
+#[allow(dead_code)]
 async fn embed_domain_exemplars(
     backend: &dyn navra_model::ModelBackend,
 ) -> Vec<(navra_auth::permissions::Domain, Vec<f32>)> {
@@ -117,10 +117,10 @@ async fn embed_domain_exemplars(
     result
 }
 
-/// A module backed by an upstream MCP server.
+/// A module backed by an upstream MCP server via rmcp.
 pub struct UpstreamModule {
     name: String,
-    upstream: Arc<Mutex<Upstream>>,
+    peer: rmcp::Peer<rmcp::RoleClient>,
     tools: Vec<ToolDefinition>,
     tool_operations: HashMap<String, ToolOperation>,
     tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
@@ -129,40 +129,46 @@ pub struct UpstreamModule {
 }
 
 impl UpstreamModule {
-    /// Connect to an upstream and discover its capabilities.
+    /// Return the upstream's discovered prompt definitions.
+    pub fn discovered_prompts(&self) -> &[PromptDefinition] {
+        &self.prompts
+    }
+
+    /// Return the upstream name.
+    pub fn upstream_name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the tool operation classifications.
+    pub fn tool_operations(&self) -> &HashMap<String, ToolOperation> {
+        &self.tool_operations
+    }
+
+    /// Return the semantic tool classifications.
+    pub fn tool_classifications(&self) -> &HashMap<String, navra_auth::permissions::ResourceClass> {
+        &self.tool_classifications
+    }
+
+    /// Connect to an upstream via rmcp and discover its capabilities.
     ///
     /// Calls `tools/list`, `prompts/list`, and `resources/list` on the
     /// upstream, caching the definitions. Errors during discovery are
     /// logged but don't prevent the module from being created — the
     /// corresponding capability will simply be empty.
     pub async fn discover(
-        upstream: Upstream,
+        name: &str,
+        peer: rmcp::Peer<rmcp::RoleClient>,
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
-    ) -> Result<Self, UpstreamError> {
-        Self::discover_with_embeddings(upstream, scanner, tool_overrides, None).await
-    }
-
-    pub async fn discover_with_embeddings(
-        upstream: Upstream,
-        scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
-        tool_overrides: &HashMap<String, String>,
-        embed_backend: Option<&dyn navra_model::ModelBackend>,
-    ) -> Result<Self, UpstreamError> {
-        let name = upstream.name().to_string();
-        let upstream = Arc::new(Mutex::new(upstream));
-
-        let tools = {
-            let mut u = upstream.lock().await;
-            u.list_tools().await.unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
-                Vec::new()
-            })
-        };
+    ) -> Self {
+        let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
+            Vec::new()
+        });
 
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
-            let results = scanner.scan_tools(&name, &tools);
+            let results = scanner.scan_tools(name, &tools);
             let mut filtered = Vec::new();
             for (tool, result) in tools.into_iter().zip(results.iter()) {
                 match &result.verdict {
@@ -196,111 +202,46 @@ impl UpstreamModule {
         let mut tool_operations = HashMap::new();
         let mut accepted_tools = Vec::new();
         for def in tools {
-            let op = if let Some(override_str) = tool_overrides.get(&def.name) {
+            let op = if let Some(override_str) = tool_overrides.get(def.name.as_ref()) {
                 match override_str.as_str() {
                     "read" => ToolOperation::Read,
                     "write" => ToolOperation::Write,
                     "deny" => ToolOperation::Deny,
-                    other => {
-                        tracing::warn!(
-                            upstream = %name,
-                            tool = %def.name,
-                            override_value = %other,
-                            "Unknown tool_override value, using auto-classification"
-                        );
-                        classify_tool(&def)
-                    }
+                    _ => classify_tool(&def),
                 }
             } else {
                 classify_tool(&def)
             };
-
             if op == ToolOperation::Deny {
-                tracing::info!(
-                    upstream = %name,
-                    tool = %def.name,
-                    "Denied upstream tool by policy"
-                );
+                tracing::info!(upstream = %name, tool = %def.name, "Denied upstream tool by policy");
                 continue;
             }
-
-            tracing::debug!(
-                upstream = %name,
-                tool = %def.name,
-                operation = ?op,
-                "Classified upstream tool"
-            );
-            tool_operations.insert(def.name.clone(), op);
+            tool_operations.insert(def.name.to_string(), op);
             accepted_tools.push(def);
         }
 
-        // Semantic classification: embed tool descriptions and match against
-        // domain exemplars. Falls back to heuristic if no model available.
-        let exemplar_embeddings = if let Some(backend) = embed_backend {
-            let embs = embed_domain_exemplars(backend).await;
-            if embs.is_empty() {
-                tracing::info!(
-                    upstream = %name,
-                    "Embedding unavailable, using heuristic classification"
-                );
-            } else {
-                tracing::info!(
-                    upstream = %name,
-                    exemplars = embs.len(),
-                    "Domain exemplar embeddings ready"
-                );
-            }
-            embs
-        } else {
-            Vec::new()
-        };
-
         let mut tool_classifications = HashMap::new();
         for def in &accepted_tools {
-            let domain = if !exemplar_embeddings.is_empty() {
-                if let Some(backend) = embed_backend {
-                    classify_domain_semantic(def, backend, &exemplar_embeddings, 0.3)
-                        .await
-                        .unwrap_or_else(|| {
-                            navra_auth::permissions::resource_class::infer_domain_heuristic(
-                                &def.name,
-                            )
-                        })
-                } else {
-                    navra_auth::permissions::resource_class::infer_domain_heuristic(&def.name)
-                }
-            } else {
-                navra_auth::permissions::resource_class::infer_domain_heuristic(&def.name)
-            };
+            let domain = navra_auth::permissions::resource_class::infer_domain_heuristic(&def.name);
             let operation = navra_auth::permissions::resource_class::infer_operation_heuristic(
                 &def.name,
                 def.annotations.as_ref(),
             );
-            let class = navra_auth::permissions::ResourceClass::new(domain, operation);
-            tracing::debug!(
-                upstream = %name,
-                tool = %def.name,
-                class = %class,
-                "Classified upstream tool"
+            tool_classifications.insert(
+                def.name.to_string(),
+                navra_auth::permissions::ResourceClass::new(domain, operation),
             );
-            tool_classifications.insert(def.name.clone(), class);
         }
 
-        let prompts = {
-            let mut u = upstream.lock().await;
-            u.list_prompts().await.unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
-                Vec::new()
-            })
-        };
+        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
+            Vec::new()
+        });
 
-        let resources = {
-            let mut u = upstream.lock().await;
-            u.list_resources().await.unwrap_or_else(|e| {
-                tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
-                Vec::new()
-            })
-        };
+        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
+            Vec::new()
+        });
 
         tracing::info!(
             upstream = %name,
@@ -310,38 +251,15 @@ impl UpstreamModule {
             "Discovered upstream capabilities"
         );
 
-        Ok(Self {
-            name,
-            upstream,
+        Self {
+            name: name.to_string(),
+            peer,
             tools: accepted_tools,
             tool_operations,
             tool_classifications,
             prompts,
             resources,
-        })
-    }
-
-    /// Return the upstream's discovered prompt definitions.
-    ///
-    /// Used at startup to scan for `persona:` prefixed prompts and
-    /// auto-register them in the ForgeService.
-    pub fn discovered_prompts(&self) -> &[PromptDefinition] {
-        &self.prompts
-    }
-
-    /// Return the upstream name.
-    pub fn upstream_name(&self) -> &str {
-        &self.name
-    }
-
-    /// Return the tool operation classifications.
-    pub fn tool_operations(&self) -> &HashMap<String, ToolOperation> {
-        &self.tool_operations
-    }
-
-    /// Return the semantic tool classifications.
-    pub fn tool_classifications(&self) -> &HashMap<String, navra_auth::permissions::ResourceClass> {
-        &self.tool_classifications
+        }
     }
 }
 
@@ -354,25 +272,25 @@ impl Module for UpstreamModule {
         self.tools
             .iter()
             .map(|def| {
-                let upstream = self.upstream.clone();
                 let tool_name = def.name.clone();
+                let peer = self.peer.clone();
                 let handler: ToolHandler = Arc::new(move |args, _ctx| {
-                    let upstream = upstream.clone();
+                    let peer = peer.clone();
                     let name = tool_name.clone();
                     Box::pin(async move {
-                        let params = CallToolParams {
-                            name,
-                            arguments: args,
-                            meta: None,
-                        };
-                        let mut u = upstream.lock().await;
-                        match u.call_tool(params).await {
+                        let mut params = CallToolParams::new(name);
+                        if let Some(obj) = args.as_object() {
+                            params = params.with_arguments(obj.clone());
+                        }
+                        match peer.call_tool(params).await {
                             Ok(result) => result,
-                            Err(e) => CallToolResult::error(format!("upstream error: {e}")),
+                            Err(e) => {
+                                use navra_protocol::compat::CallToolResultExt;
+                                CallToolResult::error_msg(format!("upstream error: {e}"))
+                            }
                         }
                     })
                 });
-
                 (def.clone(), handler)
             })
             .collect()
@@ -382,28 +300,31 @@ impl Module for UpstreamModule {
         self.prompts
             .iter()
             .map(|def| {
-                let upstream = self.upstream.clone();
                 let prompt_name = def.name.clone();
+                let peer = self.peer.clone();
                 let handler: PromptHandler =
                     Arc::new(move |args: HashMap<String, String>, _ctx| {
-                        let upstream = upstream.clone();
+                        let peer = peer.clone();
                         let name = prompt_name.clone();
                         Box::pin(async move {
-                            let params = GetPromptParams {
-                                name,
-                                arguments: args,
-                            };
-                            let mut u = upstream.lock().await;
-                            match u.get_prompt(params).await {
+                            let mut params = GetPromptParams::new(name);
+                            if !args.is_empty() {
+                                let obj: serde_json::Map<String, serde_json::Value> = args
+                                    .into_iter()
+                                    .map(|(k, v)| (k, serde_json::Value::String(v)))
+                                    .collect();
+                                params.arguments = Some(obj);
+                            }
+                            match peer.get_prompt(params).await {
                                 Ok(result) => result,
-                                Err(e) => crate::protocol::GetPromptResult {
-                                    description: Some(format!("upstream error: {e}")),
-                                    messages: vec![],
-                                },
+                                Err(e) => {
+                                    let mut r = crate::protocol::GetPromptResult::new(vec![]);
+                                    r.description = Some(format!("upstream error: {e}"));
+                                    r
+                                }
                             }
                         })
                     });
-
                 (def.clone(), handler)
             })
             .collect()
@@ -413,26 +334,24 @@ impl Module for UpstreamModule {
         self.resources
             .iter()
             .map(|def| {
-                let upstream = self.upstream.clone();
+                let peer = self.peer.clone();
                 let handler: ResourceHandler = Arc::new(move |uri: String, _ctx| {
-                    let upstream = upstream.clone();
+                    let peer = peer.clone();
                     Box::pin(async move {
-                        let params = ReadResourceParams { uri: uri.clone() };
-                        let mut u = upstream.lock().await;
-                        match u.read_resource(params).await {
+                        let params = ReadResourceParams::new(uri.clone());
+                        match peer.read_resource(params).await {
                             Ok(result) => result,
-                            Err(e) => crate::protocol::ReadResourceResult {
-                                contents: vec![crate::protocol::ResourceContent {
+                            Err(e) => crate::protocol::ReadResourceResult::new(vec![
+                                crate::protocol::ResourceContent::TextResourceContents {
                                     uri,
                                     mime_type: Some("text/plain".to_string()),
-                                    text: Some(format!("upstream error: {e}")),
-                                    blob: None,
-                                }],
-                            },
+                                    text: format!("upstream error: {e}"),
+                                    meta: None,
+                                },
+                            ]),
                         }
                     })
                 });
-
                 (def.clone(), handler)
             })
             .collect()
@@ -492,17 +411,12 @@ mod tests {
         name: &str,
         annotations: Option<navra_protocol::ToolAnnotations>,
     ) -> ToolDefinition {
-        ToolDefinition {
-            name: name.to_string(),
-            description: None,
-            input_schema: navra_protocol::ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations,
-            ttl_ms: None,
-            cache_scope: None,
-        }
+        let mut def = ToolDefinition::new_with_raw(
+            name.to_string(),
+            None,
+            navra_protocol::compat::empty_input_schema(),
+        );
+        def.annotations = annotations;
+        def
     }
 }

@@ -1,6 +1,7 @@
 mod builder;
 mod cards;
 mod handlers;
+pub mod navra_handler;
 pub mod routing;
 mod types;
 
@@ -17,7 +18,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 
 pub use builder::McpServerBuilder;
-pub use handlers::{IFCToolFilter, ToolFilter, ToolUsageTracker, UsagePruningFilter};
+#[cfg(test)]
+pub use handlers::IFCToolFilter;
+pub use handlers::{ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use navra_handler::NavraHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
 

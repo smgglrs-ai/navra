@@ -1,39 +1,48 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 17 active items
+# 15 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-051"
-    title: "Paper significant fixes"
+  - id: "NAVRA-151"
+    title: "Binary distribution (GitHub releases + cargo-binstall)"
     status: planned
-    priority: medium
-    effective_priority: high
-    effort: M
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+    priority: high
+    effort: 3-5d
 
-  - id: "NAVRA-052"
-    title: "Missing related work"
+  - id: "NAVRA-152"
+    title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
     status: planned
-    priority: medium
-    effective_priority: high
-    effort: M
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+    priority: high
+    effort: 5-10d
 
-  - id: "NAVRA-053"
-    title: "Paper restructuring decisions"
+  - id: "NAVRA-162"
+    title: "navra daemon: unified persistent process"
     status: planned
-    priority: medium
-    effective_priority: high
-    effort: S
-    feeds: ['NAVRA-001', 'NAVRA-019', 'NAVRA-020']
+    priority: high
+    effort: 5-10d
+    depends_on: ['NAVRA-161']
 
-  - id: "NAVRA-057"
-    title: "Lazy-loading tool and persona metadata"
+  - id: "NAVRA-154"
+    title: "macOS HITL notifications"
     status: planned
     priority: medium
-    effort: M
+    effort: 3-5d
+
+  - id: "NAVRA-157"
+    title: "Publish reference agent bundles to quay.io"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-151']
+
+  - id: "NAVRA-160"
+    title: "Network policy discovery and enforcement for navra wrap --sandbox"
+    status: planned
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-155']
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
@@ -49,18 +58,6 @@ items:
     priority: low
     effort: 3-5d
     gate: "IETF draft-mozleywilliams adopted by AAIF or reaches -03 revision"
-
-  - id: "NAVRA-060"
-    title: "Operator libraries"
-    status: planned
-    priority: low
-    effort: M
-
-  - id: "NAVRA-063"
-    title: "Privacy Router coordination"
-    status: planned
-    priority: low
-    effort: M
 
   - id: "NAVRA-092"
     title: "Evaluate LCLM for context compression"
@@ -78,30 +75,12 @@ items:
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
 
-  - id: "NAVRA-048"
-    title: "Adversarial safety evaluation"
+  - id: "NAVRA-150"
+    title: "Contribute rate limiting middleware to rmcp (issue #388)"
     status: backlog
-    priority: low
-    effort: L
-
-  - id: "NAVRA-050"
-    title: "Harness-aligned training data generation"
-    status: backlog
-    priority: low
-    effort: L
-
-  - id: "NAVRA-054"
-    title: "Interactive flow DAG visualization"
-    status: backlog
-    priority: low
+    priority: medium
     effort: M
-    depends_on: ['NAVRA-005']
-
-  - id: "NAVRA-055"
-    title: "Branding and polish"
-    status: backlog
-    priority: low
-    effort: M
+    depends_on: ['NAVRA-149']
 
   - id: "NAVRA-056"
     title: "Embeddable rendra-ag-ui widget"
@@ -110,16 +89,21 @@ items:
     effort: M
     depends_on: ['NAVRA-004']
 
+  - id: "NAVRA-158"
+    title: "Multi-model adversarial review of security paper"
+    status: backlog
+    priority: low
+    effort: 3-5d
+
+  - id: "NAVRA-159"
+    title: "Cross-framework flow orchestration via MCP/OpenAI"
+    status: backlog
+    priority: low
+    effort: 5-10d
+
   - id: "NAVRA-062"
     title: "NemoClaw MCP bridge"
-    status: backlog
+    status: wont_do
     priority: low
     effort: M
-
-  - id: "NAVRA-148"
-    title: "Visual flow editor in navra-react"
-    status: backlog
-    priority: low
-    effort: L
-    depends_on: ['NAVRA-059']
 

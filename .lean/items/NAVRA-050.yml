@@ -1,6 +1,6 @@
 id: NAVRA-050
 title: Harness-aligned training data generation
-status: backlog
+status: done
 priority: low
 effort: L
 depends_on: []

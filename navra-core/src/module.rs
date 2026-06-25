@@ -1,6 +1,5 @@
 pub use navra_mcp::{Module, PromptHandler, ResourceHandler};
 
-use crate::auth::AgentIdentity;
 use crate::server::McpServer;
 use std::sync::Arc;
 
@@ -24,6 +23,5 @@ pub async fn serve_module(
             .module(module)
             .build(),
     );
-    let agent = AgentIdentity::new("gateway", "default");
-    crate::transport::run_stdio_server(server, agent).await
+    crate::transport::run_stdio_server(server).await
 }

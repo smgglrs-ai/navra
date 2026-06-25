@@ -167,7 +167,60 @@ The hash chain provides tamper detection without requiring external
 infrastructure (no certificate authority, no blockchain). An auditor
 can verify chain integrity with a single CLI command.
 
-## 8. Limitations
+## 8. Related Work
+
+**Tamper-evident logging.** Schneier and Kelsey [1] established the
+foundations for secure audit logs with hash-chained entries and
+forward-secure key management. Their threat model — an attacker who
+compromises the machine after the fact — matches our scenario where
+an agent (or operator) might attempt to alter the audit trail
+post-incident. Our approach uses a simpler SHA-256 chain without
+forward-secure keys, trading resistance to full-chain rewriting for
+deployment simplicity (Section 9, limitation 3).
+
+**Flight data recorders.** Aviation black boxes (ICAO Annex 6 [2])
+record continuously without crew opt-in, survive crashes, and are
+tamper-sealed. Our gateway blackbox follows the same philosophy —
+always-on, no opt-in, append-only — but in software rather than
+hardware. The 4 KB truncation limit is our analogue to the flight
+recorder's 25-hour overwrite cycle: a pragmatic bound on storage
+that captures enough for forensics.
+
+**Distributed system observability.** OpenTelemetry [3] provides
+traces, metrics, and logs with correlation IDs across microservices.
+Our blackbox records at the MCP protocol chokepoint rather than
+requiring per-service instrumentation, but lacks OpenTelemetry's
+distributed trace correlation — a natural extension for multi-gateway
+deployments.
+
+**AI compliance frameworks.** The EU AI Act [4] mandates human
+oversight and decision traceability for high-risk AI systems.
+ISO 42001 [5] requires records of AI system decisions. SOC2 CC6.1
+[6] requires audit trails for system operations. Our hash-chained
+blackbox addresses the recording requirement but not the analysis
+layer — compliance auditors need tooling beyond `navra audit` for
+systematic review.
+
+**Agent observability.** LangSmith [7] and Weights & Biases [8]
+provide hosted observability for LLM applications with trace
+visualization and cost tracking. These are opt-in application-layer
+solutions that require framework integration. Our approach captures
+at the gateway layer without agent cooperation, at the cost of
+less detailed traces (tool calls only, not model reasoning).
+
+**Merkle trees and verifiable logs.** Certificate Transparency [9]
+uses Merkle hash trees for publicly verifiable append-only logs
+of TLS certificates. Our linear hash chain is simpler (O(n)
+verification vs O(log n)) but sufficient for single-gateway
+deployments where third-party verification is not required.
+
+**Blockchain-based audit.** Hyperledger Fabric [10] provides
+immutable ledgers with consensus protocols. Our single-node
+hash chain avoids the complexity and performance overhead of
+distributed consensus, which is unnecessary when the gateway is
+the sole writer.
+
+## 9. Limitations
 
 - **Anonymous agents**: Without auth configuration, all agents appear
   as "anonymous". The blackbox records the identity the gateway knows;
@@ -201,3 +254,43 @@ dependencies beyond SQLite, and has proven its value in real debugging
 scenarios. We argue that any system serving as an intermediary between
 AI agents and tools should include always-on audit recording as a
 baseline capability.
+
+## References
+
+[1] Schneier, B. and Kelsey, J., "Secure Audit Logs to Support
+Computer Forensics," ACM Transactions on Information and System
+Security, 2(2), 1999.
+
+[2] ICAO, "Annex 6: Operation of Aircraft — Flight Recorders,"
+International Civil Aviation Organization, 2016.
+
+[3] OpenTelemetry, "OpenTelemetry Specification,"
+https://opentelemetry.io/docs/specs/
+
+[4] European Commission, "Regulation (EU) 2024/1689 — Artificial
+Intelligence Act," Official Journal of the European Union, 2024.
+
+[5] ISO/IEC 42001:2023, "Information Technology — Artificial
+Intelligence — Management System," International Organization for
+Standardization, 2023.
+
+[6] AICPA, "SOC 2 Type II — Trust Services Criteria," American
+Institute of Certified Public Accountants, 2017.
+
+[7] LangChain, "LangSmith: LLM Application Observability Platform,"
+https://docs.smith.langchain.com/
+
+[8] Weights & Biases, "W&B Traces: LLM Application Monitoring,"
+https://docs.wandb.ai/guides/prompts/
+
+[9] Laurie, B. et al., "Certificate Transparency," RFC 6962,
+Internet Engineering Task Force, 2013.
+
+[10] Hyperledger Foundation, "Hyperledger Fabric Documentation,"
+https://hyperledger-fabric.readthedocs.io/
+
+[11] OWASP, "OWASP Top 10 for Agentic Applications for 2026,"
+December 2025.
+
+[12] Anthropic, "Model Context Protocol (MCP) Specification,"
+https://modelcontextprotocol.io/

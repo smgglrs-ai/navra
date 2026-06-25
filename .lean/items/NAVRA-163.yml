@@ -1,0 +1,65 @@
+id: NAVRA-163
+title: "Agent bundle format and directory convention"
+status: done
+priority: high
+effort: 3-5d
+tags: [bundles, agents, distribution]
+depends_on: [NAVRA-161]
+description: |
+  Define the agent bundle format as a directory convention that
+  can be tarballed into an OCI artifact for distribution.
+
+  A bundle is a directory:
+
+    my-agent/
+      agent.yaml          # persona(s), model preferences
+      config-template.yaml  # credential requirements with semantics
+      workflows/
+        workflow-a.yaml
+        workflow-b.yaml
+
+  agent.yaml declares:
+  - Persona(s): name, system prompt, behavior
+  - Model preferences: preferred model, fallbacks
+  - Permission envelope: per-workflow, per-step granularity
+  - Workflow visibility: which workflows are exposed to CLI,
+    to other agents (flow_* tools), or internal-only
+
+  config-template.yaml declares credential requirements with
+  full semantics:
+  - type: oauth2, api-key, bot-token, basic-auth
+  - required vs optional
+  - scopes (for OAuth)
+  - mutual exclusion, choice of values
+
+  Permission declarations go down to per-step granularity:
+
+    workflows:
+      respond:
+        steps:
+          read-context:
+            permissions:
+              gmail: [read, search]
+          send:
+            permissions:
+              gmail: [read, send]
+
+  Distribution pipeline:
+  - Local: work with directory directly
+  - Publish: `navra agent publish` → tar → OCI manifest + BOM → sign (cosign) → push
+  - Install: `navra agent install` → pull → verify signature → unpack to directory
+  - Local install: `navra agent install ./my-bundle/`
+
+  BOM generated from agent.yaml: dependencies, model requirements,
+  MCP servers, permission envelope. Useful for auditing before
+  approval.
+
+  Updates NAVRA-157 (reference bundles) to use this format.
+acceptance:
+  - Bundle directory convention documented and validated
+  - agent.yaml schema defined (JSON Schema)
+  - config-template.yaml schema with credential semantics
+  - Per-step permission declarations in workflow definitions
+  - navra agent install works from local directory
+  - navra agent publish tars, generates BOM, signs, pushes to OCI
+  - navra agent install from OCI verifies signature and unpacks

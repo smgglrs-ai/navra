@@ -7,6 +7,7 @@
 
 use super::{Hook, HookDecision};
 use navra_auth::auth::CallContext;
+use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::label::DataLabel;
 use navra_protocol::CallToolResult;
 
@@ -334,7 +335,7 @@ impl Hook for TemporalContractHook {
         result: &CallToolResult,
         ctx: &CallContext,
     ) -> HookDecision {
-        let status = if result.is_error {
+        let status = if result.is_err() {
             ResultStatus::Error
         } else {
             ResultStatus::Success
@@ -685,7 +686,7 @@ mod tests {
     async fn hook_post_records_error() {
         let (log, hook) = make_hook(vec![]);
         let ctx = test_ctx();
-        let result = CallToolResult::error("failed");
+        let result = CallToolResult::error_msg("failed");
 
         hook.post_tool_use("file_write", &serde_json::json!({}), &result, &ctx)
             .await;

@@ -105,6 +105,18 @@ pub struct PermissionSet {
     /// ```
     #[serde(default)]
     pub tool_class: HashMap<String, ToolClassConfig>,
+    /// Egress filtering: domains allowed for tool calls containing URLs.
+    /// When non-empty alongside `egress_deny_all_external`, the
+    /// EgressFilterHook blocks tool calls targeting unlisted domains.
+    #[serde(default)]
+    pub egress_allowed_domains: Vec<String>,
+    /// Egress filtering: domains explicitly blocked (deny wins over allow).
+    #[serde(default)]
+    pub egress_blocked_domains: Vec<String>,
+    /// When true and egress domains are configured, deny all external
+    /// endpoints not in the allowlist.
+    #[serde(default)]
+    pub egress_deny_all_external: bool,
 }
 
 /// A domain rule entry in config.
@@ -193,6 +205,9 @@ impl Default for PermissionSet {
             tool_disclosure_exclude: Vec::new(),
             domain_rules: Vec::new(),
             tool_class: HashMap::new(),
+            egress_allowed_domains: Vec::new(),
+            egress_blocked_domains: Vec::new(),
+            egress_deny_all_external: false,
         }
     }
 }

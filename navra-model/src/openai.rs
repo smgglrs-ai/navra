@@ -23,6 +23,7 @@ pub struct OpenAiBackend {
     api_key: Option<String>,
     locality: Locality,
     cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    context_window: Option<u32>,
 }
 
 impl OpenAiBackend {
@@ -40,7 +41,14 @@ impl OpenAiBackend {
             api_key,
             locality,
             cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            context_window: None,
         }
+    }
+
+    /// Set the context window size from model card metadata.
+    pub fn with_context_window(mut self, tokens: u32) -> Self {
+        self.context_window = Some(tokens);
+        self
     }
 
     /// Returns the locality of this backend.
@@ -437,6 +445,10 @@ impl ModelBackend for OpenAiBackend {
         self.cancelled
             .store(true, std::sync::atomic::Ordering::Relaxed);
         Box::pin(async {})
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        self.context_window
     }
 }
 

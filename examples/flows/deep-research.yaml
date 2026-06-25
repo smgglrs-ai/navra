@@ -1,0 +1,150 @@
+kind: dag
+name: deep-research
+description: |
+  Multi-source research with adversarial verification and cited synthesis.
+  Fan-out: parallel searchers query different angles of the topic.
+  Verify: each claim is adversarially challenged by a skeptic.
+  Synthesize: findings are merged into a cited report.
+
+  Security: web-sourced data is IFC-tainted (external label). The
+  synthesizer can read tainted findings but cannot write them to
+  the filesystem without declassification — preventing unverified
+  web content from being silently persisted.
+
+parameters:
+  question:
+    type: string
+    description: The research question to investigate
+  depth:
+    type: string
+    description: "Research depth: quick (3 searchers), standard (5), thorough (8)"
+    default: standard
+
+tasks:
+  - id: decompose
+    specialist: analyst
+    model: auto
+    mandate: |
+      You are a research decomposer. Break down this question into
+      independent search angles that together provide comprehensive
+      coverage:
+
+      Question: {{ question }}
+      Depth: {{ depth }}
+
+      For "quick" depth: produce 3 search angles.
+      For "standard" depth: produce 5 search angles.
+      For "thorough" depth: produce 8 search angles.
+
+      Each angle should approach the question from a different
+      perspective: technical, historical, comparative, contrarian,
+      practical, regulatory, economic, or social.
+
+      Return a JSON array of objects:
+      [
+        {
+          "id": "angle-01",
+          "perspective": "technical",
+          "search_queries": ["query 1", "query 2"],
+          "what_to_look_for": "specific aspects to investigate"
+        }
+      ]
+
+      Make search queries specific and fact-oriented. Avoid vague
+      queries. Each angle should find information the others won't.
+    expected_output: JSON array of search angles with queries
+
+  - id: search-coordinator
+    specialist: researcher
+    model: auto
+    depends_on: [decompose]
+    generates_tasks: true
+    mandate: |
+      You are a research coordinator. Read the search angles from
+      the decomposer.
+
+      For EACH search angle, create a search task. Each task must:
+      - Have id matching the angle id (e.g., "angle-01")
+      - Use specialist "researcher"
+      - Have a mandate that instructs the researcher to:
+        1. Use knowledge_search to find relevant information in
+           the navra knowledge base
+        2. Summarize findings with direct quotes and source references
+        3. Rate confidence (high/medium/low) for each finding
+        4. Flag any contradictions between sources
+
+      Return ONLY the JSON array of tasks.
+    expected_output: JSON array of search tasks
+
+  - id: verify
+    specialist: devils_advocate
+    model: auto
+    depends_on: [search-coordinator]
+    mandate: |
+      You are an adversarial verifier. Your job is to CHALLENGE
+      every claim from the search results.
+
+      Read all search task outputs. For each major claim:
+
+      1. Is the claim supported by multiple independent sources?
+      2. Could the claim be outdated? Check for temporal context.
+      3. Is there a known counter-argument or alternative explanation?
+      4. Does the claim contain hedging language that weakens it?
+      5. Is the source authoritative for this domain?
+
+      Produce a JSON array of verdicts:
+      [
+        {
+          "claim": "the claim text",
+          "source_angle": "angle-01",
+          "verdict": "confirmed|weakened|refuted|unverifiable",
+          "confidence": 0.0-1.0,
+          "reasoning": "why this verdict",
+          "counter_evidence": "if any"
+        }
+      ]
+
+      Default to skepticism. If uncertain, verdict is "unverifiable".
+      Only "confirmed" claims should survive into the final report.
+    expected_output: JSON array of adversarial verdicts per claim
+
+  - id: synthesize
+    specialist: summarizer
+    model: auto
+    depends_on: [verify]
+    mandate: |
+      You are a research synthesizer. Produce a comprehensive,
+      cited report answering the original question:
+
+      Question: {{ question }}
+
+      Read the verification verdicts. Include ONLY claims with
+      verdict "confirmed" or "weakened" (with caveats noted).
+      Exclude "refuted" and "unverifiable" claims entirely.
+
+      Report structure:
+
+      ## Summary
+      3-5 sentence answer to the research question.
+
+      ## Key Findings
+      Numbered findings, each with:
+      - The finding (one sentence)
+      - Supporting evidence (with source references)
+      - Confidence level (from verification)
+      - Caveats (if verdict was "weakened")
+
+      ## Methodology
+      How many angles were searched, how many claims were verified,
+      how many survived verification.
+
+      ## Limitations
+      What this research could not determine. What additional
+      investigation would help.
+
+      ## Sources
+      Numbered list of all sources referenced.
+
+      Be precise. Never state something as fact that was not
+      confirmed by the verifier.
+    expected_output: Cited research report with verified findings only

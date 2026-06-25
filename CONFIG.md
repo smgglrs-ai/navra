@@ -361,6 +361,46 @@ url = "http://localhost:8001/mcp"
 | `retry_max_delay_ms` | integer | `30000` | Maximum retry delay in ms |
 | `retry_budget_secs` | integer | `600` | Total retry budget in seconds |
 | `request_timeout_secs` | integer | `45` | Per-request timeout in seconds |
+| `env` | map | `{}` | Environment variables to set when launching this upstream |
+| `credentials` | map | `{}` | Credential store label → env var mappings (resolved from OS keyring at launch) |
+
+### upstream.credentials
+
+Inject secrets from the OS keyring into MCP server processes at launch
+time. Values are credential store labels — navra resolves them from the
+keyring and passes them as environment variables to the child process.
+Credentials are zeroized in navra's memory after injection.
+
+```toml
+[[upstream]]
+name = "gmail"
+command = ["npx", "-y", "@anthropic/gmail-mcp"]
+[upstream.credentials]
+GMAIL_TOKEN = "gmail-work"
+GMAIL_CLIENT_SECRET = "gmail-oauth-secret"
+```
+
+The credential labels must be defined in the `[credentials]` section:
+
+```toml
+[credentials."gmail-work"]
+source = "keyring"
+path = "navra/gmail-work"
+```
+
+---
+
+## model_server
+
+When set, the gateway connects to an external model server instead of
+loading models in-process. Start a model server with `navra model serve`.
+
+```toml
+model_server = "http://127.0.0.1:9316"
+```
+
+When absent, models are loaded directly in the gateway process
+(backward-compatible behavior).
 
 ---
 

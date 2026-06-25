@@ -116,31 +116,10 @@ mod tests {
 
     #[test]
     fn filter_tool_definitions() {
+        let schema = navra_protocol::compat::empty_input_schema();
         let tools = vec![
-            navra_protocol::ToolDefinition {
-                name: "file_read".to_string(),
-                description: Some("Read a file".to_string()),
-                input_schema: navra_protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
-            navra_protocol::ToolDefinition {
-                name: "shell_exec".to_string(),
-                description: Some("Execute command".to_string()),
-                input_schema: navra_protocol::ToolInputSchema {
-                    schema_type: "object".to_string(),
-                    properties: None,
-                    required: None,
-                },
-                annotations: None,
-                ttl_ms: None,
-                cache_scope: None,
-            },
+            navra_protocol::ToolDefinition::new("file_read", "Read a file", schema.clone()),
+            navra_protocol::ToolDefinition::new("shell_exec", "Execute command", schema),
         ];
         let d = ToolDisclosure::new(vec!["file_*".to_string()], vec![]);
         let filtered = d.filter(&tools);

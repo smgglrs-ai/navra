@@ -5,29 +5,13 @@ use navra_protocol::ToolDefinition;
 
 /// Convert an MCP `ToolDefinition` to an Open Responses `FunctionTool`.
 pub fn tool_def_to_response(tool: &ToolDefinition) -> ResponseTool {
-    let mut schema = serde_json::Map::new();
-    schema.insert(
-        "type".to_string(),
-        serde_json::Value::String(tool.input_schema.schema_type.clone()),
-    );
-    if let Some(props) = &tool.input_schema.properties {
-        schema.insert(
-            "properties".to_string(),
-            serde_json::to_value(props).unwrap_or_default(),
-        );
-    }
-    if let Some(req) = &tool.input_schema.required {
-        schema.insert(
-            "required".to_string(),
-            serde_json::to_value(req).unwrap_or_default(),
-        );
-    }
+    let schema = serde_json::Value::Object(tool.input_schema.as_ref().clone());
 
     ResponseTool {
         kind: "function".to_string(),
-        name: tool.name.clone(),
-        description: tool.description.clone(),
-        parameters: Some(serde_json::Value::Object(schema)),
+        name: tool.name.to_string(),
+        description: tool.description.as_deref().map(|s| s.to_string()),
+        parameters: Some(schema),
         strict: None,
     }
 }
@@ -35,29 +19,37 @@ pub fn tool_def_to_response(tool: &ToolDefinition) -> ResponseTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_protocol::ToolInputSchema;
-    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn make_tool(
+        name: &str,
+        description: Option<&str>,
+        schema: serde_json::Value,
+    ) -> ToolDefinition {
+        let obj = match schema {
+            serde_json::Value::Object(m) => m,
+            _ => serde_json::Map::new(),
+        };
+        ToolDefinition::new_with_raw(
+            name.to_string(),
+            description.map(|s| std::borrow::Cow::Owned(s.to_string())),
+            Arc::new(obj),
+        )
+    }
 
     #[test]
     fn converts_full_tool_definition() {
-        let mut props = HashMap::new();
-        props.insert(
-            "path".to_string(),
-            serde_json::json!({"type": "string", "description": "File path"}),
+        let tool = make_tool(
+            "file_read",
+            Some("Read a document"),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path"}
+                },
+                "required": ["path"]
+            }),
         );
-
-        let tool = ToolDefinition {
-            name: "file_read".to_string(),
-            description: Some("Read a document".to_string()),
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: Some(props),
-                required: Some(vec!["path".to_string()]),
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
 
         let response_tool = tool_def_to_response(&tool);
         assert_eq!(response_tool.name, "file_read");
@@ -73,18 +65,7 @@ mod tests {
 
     #[test]
     fn converts_minimal_tool_definition() {
-        let tool = ToolDefinition {
-            name: "ping".to_string(),
-            description: None,
-            input_schema: ToolInputSchema {
-                schema_type: "object".to_string(),
-                properties: None,
-                required: None,
-            },
-            annotations: None,
-            ttl_ms: None,
-            cache_scope: None,
-        };
+        let tool = make_tool("ping", None, serde_json::json!({"type": "object"}));
 
         let response_tool = tool_def_to_response(&tool);
         assert_eq!(response_tool.name, "ping");

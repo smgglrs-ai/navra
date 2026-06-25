@@ -42,7 +42,7 @@ pub enum SandboxAction {
     Redact {
         /// Regex patterns to redact from the output.
         patterns: Vec<String>,
-        /// Replacement string (defaults to "[REDACTED]").
+        /// Replacement string (defaults to "\[REDACTED\]").
         #[serde(default = "default_replacement")]
         replacement: String,
     },

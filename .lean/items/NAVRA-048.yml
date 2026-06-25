@@ -1,6 +1,6 @@
 id: NAVRA-048
 title: Adversarial safety evaluation
-status: backlog
+status: done
 priority: low
 effort: L
 depends_on: []

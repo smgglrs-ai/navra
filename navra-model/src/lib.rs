@@ -317,6 +317,15 @@ pub trait ModelBackend: Send + Sync + 'static {
     fn cancel(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
         Box::pin(async {})
     }
+
+    /// Context window size in tokens, if known.
+    ///
+    /// Used by the agent to size compression thresholds and conversation
+    /// compaction triggers. Returns `None` by default; backends populate
+    /// this from model card metadata at construction time.
+    fn context_window(&self) -> Option<u32> {
+        None
+    }
 }
 
 // --- Internal translation helpers ---

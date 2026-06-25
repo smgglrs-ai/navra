@@ -5,7 +5,7 @@
 //! Providers are trusted via pre-configured JWKS URIs; keys are cached
 //! in-memory and can be pre-loaded for testing.
 //!
-//! The authenticator sits early in the [`ChainAuthenticator`] — JWT tokens
+//! The authenticator sits early in the `ChainAuthenticator` — JWT tokens
 //! (starting with `eyJ`) are tried as ID-JAG first; plain BLAKE3 tokens
 //! fall through.
 
@@ -17,7 +17,6 @@ use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{AgentIdentity, AuthError, Authenticator};
-use crate::identity::CapSigner;
 
 /// Configuration for the ID-JAG authenticator.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -373,7 +372,11 @@ fn verify_eddsa_signature(
 
 /// Build a minimal JWT for testing. Signs with the given `CapSigner`.
 #[cfg(test)]
-fn build_test_jwt(header_json: &str, claims_json: &str, signer: &dyn CapSigner) -> String {
+fn build_test_jwt(
+    header_json: &str,
+    claims_json: &str,
+    signer: &dyn crate::identity::CapSigner,
+) -> String {
     let header_b64 = URL_SAFE_NO_PAD.encode(header_json.as_bytes());
     let claims_b64 = URL_SAFE_NO_PAD.encode(claims_json.as_bytes());
     let signing_input = format!("{header_b64}.{claims_b64}");
@@ -387,7 +390,7 @@ mod tests {
     use super::*;
     use crate::auth::chain::ChainAuthenticator;
     use crate::auth::TokenAuthenticator;
-    use crate::identity::Ed25519Signer;
+    use crate::identity::{CapSigner, Ed25519Signer};
     use axum::http::HeaderMap;
 
     fn test_provider_config(issuer: &str, audience: &str) -> TrustedProvider {

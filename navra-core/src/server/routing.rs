@@ -86,6 +86,7 @@ pub fn find_candidates(
 }
 
 /// Levenshtein edit distance between two strings.
+#[allow(clippy::needless_range_loop)]
 fn edit_distance(a: &str, b: &str) -> usize {
     let a_len = a.len();
     let b_len = b.len();

@@ -1,6 +1,8 @@
 [package]
 name = "navra-safety-hooks"
 description = "Content hooks and integrity monitoring for the navra gateway"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -40,3 +42,6 @@ tokenizers = { version = "0.22", default-features = false, features = ["onig"], 
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 toml = "0.8"
+
+[lints]
+workspace = true

@@ -1,0 +1,27 @@
+id: NAVRA-154
+title: "macOS HITL notifications"
+status: planned
+priority: medium
+effort: 3-5d
+tags: [platform, macos, hitl]
+description: |
+  Add native macOS notification support for human-in-the-loop
+  approval requests, alongside the existing D-Bus implementation.
+  The gateway (axum + tokio) already compiles on macOS; only the
+  notification channel is Linux-specific.
+
+  Options:
+  - osascript for basic notifications
+  - objc2 crate for native NSUserNotification with action buttons
+  - mac-notification-sys crate as lighter alternative
+
+  Must implement the existing Notifier trait with Approve/Deny
+  action buttons matching the D-Bus behavior.
+
+  Linux support unchanged — this adds a platform, not replaces one.
+acceptance:
+  - Notifier trait implementation for macOS
+  - Approve/Deny action buttons on macOS notifications
+  - Compiles and works on macOS 13+
+  - Linux D-Bus path unchanged
+  - CI cross-compilation check (macOS target)

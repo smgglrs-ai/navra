@@ -15,6 +15,7 @@ use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::Module;
+use navra_protocol::compat::CallToolResultExt;
 use rusqlite::params;
 use std::sync::{Arc, Mutex};
 
@@ -99,7 +100,7 @@ async fn handle_search(
     #[state] state: Arc<KnowledgeState>,
 ) -> CallToolResult {
     if query.is_empty() {
-        return CallToolResult::error("Missing required parameter: query");
+        return CallToolResult::error_msg("Missing required parameter: query");
     }
 
     let limit = limit.unwrap_or(10) as usize;
@@ -133,7 +134,7 @@ async fn handle_search(
     let retriever = MemoryRetriever::new(&state.knowledge);
     match retriever.retrieve(&query, limit) {
         Ok(results) => format_search_results(&results),
-        Err(e) => CallToolResult::error(format!("Search failed: {e}")),
+        Err(e) => CallToolResult::error_msg(format!("Search failed: {e}")),
     }
 }
 
@@ -174,7 +175,7 @@ async fn handle_graph_query(
     #[state] state: Arc<KnowledgeState>,
 ) -> CallToolResult {
     if entity.is_empty() {
-        return CallToolResult::error("Missing required parameter: entity");
+        return CallToolResult::error_msg("Missing required parameter: entity");
     }
 
     let hops = hops.unwrap_or(1).min(2);
@@ -182,11 +183,11 @@ async fn handle_graph_query(
     // 1-hop: direct relationships
     let graph = match state.graph.lock() {
         Ok(g) => g,
-        Err(e) => return CallToolResult::error(format!("Graph lock failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Graph lock failed: {e}")),
     };
     let direct = match graph.relations_of(&entity) {
         Ok(rels) => rels,
-        Err(e) => return CallToolResult::error(format!("Graph query failed: {e}")),
+        Err(e) => return CallToolResult::error_msg(format!("Graph query failed: {e}")),
     };
 
     let mut result = serde_json::json!({
@@ -243,7 +244,7 @@ async fn handle_decay_score(
     #[state] state: Arc<KnowledgeState>,
 ) -> CallToolResult {
     if entry_ids.is_empty() {
-        return CallToolResult::error("Missing required parameter: entry_ids");
+        return CallToolResult::error_msg("Missing required parameter: entry_ids");
     }
 
     let base_decay_rate = 0.001;
@@ -259,7 +260,7 @@ async fn handle_decay_score(
             "SELECT id, title, importance, created_at, access_count FROM memory_knowledge LIMIT 100",
         ) {
             Ok(s) => s,
-            Err(e) => return CallToolResult::error(format!("Query failed: {e}")),
+            Err(e) => return CallToolResult::error_msg(format!("Query failed: {e}")),
         };
         let collected: Result<Vec<_>, _> = stmt
             .query_map([], |row| {
@@ -283,7 +284,7 @@ async fn handle_decay_score(
             .map(|rows| rows.filter_map(|r| r.ok()).collect());
         match collected {
             Ok(v) => v,
-            Err(e) => return CallToolResult::error(format!("Query failed: {e}")),
+            Err(e) => return CallToolResult::error_msg(format!("Query failed: {e}")),
         }
     } else {
         let ids: Vec<&str> = entry_ids.split(',').map(|s| s.trim()).collect();
@@ -349,7 +350,7 @@ async fn handle_distill(
     #[state] state: Arc<KnowledgeState>,
 ) -> CallToolResult {
     if text.is_empty() {
-        return CallToolResult::error("Missing required parameter: text");
+        return CallToolResult::error_msg("Missing required parameter: text");
     }
 
     let source = source.unwrap_or_default();
@@ -541,7 +542,7 @@ mod tests {
 
         assert_eq!(module.name(), "knowledge");
         let tools = module.tools();
-        let names: Vec<_> = tools.iter().map(|(def, _)| def.name.as_str()).collect();
+        let names: Vec<_> = tools.iter().map(|(def, _)| &*def.name).collect();
         assert!(names.contains(&"knowledge_search"));
         assert!(names.contains(&"entity_graph_query"));
         assert!(names.contains(&"decay_score"));
@@ -567,13 +568,12 @@ mod tests {
         let (_, handler) = handle_search_handler(state);
         let result = handler(serde_json::json!({"query": "Rust safety"}), test_ctx()).await;
 
-        assert!(!result.is_error, "search should succeed");
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(t.text.contains("Rust"), "should find Rust entry");
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err(), "search should succeed");
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("Rust"), "should find Rust entry");
     }
 
     #[tokio::test]
@@ -593,7 +593,7 @@ mod tests {
 
         let (_, handler) = handle_search_handler(state);
         let result = handler(serde_json::json!({"query": ""}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -613,13 +613,12 @@ mod tests {
 
         let (_, handler) = handle_search_handler(state);
         let result = handler(serde_json::json!({"query": "xyznonexistent"}), test_ctx()).await;
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(t.text.contains("No results"));
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("No results"));
     }
 
     #[tokio::test]
@@ -640,16 +639,15 @@ mod tests {
         let (_, handler) = handle_graph_query_handler(state);
         let result = handler(serde_json::json!({"entity": "Alice"}), test_ctx()).await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
-                let rels = parsed["direct_relationships"].as_array().unwrap();
-                assert_eq!(rels.len(), 2);
-                assert!(parsed.get("two_hop_paths").is_none());
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
+        let rels = parsed["direct_relationships"].as_array().unwrap();
+        assert_eq!(rels.len(), 2);
+        assert!(parsed.get("two_hop_paths").is_none());
     }
 
     #[tokio::test]
@@ -674,16 +672,15 @@ mod tests {
         )
         .await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
-                let paths = parsed["two_hop_paths"].as_array().unwrap();
-                assert!(!paths.is_empty());
-                assert!(t.text.contains("Paris"));
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
+        let paths = parsed["two_hop_paths"].as_array().unwrap();
+        assert!(!paths.is_empty());
+        assert!(t.text.contains("Paris"));
     }
 
     #[tokio::test]
@@ -703,7 +700,7 @@ mod tests {
 
         let (_, handler) = handle_graph_query_handler(state);
         let result = handler(serde_json::json!({"entity": ""}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 
     #[tokio::test]
@@ -724,15 +721,14 @@ mod tests {
         let (_, handler) = handle_decay_score_handler(state);
         let result = handler(serde_json::json!({"entry_ids": "e1, e2"}), test_ctx()).await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
-                assert_eq!(parsed.len(), 2);
-                assert!(parsed[0]["effective_score"].as_f64().unwrap() > 0.0);
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert!(parsed[0]["effective_score"].as_f64().unwrap() > 0.0);
     }
 
     #[tokio::test]
@@ -753,14 +749,13 @@ mod tests {
         let (_, handler) = handle_decay_score_handler(state);
         let result = handler(serde_json::json!({"entry_ids": "all"}), test_ctx()).await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
-                assert_eq!(parsed.len(), 2);
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
+        assert_eq!(parsed.len(), 2);
     }
 
     #[tokio::test]
@@ -781,13 +776,12 @@ mod tests {
         let (_, handler) = handle_decay_score_handler(state);
         let result = handler(serde_json::json!({"entry_ids": "nonexistent"}), test_ctx()).await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                assert!(t.text.contains("not found"));
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(t.text.contains("not found"));
     }
 
     #[tokio::test]
@@ -815,18 +809,17 @@ mod tests {
         )
         .await;
 
-        assert!(!result.is_error);
-        match &result.content[0] {
-            navra_mcp::protocol::Content::Text(t) => {
-                let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
-                assert_eq!(parsed["method"], "stub");
-                assert_eq!(parsed["source"], "test-doc");
-                let entries = parsed["entries"].as_array().unwrap();
-                assert_eq!(entries.len(), 2);
-                assert_eq!(entries[0]["kind"], "Fact");
-            }
-            _ => panic!("expected text content"),
-        }
+        assert!(!result.is_err());
+        let t = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
+        assert_eq!(parsed["method"], "stub");
+        assert_eq!(parsed["source"], "test-doc");
+        let entries = parsed["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["kind"], "Fact");
     }
 
     #[tokio::test]
@@ -846,6 +839,6 @@ mod tests {
 
         let (_, handler) = handle_distill_handler(state);
         let result = handler(serde_json::json!({"text": ""}), test_ctx()).await;
-        assert!(result.is_error);
+        assert!(result.is_err());
     }
 }

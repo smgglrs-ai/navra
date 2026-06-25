@@ -1,13 +1,11 @@
 //! Error types for the agent SDK.
 
-use navra_protocol::upstream::UpstreamError;
-
 /// Error type for agent operations.
 #[derive(Debug, thiserror::Error)]
 pub enum AgentError {
-    /// Error communicating with an MCP upstream server.
+    /// Error communicating with an MCP upstream server via rmcp.
     #[error("MCP upstream error: {0}")]
-    Upstream(#[from] UpstreamError),
+    Upstream(String),
 
     /// Error from the model backend (inference, connection, etc.).
     #[error("model error: {0}")]
@@ -28,4 +26,10 @@ pub enum AgentError {
     /// Catch-all for other errors.
     #[error("{0}")]
     Other(#[from] anyhow::Error),
+}
+
+impl From<rmcp::ServiceError> for AgentError {
+    fn from(e: rmcp::ServiceError) -> Self {
+        AgentError::Upstream(e.to_string())
+    }
 }

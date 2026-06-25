@@ -38,6 +38,7 @@ pub mod ner;
 pub mod pii_classifier;
 #[cfg(feature = "onnx")]
 pub mod privacy_filter;
+pub mod privacy_router;
 pub mod projection;
 pub mod pseudonym;
 mod regex;
@@ -53,6 +54,7 @@ pub use self::ner::{
 pub use self::privacy_filter::{
     default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
 };
+pub use self::privacy_router::{PrivacyRouter, PrivacyRouterBuilder, PrivacyRouterConfig};
 pub use self::projection::{ProjectionError, SparseProjectionMatrix};
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
 pub use self::regex::{
@@ -582,7 +584,7 @@ impl FilterPipeline {
 fn apply_action(
     action: &FilterAction,
     content: &str,
-    findings: &mut Vec<Finding>,
+    findings: &mut [Finding],
     pseudonym_map: &PseudonymMap,
 ) -> Result<String, String> {
     match action {

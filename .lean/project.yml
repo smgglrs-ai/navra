@@ -1,11 +1,11 @@
 name: navra
-version: "0.1.0"
+version: "0.2.0"
 description: Secure MCP gateway daemon for Linux desktops
 repository: git@github.com:smgglrs-ai/navra.git
 type: monorepo
 license: Apache-2.0
 item_prefix: NAVRA
-next_item_id: 148
+next_item_id: 169
 
 stack:
   language: rust

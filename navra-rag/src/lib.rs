@@ -17,8 +17,8 @@ pub use agentic::{
 };
 pub use cache::{CacheMetrics, QueryCache, QueryCacheConfig};
 pub use chunk::ChunkConfig;
-pub use rerank::{
-    load_reranker, ConfidenceGate, CrossEncoderReranker, GatedReranker, NoopReranker, Reranker,
-};
+pub use rerank::{load_reranker, ConfidenceGate, GatedReranker, NoopReranker, Reranker};
+#[cfg(feature = "onnx")]
+pub use rerank::{CrossEncoderError, CrossEncoderReranker};
 pub use store::{CascadeConfig, ChunkStore, SearchFilter};
 pub use tools::RagModule;

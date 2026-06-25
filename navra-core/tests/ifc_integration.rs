@@ -9,41 +9,21 @@
 use navra_core::auth::{AgentIdentity, CallContext};
 use navra_core::ifc::{DataLabel, TaintedWritePolicy};
 use navra_core::protocol::{
-    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ToolDefinition,
-    ToolInputSchema,
+    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ProtocolVersion,
+    ToolDefinition,
 };
 use navra_core::McpServer;
+use navra_protocol::compat::empty_input_schema;
+use navra_protocol::compat::CallToolResultExt;
 
 // --- Helpers ---
 
 fn read_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "file_read".to_string(),
-        description: Some("Reads a file".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    ToolDefinition::new("file_read", "Reads a file", empty_input_schema())
 }
 
 fn write_tool_def() -> ToolDefinition {
-    ToolDefinition {
-        name: "file_write".to_string(),
-        description: Some("Writes a file".to_string()),
-        input_schema: ToolInputSchema {
-            schema_type: "object".to_string(),
-            properties: None,
-            required: None,
-        },
-        annotations: None,
-        ttl_ms: None,
-        cache_scope: None,
-    }
+    ToolDefinition::new("file_write", "Writes a file", empty_input_schema())
 }
 
 fn test_agent() -> AgentIdentity {
@@ -56,14 +36,7 @@ fn test_ctx() -> CallContext {
 
 /// Initialize a session in the server so context_label persists across calls.
 fn init_session(server: &McpServer) -> String {
-    let params = InitializeParams {
-        protocol_version: "2025-03-26".to_string(),
-        capabilities: Default::default(),
-        client_info: ClientInfo {
-            name: "ifc-test".to_string(),
-            version: None,
-        },
-    };
+    let params = InitializeParams::new(Default::default(), ClientInfo::new("ifc-test", ""));
     let (_, session_id) = server.handle_initialize(params, test_agent()).unwrap();
     session_id
 }
@@ -108,7 +81,8 @@ fn build_ifc_server() -> McpServer {
 fn extract_var_id(result: &CallToolResult) -> Option<String> {
     for content in &result.content {
         match content {
-            Content::Text(t) => {
+            c if c.raw.as_text().is_some() => {
+                let t = c.raw.as_text().unwrap();
                 if let Some(line) = t.text.lines().find(|l| l.contains("_var: ")) {
                     let start = line.find("_var: ")? + 6;
                     let rest = &line[start..];
@@ -127,9 +101,10 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
 
 /// Check if a result is a permission/access denial (IFC or ACL).
 fn is_ifc_error(result: &CallToolResult) -> bool {
-    result.is_error
+    result.is_error == Some(true)
         && result.content.iter().any(|c| match c {
-            Content::Text(t) => {
+            c if c.raw.as_text().is_some() => {
+                let t = c.raw.as_text().unwrap();
                 t.text.contains("Permission denied")
                     || t.text.contains("Access denied")
                     || t.text.contains("Approval required")
@@ -152,28 +127,38 @@ async fn exfiltration_blocked_via_var_ref() {
     // Step 1: Read the poisoned file
     let read_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
         .await;
 
-    assert!(!read_result.is_error);
+    assert!(read_result.is_error != Some(true));
     let var_id = extract_var_id(&read_result).expect("Result should contain var ID");
 
     // Step 2: Attempt to write the tainted data via var:// reference
     let write_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
                     "path": "/tmp/exfil.txt",
                     "content": format!("var://{var_id}"),
-                }),
-                meta: None,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             ctx,
         )
@@ -197,15 +182,20 @@ async fn exfiltration_blocked_via_context_label() {
     // Step 1: Read — taints the context_label via auto-store + session update
     let read_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             session_ctx(&sid),
         )
         .await;
-    assert!(!read_result.is_error);
+    assert!(read_result.is_error != Some(true));
 
     // Step 2: Write with literal content (no var:// ref)
     // Load persisted context_label into the new CallContext
@@ -215,13 +205,18 @@ async fn exfiltration_blocked_via_context_label() {
 
     let write_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
-                    "path": "/tmp/exfil.txt",
-                    "content": "I'll just paste the secret here: SECRET_DATA_abc123",
-                }),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
+                        "path": "/tmp/exfil.txt",
+                        "content": "I'll just paste the secret here: SECRET_DATA_abc123",
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             write_ctx,
         )
@@ -244,10 +239,15 @@ async fn clean_write_allowed_after_tainted_read() {
     // Read 1: poisoned file → UNTRUSTED_SENSITIVE
     let _tainted_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
@@ -256,36 +256,34 @@ async fn clean_write_allowed_after_tainted_read() {
     // Use navra_var_list (gateway tool, excluded from is_external_read_tool
     // → result is TRUSTED_PUBLIC)
     let list_result = server
-        .handle_call_tool(
-            CallToolParams {
-                name: "navra_var_list".to_string(),
-                arguments: serde_json::json!({}),
-                meta: None,
-            },
-            ctx.clone(),
-        )
+        .handle_call_tool(CallToolParams::new("navra_var_list"), ctx.clone())
         .await;
-    assert!(!list_result.is_error);
+    assert!(list_result.is_error != Some(true));
     let clean_var_id = extract_var_id(&list_result).expect("var_list should produce a var ID");
 
     // Write referencing the clean (trusted) variable → ALLOWED
     // Per-value IFC checks the referenced variable's label, not session taint
     let write_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
                     "path": "/tmp/output.txt",
                     "content": format!("var://{clean_var_id}"),
-                }),
-                meta: None,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             ctx,
         )
         .await;
 
     assert!(
-        !write_result.is_error,
+        write_result.is_error != Some(true),
         "Clean var ref should be allowed, got: {:?}",
         write_result
     );
@@ -301,10 +299,15 @@ async fn var_inspect_taints_context() {
     // Read poisoned file — auto-stored as untrusted variable
     let read_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             session_ctx(&sid),
         )
@@ -314,15 +317,20 @@ async fn var_inspect_taints_context() {
     // Inspect the variable — this taints the context_label
     let inspect_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "navra_var_inspect".to_string(),
-                arguments: serde_json::json!({"id": var_id}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("navra_var_inspect");
+                p.arguments = Some(
+                    serde_json::json!({"id": var_id})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             session_ctx(&sid),
         )
         .await;
-    assert!(!inspect_result.is_error);
+    assert!(inspect_result.is_error != Some(true));
 
     // Write with literal content (no var:// ref) — should be blocked
     let mut write_ctx = session_ctx(&sid);
@@ -331,13 +339,18 @@ async fn var_inspect_taints_context() {
 
     let write_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
-                    "path": "/tmp/exfil.txt",
-                    "content": "exfiltrated data",
-                }),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
+                        "path": "/tmp/exfil.txt",
+                        "content": "exfiltrated data",
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             write_ctx,
         )
@@ -357,10 +370,15 @@ async fn auto_store_produces_var_id() {
 
     let result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/file.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx,
         )
@@ -386,20 +404,30 @@ async fn var_list_shows_stored_variables() {
     // Read two files to create two variables
     server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/file1.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file1.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
         .await;
     server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/file2.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/file2.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
@@ -407,21 +435,15 @@ async fn var_list_shows_stored_variables() {
 
     // List variables
     let list_result = server
-        .handle_call_tool(
-            CallToolParams {
-                name: "navra_var_list".to_string(),
-                arguments: serde_json::json!({}),
-                meta: None,
-            },
-            ctx,
-        )
+        .handle_call_tool(CallToolParams::new("navra_var_list"), ctx)
         .await;
-    assert!(!list_result.is_error);
+    assert!(list_result.is_error != Some(true));
 
     // Parse the JSON list — should have at least 2 user variables
     // (plus the var_list result itself gets auto-stored)
     match &list_result.content[0] {
-        Content::Text(t) => {
+        c if c.raw.as_text().is_some() => {
+            let t = c.raw.as_text().unwrap();
             let vars: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
             // At least 2 from file_read (the var_list call itself hasn't been stored yet)
             assert!(
@@ -449,10 +471,15 @@ async fn context_label_persists_across_calls() {
     // Read poisoned file — should taint context_label
     server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             session_ctx(&sid),
         )
@@ -476,10 +503,15 @@ async fn multiple_reads_mixed_labels_per_value() {
     // Read poisoned file
     let poisoned = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
@@ -489,10 +521,15 @@ async fn multiple_reads_mixed_labels_per_value() {
     // Read clean file (still auto-labeled UNTRUSTED by is_external_read_tool)
     let clean = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/clean.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/clean.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
@@ -502,13 +539,18 @@ async fn multiple_reads_mixed_labels_per_value() {
     // Write referencing tainted var → BLOCKED
     let write_tainted = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
                     "path": "/tmp/out1.txt",
                     "content": format!("var://{tainted_var}"),
-                }),
-                meta: None,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
@@ -522,13 +564,18 @@ async fn multiple_reads_mixed_labels_per_value() {
     // are auto-labeled UNTRUSTED_PUBLIC by is_external_read_tool)
     let write_clean = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_write".to_string(),
-                arguments: serde_json::json!({
+            {
+                let mut p = CallToolParams::new("file_write");
+                p.arguments = Some(
+                    serde_json::json!({
                     "path": "/tmp/out2.txt",
                     "content": format!("var://{clean_var}"),
-                }),
-                meta: None,
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                );
+                p
             },
             ctx,
         )
@@ -690,21 +737,28 @@ async fn llm_exfiltration_attempt_blocked() {
     // Step 1: Read the poisoned file
     let read_result = server
         .handle_call_tool(
-            CallToolParams {
-                name: "file_read".to_string(),
-                arguments: serde_json::json!({"path": "/tmp/poisoned.md"}),
-                meta: None,
+            {
+                let mut p = CallToolParams::new("file_read");
+                p.arguments = Some(
+                    serde_json::json!({"path": "/tmp/poisoned.md"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
             },
             ctx.clone(),
         )
         .await;
-    assert!(!read_result.is_error);
+    assert!(read_result.is_error != Some(true));
     let var_id = extract_var_id(&read_result).unwrap();
 
-    let file_content = match &read_result.content[0] {
-        Content::Text(t) => t.text.clone(),
-        _ => panic!("expected text content"),
-    };
+    let file_content = read_result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content")
+        .text
+        .clone();
 
     // Step 2: Ask the LLM what to do with this file content
     use navra_model::{
@@ -808,10 +862,7 @@ async fn llm_exfiltration_attempt_blocked() {
     let read_content_full: Vec<String> = read_result
         .content
         .iter()
-        .map(|c| match c {
-            Content::Text(t) => t.text.clone(),
-            _ => panic!("expected text content"),
-        })
+        .map(|c| c.raw.as_text().expect("expected text content").text.clone())
         .collect();
 
     eprintln!("\n{}", "=".repeat(70));
@@ -887,23 +938,30 @@ async fn llm_exfiltration_attempt_blocked() {
                 // Route through IFC: use var:// reference to the tainted data
                 let write_result = server
                     .handle_call_tool(
-                        CallToolParams {
-                            name: "file_write".to_string(),
-                            arguments: serde_json::json!({
+                        {
+                            let mut p = CallToolParams::new("file_write");
+                            p.arguments = Some(
+                                serde_json::json!({
                                 "path": target_path,
                                 "content": format!("var://{var_id}"),
-                            }),
-                            meta: None,
+                                })
+                                .as_object()
+                                .unwrap()
+                                .clone(),
+                            );
+                            p
                         },
                         ctx.clone(),
                     )
                     .await;
 
                 let ifc_blocked = is_ifc_error(&write_result);
-                let error_msg = match &write_result.content[0] {
-                    Content::Text(t) => t.text.clone(),
-                    _ => panic!("expected text content"),
-                };
+                let error_msg = write_result.content[0]
+                    .raw
+                    .as_text()
+                    .expect("expected text content")
+                    .text
+                    .clone();
                 eprintln!();
                 eprintln!("    Actual result:");
                 eprintln!("      Blocked: {}", ifc_blocked);

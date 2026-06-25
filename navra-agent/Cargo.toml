@@ -1,6 +1,8 @@
 [package]
 name = "navra-agent"
 description = "SDK for building AI agents that connect to MCP servers"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,8 +15,8 @@ path = "src/bin/agent.rs"
 [features]
 default = ["onnx", "native-tls"]
 onnx = ["navra-model/onnx", "navra-safety-hooks/onnx"]
-native-tls = ["navra-protocol/native-tls", "navra-model/native-tls"]
-rustls = ["navra-protocol/rustls", "navra-model/rustls"]
+native-tls = ["navra-model/native-tls"]
+rustls = ["navra-model/rustls"]
 container = ["rustls"]
 
 [dependencies]
@@ -23,6 +25,7 @@ navra-model = { path = "../navra-model", default-features = false }
 navra-auth = { path = "../navra-auth", default-features = false }
 navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }
+rmcp = { workspace = true }
 chrono = "0.4"
 regex-lite = "0.1"
 serde = { workspace = true }
@@ -41,3 +44,6 @@ async-trait = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
 serde_yaml = "0.9"
+
+[lints]
+workspace = true

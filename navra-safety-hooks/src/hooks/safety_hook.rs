@@ -9,10 +9,10 @@
 //! regex secret detection is irrelevant for content an agent is writing.
 
 use super::{Hook, HookDecision};
-use crate::safety::{is_pii_category, FilterContext, FilterPipeline};
+use crate::safety::{FilterContext, FilterPipeline};
 use navra_auth::auth::CallContext;
-use navra_protocol::label::Confidentiality;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::{CallToolResult, Content, RawContent};
 use std::collections::HashMap;
 
 use navra_auth::ifc::is_write_tool;
@@ -135,90 +135,67 @@ impl Hook for SafetyHook {
         };
 
         let mut filtered_content = Vec::new();
-        let mut has_pii = false;
         for content in &result.content {
-            match content {
-                Content::Text(text) => {
-                    let (processed, findings) = pipeline
+            match &content.raw {
+                RawContent::Text(text) => {
+                    let (processed, _findings) = pipeline
                         .process_outbound_with_findings(&text.text, &filter_ctx)
                         .await;
-                    // Track whether any finding is PII — even if redacted,
-                    // the label persists so downstream consumers know.
-                    if findings.iter().any(|f| is_pii_category(&f.category)) {
-                        has_pii = true;
-                    }
                     match processed {
                         Ok(text) => {
                             filtered_content.push(Content::text(text));
                         }
                         Err(reason) => {
-                            return HookDecision::ModifyResult(CallToolResult::error(reason));
+                            return HookDecision::ModifyResult(CallToolResult::error_msg(reason));
                         }
                     }
                 }
-                Content::Resource(ref res) => {
-                    if res
-                        .resource
-                        .mime_type
-                        .as_deref()
-                        .is_some_and(|m| m.starts_with("text/"))
-                    {
-                        if let Some(ref text) = res.resource.text {
-                            let (processed, findings) = pipeline
-                                .process_outbound_with_findings(text, &filter_ctx)
-                                .await;
-                            if findings.iter().any(|f| is_pii_category(&f.category)) {
-                                has_pii = true;
-                            }
-                            match processed {
-                                Ok(t) => filtered_content.push(Content::text(t)),
-                                Err(reason) => {
-                                    return HookDecision::ModifyResult(CallToolResult::error(
-                                        reason,
-                                    ));
+                RawContent::Resource(ref res) => {
+                    use navra_protocol::ResourceContent;
+                    match &res.resource {
+                        ResourceContent::TextResourceContents {
+                            mime_type, text, ..
+                        } => {
+                            if mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
+                                let (processed, _findings) = pipeline
+                                    .process_outbound_with_findings(text, &filter_ctx)
+                                    .await;
+                                match processed {
+                                    Ok(t) => filtered_content.push(Content::text(t)),
+                                    Err(reason) => {
+                                        return HookDecision::ModifyResult(
+                                            CallToolResult::error_msg(reason),
+                                        );
+                                    }
                                 }
+                            } else {
+                                filtered_content.push(content.clone());
                             }
-                        } else {
-                            filtered_content.push(content.clone());
                         }
-                    } else {
-                        return HookDecision::ModifyResult(CallToolResult::error(
-                            "Non-text resource content blocked by safety pipeline",
-                        ));
+                        ResourceContent::BlobResourceContents { .. } => {
+                            return HookDecision::ModifyResult(CallToolResult::error_msg(
+                                "Non-text resource content blocked by safety pipeline",
+                            ));
+                        }
                     }
                 }
                 _ => {
-                    return HookDecision::ModifyResult(CallToolResult::error(
+                    return HookDecision::ModifyResult(CallToolResult::error_msg(
                         "Non-text content blocked by safety pipeline (no binary filter configured)",
                     ));
                 }
             }
         }
 
-        // Elevate IFC label to at least Pii if PII was detected
-        let label = if has_pii && result.label.confidentiality < Confidentiality::Pii {
-            navra_protocol::label::DataLabel {
-                integrity: result.label.integrity,
-                confidentiality: Confidentiality::Pii,
-            }
-        } else {
-            result.label
-        };
+        let mut new_result = CallToolResult::success(filtered_content);
+        new_result.is_error = result.is_error;
 
-        let new_result = CallToolResult {
-            content: filtered_content,
-            is_error: result.is_error,
-            label,
-        };
-        // Return ModifyResult if content or label changed
-        if label != result.label {
-            return HookDecision::ModifyResult(new_result);
-        }
+        // Return ModifyResult if content changed
         if new_result.content.len() != result.content.len() {
             return HookDecision::ModifyResult(new_result);
         }
-        for (new, old) in new_result.content.iter().zip(result.content.iter()) {
-            if let (Content::Text(new_t), Content::Text(old_t)) = (new, old) {
+        for (new_c, old_c) in new_result.content.iter().zip(result.content.iter()) {
+            if let (RawContent::Text(new_t), RawContent::Text(old_t)) = (&new_c.raw, &old_c.raw) {
                 if new_t.text != old_t.text {
                     return HookDecision::ModifyResult(new_result);
                 }
@@ -232,7 +209,6 @@ impl Hook for SafetyHook {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
-    use navra_protocol::label::Confidentiality;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
@@ -249,9 +225,9 @@ mod tests {
 
         match decision {
             HookDecision::ModifyResult(r) => {
-                assert!(!r.is_error);
-                match &r.content[0] {
-                    Content::Text(t) => {
+                assert!(!r.is_err());
+                match &r.content[0].raw {
+                    RawContent::Text(t) => {
                         assert!(t.text.contains("[REDACTED:aws-key]"));
                         assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
                     }
@@ -273,7 +249,7 @@ mod tests {
 
         match decision {
             HookDecision::ModifyResult(r) => {
-                assert!(r.is_error);
+                assert!(r.is_err());
             }
             other => panic!("Expected ModifyResult (error), got {other:?}"),
         }
@@ -319,7 +295,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn safety_hook_elevates_pii_label() {
+    async fn safety_hook_redacts_pii() {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
 
         // Content contains an SSN (PII category)
@@ -331,19 +307,17 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 // Content should be redacted
-                match &r.content[0] {
-                    Content::Text(t) => assert!(t.text.contains("[REDACTED:ssn]")),
+                match &r.content[0].raw {
+                    RawContent::Text(t) => assert!(t.text.contains("[REDACTED:ssn]")),
                     _ => panic!("expected text content"),
                 }
-                // Label should be elevated to Pii
-                assert_eq!(r.label.confidentiality, Confidentiality::Pii);
             }
             other => panic!("Expected ModifyResult, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn safety_hook_elevates_email_to_pii() {
+    async fn safety_hook_redacts_email() {
         let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
 
         let result = CallToolResult::text("Contact: john@example.com".to_string());
@@ -352,28 +326,10 @@ mod tests {
             .await;
 
         match decision {
-            HookDecision::ModifyResult(r) => {
-                assert_eq!(r.label.confidentiality, Confidentiality::Pii);
-            }
-            other => panic!("Expected ModifyResult, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn safety_hook_does_not_downgrade_secret_for_pii() {
-        let hook = SafetyHook::single("dev", crate::safety::build_pipeline("standard"));
-
-        // Result already labeled Secret — PII should not downgrade it
-        let mut result = CallToolResult::text("SSN: 123-45-6789".to_string());
-        result.label.confidentiality = Confidentiality::Secret;
-        let decision = hook
-            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
-            .await;
-
-        match decision {
-            HookDecision::ModifyResult(r) => {
-                assert_eq!(r.label.confidentiality, Confidentiality::Secret);
-            }
+            HookDecision::ModifyResult(r) => match &r.content[0].raw {
+                RawContent::Text(t) => assert!(t.text.contains("[REDACTED:")),
+                _ => panic!("expected text content"),
+            },
             other => panic!("Expected ModifyResult, got {other:?}"),
         }
     }

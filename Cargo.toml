@@ -21,15 +21,18 @@ members = [
     "navra-macros",
     "navra-mcp",
     "navra-openapi",
+    "navra-model-server",
     "navra-server",
     "benchmarks",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 rust-version = "1.91"
+homepage = "https://github.com/smgglrs-ai/navra"
+repository = "https://github.com/smgglrs-ai/navra"
 
 [workspace.dependencies]
 async-trait = "0.1"
@@ -56,8 +59,22 @@ url = "2"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tonic = "0.12"
 prost = "0.13"
-schemars = "0.8"
+schemars = "1.0"
+rmcp = { version = "1.8", features = [
+    "server",
+    "client",
+    "macros",
+    "schemars",
+    "transport-io",
+    "transport-child-process",
+    "transport-streamable-http-server",
+    "transport-streamable-http-client-reqwest",
+    "reqwest-native-tls",
+] }
 rusqlite = { version = "0.32", features = ["bundled"] }
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [profile.container]
 inherits = "release"

@@ -1,0 +1,36 @@
+[package]
+name = "navra-model-server"
+description = "Standalone model inference server with hardware-aware resource management"
+homepage.workspace = true
+repository.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+default = ["onnx"]
+onnx = ["navra-model/onnx"]
+
+[dependencies]
+navra-model = { path = "../navra-model", default-features = false }
+navra-model-hub = { path = "../navra-model-hub" }
+navra-model-runtime = { path = "../navra-model-runtime", features = ["direct", "podman"] }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+schemars = { workspace = true }
+anyhow = { workspace = true }
+dirs = "6"
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros"] }
+reqwest = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

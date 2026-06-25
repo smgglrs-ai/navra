@@ -1,0 +1,28 @@
+id: NAVRA-159
+title: "Cross-framework flow orchestration via MCP/OpenAI"
+status: backlog
+priority: low
+effort: 5-10d
+tags: [flows, interop]
+description: |
+  Extend navra-flow to orchestrate agents that speak MCP or
+  OpenAI-compatible APIs regardless of their internal framework
+  (LangGraph, CrewAI, OpenAI Agents SDK, etc.).
+
+  The flow engine already dispatches to navra-agent via MCP.
+  This item generalizes it so a flow task's `specialist` can
+  point to any MCP or OpenAI-compat endpoint, not just a
+  navra-agent instance.
+
+  Steps:
+  1. Add `endpoint` field to flow task spec (MCP URL or OpenAI URL)
+  2. Implement MCP-based and OpenAI-based task dispatchers
+  3. IFC labels still propagate through the flow graph
+  4. Test with a LangGraph agent behind an MCP server
+  5. Test with a vanilla OpenAI-compat agent
+  6. Document in flow YAML reference
+acceptance:
+  - Flow task can target an external MCP endpoint
+  - Flow task can target an OpenAI-compat endpoint
+  - IFC enforcement maintained across framework boundaries
+  - Example flow mixing navra-agent + external agents

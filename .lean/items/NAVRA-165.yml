@@ -1,0 +1,46 @@
+id: NAVRA-165
+title: "navra run: self-contained agent execution"
+status: done
+priority: high
+effort: 3-5d
+tags: [cli, agents, workflows]
+depends_on: [NAVRA-161, NAVRA-164]
+description: |
+  Make `navra run` a self-contained command that spins up an
+  ephemeral gateway, connects to the model server, runs the
+  task, and exits.
+
+  Usage:
+    navra run "ad-hoc prompt"                    # single agent, ad-hoc
+    navra run <instance/workflow>                # named workflow
+    navra run tech-writer/white-paper --input topic="MCP security"
+
+  Behavior:
+  1. Load agent instance config (or default config for ad-hoc)
+  2. Connect to model server
+     - If not running and no daemon: auto-start model server
+       with a log message, keep running for subsequent runs
+     - If daemon running: route through daemon
+  3. Spin up ephemeral gateway in-process
+     - Resolve credentials from keyring for required MCP servers
+     - Launch MCP servers with injected credentials
+     - Apply per-step permissions from instance config
+  4. Run agent tool loop (existing logic)
+  5. Tear down ephemeral gateway, exit
+  6. Model server stays running
+
+  For workflows: read flow definition, execute steps
+  sequentially. Each step gets its own ephemeral gateway with
+  its own MCP servers, credentials, and permissions.
+
+  Workflows are referenced by name (instance/workflow-name),
+  not by file path. `navra run --file flow.yaml` supported
+  for standalone workflow files during development.
+acceptance:
+  - navra run "prompt" works without navra serve running
+  - navra run instance/workflow executes named workflow
+  - Auto-starts model server if not running
+  - Ephemeral gateway per run (or per workflow step)
+  - Credentials resolved from keyring and injected into MCP servers
+  - Per-step permissions enforced
+  - Workflow steps get isolated gateways

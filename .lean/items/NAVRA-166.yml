@@ -1,0 +1,43 @@
+id: NAVRA-166
+title: "Credential brokering: daemon injects credentials into MCP servers"
+status: done
+priority: high
+effort: 3-5d
+tags: [credentials, security, mcp, daemon]
+depends_on: [NAVRA-161, NAVRA-164]
+description: |
+  The daemon (or ephemeral gateway in navra run) launches MCP
+  servers on behalf of agents and injects credentials from the
+  OS keyring. MCP servers never ship with secrets and never
+  have credentials in their config files on disk.
+
+  Flow:
+  1. Agent instance config declares credential labels per MCP server
+  2. At run time, daemon resolves labels via existing
+     MappedCredentialStore → keyring::Entry → OS keyring
+  3. Credentials injected into MCP server process via
+     environment variables or stdin (provider-specific)
+  4. MCP server runs with credentials for the duration of the
+     step/session
+  5. On teardown, MCP server process exits, credentials not
+     persisted anywhere
+
+  Uses existing navra-auth infrastructure:
+  - CredentialStore trait and MappedCredentialStore
+  - keyring crate with sync-secret-service feature
+  - Secret type with zeroize-on-drop
+
+  Same credential label reusable across multiple agent instances
+  (e.g., "gmail-work" used by both work-assistant and day-trader).
+
+  Security properties:
+  - Credentials never written to MCP server config files
+  - Credentials zeroized in navra process memory after injection
+  - MCP server isolation (process boundary at minimum,
+    sandbox when navra wrap --sandbox is used)
+acceptance:
+  - MCP servers receive credentials at launch time, not from config files
+  - Credentials resolved from OS keyring via existing navra-auth
+  - Zeroized after injection
+  - Same credential shared across agent instances works
+  - Works in both daemon mode and navra run ephemeral mode

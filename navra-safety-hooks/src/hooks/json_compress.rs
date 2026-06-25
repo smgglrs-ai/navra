@@ -8,7 +8,8 @@
 use super::{Hook, HookDecision};
 use async_trait::async_trait;
 use navra_auth::auth::CallContext;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::{CallToolResult, Content, RawContent};
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -61,7 +62,7 @@ impl Hook for JsonCompressHook {
         result: &CallToolResult,
         _ctx: &CallContext,
     ) -> HookDecision {
-        if result.is_error {
+        if result.is_err() {
             return HookDecision::Continue;
         }
 
@@ -71,7 +72,10 @@ impl Hook for JsonCompressHook {
 
         for content in &result.content {
             match content {
-                Content::Text(t) => {
+                Content {
+                    raw: RawContent::Text(t),
+                    ..
+                } => {
                     let Ok(mut json) = serde_json::from_str::<Value>(&t.text) else {
                         compressed_content.push(content.clone());
                         continue;
@@ -115,11 +119,9 @@ impl Hook for JsonCompressHook {
             annotations.join("; ")
         )));
 
-        HookDecision::ModifyResult(CallToolResult {
-            content: compressed_content,
-            is_error: result.is_error,
-            label: result.label,
-        })
+        let mut new_result = CallToolResult::success(compressed_content);
+        new_result.is_error = result.is_error;
+        HookDecision::ModifyResult(new_result)
     }
 }
 
@@ -235,11 +237,7 @@ mod tests {
     }
 
     fn make_result(text: &str) -> CallToolResult {
-        CallToolResult {
-            content: vec![Content::text(text.to_string())],
-            is_error: false,
-            label: navra_protocol::label::DataLabel::TRUSTED_PUBLIC,
-        }
+        CallToolResult::text(text.to_string())
     }
 
     // --- Key stripping ---
@@ -390,7 +388,7 @@ mod tests {
     async fn error_results_skipped() {
         let hook = JsonCompressHook::new(JsonCompressConfig::default());
         let mut result = make_result(r#"{"_links": {"self": "/x"}, "id": 1}"#);
-        result.is_error = true;
+        result.is_error = Some(true);
         let decision = hook
             .post_tool_use("api_call", &json!({}), &result, &test_ctx())
             .await;
@@ -409,7 +407,10 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content::Text(t) => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Value = serde_json::from_str(text).unwrap();
@@ -418,7 +419,10 @@ mod tests {
                 assert!(parsed.get("pagination").is_none());
                 // Check annotation
                 let annotation = match &r.content[1] {
-                    Content::Text(t) => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("json_compress"));
@@ -448,13 +452,19 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content::Text(t) => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Vec<Value> = serde_json::from_str(text).unwrap();
                 assert_eq!(parsed.len(), 3);
                 let annotation = match &r.content[1] {
-                    Content::Text(t) => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("3/25 elements kept"));
@@ -511,7 +521,10 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 let text = match &r.content[0] {
-                    Content::Text(t) => &t.text,
+                    Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    } => &t.text,
                     _ => panic!("expected text"),
                 };
                 let parsed: Value = serde_json::from_str(text).unwrap();
@@ -526,7 +539,10 @@ mod tests {
                 assert!(items[0].get("metadata").is_none());
 
                 let annotation = match r.content.last() {
-                    Some(Content::Text(t)) => &t.text,
+                    Some(Content {
+                        raw: RawContent::Text(t),
+                        ..
+                    }) => &t.text,
                     _ => panic!("expected text"),
                 };
                 assert!(annotation.contains("json_compress"));

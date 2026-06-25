@@ -5,17 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
-      - 'docs-site/**'
-      - 'CONFIG.md'
-      - 'WHY-NAVRA.md'
-      - 'CONTRIBUTING.md'
-      - 'TESTING.md'
-      - 'SECURITY.md'
-      - 'CODE_OF_CONDUCT.md'
-      - 'examples/config.toml'
       - 'docs/**'
-      - 'navra-*/README.md'
-      - 'formal/**'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
@@ -43,28 +33,27 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install mdBook
-        run: cargo install mdbook mdbook-mermaid
+      - name: Setup Zola
+        uses: taiki-e/install-action@v2
+        with:
+          tool: zola@0.22.1
 
       # Build Astro marketing site
       - name: Build marketing site
         working-directory: site
         run: npm ci && npm run build
 
-      # Build mdBook docs
+      # Build Zola docs
       - name: Build documentation
-        working-directory: docs-site
-        run: mdbook build
+        working-directory: docs
+        run: zola build --base-url "https://navra.smgglrs.ai/docs"
 
       # Merge: marketing site at / , docs at /docs/
       - name: Merge outputs
         run: |
           mkdir -p _site
           cp -r site/dist/* _site/
-          cp -r docs-site/book _site/docs
+          cp -r docs/public _site/docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

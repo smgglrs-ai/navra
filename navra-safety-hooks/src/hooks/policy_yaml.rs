@@ -24,6 +24,7 @@ pub struct PolicyFile {
 
 /// A named policy containing one or more rules.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Policy {
     pub name: String,
     #[serde(default)]
@@ -168,14 +169,10 @@ fn matches_pre(rule: &CompiledRule, tool_name: &str, arguments: &serde_json::Val
 
 /// Extract text content from a CallToolResult for pattern matching.
 fn result_text(result: &CallToolResult) -> String {
-    use navra_protocol::Content;
     result
         .content
         .iter()
-        .filter_map(|c| match c {
-            Content::Text(t) => Some(t.text.as_str()),
-            _ => None,
-        })
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -262,6 +259,7 @@ impl Hook for PolicyYamlHook {
                 Action::Escalate => return HookDecision::Pending(rule.message.clone()),
                 Action::ModifyResult => {
                     let replacement = rule.replacement.clone();
+                    use navra_protocol::compat::CallToolResultExt;
                     let redacted = CallToolResult::text(replacement);
                     return HookDecision::ModifyResult(redacted);
                 }
@@ -276,6 +274,7 @@ impl Hook for PolicyYamlHook {
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResultExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("tester", "dev"), "test-session")
@@ -368,7 +367,10 @@ policies:
         match decision {
             HookDecision::ModifyResult(modified) => {
                 let text = match &modified.content[0] {
-                    navra_protocol::Content::Text(t) => t.text.as_str(),
+                    navra_protocol::Content {
+                        raw: navra_protocol::RawContent::Text(t),
+                        ..
+                    } => t.text.as_str(),
                     _ => panic!("Expected text content"),
                 };
                 assert_eq!(text, "[REDACTED]");

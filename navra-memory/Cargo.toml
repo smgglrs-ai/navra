@@ -1,22 +1,25 @@
 [package]
 name = "navra-memory"
 description = "Persistent agent memory: working memory (conversation turns) and knowledge store (FTS5)"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [features]
-default = []
+default = ["onnx"]
+onnx = ["navra-core/onnx", "navra-model/onnx", "navra-mcp/onnx", "navra-rag?/onnx"]
 rag = ["navra-rag"]
 
 [dependencies]
-navra-mcp = { path = "../navra-mcp" }
+navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
-navra-core = { path = "../navra-core" }
-navra-model = { path = "../navra-model" }
+navra-core = { path = "../navra-core", default-features = false }
+navra-model = { path = "../navra-model", default-features = false }
 navra-macros = { path = "../navra-macros" }
-navra-rag = { path = "../navra-rag", optional = true }
+navra-rag = { path = "../navra-rag", default-features = false, optional = true }
 chrono = "0.4"
 rusqlite = { workspace = true }
 serde = { workspace = true }
@@ -30,3 +33,6 @@ uuid = { workspace = true }
 [dev-dependencies]
 serde_yaml = "0.9"
 tempfile = "3"
+
+[lints]
+workspace = true

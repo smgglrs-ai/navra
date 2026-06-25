@@ -22,6 +22,7 @@ pub struct AnthropicBackend {
     api_key: Option<String>,
     locality: Locality,
     is_vertex: bool,
+    context_window: Option<u32>,
 }
 
 impl AnthropicBackend {
@@ -43,7 +44,14 @@ impl AnthropicBackend {
             api_key,
             locality,
             is_vertex,
+            context_window: None,
         }
+    }
+
+    /// Set the context window size from model card metadata.
+    pub fn with_context_window(mut self, tokens: u32) -> Self {
+        self.context_window = Some(tokens);
+        self
     }
 
     /// Returns the locality of this backend.
@@ -299,6 +307,10 @@ impl ModelBackend for AnthropicBackend {
             let chat_resp = Self::parse_response(&json)?;
             Ok(crate::chat_to_responses(&model_name, &chat_resp))
         })
+    }
+
+    fn context_window(&self) -> Option<u32> {
+        self.context_window
     }
 }
 

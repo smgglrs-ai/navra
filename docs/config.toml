@@ -1,0 +1,84 @@
+base_url = "https://navra.smgglrs.ai"
+title = "navra"
+description = "Secure MCP gateway daemon for Linux desktops"
+theme = "adidoks"
+
+compile_sass = true
+build_search_index = true
+generate_feeds = false
+minify_html = false
+
+taxonomies = [
+    { name = "authors" },
+]
+
+[search]
+include_title = true
+include_description = true
+include_content = true
+
+[markdown]
+
+[markdown.highlighting]
+theme = "catppuccin-frappe"
+
+[extra]
+title_separator = "|"
+title_addition = "Secure MCP Gateway"
+timeformat = "%B %e, %Y"
+timezone = "UTC"
+
+is_netlify = false
+math = false
+edit_page = true
+docs_repo = "https://github.com/smgglrs-ai/navra"
+docs_branch = "main"
+docs_path = "docs/content"
+
+author_name = "Smgglrs AI"
+logo_path = "logo.svg"
+
+theme_color = "#3D5A80"
+ganalytics = ""
+
+[extra.open]
+enable = false
+image = "logo.svg"
+twitter_site = ""
+twitter_creator = ""
+facebook_publisher = ""
+facebook_author = ""
+og_locale = "en_US"
+audio = ""
+videos = ""
+locale = "en_US"
+
+[extra.schema]
+type = "Organization"
+logo = "logo.svg"
+section = "Technology"
+site_links_search_box = false
+twitter = ""
+linked_in = ""
+github = "https://github.com/smgglrs-ai/navra"
+
+[extra.footer]
+info = "Apache-2.0 Licensed"
+
+[[extra.menu.main]]
+name = "Docs"
+section = "docs"
+url = "/docs/getting-started/"
+weight = 10
+
+[[extra.menu.main]]
+name = "Learn"
+section = "docs"
+url = "/docs/learn/"
+weight = 20
+
+
+[[extra.menu.social]]
+name = "GitHub"
+pre = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>'
+url = "https://github.com/smgglrs-ai/navra"

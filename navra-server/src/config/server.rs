@@ -67,10 +67,12 @@ pub struct ServerConfig {
     /// WebSocket ping interval in seconds (default: 30).
     /// Server sends ping frames at this interval; closes after 3 missed pongs.
     #[serde(default = "default_ws_ping_interval")]
+    #[allow(dead_code)]
     pub ws_ping_interval_secs: u64,
     /// WebSocket idle timeout in seconds (default: 600 = 10 minutes).
     /// Connections with no activity are closed after this duration.
     #[serde(default = "default_ws_idle_timeout")]
+    #[allow(dead_code)]
     pub ws_idle_timeout_secs: u64,
     /// Watch the config file for changes and hot-reload.
     #[serde(default)]

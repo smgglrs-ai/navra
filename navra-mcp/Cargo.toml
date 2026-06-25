@@ -1,6 +1,8 @@
 [package]
 name = "navra-mcp"
 description = "Module trait and type definitions for navra MCP tool crates"
+homepage.workspace = true
+repository.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,6 +11,13 @@ rust-version.workspace = true
 [dependencies]
 navra-protocol = { path = "../navra-protocol" }
 navra-auth = { path = "../navra-auth", default-features = false }
-navra-model = { path = "../navra-model" }
-navra-safety-hooks = { path = "../navra-safety-hooks" }
+navra-model = { path = "../navra-model", default-features = false }
+navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 serde_json = { workspace = true }
+
+[features]
+default = ["onnx"]
+onnx = ["navra-model/onnx", "navra-safety-hooks/onnx"]
+
+[lints]
+workspace = true
