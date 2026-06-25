@@ -227,6 +227,7 @@ pub struct InstalledBundle {
     pub version: String,
     pub path: PathBuf,
     pub workflows: Vec<String>,
+    #[allow(dead_code)]
     pub bundle: AgentBundle,
 }
 
@@ -237,6 +238,7 @@ fn agent_bundles_dir() -> PathBuf {
 }
 
 /// Check if a workflow is visible on a given surface.
+#[allow(dead_code)]
 pub fn workflow_visible(entry: &WorkflowEntry, surface: &str) -> bool {
     entry.expose.iter().any(|e| e == surface)
 }
@@ -247,6 +249,7 @@ pub fn workflow_visible(entry: &WorkflowEntry, surface: &str) -> bool {
 /// of what the caller is allowed to do and what the callee step declares.
 /// This implements capability-based security: you can only delegate what
 /// you have.
+#[allow(dead_code)]
 pub fn intersect_permissions(
     caller: &HashMap<String, Vec<String>>,
     callee_step: &HashMap<String, Vec<String>>,
@@ -311,6 +314,7 @@ pub struct PermissionDiff {
     pub removed: HashMap<String, Vec<String>>,
 }
 
+#[allow(dead_code)]
 impl PermissionDiff {
     pub fn has_additions(&self) -> bool {
         !self.added.is_empty()

@@ -19,7 +19,7 @@ pub(crate) fn default_pii_model_dir(name: &str) -> std::path::PathBuf {
 use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
-pub use agents::{AgentConfig, NetworkPolicy, OpenApiAuthConfig, UpstreamConfig};
+pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
 pub use libraries::LibraryConfig;
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
@@ -67,6 +67,7 @@ pub struct Config {
     /// loading models in-process. When absent, models are loaded
     /// directly (backward-compatible behavior).
     #[serde(default)]
+    #[allow(dead_code)]
     pub model_server: Option<String>,
     /// Path to cognitive core directory (personas, heuristics, directives).
     #[serde(default)]
@@ -110,6 +111,7 @@ pub struct Config {
     /// Enterprise-managed authorization (MCP extension).
     /// Configures ID-JAG authenticator for corporate IdP integration.
     #[serde(default)]
+    #[allow(dead_code)]
     pub enterprise_auth: Option<navra_core::auth::idjag::IdJagConfig>,
     /// Operator library directories for conf.d-style config composition.
     #[serde(default)]
@@ -240,14 +242,13 @@ impl Config {
             .pii_model_path
             .as_ref()
             .map(|p| {
-                let expanded = if p.starts_with("~/") {
+                if p.starts_with("~/") {
                     dirs::home_dir()
                         .map(|h| h.join(&p[2..]))
                         .unwrap_or_else(|| std::path::PathBuf::from(p))
                 } else {
                     std::path::PathBuf::from(p)
-                };
-                expanded
+                }
             })
             .unwrap_or_else(|| default_pii_model_dir("pii-ner"))
     }

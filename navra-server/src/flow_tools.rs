@@ -307,6 +307,7 @@ impl FlowRegistry {
 /// Queries team state for timing/token data and the blackbox sqlite
 /// for tool call counts. Returns a markdown block to append to the
 /// flow's final output.
+#[allow(clippy::too_many_arguments)]
 pub fn build_run_summary(
     team_reg: &crate::team_tools::TeamRegistry,
     team_id: &str,
@@ -727,6 +728,7 @@ pub struct FlowContext {
 }
 
 /// Record completed/failed task results to the audit log.
+#[allow(clippy::too_many_arguments)]
 fn record_task_results_to_audit(
     audit_log: &Option<std::sync::Arc<navra_memory::AuditLog>>,
     team_reg: &crate::team_tools::TeamRegistry,
@@ -847,6 +849,7 @@ fn compute_file_tree(docs_root: &Option<String>) -> String {
 
 /// Poll until all given task IDs complete or fail, with a timeout check.
 /// Returns updated completed and failed sets.
+#[allow(clippy::too_many_arguments)]
 async fn poll_tasks_until_done(
     team_reg: &std::sync::Arc<crate::team_tools::TeamRegistry>,
     flow_reg: &std::sync::Arc<FlowRegistry>,
@@ -906,6 +909,7 @@ async fn poll_tasks_until_done(
 
 /// Spawn ready tasks as teammates and wait for them to complete.
 /// Returns the IDs of tasks that were spawned.
+#[allow(clippy::too_many_arguments)]
 async fn spawn_and_track_tasks(
     ctx: &FlowContext,
     team_id: &str,
@@ -934,15 +938,14 @@ async fn spawn_and_track_tasks(
 
         let ops = task
             .operations
-            .as_ref()
-            .map(|o| o.clone())
+            .clone()
             .unwrap_or_else(|| {
                 crate::team_tools::DEFAULT_OPERATIONS
                     .iter()
                     .map(|s| s.to_string())
                     .collect()
             });
-        let tools = task.tools.as_ref().map(|t| t.clone()).unwrap_or_else(|| {
+        let tools = task.tools.clone().unwrap_or_else(|| {
             crate::team_tools::DEFAULT_TOOLS
                 .iter()
                 .map(|s| s.to_string())
@@ -1046,7 +1049,7 @@ async fn spawn_and_track_tasks(
                     &project_file_tree[..end]
                 }
             } else {
-                &project_file_tree
+                project_file_tree
             };
             message.push_str(&format!(
                 "\n\n--- Project files (verified, use file_tree for full list) ---\n{}\n\nUse file_read to read files. Use file_tree if you need the full listing.",
@@ -1481,8 +1484,8 @@ async fn run_dag_execution(
                 match navra_agent::Agent::builder()
                     .endpoint(&mcp_url)
                     .await
-                    .and_then(|b| {
-                        Ok(b.model(navra_model::OpenAiBackend::new(
+                    .map(|b| {
+                        b.model(navra_model::OpenAiBackend::new(
                             "http://localhost:11434/v1",
                             &correction_model,
                             None,
@@ -1493,7 +1496,7 @@ async fn run_dag_execution(
                         )
                         .max_iterations(0)
                         .max_tokens(8192)
-                        .temperature(0.0))
+                        .temperature(0.0)
                     }) {
                     Ok(builder) => {
                         if let Ok(mut agent) = builder.build().await {
@@ -2313,9 +2316,9 @@ pub async fn handle_flow_resume(
     let already_done: std::collections::HashMap<String, String> = completed_results
         .iter()
         .filter(|r| r.status == "done")
-        .filter_map(|r| {
+        .map(|r| {
             let output = r.output.clone().unwrap_or_default();
-            Some((r.task_id.clone(), output))
+            (r.task_id.clone(), output)
         })
         .collect();
 

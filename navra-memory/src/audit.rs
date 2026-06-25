@@ -489,6 +489,7 @@ impl AuditLog {
     }
 
     /// Record a flow task result (upsert by flow_id + task_id).
+    #[allow(clippy::too_many_arguments)]
     pub fn record_flow_task(
         &self,
         flow_id: &str,

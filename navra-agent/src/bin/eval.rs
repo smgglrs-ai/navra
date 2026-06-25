@@ -25,6 +25,7 @@ struct EvalConfig {
     projects: Vec<(String, PathBuf)>,
     runs_per_project: usize,
     output_dir: PathBuf,
+    #[allow(dead_code)]
     poll_interval: Duration,
 }
 
@@ -117,6 +118,7 @@ async fn start_flow(
     Ok(text)
 }
 
+#[allow(dead_code)]
 async fn poll_flow(
     client: &mut McpClient,
     flow_id: &str,

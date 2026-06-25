@@ -57,6 +57,7 @@ pub struct TriggerRegistry {
 }
 
 struct ActiveTrigger {
+    #[allow(dead_code)]
     config: TriggerConfig,
     handle: tokio::task::JoinHandle<()>,
 }
@@ -206,6 +207,7 @@ impl TriggerRegistry {
     }
 
     /// Shut down all trigger background tasks.
+    #[allow(dead_code)]
     pub fn shutdown(&self) {
         for trigger in &self.triggers {
             trigger.handle.abort();
@@ -519,7 +521,7 @@ async fn run_file_watch_trigger(
 
     // Compile glob pattern
     let glob_pattern = pattern
-        .map(|p| glob::Pattern::new(p))
+        .map(glob::Pattern::new)
         .transpose()
         .map_err(|e| anyhow::anyhow!("Invalid glob pattern: {e}"))?;
 

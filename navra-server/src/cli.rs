@@ -741,9 +741,8 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
         config.push_str("# [[triggers]]\n");
         config.push_str("# type = \"schedule\"\n");
         config.push_str("# cron = \"0 9 * * 1-5\"\n");
-        for (wf_name, _) in &bundle.workflows {
+        if let Some(wf_name) = bundle.workflows.keys().next() {
             config.push_str(&format!("# workflow = \"{wf_name}\"\n"));
-            break;
         }
     }
 
@@ -842,12 +841,12 @@ pub(crate) fn agent_list() -> anyhow::Result<()> {
     }
 
     println!(
-        "{:<20} {:<10} {:<15} {:<6} {}",
-        "NAME", "VERSION", "PUBLISHER", "SIGNED", "OCI REF"
+        "{:<20} {:<10} {:<15} {:<6} OCI REF",
+        "NAME", "VERSION", "PUBLISHER", "SIGNED"
     );
     println!(
-        "{:<20} {:<10} {:<15} {:<6} {}",
-        "----", "-------", "---------", "------", "-------"
+        "{:<20} {:<10} {:<15} {:<6} -------",
+        "----", "-------", "---------", "------"
     );
     for agent in &agents {
         println!(

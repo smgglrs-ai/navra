@@ -32,6 +32,7 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
 /// Returns the best-matching domain if cosine similarity exceeds the threshold,
 /// otherwise returns `None` (caller falls back to heuristic).
 /// Runs at discovery time only — results are cached.
+#[allow(dead_code)]
 async fn classify_domain_semantic(
     tool: &ToolDefinition,
     embed_backend: &dyn navra_model::ModelBackend,
@@ -72,6 +73,7 @@ async fn classify_domain_semantic(
     best_domain
 }
 
+#[allow(dead_code)]
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
@@ -95,6 +97,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 /// Pre-compute embeddings for all domain exemplars.
 ///
 /// Returns empty vec if embedding fails (graceful degradation).
+#[allow(dead_code)]
 async fn embed_domain_exemplars(
     backend: &dyn navra_model::ModelBackend,
 ) -> Vec<(navra_auth::permissions::Domain, Vec<f32>)> {

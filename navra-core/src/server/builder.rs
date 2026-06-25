@@ -523,9 +523,8 @@ impl McpServerBuilder {
                                 Some(stored) => {
                                     // Taint the session context label
                                     sess.update_context_label(&ctx.session_id, stored.label);
-                                    let mut result = CallToolResult::success(stored.content);
                                     // label tracking placeholder: stored.label not propagated via CallToolResult
-                                    result
+                                    CallToolResult::success(stored.content)
                                 }
                                 None => CallToolResult::error_msg(format!(
                                     "Variable not found: {var_id}"

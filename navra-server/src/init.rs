@@ -24,6 +24,7 @@ struct InitAnswers {
 /// Curated MCP server catalog entry.
 struct McpServerEntry {
     name: &'static str,
+    #[allow(dead_code)]
     description: &'static str,
     command: &'static [&'static str],
     project_types: &'static [&'static str],
@@ -64,6 +65,7 @@ const MCP_CATALOG: &[McpServerEntry] = &[
 ];
 
 /// Entry point for `navra init`.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_init(
     quiet: bool,
     agent_name: Option<String>,
@@ -154,6 +156,7 @@ pub async fn run_init(
 }
 
 /// Build answers from CLI flags (no prompts).
+#[allow(clippy::too_many_arguments)]
 fn quiet_flow(
     agent_name: Option<String>,
     safety: String,

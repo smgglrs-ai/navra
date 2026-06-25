@@ -360,7 +360,7 @@ pub async fn handle_memory_query(
         Ok(entries) => {
             let mut results: Vec<&navra_memory::MemoryEntry> = entries
                 .iter()
-                .filter(|e| kind_filter.as_ref().map_or(true, |k| e.memory_type == *k))
+                .filter(|e| kind_filter.as_ref().is_none_or(|k| e.memory_type == *k))
                 .collect();
             results.truncate(limit);
 
@@ -534,7 +534,7 @@ pub async fn handle_memory_purge_pii(
     let entries: Vec<_> = if query_filter.is_some() {
         entries
             .into_iter()
-            .filter(|e| kind_filter.as_ref().map_or(true, |k| e.memory_type == *k))
+            .filter(|e| kind_filter.as_ref().is_none_or(|k| e.memory_type == *k))
             .collect()
     } else {
         entries
@@ -674,12 +674,9 @@ pub async fn handle_memory_forget_by_content(
     let mut deleted = 0usize;
     let mut chunks_deleted = 0usize;
     for entry in &entries {
-        match store.delete(&entry.id) {
-            Ok(true) => {
-                deleted += 1;
-                chunks_deleted += cascade_delete_source(&chunk_store, &entry.id);
-            }
-            _ => {}
+        if let Ok(true) = store.delete(&entry.id) {
+            deleted += 1;
+            chunks_deleted += cascade_delete_source(&chunk_store, &entry.id);
         }
     }
 

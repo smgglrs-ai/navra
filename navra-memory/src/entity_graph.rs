@@ -61,6 +61,7 @@ impl EntityGraph {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add(
         &self,
         entity1: &str,

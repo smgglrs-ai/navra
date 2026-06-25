@@ -24,6 +24,7 @@ pub trait ToolFilter: Send + Sync {
 ///
 /// Prevents agents from even discovering write capabilities once their
 /// context has been contaminated with untrusted data.
+#[allow(dead_code)]
 pub struct IFCToolFilter;
 
 impl ToolFilter for IFCToolFilter {
@@ -109,7 +110,7 @@ impl ToolUsageTracker {
         }
     }
 
-    pub fn unused_tools(&self, agent_name: &str) -> std::collections::HashSet<String> {
+    pub fn unused_tools(&self, _agent_name: &str) -> std::collections::HashSet<String> {
         // Empty set = no pruning (new agent or not enough history)
         std::collections::HashSet::new()
     }
@@ -1336,8 +1337,7 @@ impl McpServer {
                         .flat_map(|p| {
                             p.definition
                                 .arguments
-                                .as_ref()
-                                .map(|a| a.as_slice())
+                                .as_deref()
                                 .unwrap_or_default()
                                 .iter()
                         })
@@ -1631,10 +1631,9 @@ impl McpServer {
 /// with restricted read clearance don't see them.
 fn resource_confidentiality(uri: &str) -> crate::ifc::Confidentiality {
     use crate::ifc::Confidentiality;
-    if uri.starts_with("navra://audit") {
-        Confidentiality::Sensitive
-    } else if uri.starts_with("navra://proc")
-        && (uri.contains("/taint") || uri.contains("/capabilities"))
+    if uri.starts_with("navra://audit")
+        || (uri.starts_with("navra://proc")
+            && (uri.contains("/taint") || uri.contains("/capabilities")))
     {
         Confidentiality::Sensitive
     } else {
