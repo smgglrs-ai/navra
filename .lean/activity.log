@@ -542,3 +542,31 @@
     IFC security pipeline preserved, all 2676 tests pass.
     Created NAVRA-150 (backlog): contribute rate limiting to rmcp.
   branch: "loop/2026-06-19-4"
+- timestamp: "2026-06-25T14:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-156"
+  summary: "Made ONNX Runtime optional via cargo feature gate across 16 crates"
+  iteration: 1
+  max_iterations: 20
+- timestamp: "2026-06-25T14:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-155"
+  summary: "Added navra wrap CLI subcommand — one-liner secure MCP proxy"
+  iteration: 2
+  max_iterations: 20
+- timestamp: "2026-06-25T15:00:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-155"
+  summary: "Enhanced navra wrap with --discover (tool/resource listing + policy scaffold), --allow-all, --sandbox"
+  iteration: 3
+  max_iterations: 20
+- timestamp: "2026-06-25T15:30:00Z"
+  actor: claude
+  action: loop-iteration
+  item: "NAVRA-153"
+  summary: "Wrote 5 integration guides: Claude Code, Goose, OpenAI clients, LangGraph, custom MCP"
+  iteration: 4
+  max_iterations: 20
