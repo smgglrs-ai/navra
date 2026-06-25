@@ -118,6 +118,40 @@ Available flows in `examples/flows/`:
 | `improve.yaml` | Code improvement with iterative refinement |
 | `self-improve.yaml` | Self-improving agent pattern |
 
+## Agent bundles
+
+Agent bundles package personas, workflows, and credential
+requirements into installable directories.
+
+```bash
+# Install a bundle from a local directory
+navra agent install ./my-agent/
+
+# Initialize an instance
+navra agent init my-agent --name work-assistant
+
+# Run a workflow from the instance
+navra run work-assistant/day-planner
+```
+
+## Model server
+
+The model server manages GPU resources and can be shared across
+multiple agent instances.
+
+```bash
+# Start a shared model server
+navra model serve --auto
+
+# In another terminal, run tasks against it
+navra run "summarize my emails" --model granite-8b
+```
+
+When the model server is running, the gateway connects to it
+instead of loading models in-process. See
+[Configuration](/docs/configuration/#model-server) for the
+`model_server` setting.
+
 ## Verify the setup
 
 ```bash
@@ -140,7 +174,7 @@ navra is a 22-crate Rust workspace:
 | Protocol | navra-protocol | MCP types (via rmcp SDK), A2A |
 | Security | navra-auth, navra-safety-hooks | Auth, ACLs, IFC, safety hooks |
 | Kernel | navra-core | Server, module trait, session |
-| Models | navra-model, navra-model-hub, navra-model-runtime | Backends, registry |
+| Models | navra-model, navra-model-hub, navra-model-runtime, navra-model-server | Backends, registry, shared server |
 | Cognitive | navra-cognitive | Personas, prompt weaving |
 | Agent | navra-agent | ReAct loop, builder API, typed actions |
 | Orchestration | navra-flow | DAG, handoff, mesh |

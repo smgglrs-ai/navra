@@ -78,6 +78,25 @@ permissions = "readonly"
 token_ttl = 3600
 ```
 
+## Agent Bundles
+
+Agent bundles package personas, model preferences, and workflows
+into installable directories.
+
+```
+my-agent/
+  agent.yaml           # personas, model preferences, workflows
+  config-template.yaml # credential requirements
+  workflows/
+    day-planner.yaml
+```
+
+| File | Purpose |
+|------|---------|
+| `agent.yaml` | Agent identity — persona definitions, preferred models, and workflow references |
+| `config-template.yaml` | Declares credentials and config values the user must provide at install time |
+| `workflows/*.yaml` | Reusable workflow definitions the agent can execute |
+
 ## Upstream MCP Servers
 
 Connect external MCP servers through the gateway's security pipeline.
@@ -102,6 +121,23 @@ url = "http://localhost:3200/mcp"
 | `url` | string | HTTP upstream URL |
 | `env` | map | Environment variables (`@keyring:` for OS keyring) |
 
+### Credentials
+
+Upstream servers can declare credential requirements. Labels are
+resolved from the OS keyring at launch time and injected as
+environment variables into the MCP server process.
+
+```toml
+[[upstream]]
+name = "gmail"
+command = ["npx", "-y", "@anthropic/gmail-mcp"]
+[upstream.credentials]
+GMAIL_TOKEN = "gmail-work"
+```
+
+The key (`GMAIL_TOKEN`) becomes the environment variable name. The
+value (`gmail-work`) is the keyring label used to look up the secret.
+
 ## Models
 
 Model configuration for local and remote backends.
@@ -118,6 +154,19 @@ reasoning = "extended"
 tool_use = "advanced"
 locality = "local"
 ```
+
+## Model Server
+
+When set, the gateway connects to an external model server instead
+of loading models in-process. When absent, models are loaded directly
+(backward-compatible).
+
+```toml
+model_server = "http://127.0.0.1:9316"
+```
+
+Start the server with `navra model serve`. See
+[Model server](/docs/getting-started/#model-server) for usage.
 
 ## Operator Libraries
 

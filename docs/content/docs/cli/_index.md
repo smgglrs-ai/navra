@@ -103,23 +103,84 @@ navra uninstall  # Remove systemd user units
 
 ### agent
 
-Manage agent bundles.
+Manage agent bundles and instances.
 
 ```bash
-navra agent install <bundle-path>
-navra agent inspect <bundle-path>
+navra agent install <path-or-oci-ref> [--allow-unsigned] [--max-permissions <set>]
+navra agent init <bundle> [--name <instance>]
+navra agent upgrade <bundle> [--allow-unsigned]
+navra agent inspect <oci-ref>
 navra agent list
 navra agent remove <name>
 ```
 
+| Subcommand | Description |
+|------------|-------------|
+| `install` | Install an agent bundle from a local directory or OCI registry (e.g., `oci://quay.io/navra/agent:v1`) |
+| `init` | Initialize an instance from an installed bundle — generates config, wires credentials |
+| `upgrade` | Upgrade an installed bundle to a new version, shows permission diff |
+| `inspect` | Inspect an agent bundle without installing |
+| `list` | List installed agent bundles and instances |
+| `remove` | Remove an installed agent bundle |
+
+| Option | Applies to | Description |
+|--------|-----------|-------------|
+| `--allow-unsigned` | `install`, `upgrade` | Skip signature verification |
+| `--max-permissions <set>` | `install` | Permission set to check against (uses its rules as max allowed) |
+| `--name <instance>` | `init` | Instance name (defaults to bundle name) |
+
 ### model
 
-Manage ONNX models.
+Manage models (ONNX and hub-cached).
 
 ```bash
+navra model serve [--config <path>] [--bind <addr>] [--auto] [--budget <size>]
 navra model list
-navra model pull <name>
-navra model info <name>
+navra model pull <name-or-uri>
+navra model available
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `serve` | Start a standalone model inference server |
+| `list` | List installed models (ONNX and hub-cached) |
+| `pull` | Download a model by name (from registry) or URI (`ollama://`, `hf://`, `oci://`, `file://`) |
+| `available` | Show models available for download from the registry |
+
+| Option | Applies to | Description |
+|--------|-----------|-------------|
+| `-c, --config` | `serve` | Path to config file |
+| `-b, --bind` | `serve` | Bind address (default: `127.0.0.1:9316`) |
+| `--auto` | `serve` | Auto-detect hardware and propose resource allocation |
+| `--budget` | `serve` | Maximum VRAM budget (e.g., `24GB`, `16GB`) |
+
+### run
+
+Run an agent task or named workflow against a running navra instance.
+
+```bash
+navra run <prompt> [OPTIONS]
+navra run <prompt> --workflow <instance/workflow>
+navra run <prompt> --file <path>
+```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --model` | Model to use (default: auto-detect from Ollama) |
+| `-p, --persona` | Persona to use (default: `leader`) |
+| `-e, --endpoint` | navra endpoint URL (default: `http://127.0.0.1:9315/mcp`) |
+| `-t, --token` | Auth token (reads `MCPD_TOKEN` env if not set) |
+| `-n, --max-iterations` | Max iterations (default: 200) |
+| `--workflow` | Run a named workflow from an agent instance (e.g., `work-assistant/day-planner`) |
+| `--file` | Path to a standalone workflow file (for development) |
+| `--config` | Path to agent instance config (overrides default resolution) |
+| `--upstream-prompt` | Inject an upstream MCP prompt (repeatable, format: `upstream:prompt_name`) |
+| `--dry-run` | Preview the constructed prompt without executing |
+
+Example — run a named workflow:
+
+```bash
+navra run "plan my day" --workflow work-assistant/day-planner
 ```
 
 ### config

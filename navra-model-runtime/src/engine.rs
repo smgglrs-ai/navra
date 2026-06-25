@@ -2,8 +2,8 @@
 //!
 //! An [`Engine`] knows how to build CLI arguments, select container
 //! images, and check availability for a specific inference server
-//! (llama.cpp or vLLM). Isolation modes (`DirectRuntime`,
-//! `PodmanRuntime`, `OpenShellRuntime`) are generic over the engine.
+//! (llama.cpp or vLLM). Isolation modes (`direct::DirectRuntime`,
+//! `podman::PodmanRuntime`, `openshell::OpenShellRuntime`) are generic over the engine.
 
 use crate::{RuntimeError, ServeConfig};
 use tokio::process::Command;

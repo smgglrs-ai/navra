@@ -5,7 +5,7 @@
 //! Providers are trusted via pre-configured JWKS URIs; keys are cached
 //! in-memory and can be pre-loaded for testing.
 //!
-//! The authenticator sits early in the [`super::chain::ChainAuthenticator`] — JWT tokens
+//! The authenticator sits early in the `ChainAuthenticator` — JWT tokens
 //! (starting with `eyJ`) are tried as ID-JAG first; plain BLAKE3 tokens
 //! fall through.
 
