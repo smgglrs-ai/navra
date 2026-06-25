@@ -599,3 +599,8 @@
     - "NAVRA-166: Credential brokering: daemon injects credentials into MCP servers"
     - "NAVRA-167: Cross-bundle workflow composition and transitive permissions"
     - "NAVRA-168: navra agent upgrade: versioned bundles and permission diff"
+
+- date: 2026-06-25
+  action: item-complete
+  item: "NAVRA-161"
+  summary: "Split model server from gateway. Created navra-model-server crate with ModelRegistry, OpenAI-compatible HTTP API, hardware auto-detection. Added 'navra model serve' CLI. Refactored gateway to use ModelRegistry (removed 270 lines of inline model loading). 11 new tests."

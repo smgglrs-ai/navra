@@ -1,6 +1,6 @@
 id: NAVRA-161
 title: "Architecture: split model server from gateway"
-status: planned
+status: done
 priority: high
 effort: 5-10d
 tags: [architecture, model-server, daemon]

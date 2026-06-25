@@ -1,6 +1,6 @@
 id: NAVRA-163
 title: "Agent bundle format and directory convention"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 tags: [bundles, agents, distribution]
