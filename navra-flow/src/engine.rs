@@ -126,14 +126,17 @@ impl Flow {
         let mut nodes = HashMap::new();
         let mut signal_handles = HashMap::new();
         for node_def in &config.nodes {
-            let model = OpenAiBackend::new(
+            let mut model = OpenAiBackend::new(
                 &node_def.model_url,
                 &node_def.model_name,
                 node_def.api_key.clone(),
                 Locality::Local,
             );
+            if let Some(cw) = node_def.context_window {
+                model = model.with_context_window(cw);
+            }
 
-            let mut agent = Agent::builder()
+            let mut builder = Agent::builder()
                 .endpoint(&node_def.endpoint)
                 .await
                 .map_err(|e| FlowError::Agent {
@@ -141,8 +144,11 @@ impl Flow {
                     source: e,
                 })?
                 .model(model)
-                .max_iterations(node_def.max_iterations)
-                .build()
+                .max_iterations(node_def.max_iterations);
+            if let Some(cw) = node_def.context_window {
+                builder = builder.context_window_tokens(cw);
+            }
+            let mut agent = builder.build()
                 .await
                 .map_err(|e| FlowError::Agent {
                     node: node_def.id.clone(),

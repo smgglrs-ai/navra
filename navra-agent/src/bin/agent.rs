@@ -21,7 +21,7 @@ use std::env;
 use std::path::Path;
 use std::process::ExitCode;
 
-use navra_agent::{Agent, Locality, OpenAiBackend};
+use navra_agent::{Agent, Locality, ModelBackend, OpenAiBackend};
 
 fn required_env(name: &str) -> Result<String, String> {
     env::var(name).map_err(|_| format!("{name} is required but not set"))
@@ -69,6 +69,7 @@ async fn run() -> Result<(), String> {
 
     // Build model backend
     let backend = OpenAiBackend::new(&model_endpoint, &model_name, None, Locality::Remote);
+    let backend_context_window = backend.context_window();
 
     // Start building the agent
     let mut builder = Agent::builder()
@@ -85,7 +86,7 @@ async fn run() -> Result<(), String> {
         .max_iterations(max_iterations)
         .temperature(0.3);
 
-    if let Some(cw) = context_window {
+    if let Some(cw) = context_window.or(backend_context_window) {
         builder = builder.context_window_tokens(cw);
     }
 

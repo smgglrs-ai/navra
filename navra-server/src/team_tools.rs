@@ -1340,6 +1340,14 @@ pub struct TeammateSpawnContext {
     pub exec_state: Option<std::sync::Arc<crate::exec_tools::ExecState>>,
     /// Workspace provider for populating agent sandbox workspaces.
     pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
+    /// Maximum total tokens per agent run (circuit breaker). None = unlimited.
+    pub max_tokens_per_run: Option<u64>,
+    /// Context fill ratio to enable tool output compression. None = disabled.
+    pub compression_start_ratio: Option<f32>,
+    /// Recent items kept verbatim during conversation compaction. None = derive.
+    pub compaction_keep_recent: Option<usize>,
+    /// Context fill ratio to trigger conversation compaction. None = derive.
+    pub compaction_trigger_ratio: Option<f32>,
 }
 
 /// Check if Podman is available on this system.
@@ -2179,6 +2187,10 @@ pub fn spawn_teammate_agent(
     let pii_filter = ctx.pii_filter.clone();
     let audit_log = ctx.audit_log.clone();
     let embedding_model = ctx.embedding_model.clone();
+    let max_tokens_per_run = ctx.max_tokens_per_run;
+    let compression_start_ratio = ctx.compression_start_ratio;
+    let compaction_keep_recent = ctx.compaction_keep_recent;
+    let compaction_trigger_ratio = ctx.compaction_trigger_ratio;
     let navra_addr = ctx.navra_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -2329,6 +2341,10 @@ pub fn spawn_teammate_agent(
 
             let is_claude = teammate_model.starts_with("claude");
 
+            let card_context_window = reg.model_cards.iter()
+                .find(|c| c.inference_name() == teammate_model || c.model_uri == teammate_model)
+                .and_then(|c| c.vendor.context_window);
+
             macro_rules! run_teammate {
                 ($backend:expr) => {{
                     let r = async {
@@ -2341,6 +2357,26 @@ pub fn spawn_teammate_agent(
                             .force_tool_iterations(1)
                             .temperature(0.3)
                             .max_tokens(8192);
+                        if let Some(cw) = card_context_window {
+                            builder = builder.context_window_tokens(cw);
+                            tracing::info!(
+                                teammate = %teammate_id,
+                                context_window = cw,
+                                "Context window set from model card"
+                            );
+                        }
+                        if let Some(budget) = max_tokens_per_run {
+                            builder = builder.max_tokens_per_run(budget);
+                        }
+                        if let Some(r) = compression_start_ratio {
+                            builder = builder.compression_start_ratio(r);
+                        }
+                        if let Some(n) = compaction_keep_recent {
+                            builder = builder.compaction_keep_recent(n);
+                        }
+                        if let Some(r) = compaction_trigger_ratio {
+                            builder = builder.compaction_trigger_ratio(r);
+                        }
                         // Enable cooperative signal delivery
                         let (builder_with_signal, signal_handle) = builder.with_signal();
                         builder = builder_with_signal;

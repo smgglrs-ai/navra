@@ -91,11 +91,20 @@ pub struct ToolLoopConfig {
     /// making rapid-fire tool calls without meaningful progress.
     pub max_calls_per_window: usize,
     /// Total context window size in tokens (default: 128_000).
-    /// Used to compute fill ratio for progressive tool output compression.
+    /// Used to compute fill ratio for compression and compaction.
     pub context_window_tokens: u32,
-    /// Maximum tokens for a single tool result (default: 4096).
-    /// Dynamically reduced as context fills up.
-    pub max_tool_output_tokens: u32,
+    /// Maximum tokens for a single tool result when compression is enabled.
+    /// When `None`, derived as `(context_window_tokens / 20).clamp(512, 16384)`.
+    pub max_tool_output_tokens: Option<u32>,
+    /// Context fill ratio at which tool output compression activates.
+    /// `None` = compression disabled (default). `Some(0.9)` = compress at 90% fill.
+    pub compression_start_ratio: Option<f32>,
+    /// Number of recent input items kept verbatim during compaction.
+    /// When `None`, derived as `(context_window_tokens / 16000).clamp(4, 20)`.
+    pub compaction_keep_recent: Option<usize>,
+    /// Context fill ratio at which conversation compaction triggers.
+    /// When `None`, defaults to 0.6.
+    pub compaction_trigger_ratio: Option<f32>,
     /// Optional embedding model for query-aware extractive compression.
     /// When set, tool outputs are compressed by selecting the most
     /// relevant paragraphs instead of truncating from the tail.
@@ -147,10 +156,13 @@ impl Default for ToolLoopConfig {
             pii_filter: None,
             max_reasoning_tokens: Some(2048),
             repair_malformed_output: true,
-            max_tokens_per_run: 500_000,
+            max_tokens_per_run: u64::MAX,
             max_calls_per_window: 20,
             context_window_tokens: 128_000,
-            max_tool_output_tokens: 4096,
+            max_tool_output_tokens: None,
+            compression_start_ratio: None,
+            compaction_keep_recent: None,
+            compaction_trigger_ratio: None,
             embedding_model: None,
             audit_sink: None,
             signal_rx: None,
@@ -162,6 +174,22 @@ impl Default for ToolLoopConfig {
             trace_export_dir: None,
             content_sanitizer: None,
         }
+    }
+}
+
+impl ToolLoopConfig {
+    fn effective_max_tool_output_tokens(&self) -> u32 {
+        self.max_tool_output_tokens
+            .unwrap_or_else(|| (self.context_window_tokens / 20).clamp(512, 16384))
+    }
+
+    fn effective_keep_recent(&self) -> usize {
+        self.compaction_keep_recent
+            .unwrap_or_else(|| (self.context_window_tokens as usize / 16000).clamp(4, 20))
+    }
+
+    fn effective_compaction_trigger(&self) -> f32 {
+        self.compaction_trigger_ratio.unwrap_or(0.6)
     }
 }
 
@@ -311,18 +339,15 @@ fn truncate_reasoning(text: &str, max_tokens: usize) -> String {
 
 /// Compute effective token limit based on context fill ratio.
 ///
-/// Progressive scaling: as context fills, the limit shrinks.
-fn effective_token_limit(max_tool_output_tokens: u32, context_fill_ratio: f32) -> u32 {
-    let limit = if context_fill_ratio < 0.5 {
-        max_tool_output_tokens
-    } else if context_fill_ratio < 0.7 {
-        (max_tool_output_tokens as f32 * 0.75) as u32
-    } else if context_fill_ratio < 0.8 {
-        (max_tool_output_tokens as f32 * 0.50) as u32
-    } else {
-        (max_tool_output_tokens as f32 * 0.25) as u32
-    };
-    limit.max(256)
+/// Linear scaling: no compression below `start`, scales down to 25%
+/// of the budget as context approaches 100% fill.
+fn effective_token_limit(max_tool_output_tokens: u32, context_fill_ratio: f32, start: f32) -> u32 {
+    if context_fill_ratio < start {
+        return max_tool_output_tokens;
+    }
+    let pressure = (context_fill_ratio - start) / (1.0 - start);
+    let scale = 1.0 - (pressure * 0.75); // 1.0 at start, 0.25 at 100%
+    (max_tool_output_tokens as f32 * scale).max(256.0) as u32
 }
 
 /// Compress tool output, using extractive compression when an embedding
@@ -331,10 +356,11 @@ async fn compress_tool_output(
     text: &str,
     max_tool_output_tokens: u32,
     context_fill_ratio: f32,
+    compression_start: f32,
     embedding_model: Option<&dyn ModelBackend>,
     query: Option<&str>,
 ) -> String {
-    let effective_limit = effective_token_limit(max_tool_output_tokens, context_fill_ratio);
+    let effective_limit = effective_token_limit(max_tool_output_tokens, context_fill_ratio, compression_start);
     if navra_cognitive::estimate_tokens(text) <= effective_limit {
         return text.to_string();
     }
@@ -508,63 +534,45 @@ fn estimate_input_tokens(input: &[InputItem]) -> u32 {
 /// a stub — the model's analysis is already in the conversation.
 /// Extractive fallback: if no reasoning follows, compress the output
 /// using the embedding model or truncate.
-async fn compact_conversation(
-    input: &mut Vec<InputItem>,
-    keep_recent: usize,
-    embedding_model: Option<&dyn ModelBackend>,
-    query: Option<&str>,
-) {
+fn compact_conversation(input: &mut Vec<InputItem>, keep_recent: usize) {
     if input.len() <= keep_recent + 2 {
         return;
     }
 
     let compact_end = input.len() - keep_recent;
-    let mut compacted = 0usize;
 
-    for i in 1..compact_end {
-        let is_tool_output = matches!(&input[i], InputItem::FunctionCallOutput(_));
-        if !is_tool_output {
-            continue;
+    // Collect call_ids of old tool outputs to drop.
+    let mut drop_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for item in input[1..compact_end].iter() {
+        if let InputItem::FunctionCallOutput(fco) = item {
+            drop_call_ids.insert(fco.call_id.clone());
         }
-
-        let has_reasoning = i + 1 < compact_end && matches!(&input[i + 1], InputItem::Message(_));
-
-        let (call_id, text) = match &input[i] {
-            InputItem::FunctionCallOutput(fco) => {
-                let t = match &fco.output {
-                    FunctionCallOutputContent::Text(t) if t.len() > 200 => t.clone(),
-                    _ => continue,
-                };
-                (fco.call_id.clone(), t)
-            }
-            _ => continue,
-        };
-
-        let compressed = if has_reasoning {
-            "[compacted — model analysis follows]".to_string()
-        } else if let (Some(model), Some(q)) = (embedding_model, query) {
-            match compress_extractive(&text, q, model, 256).await {
-                Ok(c) => c,
-                Err(_) => navra_cognitive::truncate_to_budget(&text, 256),
-            }
-        } else {
-            navra_cognitive::truncate_to_budget(&text, 256)
-        };
-
-        input[i] = InputItem::FunctionCallOutput(FunctionCallOutputItem {
-            id: None,
-            call_id,
-            output: FunctionCallOutputContent::Text(compressed),
-            status: Some(ItemStatus::Completed),
-        });
-        compacted += 1;
     }
 
-    if compacted > 0 {
+    if drop_call_ids.is_empty() {
+        return;
+    }
+
+    let before = input.len();
+    let mut idx = 0;
+    input.retain(|item| {
+        idx += 1;
+        if idx - 1 >= compact_end {
+            return true; // keep recent items
+        }
+        match item {
+            InputItem::FunctionCall(fc) => !drop_call_ids.contains(&fc.call_id),
+            InputItem::FunctionCallOutput(fco) => !drop_call_ids.contains(&fco.call_id),
+            _ => true, // keep messages (model reasoning)
+        }
+    });
+
+    let dropped = before - input.len();
+    if dropped > 0 {
         tracing::info!(
-            compacted_items = compacted,
+            dropped_items = dropped,
             remaining_items = input.len(),
-            "Compacted old conversation history"
+            "Dropped old tool call pairs from conversation history"
         );
     }
 }
@@ -1233,32 +1241,42 @@ pub async fn run_tool_loop(
                 );
             }
 
-            let context_fill_ratio = if config.context_window_tokens > 0 {
-                total_input as f32 / config.context_window_tokens as f32
+            let text = if let Some(start_ratio) = config.compression_start_ratio {
+                let context_fill_ratio = if config.context_window_tokens > 0 {
+                    total_input as f32 / config.context_window_tokens as f32
+                } else {
+                    0.0
+                };
+                if context_fill_ratio >= start_ratio {
+                    let query = config.system_prompt.as_deref();
+                    let embed_model: Option<&dyn ModelBackend> =
+                        config.embedding_model.as_ref().map(|m| m.as_ref());
+                    let compressed = compress_tool_output(
+                        &raw_text,
+                        config.effective_max_tool_output_tokens(),
+                        context_fill_ratio,
+                        start_ratio,
+                        embed_model,
+                        query,
+                    )
+                    .await;
+                    if compressed.len() < raw_text.len() {
+                        tracing::info!(
+                            tool = %fc.name,
+                            original_chars = raw_text.len(),
+                            compressed_chars = compressed.len(),
+                            fill_ratio = %format!("{:.1}%", context_fill_ratio * 100.0),
+                            "Compressed tool output to fit context budget"
+                        );
+                        compressed_chars_saved += raw_text.len() - compressed.len();
+                    }
+                    compressed
+                } else {
+                    raw_text.clone()
+                }
             } else {
-                0.0
+                raw_text.clone()
             };
-            let query = config.system_prompt.as_deref();
-            let embed_model: Option<&dyn ModelBackend> =
-                config.embedding_model.as_ref().map(|m| m.as_ref());
-            let text = compress_tool_output(
-                &raw_text,
-                config.max_tool_output_tokens,
-                context_fill_ratio,
-                embed_model,
-                query,
-            )
-            .await;
-            if text.len() < raw_text.len() {
-                tracing::info!(
-                    tool = %fc.name,
-                    original_chars = raw_text.len(),
-                    compressed_chars = text.len(),
-                    fill_ratio = %format!("{:.1}%", context_fill_ratio * 100.0),
-                    "Compressed tool output to fit context budget"
-                );
-                compressed_chars_saved += raw_text.len() - text.len();
-            }
 
             actions.push(ActionRecord {
                 action,
@@ -1295,11 +1313,10 @@ pub async fn run_tool_loop(
 
         // Compact old conversation history to bound memory
         let est_tokens = estimate_input_tokens(&input);
-        if est_tokens > config.context_window_tokens / 2 {
-            let embed_ref: Option<&dyn ModelBackend> =
-                config.embedding_model.as_ref().map(|m| m.as_ref());
-            let query_ref = config.system_prompt.as_deref();
-            compact_conversation(&mut input, 6, embed_ref, query_ref).await;
+        let compaction_threshold =
+            (config.context_window_tokens as f32 * config.effective_compaction_trigger()) as u32;
+        if est_tokens > compaction_threshold {
+            compact_conversation(&mut input, config.effective_keep_recent());
         }
     }
 }
@@ -2014,37 +2031,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compress_no_op_under_50_pct() {
+    async fn compress_no_op_below_start_ratio() {
         let text = "Short tool output.";
-        let result = compress_tool_output(text, 4096, 0.3, None, None).await;
+        // start=0.5, fill=0.3 → below threshold, no compression
+        let result = compress_tool_output(text, 4096, 0.3, 0.5, None, None).await;
         assert_eq!(result, text);
     }
 
     #[tokio::test]
     async fn compress_progressive_scaling() {
         let text = "x".repeat(50_000);
-        let at_40 = compress_tool_output(&text, 4096, 0.4, None, None).await;
-        let at_60 = compress_tool_output(&text, 4096, 0.6, None, None).await;
-        let at_75 = compress_tool_output(&text, 4096, 0.75, None, None).await;
-        let at_85 = compress_tool_output(&text, 4096, 0.85, None, None).await;
+        // start=0.0 so compression always engages, test scaling
+        let at_20 = compress_tool_output(&text, 4096, 0.2, 0.0, None, None).await;
+        let at_50 = compress_tool_output(&text, 4096, 0.5, 0.0, None, None).await;
+        let at_80 = compress_tool_output(&text, 4096, 0.8, 0.0, None, None).await;
+        let at_95 = compress_tool_output(&text, 4096, 0.95, 0.0, None, None).await;
         assert!(
-            at_40.len() > at_60.len(),
-            "60% fill should compress more than 40%"
+            at_20.len() > at_50.len(),
+            "50% fill should compress more than 20%"
         );
         assert!(
-            at_60.len() > at_75.len(),
-            "75% fill should compress more than 60%"
+            at_50.len() > at_80.len(),
+            "80% fill should compress more than 50%"
         );
         assert!(
-            at_75.len() > at_85.len(),
-            "85% fill should compress more than 75%"
+            at_80.len() > at_95.len(),
+            "95% fill should compress more than 80%"
         );
     }
 
     #[tokio::test]
     async fn compress_floor_prevents_empty() {
         let text = "x".repeat(50_000);
-        let result = compress_tool_output(&text, 4096, 0.99, None, None).await;
+        let result = compress_tool_output(&text, 4096, 0.99, 0.0, None, None).await;
         // Floor is 256 tokens ≈ 896 chars, plus truncation notice
         assert!(
             result.len() >= 800,
@@ -2057,7 +2076,7 @@ mod tests {
     async fn compress_short_text_untouched() {
         let text = "Small result";
         // Even at high fill, text under the floor stays unchanged
-        let result = compress_tool_output(text, 4096, 0.95, None, None).await;
+        let result = compress_tool_output(text, 4096, 0.95, 0.0, None, None).await;
         assert_eq!(result, text);
     }
 
@@ -2126,7 +2145,7 @@ mod tests {
         for (name, size) in &tool_outputs {
             let text = "x".repeat(*size);
             let fill = context_used as f32 / context_window as f32;
-            let compressed = compress_tool_output(&text, max_tool_output, fill, None, None).await;
+            let compressed = compress_tool_output(&text, max_tool_output, fill, 0.0, None, None).await;
 
             let saved = size - compressed.len();
             total_raw += size;
@@ -2453,8 +2472,8 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
             extract_hits, trunc_hits);
     }
 
-    #[tokio::test]
-    async fn compact_replaces_old_output_when_reasoning_exists() {
+    #[test]
+    fn compact_drops_old_tool_pairs_keeps_reasoning() {
         let mut input = vec![
             InputItem::system("You are a reviewer."),
             // Iteration 1: tool call + big result + model reasoning
@@ -2491,31 +2510,23 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert_eq!(input.len(), 6);
 
         // keep_recent=2 means keep last 2 items (c2 call + result)
-        compact_conversation(&mut input, 2, None, None).await;
+        compact_conversation(&mut input, 2);
 
-        assert_eq!(input.len(), 6, "item count stays the same (in-place)");
+        // Old tool call pair (c1) dropped, reasoning message kept,
+        // system prompt kept, recent pair kept
+        // system + reasoning + c2_call + c2_output = 4
+        assert_eq!(input.len(), 4, "should drop old tool pair but keep messages");
 
-        // Old tool output (item 2) should be compacted
-        if let InputItem::FunctionCallOutput(fco) = &input[2] {
-            let text = match &fco.output {
-                FunctionCallOutputContent::Text(t) => t.clone(),
-                _ => panic!("expected text"),
-            };
-            assert!(
-                text.len() < 100,
-                "old output should be compacted, got {} chars",
-                text.len()
-            );
-            assert!(
-                text.contains("compacted"),
-                "should contain compaction marker"
-            );
-        } else {
-            panic!("item 2 should still be FunctionCallOutput");
-        }
+        // First item is system prompt
+        assert!(matches!(&input[0], InputItem::Message(_)));
+        // Second item is the reasoning message (kept)
+        assert!(matches!(&input[1], InputItem::Message(_)));
+        // Last two are the recent tool call pair
+        assert!(matches!(&input[2], InputItem::FunctionCall(_)));
+        assert!(matches!(&input[3], InputItem::FunctionCallOutput(_)));
 
-        // Recent tool output (item 5) should be untouched
-        if let InputItem::FunctionCallOutput(fco) = &input[5] {
+        // Recent tool output should be untouched
+        if let InputItem::FunctionCallOutput(fco) = &input[3] {
             let text = match &fco.output {
                 FunctionCallOutputContent::Text(t) => t.clone(),
                 _ => panic!("expected text"),
@@ -2524,10 +2535,10 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         }
     }
 
-    #[tokio::test]
-    async fn compact_noop_when_short() {
+    #[test]
+    fn compact_noop_when_short() {
         let mut input = vec![InputItem::system("prompt"), InputItem::user("hello")];
-        compact_conversation(&mut input, 6, None, None).await;
+        compact_conversation(&mut input, 6);
         assert_eq!(input.len(), 2);
     }
 
