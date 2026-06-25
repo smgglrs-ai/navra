@@ -270,9 +270,9 @@ pub(crate) enum ConfigAction {
 
 #[derive(Subcommand)]
 pub(crate) enum AgentAction {
-    /// Install an agent bundle from an OCI registry
+    /// Install an agent bundle from an OCI registry or local directory
     Install {
-        /// OCI reference (e.g., oci://quay.io/navra/agent:v1)
+        /// OCI reference (e.g., oci://quay.io/navra/agent:v1) or local directory path
         oci_ref: String,
         /// Skip signature verification for this install
         #[arg(long)]
@@ -485,6 +485,12 @@ pub(crate) async fn agent_install(
 ) -> anyhow::Result<()> {
     use crate::agent_bundle::{compare, cosign, fetch, install, registry};
 
+    // Local directory install (v2 bundle format)
+    let path = std::path::Path::new(oci_ref);
+    if path.is_dir() {
+        return agent_install_local(path);
+    }
+
     let policy = if allow_unsigned {
         cosign::SignaturePolicy::Skip
     } else {
@@ -562,6 +568,30 @@ pub(crate) async fn agent_install(
             let snippet = install::generate_skeleton_config(oci_ref, &token, &hash);
             println!("Add to config.toml:\n");
             println!("{snippet}");
+        }
+    }
+
+    Ok(())
+}
+
+fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
+    use crate::agent_bundle::bundle_dir;
+
+    let installed = bundle_dir::install_from_dir(dir)?;
+    println!("Installed: {} v{}", installed.name, installed.version);
+    println!("Location: {}", installed.path.display());
+
+    if !installed.workflows.is_empty() {
+        println!("\nWorkflows:");
+        for wf in &installed.workflows {
+            println!("  navra run {}/{}", installed.name, wf);
+        }
+    }
+
+    if let Ok(Some(template)) = bundle_dir::load_config_template(dir) {
+        if !template.credentials.is_empty() {
+            println!("\nThis agent needs credentials. Run:");
+            println!("  navra agent init {}", installed.name);
         }
     }
 
