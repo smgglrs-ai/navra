@@ -231,6 +231,14 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Model { action } => match action {
+            ModelAction::Serve {
+                config: config_path,
+                bind,
+                auto,
+                budget,
+            } => {
+                model_serve(config_path, bind, auto, budget).await?;
+            }
             ModelAction::Pull { name } => {
                 cli::model_pull(&name).await?;
             }
@@ -1106,6 +1114,85 @@ enum TransportMode {
 
 async fn stdio(cfg: config::Config) -> anyhow::Result<()> {
     serve_inner(cfg, TransportMode::Stdio, false).await
+}
+
+async fn model_serve(
+    config_path: Option<String>,
+    bind: String,
+    auto: bool,
+    budget: Option<String>,
+) -> anyhow::Result<()> {
+    let cfg = config::Config::load(config_path.as_deref())?;
+
+    if auto {
+        let desktop_res = 2 * 1024 * 1024 * 1024; // 2 GB
+        let summary = navra_model_server::hardware::detect(desktop_res);
+        navra_model_server::hardware::print_summary(&summary);
+        println!();
+    }
+
+    let vram_budget = budget
+        .map(|b| parse_size_bytes(&b))
+        .transpose()?
+        .unwrap_or(0);
+
+    let mut model_entries = std::collections::HashMap::new();
+    for (name, model_cfg) in &cfg.models {
+        model_entries.insert(
+            name.clone(),
+            navra_model_server::config::ModelEntry {
+                model_path: model_cfg.model_path.clone(),
+                source: model_cfg.source.clone(),
+                tokenizer_path: model_cfg.tokenizer_path.clone(),
+                task: model_cfg.task.clone(),
+                device: model_cfg.device.clone(),
+                dimensions: model_cfg.dimensions,
+                labels: model_cfg.labels.clone(),
+                threshold: model_cfg.threshold,
+                format: model_cfg.format.clone(),
+                execution_mode: model_cfg.execution_mode,
+                runtime: model_cfg.runtime.clone(),
+                context_size: model_cfg.context_size,
+                parallel: model_cfg.parallel,
+                model_name: model_cfg.model_name.clone(),
+                cache_type: model_cfg.cache_type,
+                speculative: model_cfg.speculative.as_ref().map(|s| {
+                    navra_model_server::config::SpeculativeEntry {
+                        draft_model: s.draft_model.clone(),
+                        draft_tokens: s.draft_tokens,
+                        draft_min_p: s.draft_min_p,
+                    }
+                }),
+                base_url: model_cfg.base_url.clone(),
+                api_key: model_cfg.api_key.clone(),
+                locality: model_cfg.locality.clone(),
+            },
+        );
+    }
+
+    let server_config = navra_model_server::ModelServerConfig {
+        models: model_entries,
+        bind: bind.clone(),
+        vram_budget,
+        desktop_reservation: 2 * 1024 * 1024 * 1024,
+    };
+
+    let server = navra_model_server::ModelServer::new(server_config).await?;
+    server.serve(&bind).await
+}
+
+fn parse_size_bytes(s: &str) -> anyhow::Result<u64> {
+    let s = s.trim();
+    if let Some(gb) = s.strip_suffix("GB").or_else(|| s.strip_suffix("gb")) {
+        let n: u64 = gb.trim().parse()?;
+        Ok(n * 1024 * 1024 * 1024)
+    } else if let Some(mb) = s.strip_suffix("MB").or_else(|| s.strip_suffix("mb")) {
+        let n: u64 = mb.trim().parse()?;
+        Ok(n * 1024 * 1024)
+    } else {
+        s.parse::<u64>()
+            .map_err(|_| anyhow::anyhow!("invalid size: {s} (use e.g. 24GB, 16GB, 512MB)"))
+    }
 }
 
 async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
