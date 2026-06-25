@@ -1,7 +1,7 @@
 //! Upstream MCP prompt resolution.
 //!
 //! Fetches prompts from upstream MCP servers referenced in a persona's
-//! `mcp_prompts` field and returns [`ResolvedPrompt`] values ready for
+//! `mcp_prompts` field and returns [`navra_cognitive::ResolvedPrompt`] values ready for
 //! injection by the Weaver.
 
 use crate::client::McpClient;
@@ -99,7 +99,7 @@ pub async fn resolve_mcp_prompts(
     Ok(resolved)
 }
 
-/// Resolve an [`McpPersonaSource`] by calling `prompts/get` on the upstream.
+/// Resolve an [`navra_cognitive::McpPersonaSource`] by calling `prompts/get` on the upstream.
 ///
 /// Returns the concatenated prompt messages as a single string, which
 /// becomes the persona's `core_mandate`.
@@ -148,7 +148,7 @@ pub async fn resolve_persona_source(
 }
 
 /// Resolve a persona's MCP source and `mcp_prompts`, returning a
-/// fully-populated [`Persona`] ready for the Weaver.
+/// fully-populated [`navra_cognitive::Persona`] ready for the Weaver.
 ///
 /// - If `persona.source` is `Some`, calls [`resolve_persona_source()`]
 ///   and sets the result as `core_mandate`.

@@ -3155,6 +3155,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "navra-model-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.9",
+ "dirs",
+ "futures-util",
+ "navra-model",
+ "navra-model-hub",
+ "navra-model-runtime",
+ "reqwest 0.12.28",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower 0.5.3",
+ "tracing",
+]
+
+[[package]]
 name = "navra-openapi"
 version = "0.1.0"
 dependencies = [
@@ -3321,6 +3342,7 @@ dependencies = [
  "navra-model",
  "navra-model-hub",
  "navra-model-runtime",
+ "navra-model-server",
  "navra-openapi",
  "navra-protocol",
  "navra-rag",

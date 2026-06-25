@@ -370,7 +370,7 @@ fn inject_at_position(
 
 /// Load skill cards from a directory of YAML files.
 ///
-/// Each YAML file should deserialize to a [`SkillCard`]. Files that
+/// Each YAML file should deserialize to a [`crate::types::SkillCard`]. Files that
 /// fail to parse are logged and skipped (graceful degradation).
 pub fn load_skill_cards(dir: &std::path::Path) -> Vec<crate::types::SkillCard> {
     let mut cards = Vec::new();
