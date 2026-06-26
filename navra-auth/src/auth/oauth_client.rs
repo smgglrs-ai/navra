@@ -17,6 +17,7 @@ use oauth2::{
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope,
     StandardDeviceAuthorizationResponse, TokenUrl,
 };
+use oauth2_reqwest::ReqwestClient;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use url::Url;
@@ -783,13 +784,13 @@ async fn accept_callback(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-fn build_oauth_http_client(base: &reqwest::Client) -> reqwest::Client {
-    // The oauth2 crate requires redirects disabled to prevent SSRF.
-    // Build a new client with the same TLS but no redirect following.
-    reqwest::ClientBuilder::new()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap_or_else(|_| base.clone())
+fn build_oauth_http_client(_base: &reqwest::Client) -> ReqwestClient {
+    ReqwestClient::from(
+        reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("reqwest client should build"),
+    )
 }
 
 fn token_result_to_set(
