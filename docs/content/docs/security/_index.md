@@ -145,3 +145,170 @@ The blackbox addresses recording requirements in the EU AI Act
 ISO 42001 (AI decision records). See the
 [workshop paper](/docs/papers/audit-blackbox/) for a full
 compliance mapping.
+
+## Safety Hooks Pipeline
+
+Every tool call passes through an ordered pipeline of hooks before
+and after execution. Pre-hooks can modify arguments, block execution,
+simulate results, or suspend pending human approval. Post-hooks can
+modify or suppress results. The pipeline is fail-closed: if any hook
+times out, the tool call is blocked.
+
+### Execution order
+
+Pre-hooks run in registration order. Post-hooks run in reverse order,
+so the first-registered hook is the outermost wrapper (same layering
+as HTTP middleware). A `Block` or `Simulate` decision in any pre-hook
+short-circuits the pipeline — later hooks do not run.
+
+### Hook types
+
+| Hook | Phase | Purpose |
+|------|-------|---------|
+| **ApprovalGate** | Pre | Suspends high-risk calls pending human approval (OWASP ASI09) |
+| **EgressFilter** | Pre | Blocks tool arguments targeting external endpoints not on an allowlist |
+| **ToolGuard** | Pre | Validates arguments and catches small-model mistakes before execution |
+| **RoutingHook** | Pre | Classifies tool calls by complexity and routes to model tiers |
+| **SkillHook** | Pre | Applies HASP-style program functions as executable guardrails |
+| **SandboxHook** | Pre/Post | Enforces per-agent sandbox profiles (simulate, redact, rate limit, path rewrite) |
+| **SafetyHook** | Pre/Post | Applies regex + ML content filters to arguments and results |
+| **FieldFilter** | Post | Strips unnecessary JSON fields from results to reduce token use |
+| **BudgetHook** | Post | Truncates oversized tool outputs to protect the agent context window |
+| **StatisticalGuardrail** | Post | Detects anomalous agent behavior via cosine drift and entropy monitoring |
+| **LeakageDetection** | Post | Blocks paraphrased exfiltration using embedding similarity (L2) and semantic analysis (L3) |
+| **TemporalContract** | Pre/Post | Enforces trajectory-level constraints over agent action history |
+| **ProvenanceHook** | Post | Records causal relationships between tool calls (observation only) |
+| **VerifierHook** | Post | Checks results against rubrics and tracks false-pass rates |
+| **MonitoringHook** | Post | Observes outcomes and escalates anomalies to the audit trail |
+
+### Model-call hooks
+
+The same pipeline intercepts agent-to-model calls in the tool loop.
+Pre-model hooks can modify or block outgoing requests. Post-model
+hooks can modify responses, request a retry with altered parameters,
+or block the response entirely. Budget enforcement and temperature
+override are typical pre-model hooks.
+
+### Configuration
+
+Hooks are registered at server startup. Most accept per-permission-set
+configuration:
+
+```toml
+[hooks.approval_gate]
+enabled = true
+risk_keywords = ["delete", "exec", "deploy"]
+timeout_secs = 300
+default_on_timeout = "deny"
+
+[hooks.egress]
+enabled = true
+allowed_domains = ["github.com", "*.example.com"]
+deny_all_external = false
+block_tainted_egress = true
+
+[hooks.budget]
+max_tool_output_tokens = 4096
+truncation_strategy = "head_tail"
+
+[hooks.temporal_contracts]
+max_history_per_session = 200
+```
+
+## Tool Scanner
+
+The tool scanner inspects upstream MCP tool definitions for
+supply-chain threats before exposing them to agents. It runs
+automatically during upstream server discovery.
+
+### Threat categories
+
+The scanner checks for eight categories:
+
+| Category | Severity | What it detects |
+|----------|----------|-----------------|
+| **ToolPoisoning** | Critical | Hidden prompt injection in descriptions ("ignore previous instructions") |
+| **Typosquatting** | High–Critical | Names within edit distance of known tools, or Unicode homoglyph attacks |
+| **SchemaAbuse** | High | Input fields requesting secrets (api_key, password, credentials) |
+| **HiddenUnicode** | Critical | Zero-width characters, RTL overrides, invisible formatters |
+| **DescriptionInjection** | High | Imperative overrides ("you must always call this tool first") |
+| **CrossServerReference** | Medium | References to tools on other servers |
+| **IntentBehaviorMismatch** | Medium | Read-only description with required write parameters |
+| **RugPull** | High | Tool definition changed since last scan (hash comparison) |
+
+### Verdicts
+
+Findings are aggregated into three verdicts:
+
+- **Safe** — No high or critical findings
+- **Suspicious** — At least one high-severity finding (logged, optionally blocked)
+- **Malicious** — At least one critical finding (blocked by default)
+
+### Manifest verification
+
+navra extends MCP with Ed25519 tool manifest signing. Each upstream
+server's tool list is hashed and signed. On subsequent connections,
+the scanner verifies the signature against a TOFU (trust-on-first-use)
+key store. A key change triggers a `KeyChanged` alert.
+
+### Configuration
+
+```toml
+[tool_scanner]
+enabled = true
+block_malicious = true
+typosquatting_threshold = 2
+sensitive_schema_fields = [
+    "password", "secret", "token", "api_key",
+    "ssh_key", "private_key", "credentials"
+]
+```
+
+Populate `known_tool_names` with your expected tool inventory to
+enable typosquatting detection:
+
+```toml
+known_tool_names = ["file_read", "file_write", "git_status"]
+```
+
+## Rate Limiting
+
+Per-agent rate limiting protects against runaway agents and resource
+exhaustion. The quota engine uses a token bucket algorithm — each
+agent gets a bucket that refills at a steady rate, allowing short
+bursts while enforcing a sustained ceiling.
+
+### How it works
+
+Each permission set can define a rate limit (maximum calls per time
+window). When an agent makes a tool call, the gateway checks its
+bucket:
+
+1. Refill tokens based on elapsed time since last check
+2. If at least one token is available, consume it and allow the call
+3. If no tokens remain, deny the call with outcome `denied_rate`
+
+Buckets are created on first use and refill continuously. An agent
+with a 60-call/minute limit can burst up to 60 calls instantly, then
+must wait for tokens to refill at 1 per second.
+
+### Per-agent isolation
+
+Each agent gets its own bucket. Agent A exhausting its quota has no
+effect on Agent B, even if they share the same permission set.
+
+### Configuration
+
+Rate limits are set per permission set in `config.toml`:
+
+```toml
+[permissions.dev]
+rate_limit = { max_calls = 120, window_secs = 60 }
+
+[permissions.restricted]
+rate_limit = { max_calls = 30, window_secs = 60 }
+```
+
+Permission sets without a `rate_limit` field are unlimited. Query
+remaining quota at runtime via the gateway status API. Denied calls
+are recorded in the audit blackbox with outcome `denied_rate`.
