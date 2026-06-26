@@ -71,7 +71,7 @@ rmcp = { version = "1.8", features = [
     "transport-streamable-http-client-reqwest",
     "reqwest-native-tls",
 ] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
