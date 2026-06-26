@@ -74,3 +74,12 @@ assert-check:
 # Kill any leaked navra test processes
 kill-leaked:
     pkill -f 'target/debug/navra' 2>/dev/null || echo "no leaked processes"
+
+# Build docs site (Zola + llms.txt)
+docs:
+    cd docs && zola build
+    ./scripts/generate-llms-txt.sh
+
+# Generate llms.txt and llms-full.txt without rebuilding the site
+llms-txt:
+    ./scripts/generate-llms-txt.sh
