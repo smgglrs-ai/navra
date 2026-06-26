@@ -40,6 +40,7 @@ sha2 = "0.10"
 subtle = "2"
 zeroize = "1"
 hex = "0.4"
+oauth2-reqwest = "0.1.0-alpha.3"
 
 [features]
 default = ["desktop"]
