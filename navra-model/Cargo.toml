@@ -16,9 +16,9 @@ rustls = ["reqwest/rustls"]
 
 [dependencies]
 navra-responses = { path = "../navra-responses" }
-ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
+ort = { version = "2.0.0-rc.12", default-features = false, features = ["copy-dylibs", "download-binaries", "ndarray", "std", "tls-rustls"], optional = true }
 ndarray = { version = "0.17", optional = true }
-tokenizers = { version = "0.22", default-features = false, features = ["onig"], optional = true }
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"], optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart", "stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

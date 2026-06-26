@@ -1,6 +1,3 @@
-export ORT_LIB_PATH := "/usr/lib64"
-export ORT_PREFER_DYNAMIC_LINK := "1"
-
 # Build the workspace
 build:
     cargo build

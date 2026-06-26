@@ -39,7 +39,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["ws"] }
 hyper = "1"
 hyper-util = "0.1"
-reqwest = { version = "0.13", features = ["json", "multipart", "native-tls"] }
+reqwest = { version = "0.13", features = ["json", "multipart", "rustls"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -69,7 +69,7 @@ rmcp = { version = "1.8", features = [
     "transport-child-process",
     "transport-streamable-http-server",
     "transport-streamable-http-client-reqwest",
-    "reqwest-native-tls",
+    "reqwest",
 ] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 
