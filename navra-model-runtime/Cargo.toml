@@ -14,6 +14,8 @@ podman = []
 direct = []
 kubernetes = []
 openshell = ["tonic", "prost"]
+tonic = ["dep:tonic"]
+prost = ["dep:prost"]
 
 [dependencies]
 reqwest = { workspace = true }
@@ -24,11 +26,12 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 libc = "0.2"
-tonic = { version = "0.12", optional = true }
-prost = { version = "0.13", optional = true }
+tonic = { version = "0.14", optional = true }
+prost = { version = "0.14", optional = true }
+tonic-prost = "0.14"
 
 [build-dependencies]
-tonic-build = "0.12"
+tonic-prost-build = "0.14"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

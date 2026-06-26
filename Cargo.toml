@@ -57,8 +57,8 @@ jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 oauth2 = { version = "5", default-features = false }
 url = "2"
 keyring = "4"
-tonic = "0.12"
-prost = "0.13"
+tonic = "0.14"
+prost = "0.14"
 schemars = "1.2"
 rmcp = { version = "1.8", features = [
     "server",
