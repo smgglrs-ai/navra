@@ -389,10 +389,10 @@ mod tests {
 
     #[test]
     fn expand_env_var() {
-        std::env::set_var("NAVRA_TEST_VAR", "hello");
+        unsafe { std::env::set_var("NAVRA_TEST_VAR", "hello") };
         assert_eq!(expand_tilde("$NAVRA_TEST_VAR/path"), "hello/path");
         assert_eq!(expand_tilde("${NAVRA_TEST_VAR}/path"), "hello/path");
-        std::env::remove_var("NAVRA_TEST_VAR");
+        unsafe { std::env::remove_var("NAVRA_TEST_VAR") };
     }
 
     #[test]

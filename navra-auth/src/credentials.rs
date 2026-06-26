@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn env_credential_resolves() {
-        std::env::set_var("MCPD_TEST_CRED", "test-secret-value");
+        unsafe { std::env::set_var("MCPD_TEST_CRED", "test-secret-value") };
         let mut mappings = HashMap::new();
         mappings.insert(
             "test.token".to_string(),
@@ -229,7 +229,7 @@ mod tests {
 
         let secret = store.resolve("test.token").unwrap();
         assert_eq!(secret.as_str(), Some("test-secret-value"));
-        std::env::remove_var("MCPD_TEST_CRED");
+        unsafe { std::env::remove_var("MCPD_TEST_CRED") };
     }
 
     #[test]

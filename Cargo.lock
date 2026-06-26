@@ -2858,7 +2858,7 @@ dependencies = [
 
 [[package]]
 name = "navra-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2885,7 +2885,7 @@ dependencies = [
 
 [[package]]
 name = "navra-auth"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2943,7 +2943,7 @@ dependencies = [
 
 [[package]]
 name = "navra-cognitive"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hex",
  "navra-protocol",
@@ -2959,7 +2959,7 @@ dependencies = [
 
 [[package]]
 name = "navra-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -2996,7 +2996,7 @@ dependencies = [
 
 [[package]]
 name = "navra-flow"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3035,7 +3035,7 @@ dependencies = [
 
 [[package]]
 name = "navra-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "navra-auth",
  "navra-model",
@@ -3046,7 +3046,7 @@ dependencies = [
 
 [[package]]
 name = "navra-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "navra-core",
@@ -3069,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "navra-modal-vision"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -3088,7 +3088,7 @@ dependencies = [
 
 [[package]]
 name = "navra-modal-voice"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "dirs",
@@ -3103,7 +3103,7 @@ dependencies = [
 
 [[package]]
 name = "navra-model"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-stream",
  "futures-util",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "navra-model-hub"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dirs",
  "futures-util",
@@ -3138,7 +3138,7 @@ dependencies = [
 
 [[package]]
 name = "navra-model-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "prost",
@@ -3156,7 +3156,7 @@ dependencies = [
 
 [[package]]
 name = "navra-model-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -3177,7 +3177,7 @@ dependencies = [
 
 [[package]]
 name = "navra-openapi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -3197,7 +3197,7 @@ dependencies = [
 
 [[package]]
 name = "navra-protocol"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "reqwest 0.12.28",
@@ -3211,7 +3211,7 @@ dependencies = [
 
 [[package]]
 name = "navra-rag"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -3267,7 +3267,7 @@ dependencies = [
 
 [[package]]
 name = "navra-safety-hooks"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3298,7 +3298,7 @@ dependencies = [
 
 [[package]]
 name = "navra-security"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum 0.8.9",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "navra-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-stream",

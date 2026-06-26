@@ -806,7 +806,7 @@ fn current_bb_seq() -> i64 {
 
 /// Pre-compute project file tree for injecting into specialist mandates.
 fn compute_file_tree(docs_root: &Option<String>) -> String {
-    if let Some(ref root) = docs_root {
+    if let Some(root) = docs_root {
         let root_path = std::path::Path::new(root);
         if root_path.is_dir() {
             let mut files = Vec::new();

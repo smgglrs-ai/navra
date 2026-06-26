@@ -28,9 +28,9 @@ members = [
 
 [workspace.package]
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
-rust-version = "1.91"
+rust-version = "1.96"
 homepage = "https://github.com/smgglrs-ai/navra"
 repository = "https://github.com/smgglrs-ai/navra"
 
@@ -59,7 +59,7 @@ url = "2"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 tonic = "0.12"
 prost = "0.13"
-schemars = "1.0"
+schemars = "1.2"
 rmcp = { version = "1.8", features = [
     "server",
     "client",

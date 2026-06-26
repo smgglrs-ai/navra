@@ -383,9 +383,9 @@ mod tests {
         let rc = resource_content("recipe-card", "[{}]");
         match rc {
             crate::ResourceContent::TextResourceContents {
-                ref uri,
-                ref mime_type,
-                ref text,
+                uri,
+                mime_type,
+                text,
                 ..
             } => {
                 assert_eq!(uri, "a2ui://dynamic-ui/recipe-card");
@@ -402,8 +402,8 @@ mod tests {
         if let Some(res) = content.raw.as_resource() {
             match &res.resource {
                 crate::ResourceContent::TextResourceContents {
-                    ref uri,
-                    ref mime_type,
+                    uri,
+                    mime_type,
                     ..
                 } => {
                     assert_eq!(uri, "a2ui://dynamic-ui/my-surface");

@@ -966,7 +966,7 @@ impl McpServer {
                         }
                     }
                 }
-                crate::protocol::RawContent::Resource(ref res) => {
+                crate::protocol::RawContent::Resource(res) => {
                     use crate::protocol::ResourceContent;
                     if let ResourceContent::TextResourceContents {
                         mime_type, text, ..

@@ -415,7 +415,7 @@ mod credential_isolation {
             },
         );
 
-        std::env::set_var("MCPD_SEC_TEST_ALLOWED", "secret-value");
+        unsafe { std::env::set_var("MCPD_SEC_TEST_ALLOWED", "secret-value") };
         let store = MappedCredentialStore::new(mappings);
 
         // Allowed label works
@@ -423,11 +423,11 @@ mod credential_isolation {
         assert_eq!(secret.as_str(), Some("secret-value"));
 
         // Unlisted label denied — even if it exists in the env
-        std::env::set_var("MCPD_SEC_TEST_FORBIDDEN", "should-not-see");
+        unsafe { std::env::set_var("MCPD_SEC_TEST_FORBIDDEN", "should-not-see") };
         assert!(store.resolve("forbidden").is_err());
 
-        std::env::remove_var("MCPD_SEC_TEST_ALLOWED");
-        std::env::remove_var("MCPD_SEC_TEST_FORBIDDEN");
+        unsafe { std::env::remove_var("MCPD_SEC_TEST_ALLOWED") };
+        unsafe { std::env::remove_var("MCPD_SEC_TEST_FORBIDDEN") };
     }
 
     #[test]

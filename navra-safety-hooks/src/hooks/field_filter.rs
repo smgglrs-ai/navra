@@ -47,7 +47,7 @@ impl Hook for FieldFilterHook {
         let mut filtered = result.clone();
         for content in &mut filtered.content {
             if let navra_protocol::Content {
-                raw: navra_protocol::RawContent::Text(ref mut text),
+                raw: navra_protocol::RawContent::Text(text),
                 ..
             } = content
             {
