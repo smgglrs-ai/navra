@@ -602,15 +602,14 @@ async fn wrap_command(
     let mut egress_domains: Vec<String> = allow_domains;
     let egress_active = sandbox.is_some() && !allow_all;
 
-    if egress_active {
-        if let Some(known) = network_discovery::known_server_domains(&upstream_name, &command) {
+    if egress_active
+        && let Some(known) = network_discovery::known_server_domains(&upstream_name, &command) {
             for d in known {
                 if !egress_domains.contains(&d) {
                     egress_domains.push(d);
                 }
             }
         }
-    }
 
     let egress_section = if egress_active {
         let domain_list = egress_domains
@@ -945,12 +944,11 @@ fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
 /// If `[server.identity]` specifies a `key_path`, loads or creates
 /// a file-based identity. Otherwise, uses the OS keyring.
 fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
-    if let Some(ref identity_cfg) = cfg.server.identity {
-        if let Some(ref key_path) = identity_cfg.key_path {
+    if let Some(ref identity_cfg) = cfg.server.identity
+        && let Some(ref key_path) = identity_cfg.key_path {
             let path = std::path::Path::new(key_path);
             return Ok(identity::load_or_create_file_identity(path)?);
         }
-    }
     // Default: try OS keyring, fall back to file
     match identity::load_or_create_keyring_identity() {
         Ok(signer) => Ok(signer),
@@ -1024,14 +1022,12 @@ async fn start_model_server_container(
             continue;
         }
         if let Some(ref source) = model_cfg.source {
-            if let Some(ref h) = hub {
-                if let Ok(uri) = navra_model_hub::ModelUri::parse(source) {
-                    if let Ok(p) = h.pull(&uri).await {
+            if let Some(ref h) = hub
+                && let Ok(uri) = navra_model_hub::ModelUri::parse(source)
+                    && let Ok(p) = h.pull(&uri).await {
                         model_path = Some(p);
                         break;
                     }
-                }
-            }
         } else if let Some(ref path_str) = model_cfg.model_path {
             let expanded = expand_tilde(path_str);
             let p = std::path::PathBuf::from(&expanded);
@@ -1107,13 +1103,12 @@ async fn start_model_server_container(
     let health_url = format!("http://127.0.0.1:{port}/health");
     for attempt in 0..240 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if let Ok(resp) = client.get(&health_url).send().await {
-            if resp.status().is_success() {
+        if let Ok(resp) = client.get(&health_url).send().await
+            && resp.status().is_success() {
                 tracing::info!(port = port, "Model server container is ready");
                 let endpoint = format!("http://127.0.0.1:{port}/v1");
                 return Ok((endpoint, port, container_name));
             }
-        }
         if attempt % 20 == 19 {
             tracing::info!(
                 attempt = attempt + 1,
@@ -1229,9 +1224,9 @@ async fn serve_inner(
     // Build quota engine from rate limits in permission sets
     let mut quota_engine = navra_core::quota::QuotaEngine::new();
     for (name, pset) in &cfg.permissions {
-        if let Some(ref rate_limit_str) = pset.rate_limit {
-            if let Some((max_str, window_str)) = rate_limit_str.split_once('/') {
-                if let (Ok(max_calls), Ok(window_secs)) =
+        if let Some(ref rate_limit_str) = pset.rate_limit
+            && let Some((max_str, window_str)) = rate_limit_str.split_once('/')
+                && let (Ok(max_calls), Ok(window_secs)) =
                     (max_str.parse::<u64>(), window_str.parse::<u64>())
                 {
                     quota_engine.add_limit(
@@ -1248,8 +1243,6 @@ async fn serve_inner(
                         "Rate limit"
                     );
                 }
-            }
-        }
     }
 
     // Build server, registering enabled modules
@@ -1733,8 +1726,8 @@ async fn serve_inner(
 
         // Add ML safety filter from any loaded classification model
         for (model_name, model_cfg) in &cfg.models {
-            if model_cfg.task == "classification" {
-                if let Some(model) = models.get(model_name) {
+            if model_cfg.task == "classification"
+                && let Some(model) = models.get(model_name) {
                     let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
                         std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
                             model.clone(),
@@ -1762,7 +1755,6 @@ async fn serve_inner(
                         ));
                     }
                 }
-            }
         }
 
         #[cfg(feature = "onnx")]
@@ -2991,9 +2983,8 @@ async fn serve_inner(
             .get("http://localhost:11434/api/tags")
             .send()
             .await
-        {
-            if let Ok(tags) = resp.json::<serde_json::Value>().await {
-                if let Some(models) = tags["models"].as_array() {
+            && let Ok(tags) = resp.json::<serde_json::Value>().await
+                && let Some(models) = tags["models"].as_array() {
                     for m in models {
                         if let Some(name) = m["name"].as_str() {
                             // Query /api/show for detailed model info
@@ -3002,16 +2993,12 @@ async fn serve_inner(
                                 .json(&serde_json::json!({"name": name}))
                                 .send()
                                 .await
-                            {
-                                if let Ok(info) = show_resp.json::<serde_json::Value>().await {
+                                && let Ok(info) = show_resp.json::<serde_json::Value>().await {
                                     ollama_meta.insert(name.to_string(), info);
                                 }
-                            }
                         }
                     }
                 }
-            }
-        }
         if !ollama_meta.is_empty() {
             tracing::info!(
                 models = ollama_meta.len(),
@@ -3085,22 +3072,20 @@ async fn serve_inner(
                     if let Some(model_info) = info.get("model_info") {
                         // Extract context window from model metadata
                         for (key, val) in model_info.as_object().into_iter().flatten() {
-                            if key.ends_with(".context_length") {
-                                if let Some(ctx) = val.as_u64() {
+                            if key.ends_with(".context_length")
+                                && let Some(ctx) = val.as_u64() {
                                     card.vendor.context_window = Some(ctx as u32);
                                 }
-                            }
-                            if key.ends_with(".embedding_length") {
-                                if let Some(dim) = val.as_u64() {
+                            if key.ends_with(".embedding_length")
+                                && let Some(dim) = val.as_u64() {
                                     card.vendor
                                         .custom
                                         .insert("embedding_dim".into(), serde_json::json!(dim));
                                 }
-                            }
                         }
                         // Parameter count from general.parameter_count
-                        if let Some(params) = model_info.get("general.parameter_count") {
-                            if let Some(p) = params.as_u64() {
+                        if let Some(params) = model_info.get("general.parameter_count")
+                            && let Some(p) = params.as_u64() {
                                 let label = if p >= 1_000_000_000 {
                                     format!("{}B", p / 1_000_000_000)
                                 } else if p >= 1_000_000 {
@@ -3110,34 +3095,29 @@ async fn serve_inner(
                                 };
                                 card.vendor.parameters = Some(label);
                             }
-                        }
                         // Architecture / family
-                        if let Some(arch) = model_info.get("general.architecture") {
-                            if let Some(a) = arch.as_str() {
+                        if let Some(arch) = model_info.get("general.architecture")
+                            && let Some(a) = arch.as_str() {
                                 card.vendor.family = Some(a.to_string());
                             }
-                        }
                     }
                     // Quantization from details
                     if let Some(details) = info.get("details") {
-                        if let Some(quant) = details.get("quantization_level") {
-                            if let Some(q) = quant.as_str() {
+                        if let Some(quant) = details.get("quantization_level")
+                            && let Some(q) = quant.as_str() {
                                 card.vendor.quantization = Some(q.to_string());
                             }
-                        }
-                        if let Some(family) = details.get("family") {
-                            if card.vendor.family.is_none() {
+                        if let Some(family) = details.get("family")
+                            && card.vendor.family.is_none() {
                                 card.vendor.family = family.as_str().map(|s| s.to_string());
                             }
-                        }
                     }
                     // License from license field
-                    if let Some(license) = info.get("license") {
-                        if let Some(l) = license.as_str() {
+                    if let Some(license) = info.get("license")
+                        && let Some(l) = license.as_str() {
                             // Take first line as the license identifier
                             card.vendor.license = l.lines().next().map(|s| s.to_string());
                         }
-                    }
                     card.vendor.format = Some("gguf".into());
                 }
 
@@ -3156,11 +3136,10 @@ async fn serve_inner(
                 }
 
                 // Merge operator-defined agentic metadata from config
-                if let Some(mcfg) = mcfg_ref {
-                    if let Some(agentic_cfg) = &mcfg.agentic {
+                if let Some(mcfg) = mcfg_ref
+                    && let Some(agentic_cfg) = &mcfg.agentic {
                         card.merge_agentic(&agentic_cfg.to_agentic_meta());
                     }
-                }
 
                 card
             })
@@ -3437,15 +3416,14 @@ async fn serve_inner(
             match navra_flow::DagCheckpoint::open(std::path::Path::new(&db_path)) {
                 Ok(cp) => {
                     tracing::info!(path = %db_path, "Flow checkpoint store opened");
-                    if let Ok(incomplete) = cp.list_incomplete() {
-                        if !incomplete.is_empty() {
+                    if let Ok(incomplete) = cp.list_incomplete()
+                        && !incomplete.is_empty() {
                             tracing::info!(
                                 count = incomplete.len(),
                                 flows = ?incomplete,
                                 "Found incomplete flows from previous run (use flow_resume to continue)"
                             );
                         }
-                    }
                     Some(Arc::new(cp))
                 }
                 Err(e) => {
@@ -4130,8 +4108,8 @@ async fn serve_inner(
             }
             // Re-add ML filters
             for (model_name, model_cfg) in &cfg.models {
-                if model_cfg.task == "classification" {
-                    if let Some(model) = models.get(model_name) {
+                if model_cfg.task == "classification"
+                    && let Some(model) = models.get(model_name) {
                         let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
                             std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
                                 model.clone(),
@@ -4152,7 +4130,6 @@ async fn serve_inner(
                             ));
                         }
                     }
-                }
             }
             #[cfg(feature = "onnx")]
             if let Some(ref ner) = pii_ner_filter {
@@ -4590,8 +4567,8 @@ async fn serve_inner(
                             if !matches!(ext, Some("yml" | "yaml")) {
                                 continue;
                             }
-                            if let Ok(content) = std::fs::read_to_string(&p) {
-                                if let Ok(flow) = serde_yaml::from_str::<
+                            if let Ok(content) = std::fs::read_to_string(&p)
+                                && let Ok(flow) = serde_yaml::from_str::<
                                     navra_flow::yaml_loader::FlowFile,
                                 >(&content)
                                 {
@@ -4610,7 +4587,6 @@ async fn serve_inner(
                                             .collect(),
                                     });
                                 }
-                            }
                         }
                     }
                 }
@@ -4927,20 +4903,18 @@ pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
     let reload = std::process::Command::new("systemctl")
         .args(["--user", "daemon-reload"])
         .status();
-    if let Ok(status) = reload {
-        if status.success() {
+    if let Ok(status) = reload
+        && status.success() {
             println!("Reloaded systemd user daemon");
         }
-    }
 
     let enable = std::process::Command::new("systemctl")
         .args(["--user", "enable", "navra.service", "navra.socket"])
         .status();
-    if let Ok(status) = enable {
-        if status.success() {
+    if let Ok(status) = enable
+        && status.success() {
             println!("Enabled navra.service and navra.socket");
         }
-    }
 
     println!("\nTo start now:  systemctl --user start navra.service");
     println!("To check logs: journalctl --user -u navra.service -f");
@@ -5344,11 +5318,10 @@ async fn run_agent(
 
 pub(crate) fn expand_tilde(path: &str) -> String {
     let mut result = path.to_string();
-    if result.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if result.starts_with("~/")
+        && let Some(home) = dirs::home_dir() {
             result = format!("{}{}", home.display(), &result[1..]);
         }
-    }
     // Expand $VAR and ${VAR} patterns
     let mut out = String::with_capacity(result.len());
     let mut chars = result.chars().peekable();
@@ -5567,7 +5540,7 @@ fn policy_suggest(
 
     // Sort by count descending
     let mut sorted: Vec<_> = groups.iter().collect();
-    sorted.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    sorted.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
 
     println!(
         "# navra policy suggest — {} denials in last {}h, {} groups\n",

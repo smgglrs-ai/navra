@@ -119,12 +119,11 @@ impl QueryCache {
             }
         }
 
-        if best_sim >= self.config.similarity_threshold {
-            if let Some(idx) = best_idx {
+        if best_sim >= self.config.similarity_threshold
+            && let Some(idx) = best_idx {
                 self.hits.fetch_add(1, Ordering::Relaxed);
                 return Some(entries[idx].results.clone());
             }
-        }
 
         None
     }

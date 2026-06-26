@@ -121,8 +121,8 @@ impl ModelRuntime for PodmanRuntime {
             let max_attempts = self.engine.health_poll_attempts();
             for attempt in 0..max_attempts {
                 tokio::time::sleep(std::time::Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
-                if let Ok(resp) = client.get(&health_url).send().await {
-                    if resp.status().is_success() {
+                if let Ok(resp) = client.get(&health_url).send().await
+                    && resp.status().is_success() {
                         tracing::info!(
                             name = %container_name,
                             port = port,
@@ -131,7 +131,6 @@ impl ModelRuntime for PodmanRuntime {
                         );
                         break;
                     }
-                }
                 if attempt == max_attempts - 1 {
                     let _ = tokio::process::Command::new("podman")
                         .args(["rm", "-f", &container_name])

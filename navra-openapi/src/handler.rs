@@ -85,9 +85,9 @@ pub async fn execute_operation(
     .await;
 
     // On 401/403 with OAuth configured, try one token refresh then retry
-    if let Some(ref mgr) = auth.oauth {
-        if let Ok(ref r) = resp {
-            if r.is_error == Some(true) {
+    if let Some(ref mgr) = auth.oauth
+        && let Ok(ref r) = resp
+            && r.is_error == Some(true) {
                 let body_text = r
                     .content
                     .first()
@@ -124,8 +124,6 @@ pub async fn execute_operation(
                     }
                 }
             }
-        }
-    }
 
     resp.unwrap_or_else(|e| CallToolResult::error_msg(format!("HTTP request failed: {e}")))
 }
@@ -142,24 +140,22 @@ async fn send_request(
     let mut req = client.request(method.clone(), url);
     req = req.headers(headers.clone());
 
-    if meta.has_body {
-        if let Some(body) = args.get("body") {
+    if meta.has_body
+        && let Some(body) = args.get("body") {
             req = req.header("Content-Type", "application/json");
             req = req.json(body);
         }
-    }
 
     let resp = req.send().await.map_err(|e| e.to_string())?;
 
     let status = resp.status();
     let max_body = max_response_bytes.unwrap_or(1024 * 1024);
-    if let Some(len) = resp.content_length() {
-        if len as usize > max_body {
+    if let Some(len) = resp.content_length()
+        && len as usize > max_body {
             return Ok(CallToolResult::error_msg(format!(
                 "Response too large ({len} bytes, limit {max_body})"
             )));
         }
-    }
     let body = match resp.bytes().await {
         Ok(b) => {
             if b.len() > max_body {

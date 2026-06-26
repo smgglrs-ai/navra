@@ -222,11 +222,10 @@ fn glob_match(pattern: &str, text: &str) -> bool {
             None => return false,
         }
     }
-    if let Some(last) = parts.last() {
-        if !last.is_empty() {
+    if let Some(last) = parts.last()
+        && !last.is_empty() {
             return text.ends_with(last);
         }
-    }
     true
 }
 

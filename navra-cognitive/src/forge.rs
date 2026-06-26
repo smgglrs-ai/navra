@@ -452,8 +452,8 @@ fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
         {
             continue;
         }
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content) {
+        if let Ok(content) = std::fs::read_to_string(&path)
+            && let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content) {
                 let key = format!(
                     "{}_{}",
                     meta.base_persona,
@@ -466,7 +466,6 @@ fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
                     path: path.clone(),
                 });
             }
-        }
     }
     catalog
 }

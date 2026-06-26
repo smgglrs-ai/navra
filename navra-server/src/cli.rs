@@ -612,8 +612,8 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("navra/agent-bundles")
         .join(&new_bundle.meta.name);
-    if existing_dir.exists() {
-        if let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
+    if existing_dir.exists()
+        && let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
             let diff =
                 bundle_dir::diff_permissions(&old_bundle.permissions, &new_bundle.permissions);
             if !diff.is_empty() {
@@ -625,7 +625,6 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
                 println!();
             }
         }
-    }
 
     let installed = bundle_dir::install_from_dir(dir)?;
     println!("Installed: {} v{}", installed.name, installed.version);
@@ -638,12 +637,11 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
         }
     }
 
-    if let Ok(Some(template)) = bundle_dir::load_config_template(dir) {
-        if !template.credentials.is_empty() {
+    if let Ok(Some(template)) = bundle_dir::load_config_template(dir)
+        && !template.credentials.is_empty() {
             println!("\nThis agent needs credentials. Run:");
             println!("  navra agent init {}", installed.name);
         }
-    }
 
     Ok(())
 }
@@ -688,8 +686,8 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
     }
 
     // Credential references
-    if let Some(ref tmpl) = template {
-        if !tmpl.credentials.is_empty() {
+    if let Some(ref tmpl) = template
+        && !tmpl.credentials.is_empty() {
             config.push_str("\n[credentials]\n");
             for cred in &tmpl.credentials {
                 let required = if cred.required { "" } else { "  # optional" };
@@ -707,7 +705,6 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
                 ));
             }
         }
-    }
 
     // Permission envelope
     if !bundle.permissions.operations.is_empty() || !bundle.permissions.default.is_empty() {
@@ -755,8 +752,8 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
     );
     println!("Config: {}", config_path.display());
 
-    if let Some(ref tmpl) = template {
-        if !tmpl.credentials.is_empty() {
+    if let Some(ref tmpl) = template
+        && !tmpl.credentials.is_empty() {
             println!("\nCredentials needed:");
             for cred in &tmpl.credentials {
                 let req = if cred.required {
@@ -768,7 +765,6 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
             }
             println!("\nStore credentials in your OS keyring under 'navra/{instance}/<name>'");
         }
-    }
 
     if !bundle.workflows.is_empty() {
         println!("\nAvailable workflows:");
@@ -994,15 +990,14 @@ pub(crate) fn model_list() -> anyhow::Result<()> {
     }
 
     // Hub-cached models
-    if let Ok(hub) = navra_model_hub::ModelHub::new() {
-        if let Ok(cached) = hub.list() {
+    if let Ok(hub) = navra_model_hub::ModelHub::new()
+        && let Ok(cached) = hub.list() {
             for model in cached {
                 let size = format!("{:.1} MB", model.size as f64 / 1_048_576.0);
                 println!("{:<40} {size:<12} hub", model.uri);
                 found = true;
             }
         }
-    }
 
     if !found {
         println!("No models installed.");

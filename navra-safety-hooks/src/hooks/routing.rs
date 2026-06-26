@@ -55,8 +55,8 @@ impl RoutingHook {
     /// 4. Default tier
     fn classify(&self, tool_name: &str, args: &serde_json::Value) -> &str {
         // 1. Explicit routing hint in arguments
-        if let Some(hint) = args.get("_routing_hint").and_then(|v| v.as_str()) {
-            if self.tiers.iter().any(|t| t.name == hint) {
+        if let Some(hint) = args.get("_routing_hint").and_then(|v| v.as_str())
+            && self.tiers.iter().any(|t| t.name == hint) {
                 return self
                     .tiers
                     .iter()
@@ -64,7 +64,6 @@ impl RoutingHook {
                     .map(|t| t.name.as_str())
                     .unwrap();
             }
-        }
 
         // 2. Tool name pattern matching
         for tier in &self.tiers {

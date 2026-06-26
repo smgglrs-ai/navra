@@ -16,19 +16,17 @@ use super::TaskStore;
 /// 3. None — caller must handle the error
 pub(super) fn resolve_tool(message: &Message) -> Option<String> {
     // 1. Explicit skill in metadata
-    if let Some(meta) = &message.metadata {
-        if let Some(skill) = meta.get("skill").and_then(|v| v.as_str()) {
+    if let Some(meta) = &message.metadata
+        && let Some(skill) = meta.get("skill").and_then(|v| v.as_str()) {
             return Some(skill.to_string());
         }
-    }
 
     // 2. DataPart with a "tool" field
     for part in &message.parts {
-        if let Part::Data { data, .. } = part {
-            if let Some(tool) = data.get("tool").and_then(|v| v.as_str()) {
+        if let Part::Data { data, .. } = part
+            && let Some(tool) = data.get("tool").and_then(|v| v.as_str()) {
                 return Some(tool.to_string());
             }
-        }
     }
 
     None
@@ -43,11 +41,10 @@ pub(super) fn resolve_tool(message: &Message) -> Option<String> {
 pub(super) fn extract_arguments(message: &Message) -> serde_json::Value {
     // Look for explicit arguments in DataParts
     for part in &message.parts {
-        if let Part::Data { data, .. } = part {
-            if let Some(args) = data.get("arguments") {
+        if let Part::Data { data, .. } = part
+            && let Some(args) = data.get("arguments") {
                 return args.clone();
             }
-        }
     }
 
     // Use the first DataPart's content as arguments (excluding "tool" key)

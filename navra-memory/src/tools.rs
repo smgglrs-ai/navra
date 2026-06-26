@@ -356,8 +356,8 @@ async fn handle_distill(
     let source = source.unwrap_or_default();
 
     // If memory_type=auto, use the classifier if available
-    if memory_type.as_deref() == Some("auto") {
-        if let Some(ref classifier) = state.classifier_model {
+    if memory_type.as_deref() == Some("auto")
+        && let Some(ref classifier) = state.classifier_model {
             let entries: Vec<serde_json::Value> = {
                 let mut results = Vec::new();
                 for paragraph in text.split("\n\n").filter(|p| !p.trim().is_empty()).take(20) {
@@ -398,7 +398,6 @@ async fn handle_distill(
             });
             return CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default());
         }
-    }
 
     // Try LLM-based extraction if a model is available
     if let Some(ref model) = state.distill_model {

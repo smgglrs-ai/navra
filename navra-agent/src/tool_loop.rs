@@ -1032,9 +1032,9 @@ pub async fn run_tool_loop(
 
         // Bounded reasoning: truncate verbose model text between tool calls
         // to prevent small models from wasting context on explanation.
-        if let Some(max_tokens) = config.max_reasoning_tokens {
-            if let Some(text) = response.text() {
-                if text.len() > max_tokens * 4 {
+        if let Some(max_tokens) = config.max_reasoning_tokens
+            && let Some(text) = response.text()
+                && text.len() > max_tokens * 4 {
                     let truncated = truncate_reasoning(&text, max_tokens);
                     tracing::info!(
                         original_chars = text.len(),
@@ -1045,8 +1045,6 @@ pub async fn run_tool_loop(
                     // don't carry the full verbose reasoning
                     input.push(InputItem::user(&truncated));
                 }
-            }
-        }
 
         // Repetition loop detection: if the model produces the same
         // output 5 times in a row, abort to avoid infinite loops.

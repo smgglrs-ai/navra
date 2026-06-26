@@ -374,8 +374,8 @@ async fn execute_tool_step(
     }
 
     // Evaluate conditional
-    if let Some(ref when) = step.when {
-        if !evaluate_when(when, vars) {
+    if let Some(ref when) = step.when
+        && !evaluate_when(when, vars) {
             let sr = StepResult {
                 step: Some(step_name.clone()),
                 tool: step.tool.clone(),
@@ -386,7 +386,6 @@ async fn execute_tool_step(
             vars.insert(step_name, sr);
             return;
         }
-    }
 
     // Resolve variable references in arguments
     let resolved_args = if step.args.is_null() {
@@ -494,8 +493,8 @@ async fn execute_for_each_step(
         .unwrap_or_else(|| format!("for_each_{}", index));
 
     // Evaluate conditional
-    if let Some(ref when) = fe.when {
-        if !evaluate_when(when, vars) {
+    if let Some(ref when) = fe.when
+        && !evaluate_when(when, vars) {
             let sr = StepResult {
                 step: Some(fe_name.clone()),
                 tool: "for_each".to_string(),
@@ -506,7 +505,6 @@ async fn execute_for_each_step(
             vars.insert(fe_name, sr);
             return;
         }
-    }
 
     // Resolve the for_each source value
     let source = substitute_string(&fe.for_each, vars);

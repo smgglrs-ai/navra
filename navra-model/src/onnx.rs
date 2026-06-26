@@ -236,11 +236,10 @@ impl OnnxBackend {
         }
 
         let hidden_states = &outputs[0];
-        let hidden_dim = if seq_len > 0 {
-            hidden_states.len() / seq_len
-        } else {
-            target_dimensions
-        };
+        let hidden_dim = hidden_states
+            .len()
+            .checked_div(seq_len)
+            .unwrap_or(target_dimensions);
 
         let pool_dim = hidden_dim.max(target_dimensions);
         let mut embedding = vec![0.0f32; pool_dim];

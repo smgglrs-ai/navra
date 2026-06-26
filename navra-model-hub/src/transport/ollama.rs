@@ -129,11 +129,10 @@ impl ModelTransport for OllamaTransport {
             }
 
             // Extract parameter count from tag (e.g. "3b", "8b-instruct")
-            if let Some(params) = tag.split('-').next() {
-                if params.ends_with('b') || params.ends_with('B') {
+            if let Some(params) = tag.split('-').next()
+                && (params.ends_with('b') || params.ends_with('B')) {
                     meta.parameters = Some(params.to_uppercase());
                 }
-            }
 
             // Parse layers for quantization info and context size
             if let Some(layers) = manifest["layers"].as_array() {

@@ -450,9 +450,8 @@ locality = "remote"
         .get("http://localhost:11434/api/tags")
         .send()
         .await
-    {
-        if let Ok(tags) = resp.json::<serde_json::Value>().await {
-            if let Some(models) = tags["models"].as_array() {
+        && let Ok(tags) = resp.json::<serde_json::Value>().await
+            && let Some(models) = tags["models"].as_array() {
                 for m in models {
                     if let Some(name) = m["name"].as_str() {
                         let model_key = name.replace([':', '-', '.', '/'], "_");
@@ -485,8 +484,6 @@ locality = "local"
                     }
                 }
             }
-        }
-    }
 
     std::fs::write(
         demo_config_path,

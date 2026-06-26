@@ -47,14 +47,14 @@ pub async fn capture_screen() -> Result<String, String> {
     .map_err(|e| format!("Failed to create request proxy: {e}"))?;
 
     // Wait for the Response signal (with timeout)
-    let response = tokio::time::timeout(
+    
+
+    tokio::time::timeout(
         std::time::Duration::from_secs(30),
         wait_for_response(&request_proxy),
     )
     .await
-    .map_err(|_| "Screenshot timed out (30s)".to_string())?;
-
-    response
+    .map_err(|_| "Screenshot timed out (30s)".to_string())?
 }
 
 /// Wait for the portal Response signal and extract the URI.

@@ -83,3 +83,65 @@ Five-layer content filtering:
 The PrivacyRouter coordinates these components with short-circuit
 optimization: when regex filters find sufficient PII, expensive
 ONNX inference is skipped.
+
+## Audit Blackbox
+
+The blackbox is a gateway-level flight recorder. It captures every
+tool call at the MCP chokepoint with no opt-in — if navra runs,
+it records.
+
+### What is recorded
+
+Each entry stores agent identity, tool name, arguments, result,
+outcome (`allowed`, `denied_acl`, `denied_ifc`, `denied_rate`,
+`error`), wall-clock duration, IFC label, and an optional
+on-behalf-of human subject (`obo_sub` for OAuth-delegated calls).
+Arguments and results are truncated to 4 KiB (UTF-8 safe).
+
+When the privacy pipeline is enabled, PII in tool arguments and
+results is redacted before recording.
+
+### Hash chain
+
+Entries are SHA-256 hash-chained: each entry includes the hash of
+the previous entry. Tampering with any entry breaks the chain from
+that point forward. Verify integrity at any time:
+
+```bash
+navra audit --verify
+```
+
+### Querying the audit log
+
+```bash
+# Last 20 entries (tabular summary)
+navra audit
+
+# Full detail with args/result
+navra audit --detail --limit 50
+
+# Filter by agent and tool
+navra audit --agent claude --tool file_read
+
+# Reconstruct a session timeline
+navra audit --detail --agent my-agent
+```
+
+### Storage and retention
+
+The blackbox lives at `~/.local/share/navra/blackbox.db` (SQLite,
+WAL mode). The chain resumes seamlessly across server restarts.
+
+Retention is manual — the `expire_older_than` API deletes entries
+older than a given number of days. This breaks the hash chain for
+deleted entries, but `verify_chain` validates the remaining
+contiguous chain. Check your compliance requirements before expiring
+audit data.
+
+### Compliance
+
+The blackbox addresses recording requirements in the EU AI Act
+(Article 14, human oversight), SOC2 CC6.1 (audit trails), and
+ISO 42001 (AI decision records). See the
+[workshop paper](/docs/papers/audit-blackbox/) for a full
+compliance mapping.

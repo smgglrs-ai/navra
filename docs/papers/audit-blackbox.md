@@ -59,8 +59,9 @@ not informed that recording is occurring.
 ### 3.2 Storage: append-only SQLite
 
 Entries are stored in a SQLite database (`~/.local/share/navra/blackbox.db`).
-The table uses `INSERT` only -- no `UPDATE` or `DELETE` operations exist
-in the codebase. The schema is a single `blackbox` table with indexes
+The table uses `INSERT` for recording -- no `UPDATE` operations exist
+in the codebase. A `DELETE` path exists only for explicit retention
+expiry (see Section 4.2). The schema is a single `blackbox` table with indexes
 on `agent_name`, `tool_name`, and `timestamp_ms`.
 
 SQLite provides durability (WAL mode), portability (single file), and
@@ -103,11 +104,35 @@ Each blackbox entry captures:
 | `timestamp_ms` | Unix timestamp in milliseconds |
 | `prev_hash` | SHA-256 hash of the previous entry |
 | `hash` | SHA-256 hash of this entry |
+| `obo_sub` | On-behalf-of human subject identifier (optional; set when an agent acts for a specific human via OAuth delegation) |
 
 Truncation is UTF-8 safe (backs up to the nearest character boundary).
-Large tool results (e.g., full file contents) are clipped to 4 KB,
+Large tool results (e.g., full file contents) are clipped to 4 KiB,
 which is sufficient to capture error messages and short outputs while
 bounding storage growth.
+
+### 4.1 PII sanitization
+
+When a PII filter pipeline is attached (via `with_pii_filter`),
+`tool_args` and `tool_result` are sanitized before being written to
+the database. Detected PII (emails, SSNs, names, etc.) is replaced
+with `[REDACTED:TYPE]` tokens. The hash chain covers the sanitized
+content, so verification remains valid. If sanitization fails for
+any reason, the entire field is replaced with
+`[redacted by PII filter]`.
+
+### 4.2 Session and retention queries
+
+The blackbox supports session-scoped queries (`query_session`) and
+session listing with optional time-range filters (`list_sessions`).
+These enable operators to reconstruct the full tool-call timeline
+for a single MCP session.
+
+The `expire_older_than(days)` method deletes entries older than a
+specified number of days. This breaks the hash chain for deleted
+entries, but `verify_chain` still validates the remaining contiguous
+chain. Use with caution — audit logs often have separate legal
+retention requirements.
 
 ## 5. CLI Interface
 
@@ -235,13 +260,14 @@ the sole writer.
   entire chain with valid hashes. Signing entries with the server's
   Ed25519 identity key would add attribution but is not yet
   implemented.
-- **No rotation or archival**: The blackbox grows indefinitely. For
-  long-running deployments, external log rotation is required.
-- **Truncation loses data**: 4 KB truncation means large tool
+- **Retention is manual**: The `expire_older_than` API allows
+  time-based deletion, but there is no automatic rotation policy.
+  Operators must call it explicitly or set up external scheduling.
+- **Truncation loses data**: 4 KiB truncation means large tool
   arguments or results are partially recorded. This is a deliberate
   tradeoff between completeness and storage cost.
 
-## 9. Conclusion
+## 10. Conclusion
 
 Audit trails for AI agents should be infrastructure, not application
 features. By recording at the MCP gateway chokepoint, the blackbox
@@ -249,9 +275,9 @@ captures every tool call regardless of the agent framework, without
 opt-in, and without agent cooperation. The append-only, hash-chained
 design provides tamper detection suitable for compliance review.
 
-The approach is simple (under 250 lines of Rust), requires no external
-dependencies beyond SQLite, and has proven its value in real debugging
-scenarios. We argue that any system serving as an intermediary between
+The core implementation is roughly 500 lines of Rust (plus tests and
+Kani proofs), requires no external dependencies beyond SQLite and
+sha2, and has proven its value in real debugging scenarios. We argue that any system serving as an intermediary between
 AI agents and tools should include always-on audit recording as a
 baseline capability.
 

@@ -56,11 +56,10 @@ impl OAuthTokenManager {
     pub async fn access_token(&self) -> Result<String, OAuthClientError> {
         {
             let guard = self.token.read().await;
-            if let Some(ref ts) = *guard {
-                if !ts.is_expired() {
+            if let Some(ref ts) = *guard
+                && !ts.is_expired() {
                     return Ok(ts.access_token.clone());
                 }
-            }
         }
         self.refresh_or_acquire().await
     }

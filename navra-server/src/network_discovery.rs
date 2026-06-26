@@ -119,11 +119,10 @@ pub fn discover_from_tools(tools: &[rmcp::model::Tool]) -> NetworkRequirements {
         if let Some(ref desc) = tool.description {
             let val = serde_json::Value::String(desc.to_string());
             for url in extract_urls(&val) {
-                if let Some(domain) = extract_domain(&url) {
-                    if seen.insert(domain.clone()) {
+                if let Some(domain) = extract_domain(&url)
+                    && seen.insert(domain.clone()) {
                         reqs.from_descriptions.push(domain);
                     }
-                }
             }
         }
 

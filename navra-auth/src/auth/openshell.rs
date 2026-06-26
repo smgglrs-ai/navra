@@ -288,11 +288,10 @@ impl OpenShellAuthenticator {
                 tracing::warn!("JWKS cache RwLock poisoned (read), recovering");
                 e.into_inner()
             });
-            if let Some(ref cached) = *cache {
-                if cached.fetched_at.elapsed().as_secs() < cache_ttl {
+            if let Some(ref cached) = *cache
+                && cached.fetched_at.elapsed().as_secs() < cache_ttl {
                     return Ok(cached.keys.clone());
                 }
-            }
         }
 
         let timeout = std::time::Duration::from_secs(self.config.http_timeout_secs);

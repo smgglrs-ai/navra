@@ -350,11 +350,10 @@ impl OAuthProvider {
         }
 
         // Validate requested_token_type if present
-        if let Some(ref rtt) = request.requested_token_type {
-            if rtt != "urn:ietf:params:oauth:token-type:access_token" {
+        if let Some(ref rtt) = request.requested_token_type
+            && rtt != "urn:ietf:params:oauth:token-type:access_token" {
                 return Err("invalid_request: unsupported requested_token_type".to_string());
             }
-        }
 
         // Extract human identity from the subject token
         let claims = if let Some(validator) = validate_subject {

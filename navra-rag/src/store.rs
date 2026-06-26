@@ -153,11 +153,10 @@ impl ChunkStore {
         query_embedding: &[f32],
         limit: usize,
     ) -> rusqlite::Result<Vec<ChunkResult>> {
-        if let Some(ref cache) = self.query_cache {
-            if let Some(results) = cache.lookup(query_text, query_embedding) {
+        if let Some(ref cache) = self.query_cache
+            && let Some(results) = cache.lookup(query_text, query_embedding) {
                 return Ok(results);
             }
-        }
 
         let results = self.search(query_embedding, limit)?;
 
@@ -593,11 +592,10 @@ impl ChunkStore {
         hyde_embedding: Option<&[f32]>,
         limit: usize,
     ) -> rusqlite::Result<Vec<ChunkResult>> {
-        if let Some(ref cache) = self.query_cache {
-            if let Some(results) = cache.lookup(query_text, query_embedding) {
+        if let Some(ref cache) = self.query_cache
+            && let Some(results) = cache.lookup(query_text, query_embedding) {
                 return Ok(results);
             }
-        }
 
         let results =
             self.search_hybrid_with_hyde(query_text, query_embedding, hyde_embedding, limit)?;

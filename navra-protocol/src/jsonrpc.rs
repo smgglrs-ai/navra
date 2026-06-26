@@ -183,15 +183,14 @@ impl JsonRpcRequest {
                 MAX_METHOD_LENGTH
             )));
         }
-        if let RequestId::String(ref s) = self.id {
-            if s.len() > MAX_REQUEST_ID_LENGTH {
+        if let RequestId::String(ref s) = self.id
+            && s.len() > MAX_REQUEST_ID_LENGTH {
                 return Err(JsonRpcError::invalid_request(format!(
                     "request id too long ({} bytes, max {})",
                     s.len(),
                     MAX_REQUEST_ID_LENGTH
                 )));
             }
-        }
         Ok(())
     }
 }

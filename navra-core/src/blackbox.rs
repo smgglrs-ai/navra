@@ -314,18 +314,16 @@ impl Blackbox {
         let mut where_clauses = Vec::new();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-        if let Some(agent) = agent_filter {
-            if !agent.is_empty() {
+        if let Some(agent) = agent_filter
+            && !agent.is_empty() {
                 where_clauses.push("agent_name LIKE ?");
                 param_values.push(Box::new(format!("%{agent}%")));
             }
-        }
-        if let Some(tool) = tool_filter {
-            if !tool.is_empty() {
+        if let Some(tool) = tool_filter
+            && !tool.is_empty() {
                 where_clauses.push("tool_name LIKE ?");
                 param_values.push(Box::new(format!("%{tool}%")));
             }
-        }
 
         let where_sql = if where_clauses.is_empty() {
             String::new()

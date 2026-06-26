@@ -157,15 +157,14 @@ impl IdJagAuthenticator {
 
             if kty == "OKP" {
                 // Ed25519 key: decode the "x" parameter (base64url, 32 bytes)
-                if let Some(x) = key_json.get("x").and_then(|v| v.as_str()) {
-                    if let Ok(pk_bytes) = URL_SAFE_NO_PAD.decode(x) {
+                if let Some(x) = key_json.get("x").and_then(|v| v.as_str())
+                    && let Ok(pk_bytes) = URL_SAFE_NO_PAD.decode(x) {
                         keys.push(JwkKey {
                             kid,
                             algorithm: alg.to_string(),
                             public_key_bytes: pk_bytes,
                         });
                     }
-                }
             }
         }
 

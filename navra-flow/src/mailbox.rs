@@ -136,8 +136,8 @@ impl MailboxRegistry {
         inherited_provenance: Vec<(String, Instant)>,
     ) -> Result<(), FlowError> {
         // Rate limit check
-        if self.rate_limit > 0 {
-            if let Some(sender_mailbox) = self.mailboxes.get(sender_id) {
+        if self.rate_limit > 0
+            && let Some(sender_mailbox) = self.mailboxes.get(sender_id) {
                 let count = sender_mailbox
                     .send_count
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -155,7 +155,6 @@ impl MailboxRegistry {
                     )));
                 }
             }
-        }
 
         let target = self
             .mailboxes

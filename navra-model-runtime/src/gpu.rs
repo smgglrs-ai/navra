@@ -220,11 +220,10 @@ pub fn sample_nvidia_memory() -> Vec<GpuMemoryUsage> {
                 if let Some(num) = val.trim().strip_suffix(" MB") {
                     used_mb = num.trim().parse().unwrap_or(0);
                 }
-            } else if let Some(val) = line.strip_prefix("Total :") {
-                if let Some(num) = val.trim().strip_suffix(" MB") {
+            } else if let Some(val) = line.strip_prefix("Total :")
+                && let Some(num) = val.trim().strip_suffix(" MB") {
                     total_mb = num.trim().parse().unwrap_or(0);
                 }
-            }
         }
         if total_mb > 0 {
             results.push(GpuMemoryUsage {

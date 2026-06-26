@@ -196,17 +196,15 @@ fn merge_value(
                 _ => {
                     // Scalar exists in target. If from main, main wins.
                     // If from another library, conflict.
-                    if !main_keys.contains(key_path) {
-                        if let Some(prev) = origins.get(key_path) {
-                            if prev != source_path {
+                    if !main_keys.contains(key_path)
+                        && let Some(prev) = origins.get(key_path)
+                            && prev != source_path {
                                 anyhow::bail!(
                                     "duplicate key '{key_path}' defined in both {} and {}",
                                     prev.display(),
                                     source_path.display()
                                 );
                             }
-                        }
-                    }
                 }
             }
         }
@@ -227,15 +225,14 @@ fn merge_value(
                 }
                 target.insert(key.to_string(), toml::Value::Table(new_table));
             } else {
-                if let Some(prev) = origins.get(key_path) {
-                    if prev != source_path {
+                if let Some(prev) = origins.get(key_path)
+                    && prev != source_path {
                         anyhow::bail!(
                             "duplicate key '{key_path}' defined in both {} and {}",
                             prev.display(),
                             source_path.display()
                         );
                     }
-                }
                 origins.insert(key_path.to_string(), source_path.to_path_buf());
                 target.insert(key.to_string(), value);
             }

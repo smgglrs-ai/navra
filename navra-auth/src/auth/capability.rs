@@ -239,11 +239,10 @@ pub fn decode_token_with_revocation(
         return Err(CapabilityError::UnsupportedVersion(payload.v));
     }
 
-    if let Some(rl) = revocation_list {
-        if rl.is_revoked(&payload.nonce) {
+    if let Some(rl) = revocation_list
+        && rl.is_revoked(&payload.nonce) {
             return Err(CapabilityError::Revoked);
         }
-    }
 
     Ok(payload)
 }
@@ -258,14 +257,13 @@ pub fn decode_token_with_audience(
     expected_audience: &str,
 ) -> Result<CapabilityPayload, CapabilityError> {
     let payload = decode_token(token, verifier)?;
-    if let Some(ref aud) = payload.aud {
-        if aud != expected_audience {
+    if let Some(ref aud) = payload.aud
+        && aud != expected_audience {
             return Err(CapabilityError::DelegationViolation(format!(
                 "audience mismatch: token is for '{}', server is '{}'",
                 aud, expected_audience
             )));
         }
-    }
     Ok(payload)
 }
 
@@ -378,14 +376,13 @@ fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
         }
         // "dir/**" covers "dir/sub/**" and "dir/sub/file"
         if let Some(parent_prefix) = parent.strip_suffix("/**") {
-            if let Some(child_prefix) = child.strip_suffix("/**") {
-                if child_prefix.starts_with(parent_prefix)
+            if let Some(child_prefix) = child.strip_suffix("/**")
+                && child_prefix.starts_with(parent_prefix)
                     && (child_prefix.len() == parent_prefix.len()
                         || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
                 {
                     return true;
                 }
-            }
             // Literal child path under parent's glob tree
             if child.starts_with(parent_prefix)
                 && (child.len() == parent_prefix.len()
@@ -395,13 +392,11 @@ fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
             }
         }
         // Parent with * wildcard: check if it matches the child literally
-        if parent.contains('*') {
-            if let Ok(pat) = glob::Pattern::new(parent) {
-                if pat.matches(child) {
+        if parent.contains('*')
+            && let Ok(pat) = glob::Pattern::new(parent)
+                && pat.matches(child) {
                     return true;
                 }
-            }
-        }
     }
     false
 }
@@ -453,14 +448,13 @@ pub fn validate_delegation(
                 "obo escalation: child introduces obo identity not present in parent".to_string(),
             ));
         }
-        (Some(parent_obo), Some(child_obo)) => {
-            if parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss {
+        (Some(parent_obo), Some(child_obo))
+            if (parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss) => {
                 return Err(CapabilityError::DelegationViolation(format!(
                     "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
                     child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
                 )));
             }
-        }
         _ => {}
     }
 

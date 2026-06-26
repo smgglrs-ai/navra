@@ -76,8 +76,8 @@ pub fn content_as_text(content: &Content) -> Option<&str> {
 pub fn compress_result(result: &mut CallToolResult, max_tokens: u32) {
     let chars_budget = (max_tokens as usize) * 4;
     for content in &mut result.content {
-        if let Some(tc) = content.raw.as_text() {
-            if tc.text.len() > chars_budget {
+        if let Some(tc) = content.raw.as_text()
+            && tc.text.len() > chars_budget {
                 let cut = chars_budget.saturating_sub(40).min(tc.text.len());
                 let mut safe_cut = cut;
                 while safe_cut > 0 && !tc.text.is_char_boundary(safe_cut) {
@@ -96,6 +96,5 @@ pub fn compress_result(result: &mut CallToolResult, max_tokens: u32) {
                 );
                 *content = Content::text(new_text);
             }
-        }
     }
 }

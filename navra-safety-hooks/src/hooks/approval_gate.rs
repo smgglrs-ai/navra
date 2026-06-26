@@ -115,12 +115,11 @@ impl ApprovalGateHook {
     /// and was still pending.
     pub fn approve(&self, request_id: &str) -> bool {
         let mut pending = self.pending.lock().unwrap();
-        if let Some(entry) = pending.get_mut(request_id) {
-            if entry.status == ApprovalStatus::Pending {
+        if let Some(entry) = pending.get_mut(request_id)
+            && entry.status == ApprovalStatus::Pending {
                 entry.status = ApprovalStatus::Approved;
                 return true;
             }
-        }
         false
     }
 
@@ -128,12 +127,11 @@ impl ApprovalGateHook {
     /// request existed and was still pending.
     pub fn deny(&self, request_id: &str, reason: String) -> bool {
         let mut pending = self.pending.lock().unwrap();
-        if let Some(entry) = pending.get_mut(request_id) {
-            if entry.status == ApprovalStatus::Pending {
+        if let Some(entry) = pending.get_mut(request_id)
+            && entry.status == ApprovalStatus::Pending {
                 entry.status = ApprovalStatus::Denied(reason);
                 return true;
             }
-        }
         false
     }
 

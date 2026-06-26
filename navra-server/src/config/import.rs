@@ -41,12 +41,11 @@ pub fn detect_and_parse(content: &str) -> anyhow::Result<(SourceFormat, Vec<Impo
             return Ok((SourceFormat::ClaudeDesktop, servers));
         }
 
-        if let Some(mcp) = json.get("mcp") {
-            if let Some(servers_val) = mcp.get("servers") {
+        if let Some(mcp) = json.get("mcp")
+            && let Some(servers_val) = mcp.get("servers") {
                 let servers = parse_mcp_servers_json(servers_val)?;
                 return Ok((SourceFormat::VsCode, servers));
             }
-        }
 
         if json.get("servers").is_some() {
             let servers = parse_mcp_servers_json(json.get("servers").unwrap())?;
