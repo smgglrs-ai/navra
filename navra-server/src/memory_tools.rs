@@ -715,7 +715,7 @@ pub fn memory_forget_def() -> ToolDefinition {
 ///
 /// Returns the number of chunks deleted, or 0 if no chunk store is available.
 fn cascade_delete_source(chunk_store: &Option<Arc<ChunkStore>>, source_id: &str) -> usize {
-    if let Some(ref cs) = chunk_store {
+    if let Some(cs) = chunk_store {
         match cs.delete_by_source(source_id) {
             Ok(n) => {
                 if n > 0 {
@@ -741,7 +741,7 @@ fn cascade_delete_source(chunk_store: &Option<Arc<ChunkStore>>, source_id: &str)
 ///
 /// Returns the number of chunks deleted, or 0 if no chunk store is available.
 fn cascade_delete_content(chunk_store: &Option<Arc<ChunkStore>>, query: &str) -> usize {
-    if let Some(ref cs) = chunk_store {
+    if let Some(cs) = chunk_store {
         match cs.delete_by_content_match(query) {
             Ok(n) => {
                 if n > 0 {

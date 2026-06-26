@@ -128,7 +128,7 @@ fn topological_sort(tasks: &HashMap<String, Task>) -> Result<Vec<String>, FlowEr
     // Start with nodes that have no incoming edges
     let mut queue: Vec<&str> = in_degree
         .iter()
-        .filter(|(_, &count)| count == 0)
+        .filter(|&(_, count)| *count == 0)
         .map(|(&id, _)| id)
         .collect();
     queue.sort(); // Deterministic order

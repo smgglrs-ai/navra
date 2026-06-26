@@ -530,8 +530,8 @@ impl KnowledgeStore {
             )
             .ok();
 
-        if let Some((id, version, gen)) = existing {
-            let new_gen = gen + 1;
+        if let Some((id, version, generation)) = existing {
+            let new_gen = generation + 1;
             db.execute(
                 "UPDATE memory_knowledge SET
                     title = ?1,

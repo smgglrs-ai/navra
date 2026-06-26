@@ -85,7 +85,7 @@ mod tests {
         // Temporarily override XDG_DATA_HOME so agents_dir() uses our temp dir
         let orig = std::env::var("XDG_DATA_HOME").ok();
         let parent = dir.parent().unwrap().to_path_buf();
-        std::env::set_var("XDG_DATA_HOME", &parent);
+        unsafe { std::env::set_var("XDG_DATA_HOME", &parent) };
 
         // agents_dir() uses dirs::data_dir() which reads XDG_DATA_HOME
         // but dirs crate caches, so we test save/list/remove with explicit paths
@@ -93,9 +93,9 @@ mod tests {
 
         // Cleanup
         if let Some(val) = orig {
-            std::env::set_var("XDG_DATA_HOME", val);
+            unsafe { std::env::set_var("XDG_DATA_HOME", val) };
         } else {
-            std::env::remove_var("XDG_DATA_HOME");
+            unsafe { std::env::remove_var("XDG_DATA_HOME") };
         }
         let _ = std::fs::remove_dir_all(&dir);
     }

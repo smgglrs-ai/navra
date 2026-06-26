@@ -1889,7 +1889,7 @@ fn spawn_openshell_agent(
 
             // Prepare workspace
             let workspace_dir = tempfile::tempdir().ok();
-            if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
+            if let (Some(provider), Some(ws_dir)) = (&workspace_provider, &workspace_dir) {
                 if let Err(e) = provider.populate(ws_dir.path()) {
                     reg.set_failed(
                         &team_id,
@@ -1909,7 +1909,7 @@ fn spawn_openshell_agent(
                     read_only: false,
                 });
             }
-            if let (Some(ref core_path), Some(_)) = (&cognitive_core_path, &tm_persona) {
+            if let (Some(core_path), Some(_)) = (&cognitive_core_path, &tm_persona) {
                 mounts.push(navra_model_runtime::openshell::Mount {
                     source: core_path.clone(),
                     target: "/cognitive_core".to_string(),
@@ -2091,7 +2091,7 @@ fn spawn_openshell_agent(
             }
 
             // Collect workspace results
-            if let (Some(ref provider), Some(ref ws_dir)) = (&workspace_provider, &workspace_dir) {
+            if let (Some(provider), Some(ws_dir)) = (&workspace_provider, &workspace_dir) {
                 match provider.collect(ws_dir.path()) {
                     Ok(result) => {
                         let summary = format!("Workspace: {} files", result.files.len(),);

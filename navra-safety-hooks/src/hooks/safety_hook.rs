@@ -150,7 +150,7 @@ impl Hook for SafetyHook {
                         }
                     }
                 }
-                RawContent::Resource(ref res) => {
+                RawContent::Resource(res) => {
                     use navra_protocol::ResourceContent;
                     match &res.resource {
                         ResourceContent::TextResourceContents {

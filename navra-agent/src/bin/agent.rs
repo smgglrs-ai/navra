@@ -95,7 +95,7 @@ async fn run() -> Result<(), String> {
     }
 
     // Load persona if both name and cognitive core path are provided
-    if let (Some(ref name), Some(ref core_path)) = (&persona_name, &cognitive_core_path) {
+    if let (Some(name), Some(core_path)) = (&persona_name, &cognitive_core_path) {
         let forge = navra_cognitive::ForgeService::load(Path::new(core_path))
             .map_err(|e| format!("failed to load cognitive core from {core_path}: {e}"))?;
         builder = builder
