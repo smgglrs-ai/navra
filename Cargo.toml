@@ -56,7 +56,7 @@ base64 = "0.22"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 oauth2 = { version = "5", default-features = false }
 url = "2"
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+keyring = "4"
 tonic = "0.12"
 prost = "0.13"
 schemars = "1.2"
