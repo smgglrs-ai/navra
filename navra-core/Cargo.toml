@@ -13,7 +13,7 @@ navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
 navra-auth = { path = "../navra-auth", features = ["desktop"] }
 navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
-navra-model = { path = "../navra-model", default-features = false, features = ["native-tls"] }
+navra-model = { path = "../navra-model", default-features = false, features = ["rustls"] }
 rmcp = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }

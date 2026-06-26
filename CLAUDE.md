@@ -4,19 +4,16 @@ Secure MCP gateway daemon for Linux desktops. Rust workspace.
 
 ## Build
 
-Requires ONNX Runtime installed system-wide (Fedora: `onnxruntime-devel`).
+ONNX Runtime is bundled automatically via the `ort` crate's
+`download-binaries` feature — no system packages required.
 
 ```bash
 # Build
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build
+cargo build
 
 # Run
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo run -- serve
+cargo run -- serve
 ```
-
-These environment variables are required because `ort` is configured
-with `default-features = false` (no bundled download) and the system
-package only provides shared libraries.
 
 ## Workspace
 
@@ -104,7 +101,6 @@ Doc-test convention: use `no_run` for examples needing cross-crate
 types, `text` for illustrative examples. Never use `ignore`.
 
 Prerequisites:
-- ONNX Runtime (`onnxruntime-devel` on Fedora)
 - Ollama with any model for 1 e2e test (`ollama pull qwen2.5:0.5b`)
 
 ```bash

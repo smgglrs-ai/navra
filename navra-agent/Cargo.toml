@@ -13,11 +13,11 @@ name = "navra-agent"
 path = "src/bin/agent.rs"
 
 [features]
-default = ["onnx", "native-tls"]
+default = ["onnx", "rustls"]
 onnx = ["navra-model/onnx", "navra-safety-hooks/onnx"]
 native-tls = ["navra-model/native-tls"]
 rustls = ["navra-model/rustls"]
-container = ["rustls"]
+container = []
 
 [dependencies]
 navra-protocol = { path = "../navra-protocol", default-features = false }
