@@ -89,7 +89,7 @@ impl Blackbox {
             .query_row(
                 "SELECT seq, hash FROM blackbox ORDER BY seq DESC LIMIT 1",
                 [],
-                |row| Ok((row.get::<_, u64>(0)?, row.get::<_, String>(1)?)),
+                |row| Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?)),
             )
             .unwrap_or((0, "0".repeat(64)));
 
@@ -207,7 +207,7 @@ impl Blackbox {
              tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
-                chain.seq, now, agent_name, agent_permissions, session_id,
+                chain.seq as i64, now, agent_name, agent_permissions, session_id,
                 tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
                 ifc_label, chain.prev_hash, hash, obo_sub,
             ],
@@ -231,7 +231,7 @@ impl Blackbox {
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, u64>(0)?,
+                    row.get::<_, i64>(0)? as u64,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
@@ -278,9 +278,9 @@ impl Blackbox {
             )
             .unwrap();
 
-        stmt.query_map([limit], |row| {
+        stmt.query_map([limit as i64], |row| {
             Ok(BlackboxEntry {
-                seq: row.get(0)?,
+                seq: row.get::<_, i64>(0)? as u64,
                 timestamp_ms: row.get(1)?,
                 agent_name: row.get(2)?,
                 agent_permissions: row.get(3)?,
@@ -289,7 +289,7 @@ impl Blackbox {
                 tool_args: row.get(6)?,
                 tool_result: row.get(7)?,
                 outcome: row.get(8)?,
-                duration_us: row.get(9)?,
+                duration_us: row.get::<_, i64>(9)? as u64,
                 ifc_label: row.get(10)?,
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,
@@ -337,8 +337,8 @@ impl Blackbox {
         let total: u64 = {
             let params_ref: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
-            db.query_row(&count_sql, params_ref.as_slice(), |row| row.get(0))
-                .unwrap_or(0)
+            db.query_row(&count_sql, params_ref.as_slice(), |row| row.get::<_, i64>(0))
+                .unwrap_or(0) as u64
         };
 
         let query_sql = format!(
@@ -358,7 +358,7 @@ impl Blackbox {
         let entries = stmt
             .query_map(params_ref.as_slice(), |row| {
                 Ok(BlackboxEntry {
-                    seq: row.get(0)?,
+                    seq: row.get::<_, i64>(0)? as u64,
                     timestamp_ms: row.get(1)?,
                     agent_name: row.get(2)?,
                     agent_permissions: row.get(3)?,
@@ -367,7 +367,7 @@ impl Blackbox {
                     tool_args: row.get(6)?,
                     tool_result: row.get(7)?,
                     outcome: row.get(8)?,
-                    duration_us: row.get(9)?,
+                    duration_us: row.get::<_, i64>(9)? as u64,
                     ifc_label: row.get(10)?,
                     prev_hash: row.get(11)?,
                     hash: row.get(12)?,
@@ -394,7 +394,7 @@ impl Blackbox {
             .unwrap();
         stmt.query_map([session_id], |row| {
             Ok(BlackboxEntry {
-                seq: row.get(0)?,
+                seq: row.get::<_, i64>(0)? as u64,
                 timestamp_ms: row.get(1)?,
                 agent_name: row.get(2)?,
                 agent_permissions: row.get(3)?,
@@ -403,7 +403,7 @@ impl Blackbox {
                 tool_args: row.get(6)?,
                 tool_result: row.get(7)?,
                 outcome: row.get(8)?,
-                duration_us: row.get(9)?,
+                duration_us: row.get::<_, i64>(9)? as u64,
                 ifc_label: row.get(10)?,
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,
@@ -476,8 +476,8 @@ impl Blackbox {
     /// Entry count.
     pub fn count(&self) -> u64 {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        db.query_row("SELECT COUNT(*) FROM blackbox", [], |row| row.get(0))
-            .unwrap_or(0)
+        db.query_row("SELECT COUNT(*) FROM blackbox", [], |row| row.get::<_, i64>(0))
+            .unwrap_or(0) as u64
     }
 }
 
