@@ -296,11 +296,10 @@ async fn search_registry(
 ) -> anyhow::Result<Vec<serde_json::Value>> {
     let cache_key = format!("search:{}:{}", entry.name, query);
 
-    if let Some(cached) = state.cache_get(&cache_key) {
-        if let Some(arr) = cached.as_array() {
+    if let Some(cached) = state.cache_get(&cache_key)
+        && let Some(arr) = cached.as_array() {
             return Ok(arr.clone());
         }
-    }
 
     let results = match entry.registry_type.as_str() {
         "mcp" => search_mcp_registry(entry, query, state).await?,

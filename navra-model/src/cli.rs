@@ -161,13 +161,12 @@ impl CliBackend {
         // Write prompt to stdin if needed.
         // Ignore broken pipe — the subprocess may exit before reading all input
         // (e.g. `echo` outputs its args and exits without reading stdin).
-        if use_stdin {
-            if let Some(mut stdin) = child.stdin.take() {
+        if use_stdin
+            && let Some(mut stdin) = child.stdin.take() {
                 use tokio::io::AsyncWriteExt;
                 let _ = stdin.write_all(prompt.as_bytes()).await;
                 drop(stdin);
             }
-        }
 
         // Wait with timeout
         let output = tokio::time::timeout(self.timeout, child.wait_with_output())

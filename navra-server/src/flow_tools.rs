@@ -162,8 +162,7 @@ impl FlowRegistry {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get_mut(flow_id)
-        {
-            if let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
+            && let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
                 // Track timing transitions
                 if status == "running" && node.started_at.is_none() {
                     node.started_at = Some(Instant::now());
@@ -176,7 +175,6 @@ impl FlowRegistry {
                     node.output = output;
                 }
             }
-        }
     }
 
     /// Mark a flow as completed with output.
@@ -387,15 +385,14 @@ pub fn build_run_summary(
         let mut breakdown: Vec<(String, i64)> = Vec::new();
         if let Ok(mut stmt) = db.prepare(
             "SELECT tool_name, COUNT(*) as cnt FROM blackbox WHERE seq > ?1 GROUP BY tool_name ORDER BY cnt DESC",
-        ) {
-            if let Ok(rows) = stmt.query_map([bb_start_seq], |row| {
+        )
+            && let Ok(rows) = stmt.query_map([bb_start_seq], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             }) {
                 for row in rows.flatten() {
                     breakdown.push(row);
                 }
             }
-        }
 
         (total, files, breakdown)
     } else {
@@ -518,8 +515,8 @@ pub async fn handle_flow_result(
         Some(r) => r,
         None => {
             // Fall back to audit log for persisted results (survives restart)
-            if let Some(ref audit) = audit_log {
-                if let Ok(tasks) = audit.get_flow_results(flow_id) {
+            if let Some(ref audit) = audit_log
+                && let Ok(tasks) = audit.get_flow_results(flow_id) {
                     if tasks.is_empty() {
                         return CallToolResult::error_msg(format!(
                             "No results for flow: {flow_id}"
@@ -579,16 +576,15 @@ pub async fn handle_flow_result(
                         .unwrap_or_default(),
                     );
                 }
-            }
             return CallToolResult::error_msg(format!("No results for flow: {flow_id}"));
         }
     };
 
     // Enrich with persisted task outputs when available
-    if include_tasks && node_id.is_none() {
-        if let Some(ref audit) = audit_log {
-            if let Ok(tasks) = audit.get_flow_results(flow_id) {
-                if !tasks.is_empty() {
+    if include_tasks && node_id.is_none()
+        && let Some(ref audit) = audit_log
+            && let Ok(tasks) = audit.get_flow_results(flow_id)
+                && !tasks.is_empty() {
                     let task_results: Vec<serde_json::Value> = tasks
                         .iter()
                         .map(|t| {
@@ -607,9 +603,6 @@ pub async fn handle_flow_result(
                         obj.insert("tasks".to_string(), serde_json::json!(task_results));
                     }
                 }
-            }
-        }
-    }
 
     CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default())
 }
@@ -826,14 +819,13 @@ fn compute_file_tree(docs_root: &Option<String>) -> String {
                     }
                     if path.is_dir() {
                         collect(&path, root, files);
-                    } else if path.is_file() {
-                        if let Ok(rel) = path.strip_prefix(root) {
+                    } else if path.is_file()
+                        && let Ok(rel) = path.strip_prefix(root) {
                             let lines = std::fs::read_to_string(&path)
                                 .map(|c| c.lines().count())
                                 .unwrap_or(0);
                             files.push(format!("  {} ({} lines)", rel.display(), lines));
                         }
-                    }
                 }
             }
             collect(root_path, root_path, &mut files);
@@ -1496,8 +1488,8 @@ async fn run_dag_execution(
                         .temperature(0.0)
                     }) {
                     Ok(builder) => {
-                        if let Ok(mut agent) = builder.build().await {
-                            if let Ok(result) = agent.run(&correction_prompt).await {
+                        if let Ok(mut agent) = builder.build().await
+                            && let Ok(result) = agent.run(&correction_prompt).await {
                                 new_tasks = navra_flow::parse_planner_tasks(&result.response);
                                 if !new_tasks.is_empty() {
                                     tracing::info!(
@@ -1506,7 +1498,6 @@ async fn run_dag_execution(
                                     );
                                 }
                             }
-                        }
                     }
                     Err(e) => tracing::warn!(error = %e, "Correction agent build failed"),
                 }
@@ -1648,14 +1639,13 @@ pub async fn handle_flow_escalate(
         .get("context")
         .and_then(|v| v.as_str())
         .map(String::from);
-    if let Some(ref ctx_text) = context {
-        if ctx_text.len() > MAX_MANDATE_LEN {
+    if let Some(ref ctx_text) = context
+        && ctx_text.len() > MAX_MANDATE_LEN {
             return CallToolResult::error_msg(format!(
                 "Context too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your context.",
                 ctx_text.len()
             ));
         }
-    }
 
     // Extract depth and model from calling agent's team
     let caller_did = agent_name;
@@ -2172,8 +2162,8 @@ pub async fn handle_flow_resume(
     };
 
     // Try checkpoint first — it has the most complete state
-    if let Some(ref cp) = ctx.checkpoint {
-        if let Ok(Some(cp_state)) = cp.load(&flow_id) {
+    if let Some(ref cp) = ctx.checkpoint
+        && let Ok(Some(cp_state)) = cp.load(&flow_id) {
             tracing::info!(
                 flow_id = %flow_id,
                 completed = cp_state.completed.len(),
@@ -2277,7 +2267,6 @@ pub async fn handle_flow_resume(
                 cp_state.completed.len()
             ));
         }
-    }
 
     // Fall back to audit log recovery
     let metadata = match &ctx.audit_log {

@@ -188,13 +188,10 @@ impl ModelCache {
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "json")
                 && !entry.file_name().to_string_lossy().starts_with(".tmp-")
-            {
-                if let Ok(data) = fs::read_to_string(&path) {
-                    if let Ok(card) = serde_json::from_str::<ModelCard>(&data) {
+                && let Ok(data) = fs::read_to_string(&path)
+                    && let Ok(card) = serde_json::from_str::<ModelCard>(&data) {
                         cards.push(card);
                     }
-                }
-            }
         }
         Ok(cards)
     }
@@ -220,11 +217,10 @@ impl ModelCache {
                 } else {
                     target
                 };
-                if let Ok(resolved_canonical) = fs::canonicalize(&resolved) {
-                    if resolved_canonical == canonical {
+                if let Ok(resolved_canonical) = fs::canonicalize(&resolved)
+                    && resolved_canonical == canonical {
                         count += 1;
                     }
-                }
             }
         }
         Ok(count)

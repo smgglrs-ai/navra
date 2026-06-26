@@ -184,8 +184,8 @@ fn parse_test_results(stdout: &str, stderr: &str) -> (u32, u32, u32) {
             // Extract numbers preceding "passed", "failed", "ignored"
             let words: Vec<&str> = line.split_whitespace().collect();
             for (i, word) in words.iter().enumerate() {
-                if i > 0 {
-                    if let Ok(n) = words[i - 1].parse::<u32>() {
+                if i > 0
+                    && let Ok(n) = words[i - 1].parse::<u32>() {
                         match *word {
                             "passed" | "passed;" => passed += n,
                             "failed" | "failed;" => failed += n,
@@ -193,7 +193,6 @@ fn parse_test_results(stdout: &str, stderr: &str) -> (u32, u32, u32) {
                             _ => {}
                         }
                     }
-                }
             }
         }
     }

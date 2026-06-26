@@ -355,11 +355,10 @@ fn serialize_message(msg: &ChatMessage) -> serde_json::Value {
         }
         ChatRole::Assistant => {
             let mut content: Vec<serde_json::Value> = Vec::new();
-            if let Some(ref text) = msg.content {
-                if !text.is_empty() {
+            if let Some(ref text) = msg.content
+                && !text.is_empty() {
                     content.push(serde_json::json!({"type": "text", "text": text}));
                 }
-            }
             for tc in &msg.tool_calls {
                 let input: serde_json::Value =
                     serde_json::from_str(&tc.function.arguments).unwrap_or(serde_json::json!({}));
@@ -396,22 +395,20 @@ fn merge_tool_results(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value
     let mut merged: Vec<serde_json::Value> = Vec::new();
     for msg in messages {
         let role = msg["role"].as_str().unwrap_or("");
-        if role == "user" {
-            if let Some(last) = merged.last_mut() {
+        if role == "user"
+            && let Some(last) = merged.last_mut() {
                 let last_role = last["role"].as_str().unwrap_or("");
                 if last_role == "user" {
                     // Merge content arrays
-                    if let Some(new_content) = msg["content"].as_array() {
-                        if let Some(last_content) = last["content"].as_array_mut() {
+                    if let Some(new_content) = msg["content"].as_array()
+                        && let Some(last_content) = last["content"].as_array_mut() {
                             for item in new_content {
                                 last_content.push(item.clone());
                             }
                             continue;
                         }
-                    }
                 }
             }
-        }
         merged.push(msg);
     }
     merged

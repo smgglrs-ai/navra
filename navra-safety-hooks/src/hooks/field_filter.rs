@@ -50,14 +50,12 @@ impl Hook for FieldFilterHook {
                 raw: navra_protocol::RawContent::Text(text),
                 ..
             } = content
-            {
-                if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text.text) {
+                && let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&text.text) {
                     filter_json(&mut json, retain_fields);
                     if let Ok(compact) = serde_json::to_string(&json) {
                         text.text = compact;
                     }
                 }
-            }
         }
 
         HookDecision::ModifyResult(filtered)

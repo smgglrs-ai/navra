@@ -146,15 +146,14 @@ impl KvCacheCheckpoint {
 
 impl Drop for KvCacheCheckpoint {
     fn drop(&mut self) {
-        if let Some(ref path) = self.path {
-            if path.exists() {
+        if let Some(ref path) = self.path
+            && path.exists() {
                 tracing::warn!(
                     path = %path.display(),
                     "KV cache checkpoint dropped without being consumed — deleting orphaned file"
                 );
                 let _ = std::fs::remove_file(path);
             }
-        }
     }
 }
 

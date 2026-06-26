@@ -454,8 +454,8 @@ pub(crate) fn attach_ui_routes(
                             };
                             for msg in &mut messages {
                                 let role = msg["role"].as_str().unwrap_or("");
-                                if role == "user" || role == "system" {
-                                    if let Some(text) = msg["content"].as_str() {
+                                if (role == "user" || role == "system")
+                                    && let Some(text) = msg["content"].as_str() {
                                         match pipeline.process_inbound(text, &filter_ctx).await {
                                             Ok(filtered) => {
                                                 msg["content"] = serde_json::Value::String(filtered);
@@ -467,7 +467,6 @@ pub(crate) fn attach_ui_routes(
                                             }
                                         }
                                     }
-                                }
                             }
                         }
 
@@ -484,8 +483,8 @@ pub(crate) fn attach_ui_routes(
                                     .and_then(|c| c.strip_prefix("persona:"))
                                     .map(|p| p.trim().to_string())
                             });
-                        if let Some(ref pname) = persona_name {
-                            if let Ok(output) =
+                        if let Some(ref pname) = persona_name
+                            && let Ok(output) =
                                 navra_cognitive::assemble(&forge, pname, "", None, None)
                             {
                                 messages.insert(0, serde_json::json!({
@@ -493,7 +492,6 @@ pub(crate) fn attach_ui_routes(
                                     "content": output.system_prompt(),
                                 }));
                             }
-                        }
 
                         // Proxy to Ollama, preserving full OpenAI format (tools, tool_choice, etc.)
                         let mut proxy_body = body.0.clone();

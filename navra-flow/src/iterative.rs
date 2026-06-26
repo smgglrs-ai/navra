@@ -638,13 +638,11 @@ fn parse_items(output: &str) -> Vec<String> {
     }
 
     // Try to find a JSON array in the text
-    if let Some(start) = output.find('[') {
-        if let Some(end) = output.rfind(']') {
-            if let Ok(items) = serde_json::from_str::<Vec<String>>(&output[start..=end]) {
+    if let Some(start) = output.find('[')
+        && let Some(end) = output.rfind(']')
+            && let Ok(items) = serde_json::from_str::<Vec<String>>(&output[start..=end]) {
                 return items;
             }
-        }
-    }
 
     // Fall back to non-empty lines that look like file paths
     output
@@ -670,16 +668,14 @@ fn parse_findings(output: &str, round: u32) -> Vec<Finding> {
     }
 
     // Try to find a JSON array in the text
-    if let Some(start) = output.find('[') {
-        if let Some(end) = output.rfind(']') {
-            if let Ok(mut findings) = serde_json::from_str::<Vec<Finding>>(&output[start..=end]) {
+    if let Some(start) = output.find('[')
+        && let Some(end) = output.rfind(']')
+            && let Ok(mut findings) = serde_json::from_str::<Vec<Finding>>(&output[start..=end]) {
                 for f in &mut findings {
                     f.round = round;
                 }
                 return findings;
             }
-        }
-    }
 
     // Fall back: treat each non-empty line as a finding
     output

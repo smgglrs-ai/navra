@@ -190,11 +190,9 @@ pub fn list_workflows(dir: &Path) -> Vec<String> {
                 .extension()
                 .map(|e| e == "yaml" || e == "yml")
                 .unwrap_or(false)
-            {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     names.push(stem.to_string());
                 }
-            }
         }
     }
     names.sort();

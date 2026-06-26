@@ -37,19 +37,17 @@ impl Hook for ToolGuardHook {
         // when arguments are constructed from raw model output.
         if let Some(obj) = arguments.as_object() {
             // Check for empty required fields on write operations
-            if tool_name == "file_write" || tool_name == "file_edit" {
-                if let Some(path) = obj.get("path") {
-                    if path.as_str().is_some_and(|p| p.is_empty()) {
+            if (tool_name == "file_write" || tool_name == "file_edit")
+                && let Some(path) = obj.get("path")
+                    && path.as_str().is_some_and(|p| p.is_empty()) {
                         return HookDecision::Block("file path cannot be empty".to_string());
                     }
-                }
-            }
         }
 
         // file_write guard: if the target file exists, suggest file_edit
-        if tool_name == "file_write" {
-            if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                if std::path::Path::new(path).exists() {
+        if tool_name == "file_write"
+            && let Some(path) = arguments.get("path").and_then(|v| v.as_str())
+                && std::path::Path::new(path).exists() {
                     tracing::info!(
                         path = %path,
                         "file_write to existing file — consider file_edit instead"
@@ -65,12 +63,10 @@ impl Hook for ToolGuardHook {
                     ));
                     return HookDecision::ModifyArgs(modified);
                 }
-            }
-        }
 
         // file_delete guard: user-friendly path message
-        if tool_name == "file_delete" {
-            if let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
+        if tool_name == "file_delete"
+            && let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
                 if path.is_empty() {
                     return HookDecision::Block("file_delete: path cannot be empty".to_string());
                 }
@@ -81,7 +77,6 @@ impl Hook for ToolGuardHook {
                     ));
                 }
             }
-        }
 
         HookDecision::Continue
     }

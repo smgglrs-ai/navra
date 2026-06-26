@@ -200,14 +200,13 @@ impl EventLog {
     ) -> Result<Option<String>> {
         let events = self.events_since(flow_id, after_seq)?;
         for event in &events {
-            if let Some(ref model) = event.model_version {
-                if model != expected_model {
+            if let Some(ref model) = event.model_version
+                && model != expected_model {
                     return Ok(Some(format!(
                         "Replay divergence at seq {}: model was '{}', now '{}'",
                         event.seq, model, expected_model
                     )));
                 }
-            }
         }
         Ok(None)
     }

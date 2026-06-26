@@ -138,31 +138,24 @@ impl ModelTransport for OciTransport {
                 );
 
                 // Best-effort: not all registries support the Referrers API
-                if let Ok(resp) = self.client.get(&referrers_url).send().await {
-                    if resp.status().is_success() {
-                        if let Ok(index) = resp.json::<serde_json::Value>().await {
-                            if let Some(manifests) = index["manifests"].as_array() {
-                                if let Some(card_ref) = manifests.first() {
-                                    if let Some(card_digest) = card_ref["digest"].as_str() {
+                if let Ok(resp) = self.client.get(&referrers_url).send().await
+                    && resp.status().is_success()
+                        && let Ok(index) = resp.json::<serde_json::Value>().await
+                            && let Some(manifests) = index["manifests"].as_array()
+                                && let Some(card_ref) = manifests.first()
+                                    && let Some(card_digest) = card_ref["digest"].as_str() {
                                         // Fetch the card blob
                                         let card_url = format!(
                                             "https://{registry}/v2/{repo}/blobs/{card_digest}"
                                         );
                                         if let Ok(card_resp) =
                                             self.client.get(&card_url).send().await
-                                        {
-                                            if let Ok(card_meta) =
+                                            && let Ok(card_meta) =
                                                 card_resp.json::<VendorMeta>().await
                                             {
                                                 return Ok(card_meta);
                                             }
-                                        }
                                     }
-                                }
-                            }
-                        }
-                    }
-                }
                 tracing::debug!(uri = %uri, "No model card referrer found, returning basic metadata");
             }
 

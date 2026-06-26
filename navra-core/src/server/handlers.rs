@@ -315,13 +315,11 @@ impl McpServer {
             .fetch_add(1, Ordering::Relaxed);
 
         // Wire sandbox profile from capability token into CallContext
-        if ctx.sandbox.is_none() {
-            if let Some(ref caps) = ctx.agent.capabilities {
-                if let Some(ref sandbox) = caps.sandbox {
+        if ctx.sandbox.is_none()
+            && let Some(ref caps) = ctx.agent.capabilities
+                && let Some(ref sandbox) = caps.sandbox {
                     ctx.sandbox = Some(sandbox.clone());
                 }
-            }
-        }
 
         let arguments = params
             .arguments
@@ -436,8 +434,8 @@ impl McpServer {
         // Operations-based enforcement for upstream tools.
         // If a tool is classified as "write" and the agent's permission
         // set only allows "read", block it.
-        if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions) {
-            if let Some(tool_op) = self.tool_operations.get(params.name.as_ref()) {
+        if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions)
+            && let Some(tool_op) = self.tool_operations.get(params.name.as_ref()) {
                 match tool_op {
                     navra_mcp::ToolOperation::Write if !ops.contains("write") => {
                         self.process_table.record_denied(
@@ -465,14 +463,13 @@ impl McpServer {
                     _ => {}
                 }
             }
-        }
 
         // Domain-based enforcement (semantic classification gate).
         // If domain_rules are configured for this permission set, check
         // the tool's classified domain:operation against allowed pairs.
-        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions) {
-            if let Some(class) = self.tool_classifications.get(params.name.as_ref()) {
-                if rules.check(class) == crate::permissions::DomainPolicy::Deny {
+        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions)
+            && let Some(class) = self.tool_classifications.get(params.name.as_ref())
+                && rules.check(class) == crate::permissions::DomainPolicy::Deny {
                     self.process_table.record_denied(
                         &ctx.agent.name,
                         &ctx.agent.permissions,
@@ -493,8 +490,6 @@ impl McpServer {
                         params.name
                     ));
                 }
-            }
-        }
 
         // Cedar policy check (second gate — can only further restrict)
         #[cfg(feature = "cedar")]
@@ -540,8 +535,7 @@ impl McpServer {
             .or_else(|| arguments.get("file_path"))
             .or_else(|| arguments.get("repo_path"))
             .and_then(|v| v.as_str())
-        {
-            if let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
+            && let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
                 let path = std::path::Path::new(path_str);
                 let tool_op = if crate::ifc::is_write_tool(
                     &params.name,
@@ -578,7 +572,6 @@ impl McpServer {
                     }
                 }
             }
-        }
 
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
@@ -923,11 +916,10 @@ impl McpServer {
         }
 
         // Legacy path: apply safety filters directly when no hooks are configured
-        if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions) {
-            if pipeline.has_filters() {
+        if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
+            && pipeline.has_filters() {
                 return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
             }
-        }
 
         result
     }
@@ -1593,8 +1585,8 @@ impl McpServer {
     fn agent_can_see_resource(&self, agent: &crate::auth::AgentIdentity, uri: &str) -> bool {
         // Capability token tool globs: if the agent has caps with tool
         // patterns, the resource URI must match at least one.
-        if let Some(ref caps) = agent.capabilities {
-            if !caps.tools.is_empty() {
+        if let Some(ref caps) = agent.capabilities
+            && !caps.tools.is_empty() {
                 let uri_matches = caps.tools.iter().any(|pattern| {
                     glob::Pattern::new(pattern)
                         .map(|p| p.matches(uri))
@@ -1604,7 +1596,6 @@ impl McpServer {
                     return false;
                 }
             }
-        }
 
         // IFC read clearance (Simple Security Property): check agent's
         // read clearance against resource confidentiality.

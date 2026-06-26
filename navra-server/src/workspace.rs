@@ -80,11 +80,10 @@ fn collect_files(base: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), 
         let file_type = entry.file_type()?;
         if file_type.is_dir() {
             collect_files(base, &entry.path(), out)?;
-        } else if file_type.is_file() {
-            if let Ok(rel) = entry.path().strip_prefix(base) {
+        } else if file_type.is_file()
+            && let Ok(rel) = entry.path().strip_prefix(base) {
                 out.push(rel.to_path_buf());
             }
-        }
     }
     Ok(())
 }

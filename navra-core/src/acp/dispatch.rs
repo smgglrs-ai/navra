@@ -415,8 +415,8 @@ fn parse_tool_call(content: &str) -> Option<ToolCall> {
         });
     }
 
-    if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed) {
-        if let Some(tool_name) = obj.get("tool").and_then(|v| v.as_str()) {
+    if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && let Some(tool_name) = obj.get("tool").and_then(|v| v.as_str()) {
             let arguments = obj
                 .get("arguments")
                 .cloned()
@@ -426,7 +426,6 @@ fn parse_tool_call(content: &str) -> Option<ToolCall> {
                 arguments,
             });
         }
-    }
 
     None
 }

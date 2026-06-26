@@ -362,16 +362,14 @@ impl ToolTransitionTracker {
         self.prev_tool = Some(tool_name.to_string());
 
         // Evict oldest entry if window is full
-        if self.window.len() >= self.window_size {
-            if let Some(old_pair) = self.window.pop_front() {
-                if let Some(c) = self.counts.get_mut(&old_pair) {
+        if self.window.len() >= self.window_size
+            && let Some(old_pair) = self.window.pop_front()
+                && let Some(c) = self.counts.get_mut(&old_pair) {
                     *c = c.saturating_sub(1);
                     if *c == 0 {
                         self.counts.remove(&old_pair);
                     }
                 }
-            }
-        }
 
         // Record the new transition
         *self.counts.entry(pair.clone()).or_insert(0) += 1;

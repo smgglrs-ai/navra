@@ -81,8 +81,7 @@ fn check_action_attenuation(
         max_calls: p_max,
         window_secs: p_win,
     } = parent
-    {
-        if let SandboxAction::RateLimit {
+        && let SandboxAction::RateLimit {
             max_calls: c_max,
             window_secs: c_win,
         } = child
@@ -94,7 +93,6 @@ fn check_action_attenuation(
                 return Err("extends rate window");
             }
         }
-    }
     Ok(())
 }
 
@@ -108,11 +106,10 @@ impl SandboxProfile {
         }
         // Glob match
         for (pattern, rule) in &self.rules {
-            if let Ok(glob) = glob::Pattern::new(pattern) {
-                if glob.matches(tool_name) {
+            if let Ok(glob) = glob::Pattern::new(pattern)
+                && glob.matches(tool_name) {
                     return Some(rule);
                 }
-            }
         }
         None
     }

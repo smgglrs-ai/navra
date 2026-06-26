@@ -92,15 +92,14 @@ impl ValueStore {
         values.retain(|_, v| now.duration_since(v.created_at) < self.ttl);
 
         // Evict oldest if still over limit
-        if values.len() >= self.max_entries {
-            if let Some(oldest_id) = values
+        if values.len() >= self.max_entries
+            && let Some(oldest_id) = values
                 .values()
                 .min_by_key(|v| v.created_at)
                 .map(|v| v.id.clone())
             {
                 values.remove(&oldest_id);
             }
-        }
 
         values.insert(id.clone(), value);
         id

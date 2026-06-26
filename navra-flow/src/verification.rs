@@ -130,8 +130,8 @@ fn parse_verdict(response: &str, verifier_index: usize) -> VerificationVerdict {
     // Try to parse JSON from the response
     let json_str = extract_json_object(response);
 
-    if let Some(json) = json_str {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
+    if let Some(json) = json_str
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
             let passed = parsed
                 .get("passed")
                 .and_then(|v| v.as_bool())
@@ -152,7 +152,6 @@ fn parse_verdict(response: &str, verifier_index: usize) -> VerificationVerdict {
                 findings,
             };
         }
-    }
 
     // Fallback: heuristic parsing
     let lower = response.to_lowercase();
@@ -184,11 +183,10 @@ fn extract_json_object(text: &str) -> Option<String> {
             }
             '}' => {
                 depth -= 1;
-                if depth == 0 {
-                    if let Some(s) = start {
+                if depth == 0
+                    && let Some(s) = start {
                         return Some(text[s..=i].to_string());
                     }
-                }
             }
             _ => {}
         }

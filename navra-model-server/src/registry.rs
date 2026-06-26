@@ -326,11 +326,10 @@ async fn resolve_model_path(
 /// environment variable values.
 pub fn expand_tilde(path: &str) -> String {
     let mut result = path.to_string();
-    if result.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if result.starts_with("~/")
+        && let Some(home) = dirs::home_dir() {
             result = format!("{}{}", home.display(), &result[1..]);
         }
-    }
     let mut out = String::with_capacity(result.len());
     let mut chars = result.chars().peekable();
     while let Some(c) = chars.next() {

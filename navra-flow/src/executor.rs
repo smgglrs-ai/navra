@@ -254,8 +254,8 @@ impl DagExecutor {
         let mut hop_count: usize = 0;
 
         // Resume from checkpoint: pre-populate completed tasks
-        if let Some((ref cp, ref flow_id)) = self.checkpoint {
-            if let Ok(Some(cp_state)) = cp.load(flow_id) {
+        if let Some((ref cp, ref flow_id)) = self.checkpoint
+            && let Ok(Some(cp_state)) = cp.load(flow_id) {
                 for (task_id, output) in &cp_state.completed {
                     completed.insert(task_id.clone());
                     results.insert(
@@ -280,7 +280,6 @@ impl DagExecutor {
                     );
                 }
             }
-        }
 
         loop {
             // Hop limit enforcement
@@ -467,8 +466,8 @@ impl DagExecutor {
                                 }
 
                                 // Per-node checkpoint
-                                if let Some((ref cp, ref flow_id)) = self.checkpoint {
-                                    if let Err(e) =
+                                if let Some((ref cp, ref flow_id)) = self.checkpoint
+                                    && let Err(e) =
                                         cp.save_node(flow_id, &task.id, &task_result.output)
                                     {
                                         tracing::warn!(
@@ -477,7 +476,6 @@ impl DagExecutor {
                                             "Failed to save per-node checkpoint"
                                         );
                                     }
-                                }
 
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
@@ -628,11 +626,10 @@ impl DagExecutor {
         }
 
         // Delete checkpoint on successful completion
-        if let Some((ref cp, ref flow_id)) = self.checkpoint {
-            if let Err(e) = cp.delete(flow_id) {
+        if let Some((ref cp, ref flow_id)) = self.checkpoint
+            && let Err(e) = cp.delete(flow_id) {
                 tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
             }
-        }
 
         Ok(DagResult {
             task_results: results,

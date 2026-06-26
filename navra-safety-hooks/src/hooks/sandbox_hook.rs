@@ -77,8 +77,8 @@ impl SandboxHook {
         let mut args = args.clone();
         if let Some(obj) = args.as_object_mut() {
             for key in ["path", "file", "directory", "repo"] {
-                if let Some(val) = obj.get_mut(key) {
-                    if let Some(s) = val.as_str() {
+                if let Some(val) = obj.get_mut(key)
+                    && let Some(s) = val.as_str() {
                         let rewritten = if let Some(rest) = s.strip_prefix(strip_prefix) {
                             format!("{}{}", add_prefix, rest)
                         } else {
@@ -86,7 +86,6 @@ impl SandboxHook {
                         };
                         *val = serde_json::Value::String(rewritten);
                     }
-                }
             }
         }
         args

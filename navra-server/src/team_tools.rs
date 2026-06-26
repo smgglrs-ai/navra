@@ -342,11 +342,10 @@ impl TeamRegistry {
         handle: navra_agent::SignalHandle,
     ) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.signal_handle = Some(handle);
             }
-        }
     }
 
     /// Send a signal to a teammate's running agent.
@@ -491,31 +490,28 @@ impl TeamRegistry {
 
     pub fn set_container_id(&self, team_id: &str, teammate: &str, container_id: String) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.container_id = Some(container_id);
             }
-        }
     }
 
     pub fn set_output(&self, team_id: &str, teammate: &str, output: String) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.output = Some(output);
                 tm.status = "done".to_string();
             }
-        }
     }
 
     pub fn set_failed(&self, team_id: &str, teammate: &str, error: String) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.output = Some(error);
                 tm.status = "failed".to_string();
             }
-        }
     }
 
     pub fn add_tokens(&self, team_id: &str, tokens: u32) {
@@ -527,21 +523,19 @@ impl TeamRegistry {
 
     pub fn set_resolved_model(&self, team_id: &str, teammate: &str, model: &str) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.model = model.to_string();
             }
-        }
     }
 
     pub fn set_agent_metrics(&self, team_id: &str, teammate: &str, iterations: u32, tokens: u32) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(team) = teams.get_mut(team_id) {
-            if let Some(tm) = team.teammates.get_mut(teammate) {
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate) {
                 tm.iterations = Some(iterations);
                 tm.agent_tokens = Some(tokens);
             }
-        }
     }
 
     pub fn get_status(&self, team_id: &str) -> Option<serde_json::Value> {
@@ -1889,8 +1883,8 @@ fn spawn_openshell_agent(
 
             // Prepare workspace
             let workspace_dir = tempfile::tempdir().ok();
-            if let (Some(provider), Some(ws_dir)) = (&workspace_provider, &workspace_dir) {
-                if let Err(e) = provider.populate(ws_dir.path()) {
+            if let (Some(provider), Some(ws_dir)) = (&workspace_provider, &workspace_dir)
+                && let Err(e) = provider.populate(ws_dir.path()) {
                     reg.set_failed(
                         &team_id,
                         &teammate_id,
@@ -1898,7 +1892,6 @@ fn spawn_openshell_agent(
                     );
                     return;
                 }
-            }
 
             // Build mounts
             let mut mounts = Vec::new();
@@ -1992,14 +1985,13 @@ fn spawn_openshell_agent(
             // Record sandbox info
             {
                 let mut teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(team) = teams.get_mut(&team_id) {
-                    if let Some(tm) = team.teammates.get_mut(&teammate_id) {
+                if let Some(team) = teams.get_mut(&team_id)
+                    && let Some(tm) = team.teammates.get_mut(&teammate_id) {
                         tm.sandbox_id = Some(sandbox_id.clone());
                         if let Some(ref ws_dir) = workspace_dir {
                             tm.workspace_path = Some(ws_dir.path().to_path_buf());
                         }
                     }
-                }
             }
 
             // Register sandbox for exec_run routing
@@ -2062,11 +2054,10 @@ fn spawn_openshell_agent(
 
             {
                 let mut teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(team) = teams.get_mut(&team_id) {
-                    if let Some(tm) = team.teammates.get_mut(&teammate_id) {
+                if let Some(team) = teams.get_mut(&team_id)
+                    && let Some(tm) = team.teammates.get_mut(&teammate_id) {
                         tm.status = "working".to_string();
                     }
-                }
             }
 
             // Wait for sandbox to complete (agent finishes its ReAct loop)
@@ -2752,7 +2743,7 @@ pub fn select_model_for_task(
         })
         .collect();
 
-    scored.sort_by(|a, b| b.1.cmp(&a.1));
+    scored.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     if let Some((best, score)) = scored.first() {
         tracing::info!(

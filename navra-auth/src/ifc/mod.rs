@@ -291,21 +291,19 @@ pub fn is_trusted_path(path: &str, patterns: &[String]) -> bool {
             return true;
         }
         // "~/dir/**" should also match "~/dir" itself
-        if let Some(prefix) = expanded.strip_suffix("/**") {
-            if normalized == prefix || normalized == format!("{prefix}/") {
+        if let Some(prefix) = expanded.strip_suffix("/**")
+            && (normalized == prefix || normalized == format!("{prefix}/")) {
                 return true;
             }
-        }
     }
     false
 }
 
 fn expand_tilde(pattern: &str) -> String {
-    if pattern.starts_with("~/") {
-        if let Some(home) = dirs::home_dir() {
+    if pattern.starts_with("~/")
+        && let Some(home) = dirs::home_dir() {
             return format!("{}{}", home.display(), &pattern[1..]);
         }
-    }
     pattern.to_string()
 }
 
