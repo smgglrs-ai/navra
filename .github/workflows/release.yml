@@ -7,12 +7,11 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   CARGO_TERM_COLOR: always
-  ORT_VERSION: "1.24.2"
-  ORT_LIB_PATH: /opt/onnxruntime/lib
-  ORT_PREFER_DYNAMIC_LINK: "1"
 
 jobs:
   create-release:
@@ -40,41 +39,70 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
-  build-linux:
-    name: Build Linux x86_64
+  build:
+    name: Build ${{ matrix.archive_suffix }}
     needs: create-release
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_suffix: linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive_suffix: linux-aarch64
+            use_cross: true
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            archive_suffix: darwin-x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            archive_suffix: darwin-aarch64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
-
-      - name: Install ONNX Runtime
-        run: |
-          curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
-            | sudo tar xz -C /opt
-          sudo ln -sf /opt/onnxruntime-linux-x64-${ORT_VERSION} /opt/onnxruntime
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --bin navra
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binaries
+        run: |
+          BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
+          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra
+          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra-agent
 
       - name: Package
         run: |
-          mkdir -p dist
-          cp target/release/navra dist/
-          cp LICENSE README.md CONFIG.md dist/
-          cp examples/config.toml dist/config.example.toml
-          tar czf navra-${{ github.ref_name }}-linux-x86_64.tar.gz -C dist .
+          VERSION="${{ github.ref_name }}"
+          TARGET_DIR="target/${{ matrix.target }}/container"
+          for bin in navra navra-agent; do
+            mkdir -p "dist-${bin}"
+            cp "${TARGET_DIR}/${bin}" "dist-${bin}/"
+            cp LICENSE README.md "dist-${bin}/"
+            ARCHIVE="${bin}-${VERSION}-${{ matrix.archive_suffix }}.tar.gz"
+            tar czf "${ARCHIVE}" -C "dist-${bin}" .
+            shasum -a 256 "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          done
 
-      - name: Upload artifact
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: navra-${{ github.ref_name }}-linux-x86_64.tar.gz
+          files: |
+            navra-*.tar.gz
+            navra-*.tar.gz.sha256
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "navra-*.tar.gz"
 
   update-changelog:
     name: Update Changelog
