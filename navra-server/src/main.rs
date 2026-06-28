@@ -943,14 +943,18 @@ fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
 ///
 /// If `[server.identity]` specifies a `key_path`, loads or creates
 /// a file-based identity. Otherwise, uses the OS keyring.
-fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
+async fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
     if let Some(ref identity_cfg) = cfg.server.identity
         && let Some(ref key_path) = identity_cfg.key_path {
             let path = std::path::Path::new(key_path);
             return Ok(identity::load_or_create_file_identity(path)?);
         }
-    // Default: try OS keyring, fall back to file
-    match identity::load_or_create_keyring_identity() {
+    // keyring 4 uses zbus which calls block_on internally —
+    // must run on a blocking thread to avoid runtime nesting
+    match tokio::task::spawn_blocking(identity::load_or_create_keyring_identity)
+        .await
+        .map_err(|e| anyhow::anyhow!("keyring task panicked: {e}"))?
+    {
         Ok(signer) => Ok(signer),
         Err(e) => {
             tracing::warn!(
@@ -1204,7 +1208,7 @@ async fn serve_inner(
     tracing::info!("Starting navra");
 
     // Bootstrap root identity (DID:key from Ed25519)
-    let root_signer = Arc::new(bootstrap_identity(&cfg)?);
+    let root_signer = Arc::new(bootstrap_identity(&cfg).await?);
     tracing::info!(
         root_did = %root_signer.did(),
         algorithm = %root_signer.algorithm(),
@@ -5740,7 +5744,7 @@ fn resolve_env_vars(s: &str) -> String {
 mod tests {
     use super::*;
     use navra_core::protocol::{ReadResourceResult, ResourceContent};
-    use navra_protocol::compat::CallToolResultExt;
+    use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
 
     fn extract_resource_text(rc: &ResourceContent) -> String {
         match rc {
