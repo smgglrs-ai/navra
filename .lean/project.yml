@@ -9,8 +9,8 @@ next_item_id: 169
 
 stack:
   language: rust
-  edition: "2021"
-  msrv: "1.91"
+  edition: "2024"
+  msrv: "1.96"
   build_system: cargo
   workspace_members: 22
   test_framework: cargo-test
@@ -41,15 +41,11 @@ autonomy:
     - skip pre-commit hooks
 
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace"
-  full: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo fmt -- --check && cargo clippy -- -D warnings && cargo test --workspace"
-  single_crate: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p {crate}"
-  build: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build"
-  e2e: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e"
-
-env:
-  ORT_LIB_PATH: /usr/lib64
-  ORT_PREFER_DYNAMIC_LINK: "1"
+  quick: "just test-workspace"
+  full: "cargo fmt -- --check && cargo clippy -- -D warnings && just test"
+  single_crate: "just test-crate {crate}"
+  build: "cargo build"
+  e2e: "just test-server"
 
 loop:
   max_iterations: 20
