@@ -2,7 +2,7 @@ id: NAVRA-151
 title: "Binary distribution (GitHub releases + cargo-binstall)"
 status: planned
 priority: high
-effort: 3-5d
+effort: 1-3d
 tags: [distribution, onboarding]
 description: |
   Publish prebuilt binaries for navra and navra-agent on GitHub
@@ -10,17 +10,17 @@ description: |
   `cargo binstall navra` works. Consider Fedora COPR for RPM
   distribution.
 
-  This eliminates the biggest onboarding friction: clone + set
-  ORT_LIB_PATH + cargo build. Users should be able to install
-  navra in one command.
+  As of 2026-06-28, the build is fully self-contained: ONNX Runtime
+  is bundled via ort download-binaries, TLS uses rustls (no OpenSSL),
+  tokenizers uses fancy-regex (no liboniguruma), and SQLite is bundled
+  via rusqlite. `cargo build` works with zero system dependencies.
 
-  Steps:
-  1. Add CI job to build release binaries (x86_64-linux, aarch64-linux)
-  2. Bundle libonnxruntime.so alongside the binary (or link statically)
-  3. Upload to GitHub releases with checksums
-  4. Add [package.metadata.binstall] to workspace Cargo.toml
-  5. Optional: create Fedora COPR spec
+  Remaining steps:
+  1. Add CI job to build release binaries (x86_64-linux, aarch64-linux,
+     x86_64-macos, aarch64-macos)
+  2. Upload to GitHub releases with checksums
+  3. Add [package.metadata.binstall] to workspace Cargo.toml
+  4. Optional: create Fedora COPR spec
 acceptance:
   - cargo binstall navra installs a working binary
   - GitHub release includes checksums and SBOM
-  - No ORT_LIB_PATH required after install
