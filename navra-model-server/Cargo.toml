@@ -11,6 +11,7 @@ rust-version.workspace = true
 [features]
 default = ["onnx"]
 onnx = ["navra-model/onnx"]
+embedded = ["navra-model-runtime/embedded"]
 
 [dependencies]
 navra-model = { path = "../navra-model", default-features = false }

@@ -12,6 +12,7 @@ rust-version.workspace = true
 default = ["podman", "direct"]
 podman = []
 direct = []
+embedded = ["dep:llama-cpp-4", "dep:axum"]
 kubernetes = []
 openshell = ["tonic", "prost"]
 tonic = ["dep:tonic"]
@@ -29,6 +30,9 @@ libc = "0.2"
 tonic = { version = "0.14", optional = true }
 prost = { version = "0.14", optional = true }
 tonic-prost = "0.14"
+llama-cpp-4 = { version = "0.3", default-features = false, optional = true }
+axum = { workspace = true, optional = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [build-dependencies]
 tonic-prost-build = "0.14"
