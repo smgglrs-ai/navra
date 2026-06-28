@@ -76,7 +76,7 @@ jobs:
       - name: Build binaries
         run: |
           BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
-          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra
+          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra --features embedded
           $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra-agent
 
       - name: Package

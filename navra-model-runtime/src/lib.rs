@@ -23,6 +23,8 @@ mod npu;
 
 #[cfg(feature = "direct")]
 pub mod direct;
+#[cfg(feature = "embedded")]
+pub mod embedded;
 #[cfg(feature = "kubernetes")]
 pub mod kubernetes;
 #[cfg(feature = "openshell")]
@@ -319,6 +321,12 @@ pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
             tracing::info!("Using llama.cpp runtime (no isolation)");
             return Ok(Box::new(direct::DirectRuntime::new(Engine::LlamaCpp)));
         }
+    }
+
+    #[cfg(feature = "embedded")]
+    {
+        tracing::info!("Using embedded llama.cpp runtime (in-process)");
+        return Ok(Box::new(embedded::EmbeddedRuntime::new()));
     }
 
     Err(RuntimeError::NoRuntime(

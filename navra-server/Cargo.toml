@@ -95,6 +95,7 @@ onnx = [
     "navra-modal-vision/onnx", "navra-modal-voice/onnx", "navra-openapi/onnx",
 ]
 cedar = ["navra-core/cedar"]
+embedded = ["navra-model-runtime/embedded", "navra-model-server/embedded"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry"]
 
 [dev-dependencies]

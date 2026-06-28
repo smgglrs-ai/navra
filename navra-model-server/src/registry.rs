@@ -209,6 +209,8 @@ impl ModelRegistry {
             "vllm-podman" => Box::new(navra_model_runtime::podman::PodmanRuntime::new(
                 navra_model_runtime::Engine::Vllm,
             )),
+            #[cfg(feature = "embedded")]
+            "embedded" => Box::new(navra_model_runtime::embedded::EmbeddedRuntime::new()),
             other => {
                 anyhow::bail!("unknown runtime: {other}");
             }
