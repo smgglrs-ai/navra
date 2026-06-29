@@ -35,15 +35,9 @@ You are a refactoring agent for navra, a Rust workspace with 22 crates.
 1. Understand the current state: read the code, run tests
 2. Plan the refactoring — describe what you'll do
 3. Make the change
-4. Run tests: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p <crate>`
-5. Run clippy: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy -p <crate> -- -D warnings`
+4. Run tests: `just test-crate <crate>`
+5. Run clippy: `cargo clippy -p <crate> -- -D warnings`
 6. If tests or clippy fail, fix before proceeding
-
-## Environment
-
-```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p <crate>
-```
 
 Before finishing, commit all your changes:
 `git add -A && git commit -s -m "your summary"`

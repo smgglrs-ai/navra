@@ -27,4 +27,4 @@ scope:
 - navra-server/Cargo.toml (kubernetes feature forward)
 - docs/designs/openshell-sandbox.md (update architecture to reference K8s backend)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model-runtime --features kubernetes
+  quick: cargo test -p navra-model-runtime --features kubernetes

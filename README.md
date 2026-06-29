@@ -74,10 +74,8 @@ navra-flow (orchestration)
 ## Quickstart
 
 ```bash
-# Install (Fedora)
-sudo dnf install onnxruntime-devel
 git clone https://github.com/smgglrs-ai/navra.git && cd navra
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --release
+cargo build --release
 cp target/release/navra ~/.local/bin/
 
 # Interactive setup

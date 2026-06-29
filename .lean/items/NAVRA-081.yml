@@ -35,4 +35,4 @@ acceptance:
   - "New integration tests verify domain-based tool/prompt blocking"
 
 verification:
-  full: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo fmt -- --check && cargo test --workspace --lib -- --test-threads=1 && cargo test -p navra-core --test upstream_integration -- --test-threads=1"
+  full: "cargo fmt -- --check && cargo test --workspace --lib -- --test-threads=1 && cargo test -p navra-core --test upstream_integration -- --test-threads=1"

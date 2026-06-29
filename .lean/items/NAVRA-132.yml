@@ -26,5 +26,5 @@ scope:
   - "*/Cargo.toml"
   - .lean/project.yml
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy --workspace 2>&1 | grep MSRV | wc -l"
+  quick: "cargo clippy --workspace 2>&1 | grep MSRV | wc -l"
 progress: 100

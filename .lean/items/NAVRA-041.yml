@@ -32,4 +32,4 @@ scope:
 - navra-model/src/lib.rs
 - MODELS.md
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-modal-voice
+  quick: cargo test -p navra-modal-voice

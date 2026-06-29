@@ -14,7 +14,6 @@ A CLI binary that runs a single task through a navra MCP gateway using the
 
 - **navra** running locally: `navra serve`
 - **Ollama** with a model pulled: `ollama pull granite3.3:8b`
-- **ONNX Runtime** installed (Fedora: `dnf install onnxruntime-devel`)
 
 ## Usage
 

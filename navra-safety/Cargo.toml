@@ -1,9 +1,9 @@
 [package]
 name = "navra-safety"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
-rust-version = "1.91"
+rust-version = "1.96"
 description = "PII detection, content safety filters, and pseudonymization for Rust applications"
 homepage.workspace = true
 repository.workspace = true

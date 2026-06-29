@@ -56,7 +56,7 @@ examples/payments-app/
 
 ```bash
 # Build navra
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build
+cargo build
 
 # Run the demo (future: navra demo --project examples/payments-app)
 navra serve --config examples/payments-app/config/demo-config.toml

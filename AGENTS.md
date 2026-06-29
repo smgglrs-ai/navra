@@ -32,8 +32,8 @@ When referencing files, use exact paths relative to the project root.
 
 Before claiming any work is complete:
 
-1. **Tests pass**: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p <crate>`
-2. **Clippy clean**: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy -p <crate> -- -D warnings`
+1. **Tests pass**: `just test-crate <crate>`
+2. **Clippy clean**: `cargo clippy -p <crate> -- -D warnings`
 3. **No new warnings**: read the full build output, not just the exit code
 4. **Security warnings are fatal**: if clippy or your own review flags
    a security concern, fix it or escalate — never defer

@@ -19,4 +19,4 @@ scope:
   - navra-memory/src/tools.rs
   - navra-memory/src/types.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-memory"
+  quick: "cargo test -p navra-memory"

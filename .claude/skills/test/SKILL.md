@@ -1,9 +1,9 @@
 ---
 name: test
-description: Run navra tests with ONNX Runtime environment variables
+description: Run navra tests with just (serialized server tests, ORT auto-bundled)
 ---
 
-Run tests with the required ONNX Runtime environment variables.
+Run tests using `just` commands (preferred) or `cargo test` directly.
 
 ## Usage
 
@@ -16,19 +16,19 @@ Run tests with the required ONNX Runtime environment variables.
 Single crate:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p <crate>
+just test-crate <crate>
 ```
 
 Full workspace:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
+just test
 ```
 
 E2e tests (require Ollama running):
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e
+cargo test -p navra-server --test e2e
 ```
 
 ## Notes

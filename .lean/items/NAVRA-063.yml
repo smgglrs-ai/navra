@@ -34,4 +34,4 @@ scope:
 - navra-server/src/config.rs
 - navra-core/src/metrics.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -p navra-server -- --test-threads=4
+  quick: cargo test -p navra-safety -p navra-server -- --test-threads=4

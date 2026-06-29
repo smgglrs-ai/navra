@@ -37,5 +37,5 @@ scope:
 - config.schema.json (regenerate if needed)
 - examples/ (example config.toml with Gemma 4 12B)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-model-hub -p navra-modal-vision -p navra-model
+  quick: cargo test -p navra-model-hub -p navra-modal-vision -p navra-model
     --lib

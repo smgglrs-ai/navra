@@ -30,12 +30,10 @@ All tests must follow these rules:
 - Never mock the database or ONNX runtime — use real instances
 - Test names describe the behavior: `test_deny_wins_over_allow`
 
-## Environment
-
-Tests require ONNX Runtime:
+## Running tests
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p <crate>
+just test-crate <crate>
 ```
 
 ## Output

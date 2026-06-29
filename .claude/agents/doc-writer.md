@@ -48,7 +48,7 @@ files, READMEs, or external documentation.
 1. Read the target crate's `lib.rs` and key modules
 2. Check for existing doc comments to match style
 3. Add documentation
-4. Run `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo doc -p <crate> --no-deps` to verify
+4. Run `cargo doc -p <crate> --no-deps` to verify
 5. Fix any doc warnings
 
 Before finishing, commit all your changes:

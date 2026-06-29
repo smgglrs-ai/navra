@@ -27,7 +27,7 @@ scope:
   - navra-tools-exec/src/
   - navra-tools-gitlab/src/
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-tools-exec -p navra-tools-gitlab"
+  quick: "cargo test -p navra-tools-exec -p navra-tools-gitlab"
 progress: 100
 notes:
   - date: "2026-06-19"

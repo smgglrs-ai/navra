@@ -44,4 +44,4 @@ scope:
 - navra-cognitive/src/lib.rs
 - navra-cognitive/tests/load_cognitive_core.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-cognitive
+  quick: cargo test -p navra-cognitive

@@ -13,7 +13,7 @@ token management, model operations, and agent flows.
 
 ```bash
 # Start the gateway
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo run -- serve
+cargo run -- serve
 
 # Generate an auth token
 cargo run -- token generate --name my-agent --permissions full

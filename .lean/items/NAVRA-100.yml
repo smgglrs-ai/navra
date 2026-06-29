@@ -69,4 +69,4 @@ scope:
 - docs/evaluations/assert-evaluation.md (update with concrete instructions)
 - tests/ or eval/ (integration with adversarial_eval trace collection)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test e2e -- --test-threads=1
+  quick: cargo test -p navra-server --test e2e -- --test-threads=1

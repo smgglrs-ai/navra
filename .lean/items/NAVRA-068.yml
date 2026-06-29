@@ -39,4 +39,4 @@ scope:
 - navra-tools-exec/src/tools.rs (add group annotations)
 - navra-server/src/build_tools.rs (add group annotations to server-defined tools if any)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace -q 2>&1 | tail -5
+  quick: cargo test --workspace -q 2>&1 | tail -5

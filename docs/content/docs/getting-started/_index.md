@@ -13,8 +13,7 @@ toc = true
 ### From source (Fedora/RHEL)
 
 ```bash
-sudo dnf install onnxruntime-devel
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo install --path navra-server
+cargo install --path navra-server
 ```
 
 ### From release binary

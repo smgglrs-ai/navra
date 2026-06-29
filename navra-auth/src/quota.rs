@@ -17,19 +17,21 @@ pub struct RateLimit {
     pub window_secs: u64,
 }
 
+const SCALE: u64 = 1_000_000;
+
 /// A token bucket for a single agent.
 #[derive(Debug)]
 struct Bucket {
-    tokens: f64,
-    max_tokens: f64,
-    refill_rate: f64, // tokens per second
+    tokens: u64,
+    max_tokens: u64,
+    refill_rate: u64, // scaled tokens per second
     last_refill: Instant,
 }
 
 impl Bucket {
     fn new(limit: &RateLimit) -> Self {
-        let max_tokens = limit.max_calls as f64;
-        let refill_rate = max_tokens / limit.window_secs as f64;
+        let max_tokens = limit.max_calls.saturating_mul(SCALE);
+        let refill_rate = max_tokens / limit.window_secs;
         Self {
             tokens: max_tokens,
             max_tokens,
@@ -41,8 +43,8 @@ impl Bucket {
     /// Try to consume one token. Returns true if allowed.
     fn try_consume(&mut self) -> bool {
         self.refill();
-        if self.tokens >= 1.0 {
-            self.tokens -= 1.0;
+        if self.tokens >= SCALE {
+            self.tokens -= SCALE;
             true
         } else {
             false
@@ -52,13 +54,16 @@ impl Bucket {
     /// Remaining tokens (for status reporting).
     fn remaining(&mut self) -> u64 {
         self.refill();
-        self.tokens as u64
+        self.tokens / SCALE
     }
 
     fn refill(&mut self) {
         let now = Instant::now();
-        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
-        self.tokens = (self.tokens + elapsed * self.refill_rate).min(self.max_tokens);
+        let elapsed_micros = now.duration_since(self.last_refill).as_micros() as u64;
+        self.tokens = self
+            .tokens
+            .saturating_add(elapsed_micros.saturating_mul(self.refill_rate) / SCALE)
+            .min(self.max_tokens);
         self.last_refill = now;
     }
 }

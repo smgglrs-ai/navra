@@ -37,5 +37,5 @@ scope:
 - navra-model-runtime/ (embedding inference for semantic similarity in the semantic evidence pass)
 - 'navra-security/tests/taint_audit_integration.rs (new: integration tests against MVAR corpus scenarios)'
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-security --test taint_audit_integration --
+  quick: cargo test -p navra-security --test taint_audit_integration --
     --test-threads=1

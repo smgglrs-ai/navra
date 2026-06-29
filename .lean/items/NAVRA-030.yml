@@ -28,4 +28,4 @@ scope:
 - navra-safety/src/lib.rs
 - navra-model-hub/src/
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- --test-threads=1
+  quick: cargo test -p navra-safety -- --test-threads=1

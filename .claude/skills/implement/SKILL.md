@@ -56,8 +56,8 @@ For each crate that needs changes, create a work package:
 
 After all agents complete:
 1. Merge each worktree branch: `git merge --no-ff <branch> -m "Merge: description"`
-2. Run full workspace tests: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace`
-3. Run clippy: `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy --workspace -- -D warnings`
+2. Run full workspace tests: `just test`
+3. Run clippy: `cargo clippy --workspace -- -D warnings`
 
 ### 6. Update roadmap
 

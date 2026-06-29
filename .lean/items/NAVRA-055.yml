@@ -37,5 +37,5 @@ scope:
 - Cargo.toml workspace metadata
 - llms.txt, README.md, CONTRIBUTING.md
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build -p navra-server 2>&1 | tail -1 && grep -r 'smgglrs-site'
+  quick: cargo build -p navra-server 2>&1 | tail -1 && grep -r 'smgglrs-site'
     site/package.json; grep -c 'description' navra-*/Cargo.toml | grep ':0$' || echo 'all crates have descriptions'

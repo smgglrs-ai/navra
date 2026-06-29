@@ -30,7 +30,7 @@ navra init --quiet --dry-run --project dev
 If navra is not in PATH, build and run from the repo:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo run -- init
+cargo run -- init
 ```
 
 ## CLI Options

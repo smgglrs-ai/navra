@@ -7,21 +7,18 @@ Thank you for your interest in contributing to navra.
 ### Prerequisites
 
 - Rust stable (1.75+)
-- ONNX Runtime (`onnxruntime-devel` on Fedora)
 - Linux (systemd + D-Bus for full functionality)
 
 ### Build
 
 ```bash
-export ORT_LIB_PATH=/usr/lib64
-export ORT_PREFER_DYNAMIC_LINK=1
 cargo build
 ```
 
 ### Run Tests
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test --workspace
+just test
 ```
 
 See [TESTING.md](TESTING.md) for per-crate details and e2e test
@@ -38,7 +35,7 @@ with:
 - Expected behavior
 - Actual behavior
 - navra version (`cargo run -- --version`)
-- OS and ONNX Runtime version
+- OS version
 
 ### Security Vulnerabilities
 

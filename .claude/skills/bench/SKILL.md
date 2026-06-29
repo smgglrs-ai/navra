@@ -1,6 +1,6 @@
 ---
 name: bench
-description: Run Criterion benchmarks with ONNX Runtime environment variables
+description: Run Criterion benchmarks
 ---
 
 Run performance benchmarks using the `benchmarks` crate.
@@ -15,13 +15,13 @@ Run performance benchmarks using the `benchmarks` crate.
 All benchmarks:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo bench -p benchmarks
+cargo bench -p benchmarks
 ```
 
 Filtered benchmark:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo bench -p benchmarks -- <filter>
+cargo bench -p benchmarks -- <filter>
 ```
 
 ## Notes

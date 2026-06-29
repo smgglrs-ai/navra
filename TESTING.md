@@ -8,19 +8,6 @@ tests, and end-to-end tests that spawn a real server process.
 ### Required
 
 - **Rust stable** (1.91+)
-- **ONNX Runtime** — system-wide shared library
-
-  ```bash
-  # Fedora
-  sudo dnf install onnxruntime-devel
-  ```
-
-  Set environment variables before every `cargo test` / `cargo build`:
-
-  ```bash
-  export ORT_LIB_PATH=/usr/lib64
-  export ORT_PREFER_DYNAMIC_LINK=1
-  ```
 
 ### Required for e2e tests
 
