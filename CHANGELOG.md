@@ -2,6 +2,65 @@
 
 All notable changes to navra are documented here.
 
+## [0.3.0] - 2026-06-29
+
+### Breaking
+
+- **Rust 1.96 required** — MSRV bumped from 1.91 to 1.96
+- **Edition 2024** — `gen` is now a reserved keyword; explicit `ref`/`ref mut`
+  in implicitly-borrowing patterns are errors; `std::env::set_var`/`remove_var`
+  are unsafe
+
+### Added
+
+- **model-runtime**: Embedded llama.cpp runtime — load GGUF models in-process
+  via `llama-cpp-4`, no Ollama or subprocess needed. Config: `runtime = "embedded"`.
+  Serves an internal OpenAI-compatible endpoint with chat template support,
+  configurable sampling (temp, top_k, top_p), and automatic fallback in `auto_runtime()`
+- **ci**: Multi-platform release builds for 4 targets (x86_64-linux, aarch64-linux,
+  x86_64-macos, aarch64-macos). Both `navra` and `navra-agent` binaries per target.
+  SHA256 checksums and SLSA build provenance attestation
+- **ci**: `cargo-binstall` metadata in navra-server and navra-agent Cargo.toml
+
+### Changed
+
+- **deps**: Bundle ONNX Runtime via `ort` `download-binaries` — statically linked,
+  no system `onnxruntime-devel` package or `ORT_LIB_PATH` env vars needed
+- **deps**: Switch entire project from `native-tls` (OpenSSL) to `rustls` (pure Rust)
+  across reqwest, rmcp, navra-model, navra-core, navra-agent
+- **deps**: Replace `onig` (liboniguruma C library) with `fancy-regex` (pure Rust)
+  in tokenizers across navra-model, navra-rag, navra-safety, navra-safety-hooks
+- **deps**: Upgrade reqwest 0.12 → 0.13 — unified dependency tree (was duplicated),
+  added `oauth2-reqwest` adapter for oauth2 crate compatibility
+- **deps**: Upgrade jsonwebtoken 9 → 10 with `rust_crypto` provider
+- **deps**: Upgrade keyring 3 → 4 — plugin-based architecture, wrapped bootstrap
+  identity in `spawn_blocking` to fix zbus runtime nesting panic
+- **deps**: Upgrade tonic 0.12 → 0.14 + prost 0.13 → 0.14 — migrated from
+  `tonic-build` to `tonic-prost-build` + `tonic-prost` runtime crate
+- **deps**: Upgrade rusqlite 0.32 → 0.40 — cast u64/usize to i64 at SQLite boundary
+- **deps**: Upgrade schemars 1.0 → 1.2
+- **ci**: Simplified CI and Dockerfiles — removed all system dependency installs
+  (ONNX Runtime, libdbus-1-dev, OpenSSL). CI is now: checkout, install Rust, cargo
+
+### Fixed
+
+- **auth**: keyring 4 runtime nesting panic — `zbus` 5 calls `block_on` internally,
+  causing a panic when invoked from within a tokio runtime. Fixed by wrapping
+  `load_or_create_keyring_identity` in `tokio::task::spawn_blocking`
+- **clippy**: Fixed all 175 clippy warnings from edition 2024 stricter lints —
+  collapsible if statements, sort_by_key, checked_div
+
+### Removed
+
+- `ORT_LIB_PATH` and `ORT_PREFER_DYNAMIC_LINK` environment variables from justfile,
+  CI workflows, Dockerfiles, all docs, skills, agents, and lean items (89 files)
+- System package prerequisites: `onnxruntime-devel`, `libdbus-1-dev`, `openssl-libs`
+- Duplicate reqwest 0.12 from dependency tree
+
+## [0.2.0] - 2026-06-28
+
+First tagged release. 776 commits from initial skeleton through full gateway.
+
 ## [0.1.0] - 2026-06-05
 
 ### Added
