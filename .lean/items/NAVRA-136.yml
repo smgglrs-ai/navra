@@ -32,5 +32,5 @@ scope:
   - navra-cognitive/src/bridge.rs
   - navra-safety/src/lib.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo doc --workspace --no-deps 2>&1 | grep 'missing documentation' | wc -l"
+  quick: "cargo doc --workspace --no-deps 2>&1 | grep 'missing documentation' | wc -l"
 progress: 100

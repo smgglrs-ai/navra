@@ -144,12 +144,13 @@ enforcement only, not the full pipeline.
 
 ```bash
 # Full corpus
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 \
-  cargo test -p navra-auth --test ifc_benchmark -- --nocapture
+just test-crate navra-auth
+
+# Integration test with output
+cargo test -p navra-auth --test ifc_benchmark -- --nocapture
 
 # Unit tests only
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 \
-  cargo test -p navra-auth -- ifc::corpus::tests ifc::benchmark::tests
+cargo test -p navra-auth -- ifc::corpus::tests ifc::benchmark::tests
 ```
 
 ## Source files

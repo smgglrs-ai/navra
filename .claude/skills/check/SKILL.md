@@ -1,6 +1,6 @@
 ---
 name: check
-description: Run fmt + clippy + check in one pass with ONNX Runtime environment variables
+description: Run fmt + clippy + check in one pass
 ---
 
 Pre-commit sanity check: format verification, linting, and type checking.
@@ -24,13 +24,13 @@ cargo fmt --check
 2. Clippy (deny warnings):
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 3. Type check:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo check --workspace
+cargo check --workspace
 ```
 
 For a single crate, replace `--workspace` with `-p <crate>`.

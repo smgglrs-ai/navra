@@ -4,9 +4,9 @@ description = "Open Responses API types for Rust — spec-compliant, no client, 
 homepage.workspace = true
 repository.workspace = true
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "Apache-2.0"
-rust-version = "1.91"
+rust-version = "1.96"
 keywords = ["openresponses", "llm", "ai", "api", "types"]
 categories = ["api-bindings", "data-structures"]
 

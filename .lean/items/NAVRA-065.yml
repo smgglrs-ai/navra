@@ -35,4 +35,4 @@ scope:
 - examples/config.toml
 - config.schema.json (new, committed artifact)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server -- config::tests
+  quick: cargo test -p navra-server -- config::tests

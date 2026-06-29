@@ -1,7 +1,7 @@
 [package]
 name = "navra-standalone-agent"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # Empty workspace table prevents Cargo from auto-discovering
 # the parent navra workspace. This example is standalone.

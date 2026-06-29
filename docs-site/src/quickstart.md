@@ -5,7 +5,6 @@ Get navra running in under 5 minutes.
 ## Prerequisites
 
 - **Rust** stable 1.75+
-- **ONNX Runtime** — Fedora: `sudo dnf install onnxruntime-devel`
 - **Linux** with systemd and D-Bus (for notifications and tray)
 
 ## Build
@@ -13,10 +12,6 @@ Get navra running in under 5 minutes.
 ```bash
 git clone https://github.com/smgglrs-ai/navra.git
 cd navra
-
-export ORT_LIB_PATH=/usr/lib64
-export ORT_PREFER_DYNAMIC_LINK=1
-
 cargo build
 ```
 

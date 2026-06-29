@@ -20,7 +20,7 @@ acceptance:
 scope:
   - navra-agent/src/quota.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-agent"
+  quick: "cargo test -p navra-agent"
 progress: 100
 notes:
   - date: "2026-06-18"

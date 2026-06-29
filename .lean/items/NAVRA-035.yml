@@ -24,4 +24,4 @@ scope:
   - navra-agent/src/tool_loop.rs
   - navra-agent/src/agent.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- hooks::pipeline"
+  quick: "cargo test -p navra-safety -- hooks::pipeline"

@@ -46,7 +46,7 @@ acceptance:
   - "Safety pipeline scans text fields within A2UI component definitions"
   - "Unit tests cover A2UI payload validation, resource delivery, and safety filtering"
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-protocol -p navra-core"
+  quick: "cargo test -p navra-protocol -p navra-core"
 notes:
   - date: "2026-06-19"
     detail: |

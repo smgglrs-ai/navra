@@ -33,4 +33,4 @@ scope:
 - navra-server/src/config/agents.rs
 - navra-server/src/main.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-openapi --test-threads=1
+  quick: cargo test -p navra-openapi --test-threads=1

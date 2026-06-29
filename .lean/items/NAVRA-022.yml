@@ -29,4 +29,4 @@ scope:
 - navra-server/src/main.rs
 - navra-model-hub/ (model registry entry for Moshi ONNX models)
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-modal-voice --test-threads=1
+  quick: cargo test -p navra-modal-voice --test-threads=1

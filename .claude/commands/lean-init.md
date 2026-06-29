@@ -80,7 +80,7 @@ Compare detected test commands against CI to validate.
 Print a concise summary of what was detected:
 ```
 Stack: Rust (cargo workspace, 22 crates)
-Build: cargo build (with ORT_LIB_PATH)
+Build: cargo build
 Test:  cargo test --workspace
 Lint:  cargo clippy
 Format: rustfmt (config detected)
@@ -175,7 +175,7 @@ overwrite existing permissions or hooks.
 Rust:
 ```
 cargo build/test/check/clippy/fmt/run/doc/tree/metadata/bench/expand/search,
-rustfmt, rustup, ORT_LIB_PATH variants, just
+rustfmt, rustup, just
 ```
 
 Go:

@@ -44,6 +44,6 @@ scope:
 - navra-core/src/server/mod.rs
 - navra-safety/src/hooks/policy_yaml.rs
 verification:
-  quick: ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety --test safety_bench -- --nocapture 2>&1
-    | tail -20 && ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-server --test adversarial_eval --test-threads=1
+  quick: cargo test -p navra-safety --test safety_bench -- --nocapture 2>&1
+    | tail -20 && cargo test -p navra-server --test adversarial_eval --test-threads=1
     -- --nocapture 2>&1 | tail -20

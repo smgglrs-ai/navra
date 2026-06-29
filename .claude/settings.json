@@ -16,7 +16,6 @@
       "Bash(rustfmt *)",
       "Bash(rustup *)",
       "Bash(just *)",
-      "Bash(ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo *)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",

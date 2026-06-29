@@ -20,4 +20,4 @@ scope:
   - navra-safety-hooks/Cargo.toml
   - navra-core/src/server/builder.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety-hooks -- html"
+  quick: "cargo test -p navra-safety-hooks -- html"

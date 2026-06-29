@@ -23,5 +23,5 @@ scope:
   - navra-core/src/transport/sse.rs
   - navra-core/src/transport/websocket.rs
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-core"
+  quick: "cargo test -p navra-core"
 progress: 100

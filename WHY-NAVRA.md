@@ -122,8 +122,6 @@ output actually satisfies its requirements.
 ```bash
 git clone https://github.com/smgglrs-ai/navra
 cd navra
-export ORT_LIB_PATH=/usr/lib64
-export ORT_PREFER_DYNAMIC_LINK=1
 cargo build && cargo run -- serve
 ```
 

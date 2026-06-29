@@ -37,7 +37,7 @@ acceptance:
   - "IdP claims mapped to navra permission sets via config"
   - "Enterprise auth flow works end-to-end with mock IdP in tests"
 verification:
-  quick: "ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-auth -p navra-core"
+  quick: "cargo test -p navra-auth -p navra-core"
 notes:
   - date: "2026-06-19"
     detail: |

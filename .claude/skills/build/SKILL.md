@@ -1,9 +1,9 @@
 ---
 name: build
-description: Build navra with ONNX Runtime environment variables
+description: Build navra (ORT auto-bundled via download-binaries feature)
 ---
 
-Build the project with the required ONNX Runtime environment variables.
+Build the project. ONNX Runtime is bundled automatically.
 
 ## Usage
 
@@ -17,25 +17,25 @@ Build the project with the required ONNX Runtime environment variables.
 Full workspace:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build
+cargo build
 ```
 
 Single crate:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build -p <crate>
+cargo build -p <crate>
 ```
 
 Release build:
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --release
+cargo build --release
 ```
 
 With features (e.g., otel):
 
 ```bash
-ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo build --features <features>
+cargo build --features <features>
 ```
 
 ## Notes
