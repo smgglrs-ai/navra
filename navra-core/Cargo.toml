@@ -13,7 +13,7 @@ navra-mcp = { path = "../navra-mcp", default-features = false }
 navra-protocol = { path = "../navra-protocol" }
 navra-auth = { path = "../navra-auth", features = ["desktop"] }
 navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
-navra-model = { path = "../navra-model", default-features = false, features = ["rustls"] }
+navra-model = { path = "../navra-model", default-features = false }
 rmcp = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
@@ -36,6 +36,10 @@ tonic = { workspace = true }
 prost = { workspace = true }
 tokio-stream = "0.1"
 tonic-prost = "0.14"
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [features]
 default = ["onnx"]

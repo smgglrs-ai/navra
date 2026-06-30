@@ -439,7 +439,7 @@ format = "gguf"
 | `threshold` | float | `0.5` | Confidence threshold for safety classification |
 | `format` | string | *none* | Model format: `gguf`, `safetensors`, `awq`, `gptq` |
 | `execution_mode` | string | *none* | `in_process` (ONNX in navra) or `served` (llama.cpp server) |
-| `runtime` | string | *none* | Backend: `auto`, `podman`, `direct`, `none` |
+| `runtime` | string | *none* | Backend: `auto`, `embedded`, `ollama`, `ogx`, `llama-cpp`, `llama-cpp-podman`, `vllm`, `vllm-podman`, `none` |
 | `context_size` | integer | `4096` | Context window size |
 | `parallel` | integer | `1` | Parallel request slots |
 | `model_name` | string | *none* | Model name for OpenAI-compatible API |

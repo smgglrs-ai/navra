@@ -7,7 +7,7 @@ tests, and end-to-end tests that spawn a real server process.
 
 ### Required
 
-- **Rust stable** (1.91+)
+- **Rust stable** (1.96+)
 
 ### Required for e2e tests
 

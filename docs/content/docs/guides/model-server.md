@@ -88,13 +88,21 @@ the model) and **isolation** (how the engine is launched).
 
 | Engine | Binary | Formats | GPU required |
 |--------|--------|---------|-------------|
+| llama.cpp (embedded) | *in-process* | GGUF | No (CPU or GPU) |
 | llama.cpp | `llama-server` | GGUF | No (CPU or GPU) |
 | vLLM | `vllm serve` | safetensors, GGUF, AWQ, GPTQ | Yes |
+
+The **embedded** engine links llama.cpp statically into navra itself —
+no external binary needed. Set `runtime = "embedded"` in the model
+config, or let auto-detection fall back to it when no external runtime
+is found. Requires navra built with `--features embedded` (included in
+prebuilt release binaries).
 
 ### Isolation modes
 
 | Mode | Description | Security |
 |------|-------------|----------|
+| `embedded` | In-process (statically linked llama.cpp) | None (shares navra process) |
 | `direct` | Child process, no isolation | None |
 | `podman` | Rootless container with `--network=none`, `--no-new-privileges`, read-only model mount | Strong |
 | `openshell` | Delegate to OpenShell compute driver via gRPC (libkrun microVM) | Strongest |
@@ -109,6 +117,7 @@ the best available combination:
 3. Podman + llama.cpp (if Podman socket exists)
 4. Direct + vLLM (if `vllm` binary found and GPU detected)
 5. Direct + llama.cpp (if `llama-server` binary found)
+6. Embedded llama.cpp (if built with `--features embedded`)
 
 ### Podman containers
 

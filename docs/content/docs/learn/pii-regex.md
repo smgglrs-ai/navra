@@ -109,7 +109,7 @@ navra's regex-based detection is split into two filters. The PiiFilter handles p
 - **OpenAI API keys** (`sk-proj-` prefix)
 - **Anthropic API keys** (`sk-ant-` prefix)
 - **Bearer tokens** in configuration files
-- **PEM private keys** (the `-----BEGIN PRIVATE KEY-----` header)
+- **PEM private keys** (the `-----BEGIN PRIVATE KEY` header) <!-- gitleaks:allow -->
 - **Password assignments** (`password = "..."` patterns)
 - **Connection strings** with embedded passwords (`postgres://user:pass@host`)
 - **Slack webhook URLs**
