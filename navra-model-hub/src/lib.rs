@@ -91,6 +91,18 @@ impl ModelHub {
             return Ok(path);
         }
 
+        // For ollama:// URIs, check the local Ollama store before network pull
+        if let Registry::Ollama = uri.registry {
+            let (model, tag) = match uri.path.split_once(':') {
+                Some((m, t)) => (m, t),
+                None => (uri.path.as_str(), "latest"),
+            };
+            if let Some(local_path) = transport::ollama::try_local_ollama(model, tag) {
+                tracing::info!(uri = %uri, path = %local_path.display(), "Using local Ollama model");
+                return Ok(local_path);
+            }
+        }
+
         // Pull via appropriate transport
         tracing::info!(uri = %uri, "Pulling model");
         let transport = self.transport_for(uri);
