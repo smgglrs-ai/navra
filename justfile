@@ -24,8 +24,15 @@ test-server:
     echo "=== navra-server: unit tests ==="
     cargo test -p navra-server --bin navra -- --test-threads=1
 
-# Run tests for a single crate
+# Run tests for a single crate (navra-server blocked — use test-server)
 test-crate crate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{crate}}" = "navra-server" ]; then
+        echo "ERROR: 'just test-crate navra-server' is blocked — it spawns 34+ parallel server processes and OOMs the machine." >&2
+        echo "Use 'just test-server' instead (serialized, one binary at a time with cleanup)." >&2
+        exit 1
+    fi
     cargo test -p {{crate}}
 
 # Run clippy with warnings as errors

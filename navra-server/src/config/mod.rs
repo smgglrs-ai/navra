@@ -125,7 +125,7 @@ impl Config {
             None => Self::default_config_path(),
         };
 
-        if config_path.exists() {
+        let mut config = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
             let mut value: toml::Value = toml::from_str(&content)?;
 
@@ -149,10 +149,31 @@ impl Config {
             }
 
             let config: Config = value.try_into()?;
-            Ok(config)
+            config
         } else {
-            Ok(Self::default())
+            Self::default()
+        };
+
+        // Derive socket path from config filename when not explicitly set.
+        // config.toml → navra.sock (default), dev.toml → navra-dev.sock
+        if config.server.socket == server::default_socket() {
+            let stem = config_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("config");
+            if stem != "config" {
+                if let Some(runtime_dir) = dirs::runtime_dir() {
+                    config.server.socket = Some(
+                        runtime_dir
+                            .join(format!("navra/navra-{stem}.sock"))
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
+                }
+            }
         }
+
+        Ok(config)
     }
 
     pub fn default_config_path() -> PathBuf {
