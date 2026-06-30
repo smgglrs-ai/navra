@@ -98,6 +98,8 @@ pub struct McpServer {
     tool_routing: routing::ToolRoutingConfig,
     /// Module names that came from upstream MCP servers (for per-agent filtering).
     pub(crate) upstream_modules: HashSet<String>,
+    /// Per-agent concurrency semaphores (created on first use).
+    concurrency_semaphores: dashmap::DashMap<String, Arc<tokio::sync::Semaphore>>,
 }
 
 /// A pending permission request awaiting grant or deny.
