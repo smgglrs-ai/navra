@@ -358,14 +358,9 @@ impl McpServer {
 
         // Concurrency limit check (per-agent)
         let _concurrency_permit = if let Some(max) = ctx.agent.max_concurrent {
-            let sem = self
-                .concurrency_semaphores
-                .entry(ctx.agent.name.clone())
-                .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max as usize)))
-                .clone();
-            match sem.try_acquire_owned() {
+            match self.acquire_concurrency_permit(&ctx.agent.name, max) {
                 Ok(permit) => Some(permit),
-                Err(_) => {
+                Err(()) => {
                     return CallToolResult::error_msg(format!(
                         "Concurrency limit ({max}) reached for agent '{}'",
                         ctx.agent.name

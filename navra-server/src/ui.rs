@@ -419,11 +419,13 @@ pub(crate) fn attach_ui_routes(
     let proxy_backend = ui_chat_backend.clone();
     let proxy_server = Arc::clone(server);
     let proxy_forge = ui_forge.clone();
+    let proxy_model_entries = cfg.models.clone();
     let v1_router = axum::Router::new()
         .route(
             "/chat/completions",
             axum::routing::post(
                 move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
+                    let model_entries = proxy_model_entries.clone();
                     let backend = proxy_backend.clone();
                     let forge = proxy_forge.clone();
                     let srv = proxy_server.clone();
@@ -440,6 +442,21 @@ pub(crate) fn attach_ui_routes(
                         let agent = srv.authenticator().authenticate(&headers).ok();
                         let agent_name = agent.as_ref().map(|a| a.name.as_str()).unwrap_or("anonymous");
                         let permissions = agent.as_ref().map(|a| a.permissions.as_str()).unwrap_or("dev");
+
+                        // Concurrency limit for model requests (same semaphore as tool calls)
+                        let _concurrency_permit = if let Some(ref a) = agent
+                            && let Some(max) = a.max_concurrent {
+                                match srv.acquire_concurrency_permit(&a.name, max) {
+                                    Ok(permit) => Some(permit),
+                                    Err(()) => {
+                                        return axum::Json(serde_json::json!({
+                                            "error": {"message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name), "type": "rate_limit_error"}
+                                        })).into_response();
+                                    }
+                                }
+                            } else {
+                                None
+                            };
 
                         // Extract OpenAI-format messages
                         let mut messages = body["messages"].as_array().cloned().unwrap_or_default();
@@ -498,7 +515,14 @@ pub(crate) fn attach_ui_routes(
                         proxy_body["messages"] = serde_json::Value::Array(messages);
                         let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
-                        let upstream_url = "http://localhost:11434/v1/chat/completions";
+                        // Route to per-agent model if configured, else default Ollama
+                        let upstream_url = agent
+                            .as_ref()
+                            .and_then(|a| a.model.as_ref())
+                            .and_then(|model_name| model_entries.get(model_name))
+                            .and_then(|entry| entry.base_url.as_deref())
+                            .map(|url| format!("{url}/v1/chat/completions"))
+                            .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
                         let client = reqwest::Client::builder()
                             .timeout(std::time::Duration::from_secs(600))
                             .build()

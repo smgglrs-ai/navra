@@ -116,6 +116,19 @@ impl McpServer {
         McpServerBuilder::new()
     }
 
+    pub fn acquire_concurrency_permit(
+        &self,
+        agent_name: &str,
+        max_concurrent: u32,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, ()> {
+        let sem = self
+            .concurrency_semaphores
+            .entry(agent_name.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max_concurrent as usize)))
+            .clone();
+        sem.try_acquire_owned().map_err(|_| ())
+    }
+
     /// Broadcast a notification to all active SSE sessions.
     pub fn notify(&self, method: &str, params: Option<serde_json::Value>) {
         if let Some(ref broadcaster) = self.broadcaster {
