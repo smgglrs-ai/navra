@@ -76,13 +76,13 @@ jobs:
       - name: Build binaries
         run: |
           BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
-          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra --features embedded
-          $BUILD_CMD build --profile container --target ${{ matrix.target }} --bin navra-agent
+          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra --features embedded
+          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra-agent
 
       - name: Package
         run: |
           VERSION="${{ github.ref_name }}"
-          TARGET_DIR="target/${{ matrix.target }}/container"
+          TARGET_DIR="target/${{ matrix.target }}/release"
           for bin in navra navra-agent; do
             mkdir -p "dist-${bin}"
             cp "${TARGET_DIR}/${bin}" "dist-${bin}/"

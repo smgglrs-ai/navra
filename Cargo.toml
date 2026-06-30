@@ -72,13 +72,16 @@ rmcp = { version = "1.8", features = [
     "reqwest",
 ] }
 rusqlite = { version = "0.40", features = ["bundled"] }
+vstd = { version = "0.0.0-2026-06-14-0213", default-features = false }
 
 [workspace.lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(verus_keep_ghost)', 'cfg(verus_keep_ghost_body)'] }
 
-[profile.container]
-inherits = "release"
+[profile.release]
 lto = true
 codegen-units = 1
 strip = true
+
+[profile.container]
+inherits = "release"
 panic = "abort"

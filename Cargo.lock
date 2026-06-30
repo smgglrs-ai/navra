@@ -3069,6 +3069,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "vstd",
 ]
 
 [[package]]
@@ -3108,6 +3109,7 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
+ "vstd",
  "zbus",
  "zeroize",
 ]
@@ -3144,6 +3146,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "vstd",
 ]
 
 [[package]]
@@ -3182,6 +3185,7 @@ dependencies = [
  "tower",
  "tracing",
  "uuid",
+ "vstd",
 ]
 
 [[package]]
@@ -3207,6 +3211,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
+ "vstd",
 ]
 
 [[package]]
@@ -3307,6 +3312,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tracing",
+ "vstd",
 ]
 
 [[package]]
@@ -3401,6 +3407,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "vstd",
 ]
 
 [[package]]
@@ -3457,6 +3464,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "tracing",
+ "vstd",
 ]
 
 [[package]]
@@ -3488,6 +3496,7 @@ dependencies = [
  "toml 0.8.23",
  "tracing",
  "uuid",
+ "vstd",
 ]
 
 [[package]]
@@ -3565,6 +3574,7 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "uuid",
+ "vstd",
 ]
 
 [[package]]
@@ -6629,6 +6639,70 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "verus_builtin"
+version = "0.0.0-2026-05-17-0151"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab9266bfb5cf45a080f425c560b0e0be2bf81194f0e80258990c49c1829d8b9"
+
+[[package]]
+name = "verus_builtin_macros"
+version = "0.0.0-2026-06-14-0213"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "472dd2037f1194cf402c982d3423b058173e34a5ec0aab3c0bef78801ebd5e34"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+ "synstructure",
+ "verus_prettyplease",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_prettyplease"
+version = "0.0.0-2026-05-31-0205"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ffdc94c89109a67c59646f6b6e71b49de394020f45294247dd716470523245b"
+dependencies = [
+ "proc-macro2",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_state_machines_macros"
+version = "0.0.0-2026-06-14-0213"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6704a9ce586a5027f87933d9a84817411c937804090a9585c28bf335ac37eefc"
+dependencies = [
+ "indexmap 1.9.3",
+ "proc-macro2",
+ "quote",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_syn"
+version = "0.0.0-2026-05-31-0205"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "030b774330d5ec618691c2cd6fba8bbb13bd538f3884a1143450baec25749706"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "vstd"
+version = "0.0.0-2026-06-14-0213"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9c9b87576c9126305f9a91fdd72b0eb246e88e094f6a55e46c67ae2c83568c9"
+dependencies = [
+ "verus_builtin",
+ "verus_builtin_macros",
+ "verus_state_machines_macros",
+]
 
 [[package]]
 name = "walkdir"
