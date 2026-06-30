@@ -1503,6 +1503,7 @@ async fn serve_inner(
 
         let mut blake3_auth = TokenAuthenticator::new();
         for agent in &cfg.agents {
+            let perm_set = cfg.permissions.get(&agent.permissions);
             blake3_auth.register_hash(
                 &agent.token_hash,
                 AgentIdentity {
@@ -1511,10 +1512,14 @@ async fn serve_inner(
                     signing_key: agent.signing_key.clone(),
                     did: agent.did.clone(),
                     capabilities: None,
-                    model: None,
-                    allowed_upstreams: Vec::new(),
-                    max_concurrent: None,
-                    max_context: None,
+                    model: agent.model.clone().or_else(|| perm_set.and_then(|p| p.model.clone())),
+                    allowed_upstreams: if !agent.upstream.is_empty() {
+                        agent.upstream.clone()
+                    } else {
+                        perm_set.map(|p| p.upstream.clone()).unwrap_or_default()
+                    },
+                    max_concurrent: agent.max_concurrent.or(perm_set.and_then(|p| p.max_concurrent)),
+                    max_context: agent.max_context.or(perm_set.and_then(|p| p.max_context)),
                 },
             );
             if agent.pubkey.is_some() {
@@ -2558,6 +2563,7 @@ async fn serve_inner(
 
                 builder = builder.merge_tool_operations(module.tool_operations().clone());
                 builder = builder.merge_tool_classifications(module.tool_classifications().clone());
+                builder = builder.upstream_module(&upstream_cfg.name);
 
                 if !upstream_cfg.tool_class.is_empty() {
                     let mut classes = std::collections::HashMap::new();

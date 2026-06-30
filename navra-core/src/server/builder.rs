@@ -50,6 +50,7 @@ pub struct McpServerBuilder {
     enterprise_auth: bool,
     tool_routing: super::routing::ToolRoutingConfig,
     metrics: Option<Arc<crate::metrics::Metrics>>,
+    upstream_modules: HashSet<String>,
 }
 
 impl McpServerBuilder {
@@ -87,7 +88,13 @@ impl McpServerBuilder {
             enterprise_auth: false,
             tool_routing: super::routing::ToolRoutingConfig::default(),
             metrics: None,
+            upstream_modules: HashSet::new(),
         }
+    }
+
+    pub fn upstream_module(mut self, name: impl Into<String>) -> Self {
+        self.upstream_modules.insert(name.into());
+        self
     }
 
     pub fn path_acl(
@@ -909,6 +916,7 @@ impl McpServerBuilder {
             mcp_version: self.mcp_version,
             enterprise_auth: self.enterprise_auth,
             tool_routing: self.tool_routing,
+            upstream_modules: self.upstream_modules,
         }
     }
 }

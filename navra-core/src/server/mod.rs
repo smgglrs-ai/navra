@@ -96,6 +96,8 @@ pub struct McpServer {
     enterprise_auth: bool,
     /// Multi-hypothesis tool routing configuration.
     tool_routing: routing::ToolRoutingConfig,
+    /// Module names that came from upstream MCP servers (for per-agent filtering).
+    pub(crate) upstream_modules: HashSet<String>,
 }
 
 /// A pending permission request awaiting grant or deny.

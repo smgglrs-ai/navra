@@ -1,3 +1,5 @@
+use vstd::prelude::*;
+
 use crate::auth::CallContext;
 use crate::protocol::{
     CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
@@ -291,6 +293,14 @@ impl McpServer {
         } else {
             all_tools
         };
+        // Filter by allowed upstreams (per-agent scoping)
+        if !agent.allowed_upstreams.is_empty() {
+            let allowed = &agent.allowed_upstreams;
+            visible.retain(|t| {
+                let module = t.name.split('_').next().unwrap_or("");
+                !self.upstream_modules.contains(module) || allowed.iter().any(|a| a == module)
+            });
+        }
         // Apply dynamic filters
         for filter in &self.dynamic_filters {
             visible = filter.filter(visible, ctx);
@@ -1663,3 +1673,110 @@ pub(super) fn matches_uri_template(template: &str, uri: &str) -> bool {
     }
     remaining.is_empty()
 }
+
+verus! {
+
+// ==========================================================================
+// Security gate composition model
+//
+// The tool dispatch pipeline applies gates in sequence:
+//   1. Tool policy (tool_rules: Allow/Deny/Approve)
+//   2. Operations check (read/write/execute/delete vs permitted set)
+//   3. Path ACL (deny-wins)
+//   4. IFC write gate (Bell-LaPadula no-write-down)
+//   5. Rate limit (token bucket)
+//   6. Pre-hooks (may block, simulate, or modify)
+//
+// Each gate returns: Pass(0), Deny(1), Approve(2), Simulate(3)
+// Pipeline short-circuits on any non-Pass result.
+// ==========================================================================
+
+spec fn spec_gate_pipeline(
+    tool_policy: nat,    // 0=Allow, 1=Deny, 2=Approve
+    ops_allowed: bool,
+    acl_result: nat,     // 0=Allowed, 1=Denied, 2=NeedsApproval
+    ifc_write: bool,     // is this a write tool?
+    ifc_tainted: bool,   // is session tainted with untrusted data?
+    ifc_policy: nat,     // 0=Allow, 1=Approve, 2=Deny, 3=None(→Deny)
+    rate_ok: bool,
+) -> nat {
+    if tool_policy == 1 { 1nat }           // Gate 1: Deny
+    else if tool_policy == 2 { 2nat }      // Gate 1: Approve
+    else if !ops_allowed { 1nat }           // Gate 2: ops denied
+    else if acl_result == 1 { 1nat }        // Gate 3: ACL denied
+    else if acl_result == 2 { 2nat }        // Gate 3: ACL approval
+    else if ifc_write && ifc_tainted && (ifc_policy == 2 || ifc_policy == 3) { 1nat } // Gate 4: IFC deny
+    else if ifc_write && ifc_tainted && ifc_policy == 1 { 2nat } // Gate 4: IFC approve
+    else if !rate_ok { 1nat }               // Gate 5: rate limit
+    else { 0nat }                            // All pass
+}
+
+// Any single deny gate blocks the entire pipeline
+proof fn deny_at_any_gate_blocks(
+    tool_policy: nat, ops_allowed: bool, acl_result: nat,
+    ifc_write: bool, ifc_tainted: bool, ifc_policy: nat, rate_ok: bool,
+)
+    requires tool_policy == 1,
+    ensures spec_gate_pipeline(tool_policy, ops_allowed, acl_result, ifc_write, ifc_tainted, ifc_policy, rate_ok) == 1,
+{}
+
+proof fn ops_denied_blocks(
+    acl_result: nat, ifc_write: bool, ifc_tainted: bool, ifc_policy: nat, rate_ok: bool,
+)
+    ensures spec_gate_pipeline(0, false, acl_result, ifc_write, ifc_tainted, ifc_policy, rate_ok) == 1,
+{}
+
+proof fn acl_deny_blocks(
+    ifc_write: bool, ifc_tainted: bool, ifc_policy: nat, rate_ok: bool,
+)
+    ensures spec_gate_pipeline(0, true, 1, ifc_write, ifc_tainted, ifc_policy, rate_ok) == 1,
+{}
+
+// IFC fail-closed: tainted write with no policy → deny
+proof fn ifc_no_policy_denies_tainted_write(
+    rate_ok: bool,
+)
+    ensures spec_gate_pipeline(0, true, 0, true, true, 3, rate_ok) == 1,
+{}
+
+// IFC explicit deny blocks tainted write
+proof fn ifc_deny_blocks_tainted_write(
+    rate_ok: bool,
+)
+    ensures spec_gate_pipeline(0, true, 0, true, true, 2, rate_ok) == 1,
+{}
+
+// Clean session always passes IFC gate
+proof fn ifc_clean_session_passes(
+    ifc_policy: nat, rate_ok: bool,
+)
+    requires rate_ok,
+    ensures spec_gate_pipeline(0, true, 0, true, false, ifc_policy, rate_ok) == 0,
+{}
+
+// Read tools bypass IFC entirely
+proof fn read_tool_bypasses_ifc(
+    ifc_tainted: bool, ifc_policy: nat, rate_ok: bool,
+)
+    requires rate_ok,
+    ensures spec_gate_pipeline(0, true, 0, false, ifc_tainted, ifc_policy, rate_ok) == 0,
+{}
+
+// Rate limit is last gate — all others must pass first
+proof fn rate_limit_only_after_all_pass(
+    ifc_write: bool, ifc_tainted: bool, ifc_policy: nat,
+)
+    requires !ifc_write || !ifc_tainted || ifc_policy == 0,
+    ensures spec_gate_pipeline(0, true, 0, ifc_write, ifc_tainted, ifc_policy, false) == 1,
+{}
+
+// Pipeline totality: always returns 0, 1, or 2
+proof fn pipeline_total(
+    tool_policy: nat, ops_allowed: bool, acl_result: nat,
+    ifc_write: bool, ifc_tainted: bool, ifc_policy: nat, rate_ok: bool,
+)
+    requires tool_policy <= 2, acl_result <= 2, ifc_policy <= 3,
+    ensures spec_gate_pipeline(tool_policy, ops_allowed, acl_result, ifc_write, ifc_tainted, ifc_policy, rate_ok) <= 2,
+{}
+
+} // verus!

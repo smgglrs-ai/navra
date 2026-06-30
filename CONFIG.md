@@ -264,6 +264,10 @@ permissions = "dev"
 | `did` | string | *none* | DID:key identifier (alternative to pubkey file) |
 | `capability_token` | boolean | `false` | Enable capability token issuance for this agent |
 | `token_ttl` | integer | *none* | Override token TTL for this agent (seconds) |
+| `model` | string | *none* | Model override (must match a key in `[models.*]`). Wins over permission set default |
+| `upstream` | list of strings | `[]` | Upstream MCP servers visible to this agent (by name). Empty = inherit from permission set |
+| `max_concurrent` | integer | *none* | Maximum concurrent tool calls. Wins over permission set default |
+| `max_context` | integer | *none* | Context window cap for model requests. Wins over permission set default |
 
 ---
 
@@ -300,6 +304,10 @@ rate_limit = "60/60"
 | `trusted_paths` | list of strings | `[]` | Glob patterns for paths that remain Trusted (no IFC taint) |
 | `tool_disclosure_include` | list of strings | `[]` | Tool glob patterns to show in `tools/list` |
 | `tool_disclosure_exclude` | list of strings | `[]` | Tool glob patterns to hide from `tools/list` |
+| `model` | string | *none* | Default model for agents in this set (must match a key in `[models.*]`). Overridable per-agent |
+| `upstream` | list of strings | `[]` | Upstream MCP servers visible to agents in this set. Empty = all. Overridable per-agent |
+| `max_concurrent` | integer | *none* | Maximum concurrent tool calls per agent session |
+| `max_context` | integer | *none* | Context window cap for model requests |
 
 ### permissions.\<name\>.tool_rules
 
