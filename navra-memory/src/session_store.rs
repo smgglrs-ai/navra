@@ -114,6 +114,10 @@ impl SessionBackend for SqliteSessionBackend {
                         signing_key: row.get(3)?,
                         did: row.get(4)?,
                         capabilities: None,
+                        model: None,
+                        allowed_upstreams: Vec::new(),
+                        max_concurrent: None,
+                        max_context: None,
                     },
                     client_info: ClientInfo::new(
                         row.get::<_, String>(5)?,
@@ -213,6 +217,10 @@ impl SessionBackend for SqliteSessionBackend {
                     signing_key: row.get(3)?,
                     did: row.get(4)?,
                     capabilities: None,
+                    model: None,
+                    allowed_upstreams: Vec::new(),
+                    max_concurrent: None,
+                    max_context: None,
                 },
                 client_info: ClientInfo::new(
                     row.get::<_, String>(5)?,

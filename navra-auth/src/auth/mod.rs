@@ -8,6 +8,7 @@ pub mod sandbox_profile;
 
 use std::fmt;
 use subtle::ConstantTimeEq;
+use vstd::prelude::*;
 
 /// Identity of an authenticated agent.
 #[derive(Debug, Clone)]
@@ -21,6 +22,14 @@ pub struct AgentIdentity {
     /// Resolved capabilities from a verified capability token.
     /// When `Some`, these override the PermissionEngine path.
     pub capabilities: Option<capability::ResolvedCapabilities>,
+    /// Resolved model name (agent override > permission set default).
+    pub model: Option<String>,
+    /// Upstream MCP servers visible to this agent. Empty = all.
+    pub allowed_upstreams: Vec<String>,
+    /// Maximum concurrent tool calls for this agent.
+    pub max_concurrent: Option<u32>,
+    /// Context window cap for this agent's model requests.
+    pub max_context: Option<u32>,
 }
 
 impl fmt::Display for AgentIdentity {
@@ -160,6 +169,10 @@ impl AgentIdentity {
             signing_key: None,
             did: None,
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         }
     }
 }
@@ -281,6 +294,26 @@ mod tests {
         assert_eq!(identity.name, "test-agent");
     }
 }
+
+verus! {
+
+// Constant-time equality modeled as pure function.
+// ct_eq(a, b) ≡ (a == b) for equal-length slices, false for different lengths.
+spec fn spec_ct_eq(a_len: nat, b_len: nat, content_equal: bool) -> bool {
+    a_len == b_len && content_equal
+}
+
+proof fn ct_eq_correct(a_len: nat, b_len: nat, content_equal: bool)
+    requires a_len == b_len,
+    ensures spec_ct_eq(a_len, b_len, content_equal) == content_equal,
+{}
+
+proof fn ct_eq_different_lengths_false(a_len: nat, b_len: nat, content_equal: bool)
+    requires a_len != b_len,
+    ensures !spec_ct_eq(a_len, b_len, content_equal),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

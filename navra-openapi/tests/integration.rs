@@ -276,6 +276,10 @@ fn dummy_ctx() -> navra_mcp::auth::CallContext {
             signing_key: None,
             did: None,
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         },
         "test-session",
     )

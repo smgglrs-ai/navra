@@ -100,6 +100,10 @@ impl Authenticator for CapabilityAuthenticator {
             signing_key: None,
             did: Some(payload.sub),
             capabilities: Some(resolved),
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         })
     }
 }

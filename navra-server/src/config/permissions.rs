@@ -117,6 +117,20 @@ pub struct PermissionSet {
     /// endpoints not in the allowlist.
     #[serde(default)]
     pub egress_deny_all_external: bool,
+    /// Default model for agents in this permission set (must match a
+    /// key in `[models]`). Overridable per-agent.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Upstream MCP servers visible to agents in this set (by name).
+    /// Empty = all upstreams visible (backward compat). Overridable per-agent.
+    #[serde(default)]
+    pub upstream: Vec<String>,
+    /// Maximum concurrent tool calls per agent session.
+    #[serde(default)]
+    pub max_concurrent: Option<u32>,
+    /// Context window cap passed to the model for agents in this set.
+    #[serde(default)]
+    pub max_context: Option<u32>,
 }
 
 /// A domain rule entry in config.
@@ -208,6 +222,10 @@ impl Default for PermissionSet {
             egress_allowed_domains: Vec::new(),
             egress_blocked_domains: Vec::new(),
             egress_deny_all_external: false,
+            model: None,
+            upstream: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         }
     }
 }

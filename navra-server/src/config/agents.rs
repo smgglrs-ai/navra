@@ -25,6 +25,20 @@ pub struct AgentConfig {
     /// Override token TTL for this agent (seconds).
     #[serde(default)]
     pub token_ttl: Option<u64>,
+    /// Model override (must match a key in `[models]`). Wins over
+    /// permission set default.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Upstream MCP servers visible to this agent (by name). Wins over
+    /// permission set default. Empty = inherit from permission set.
+    #[serde(default)]
+    pub upstream: Vec<String>,
+    /// Maximum concurrent tool calls. Wins over permission set default.
+    #[serde(default)]
+    pub max_concurrent: Option<u32>,
+    /// Context window cap. Wins over permission set default.
+    #[serde(default)]
+    pub max_context: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]

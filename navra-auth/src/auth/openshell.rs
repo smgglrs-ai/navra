@@ -401,6 +401,10 @@ impl Authenticator for OpenShellAuthenticator {
             signing_key: None,
             did: claims.spiffe_id.map(|s| format!("spiffe://{s}")),
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         })
     }
 }
