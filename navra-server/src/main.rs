@@ -1511,6 +1511,10 @@ async fn serve_inner(
                     signing_key: agent.signing_key.clone(),
                     did: agent.did.clone(),
                     capabilities: None,
+                    model: None,
+                    allowed_upstreams: Vec::new(),
+                    max_concurrent: None,
+                    max_context: None,
                 },
             );
             if agent.pubkey.is_some() {

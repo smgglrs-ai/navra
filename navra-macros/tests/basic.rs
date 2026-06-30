@@ -183,6 +183,10 @@ async fn handler_can_be_called() {
             signing_key: None,
             did: None,
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         },
         "test-session",
     );
@@ -208,6 +212,10 @@ async fn missing_required_arg_returns_error() {
             signing_key: None,
             did: None,
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         },
         "test-session",
     );
@@ -277,6 +285,10 @@ async fn state_handler_passes_state_to_function() {
             signing_key: None,
             did: None,
             capabilities: None,
+            model: None,
+            allowed_upstreams: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
         },
         "test-session",
     );

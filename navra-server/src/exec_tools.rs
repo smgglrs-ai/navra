@@ -11,6 +11,7 @@ use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use vstd::prelude::*;
 use tonic::transport::Channel;
 
 pub struct ExecState {
@@ -169,6 +170,10 @@ mod tests {
                 signing_key: None,
                 did: did.map(String::from),
                 capabilities: None,
+                model: None,
+                allowed_upstreams: Vec::new(),
+                max_concurrent: None,
+                max_context: None,
             },
             "test-session",
         )
@@ -324,6 +329,20 @@ mod tests {
         assert_eq!(def.name, "exec_run");
     }
 }
+
+verus! {
+
+spec fn spec_clamp(input: nat, lo: nat, hi: nat) -> nat {
+    if input < lo { lo }
+    else if input > hi { hi }
+    else { input }
+}
+
+proof fn timeout_clamp_bounded(input: nat)
+    ensures spec_clamp(input, 1, 300) >= 1 && spec_clamp(input, 1, 300) <= 300,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {
