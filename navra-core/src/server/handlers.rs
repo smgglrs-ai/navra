@@ -356,6 +356,26 @@ impl McpServer {
             ));
         }
 
+        // Concurrency limit check (per-agent)
+        let _concurrency_permit = if let Some(max) = ctx.agent.max_concurrent {
+            let sem = self
+                .concurrency_semaphores
+                .entry(ctx.agent.name.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max as usize)))
+                .clone();
+            match sem.try_acquire_owned() {
+                Ok(permit) => Some(permit),
+                Err(_) => {
+                    return CallToolResult::error_msg(format!(
+                        "Concurrency limit ({max}) reached for agent '{}'",
+                        ctx.agent.name
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
         // Extract process table fields from context
         let agent_ring = ctx.agent.capabilities.as_ref().map(|c| c.ring);
         let agent_did = ctx.agent.did.as_deref();

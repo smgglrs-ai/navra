@@ -917,6 +917,7 @@ impl McpServerBuilder {
             enterprise_auth: self.enterprise_auth,
             tool_routing: self.tool_routing,
             upstream_modules: self.upstream_modules,
+            concurrency_semaphores: dashmap::DashMap::new(),
         }
     }
 }
