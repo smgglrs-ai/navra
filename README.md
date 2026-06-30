@@ -63,9 +63,9 @@ navra-flow (orchestration)
   trace export, signals, hibernation, replay.
 - **Multi-agent flows** — DAG and handoff orchestration defined in
   YAML with dynamic task generation.
-- **In-process models** — ONNX models (safety classifiers,
-  embeddings, PII detection) load directly. No external services
-  needed for CPU tier.
+- **In-process inference** — ONNX models (safety classifiers,
+  embeddings, PII detection) and GGUF chat models (via embedded
+  llama.cpp) load directly. No external services needed for CPU tier.
 - **Agent bundles** — package agents as signed OCI artifacts with
   persona, permissions, and upstream config.
 - **Human-in-the-loop** — D-Bus desktop notifications for approval

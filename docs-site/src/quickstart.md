@@ -4,7 +4,7 @@ Get navra running in under 5 minutes.
 
 ## Prerequisites
 
-- **Rust** stable 1.75+
+- **Rust** stable 1.96+
 - **Linux** with systemd and D-Bus (for notifications and tray)
 
 ## Build

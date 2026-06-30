@@ -6,7 +6,7 @@ Thank you for your interest in contributing to navra.
 
 ### Prerequisites
 
-- Rust stable (1.75+)
+- Rust stable (1.96+)
 - Linux (systemd + D-Bus for full functionality)
 
 ### Build

@@ -25,7 +25,7 @@ of origin.
 | `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports (stdio/HTTP/SSE) |
 | `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
 | `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (direct, Podman, OpenShell) |
+| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (embedded, direct, Podman, OpenShell) |
 | `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
 | `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
 | `navra-safety` | Infrastructure | ML safety filters (NER, PII), hooks pipeline, integrity monitoring |

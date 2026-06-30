@@ -29,10 +29,8 @@ pkg-url = "{ repo }/releases/download/v{ version }/navra-agent-v{ version }-darw
 pkg-url = "{ repo }/releases/download/v{ version }/navra-agent-v{ version }-darwin-aarch64.tar.gz"
 
 [features]
-default = ["onnx", "rustls"]
+default = ["onnx"]
 onnx = ["navra-model/onnx", "navra-safety-hooks/onnx"]
-native-tls = ["navra-model/native-tls"]
-rustls = ["navra-model/rustls"]
 container = []
 
 [dependencies]
@@ -53,6 +51,10 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [dev-dependencies]
 navra-responses = { path = "../navra-responses" }

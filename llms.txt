@@ -1,8 +1,8 @@
 # navra
 
-> navra is a secure agentic AI framework for Rust. It combines an MCP gateway, a Rust agent SDK (navra-agent), and a multi-agent flow engine (navra-flow) in a 22-crate workspace. Security is enforced at the gateway layer — Information Flow Control, deny-wins ACLs, content safety filtering (regex + NER + ML), BLAKE3 authentication, capability tokens, and hash-chained audit logging — so agents don't need to be trusted. The SDK provides a builder API, 5 model backends (Ollama, Mistral, Anthropic, OGX, CLI), deterministic replay, and Hermes-format trace export. Flows support DAG execution, handoff routing, and mesh communication. 2400+ tests, 34 adversarial security tests, 138 Kani formal verification proofs. Apache-2.0.
+> navra is a secure agentic AI framework for Rust. It combines an MCP gateway, a Rust agent SDK (navra-agent), and a multi-agent flow engine (navra-flow) in a 22-crate workspace. Security is enforced at the gateway layer — Information Flow Control, deny-wins ACLs, content safety filtering (regex + NER + ML), BLAKE3 authentication, capability tokens, and hash-chained audit logging — so agents don't need to be trusted. The SDK provides a builder API, 5 model backends (Ollama, Mistral, Anthropic, OGX, CLI), deterministic replay, and Hermes-format trace export. Flows support DAG execution, handoff routing, and mesh communication. In-process inference via ONNX Runtime (embeddings, safety classifiers) and embedded llama.cpp (GGUF chat models). 2400+ tests, 34 adversarial security tests, 138 Kani formal verification proofs. Apache-2.0.
 
-Default config path: `~/.config/navra/config.toml`. Run `navra init` for interactive setup. Build requires ONNX Runtime (`onnxruntime-devel` on Fedora) and environment variables `ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1`.
+Zero system dependencies — ONNX Runtime, SQLite, TLS (rustls), and llama.cpp are all statically linked or bundled. Build with `cargo build`, run `navra init` for interactive setup. Prebuilt binaries available from GitHub Releases for Linux (x86_64, aarch64) and macOS (Intel, Apple Silicon). Config path: `~/.config/navra/config.toml`.
 
 ## Docs
 
