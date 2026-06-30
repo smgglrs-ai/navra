@@ -329,6 +329,7 @@ pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
         return Ok(Box::new(embedded::EmbeddedRuntime::new()));
     }
 
+    #[cfg(not(feature = "embedded"))]
     Err(RuntimeError::NoRuntime(
         "no suitable runtime found (need OpenShell, Podman, vLLM, or llama-server)".to_string(),
     ))

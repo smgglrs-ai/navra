@@ -43,6 +43,7 @@ impl EmbeddedRuntime {
 struct AppState {
     model: Arc<LlamaModel>,
     backend: Arc<LlamaBackend>,
+    context_size: u32,
 }
 
 unsafe impl Send for AppState {}
@@ -107,8 +108,9 @@ async fn chat_completions(
     State(state): State<AppState>,
     Json(req): Json<ChatCompletionRequest>,
 ) -> Json<ChatCompletionResponse> {
+    let ctx_size = state.context_size;
     let result = tokio::task::spawn_blocking(move || {
-        generate_response(&state.backend, &state.model, &req)
+        generate_response(&state.backend, &state.model, &req, ctx_size)
     })
     .await
     .unwrap_or_else(|e| Err(format!("inference task panicked: {e}")));
@@ -139,11 +141,12 @@ fn generate_response(
     _backend: &LlamaBackend,
     model: &LlamaModel,
     req: &ChatCompletionRequest,
+    context_size: u32,
 ) -> Result<ChatCompletionResponse, String> {
     let prompt = format_chat_prompt(model, &req.messages);
 
     let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(std::num::NonZeroU32::new(4096));
+        .with_n_ctx(std::num::NonZeroU32::new(context_size));
 
     let mut ctx = model
         .new_context(_backend, ctx_params)
@@ -155,7 +158,7 @@ fn generate_response(
 
     let prompt_token_count = tokens.len() as u32;
 
-    let mut batch = llama_cpp_4::llama_batch::LlamaBatch::new(4096, 1);
+    let mut batch = llama_cpp_4::llama_batch::LlamaBatch::new(context_size as usize, 1);
     for (i, &token) in tokens.iter().enumerate() {
         let is_last = i == tokens.len() - 1;
         batch
@@ -174,7 +177,7 @@ fn generate_response(
     ]);
 
     let mut output_tokens: Vec<LlamaToken> = Vec::new();
-    let max_tokens = req.max_tokens.min(4096);
+    let max_tokens = req.max_tokens.min(context_size);
     let eos = model.token_eos();
 
     for _ in 0..max_tokens {
@@ -294,7 +297,7 @@ impl ModelRuntime for EmbeddedRuntime {
             };
 
             let model_path = config.model_path.clone();
-            let n_ctx = config.context_size;
+            let context_size = config.context_size;
             let n_gpu_layers = if config.gpus.is_empty() { 0 } else { 999 };
 
             let (model, backend) = tokio::task::spawn_blocking(move || {
@@ -324,6 +327,7 @@ impl ModelRuntime for EmbeddedRuntime {
             let state = AppState {
                 model: Arc::new(model),
                 backend: Arc::new(backend),
+                context_size,
             };
 
             let app = Router::new()
