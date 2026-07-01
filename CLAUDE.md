@@ -61,25 +61,43 @@ See `AGENTS.md` for parallel development rules.
 
 ## Documentation Maintenance (MANDATORY)
 
-When adding, removing, or changing a feature, update the relevant
-documentation in the same commit:
+Documentation is a deliverable, not an afterthought. Inaccurate
+docs are worse than missing docs — they actively mislead users.
 
-- **Crate changes** (add/remove/rename): update the crate table and
-  dependency graph in `DESIGN.md`, crate count in this file, and
-  test counts in `TESTING.md`.
-- **New tools, hooks, or config fields**: update
+### Rules
+
+1. **Same commit**: when adding, removing, or changing a feature,
+   update the relevant documentation in the same commit. A feature
+   without doc updates is not done.
+2. **No stale counts**: never hardcode counts (tests, proofs, crates)
+   that will drift. If you must state a count, grep the codebase for
+   the real number — do not copy from memory or another doc.
+3. **No duplicate sources of truth**: the docs site (`docs/content/`)
+   is canonical for user-facing content. Root-level markdown files
+   are for developer workflow only. Never duplicate content between
+   them — link instead.
+4. **Delete, don't preserve**: stale docs, frozen one-time evals,
+   and internal decision logs do not belong in user-facing docs.
+   Git has history. Delete without stubs.
+5. **Verify claims against code**: before writing that navra "does X",
+   grep for the implementation. If the code doesn't do X, don't
+   document X.
+
+### What to update where
+
+- **Crate changes** (add/remove/rename): `DESIGN.md` crate table
+  and dependency graph, crate count in this file, `TESTING.md`.
+- **New tools, hooks, or config fields**:
   `docs/content/docs/configuration/_index.md` and the relevant
   section in `docs/content/docs/security/_index.md` or guides.
-- **IFC, auth, or safety changes**: update
+- **IFC, auth, or safety changes**:
   `docs/content/docs/security/_index.md` and
   `docs/content/docs/learn/information-flow-control.md`.
-- **Proof count changes** (Kani/Verus/TLA+): update counts in
+- **Proof count changes** (Kani/Verus/TLA+):
   `docs/content/docs/architecture/_index.md` and
   `docs/content/docs/learn/what-kani-proves.md`.
-
-The docs site (`docs/content/`) is the single source of truth for
-user-facing documentation. Do not duplicate content in root-level
-markdown files — link to the docs site instead.
+- **Known limitations or security gaps**: `.lean/items/` work item,
+  not a comment in a design doc.
 
 ## Conventions
 
