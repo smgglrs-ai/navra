@@ -252,19 +252,70 @@ permissions = "developer"
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | -- | Unique agent identifier |
-| `token_hash` | string | -- | SHA-256 hash of the agent's bearer token |
+| `token_hash` | string | -- | BLAKE3 hash of the agent's bearer token |
 | `permissions` | string | -- | Permission set name from `[permissions]` |
 | `signing_key` | string | -- | Ed25519 key path for git commit signing |
 | `pubkey` | string | -- | Ed25519 public key for capability token auth |
 | `did` | string | -- | DID:key identifier (alternative to pubkey) |
 | `capability_token` | bool | `false` | Enable capability token issuance |
 | `token_ttl` | u64 | -- | Override token TTL for this agent (seconds) |
+| `model` | string | -- | Model config key for per-agent routing on `/v1` proxy |
 
 Generate a token:
 
 ```bash
 navra token generate --name claude --permissions developer
 ```
+
+Agents authenticate via `Authorization: Bearer <token>` or
+`x-api-key: <token>` (for Anthropic SDK clients like Claude Code
+that send `ANTHROPIC_API_KEY` as `x-api-key`). Both headers feed
+into the same constant-time BLAKE3 hash comparison.
+
+## Model Proxy
+
+The gateway exposes two model proxy endpoints at `/v1`. All
+requests go through agent authentication, safety filtering,
+blackbox audit, and token metering.
+
+### OpenAI-compatible (`/v1/chat/completions`)
+
+Forwards OpenAI Chat Completions format to Ollama or any
+OpenAI-compatible backend. Default upstream: `localhost:11434`.
+
+### Anthropic Messages API (`/v1/messages`)
+
+Forwards the Anthropic Messages API format as-is, preserving
+thinking blocks, multi-part content, cache_control, and tool use.
+
+For Vertex AI upstreams, navra dynamically constructs the
+rawPredict URL from the model field in the request body and
+obtains OAuth tokens from Google Application Default Credentials
+(`~/.config/gcloud/application_default_credentials.json`).
+
+```toml
+[models.vertex-claude]
+task = "chat"
+base_url = "https://aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/global/publishers/anthropic/models"
+locality = "remote"
+
+[[agents]]
+name = "claude-code"
+token_hash = "..."
+permissions = "dev"
+model = "vertex-claude"
+```
+
+Claude Code connects with:
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:9315/v1 \
+ANTHROPIC_API_KEY=mcd_... \
+claude
+```
+
+For direct Anthropic API (non-Vertex), set `api_key` in the model
+config to the Anthropic API key.
 
 ## Upstream MCP Servers
 
