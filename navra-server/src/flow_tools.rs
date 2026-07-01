@@ -963,7 +963,7 @@ async fn spawn_and_track_tasks(
             || task.id == "synthesize"
             || task.id == "synthesizer";
 
-        // Build the task message with dependency context
+        // Build the task message with dependency context.
         let mut message = task.mandate.clone();
         let dep_count = task.depends_on.len();
         if dep_count > 0 {
@@ -987,23 +987,11 @@ async fn spawn_and_track_tasks(
                 message.push_str(
                     "\nRead each finding from the blackboard, then write a comprehensive report.\n",
                 );
-            } else if dep_count <= 3 {
-                // Few dependencies: inject inline (acceptable for small
-                // dep counts where IFC risk is low — typically scout/planner).
-                message.push_str(&format!(
-                    "\n\n--- Context from prior stages ({dep_count} outputs follow) ---\n"
-                ));
-                for dep_id in &task.depends_on {
-                    if let Some(output) = completed.get(dep_id) {
-                        message.push_str(&format!("\n## {dep_id}\n{output}\n"));
-                    } else if failed.contains(dep_id) {
-                        message.push_str(&format!(
-                            "\n## {dep_id}\n[This stage failed — no output available.]\n"
-                        ));
-                    }
-                }
             } else {
-                // Medium dependencies: point to blackboard
+                // All non-synthesizer deps: read from blackboard.
+                // This ensures IFC taint-on-read is enforced regardless
+                // of dependency count (NAVRA-169 fix — inline injection
+                // skipped taint propagation for ≤3 deps).
                 message.push_str(&format!(
                     "\n\n--- Context from prior stages ({dep_count} outputs) ---\n\
                      Read from the team blackboard using team_bb_read:\n"
@@ -1078,6 +1066,7 @@ async fn spawn_and_track_tasks(
             compression_start_ratio: ctx.budget_cfg.compression_start_ratio,
             compaction_keep_recent: ctx.budget_cfg.compaction_keep_recent,
             compaction_trigger_ratio: ctx.budget_cfg.compaction_trigger_ratio,
+            initial_label: None,
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.
