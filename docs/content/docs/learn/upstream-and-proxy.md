@@ -127,4 +127,4 @@ This is gateway-level enforcement: the upstream server is trusted to execute the
 
 ## What's next
 
-MCP handles tool calls within a single agent-server connection. But agents sometimes need to delegate tasks to other agents. In the next chapter, we look at the Agent-to-Agent (A2A) protocol and how navra bridges the two protocols.
+navra proxies tool calls to external MCP servers. But it also sits between agents and the models they call — applying the same security pipeline to model API requests. In the next chapter, we cover [The Model Proxy](../the-model-proxy/) and why filtering at the local trust boundary matters even when using frontier models with their own safety systems.
