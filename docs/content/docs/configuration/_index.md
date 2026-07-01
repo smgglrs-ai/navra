@@ -276,46 +276,101 @@ into the same constant-time BLAKE3 hash comparison.
 
 The gateway exposes two model proxy endpoints at `/v1`. All
 requests go through agent authentication, safety filtering,
-blackbox audit, and token metering.
+blackbox audit, and token metering. Any application that speaks
+the OpenAI or Anthropic API can use navra as its model endpoint.
+
+### Setup (common to both endpoints)
+
+**1. Define a model entry** pointing to your upstream provider:
+
+```toml
+# Vertex AI (Claude via Google Cloud)
+[models.vertex-claude]
+task = "chat"
+base_url = "https://aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/global/publishers/anthropic/models"
+locality = "remote"
+
+# Or: direct Anthropic API
+[models.anthropic]
+task = "chat"
+base_url = "https://api.anthropic.com"
+api_key = "sk-ant-..."
+locality = "remote"
+
+# Or: local Ollama (default if no model entry)
+[models.local]
+task = "chat"
+source = "ollama://gemma4:e4b"
+```
+
+**2. Generate a token** for the application connecting to navra:
+
+```bash
+navra token generate --name my-app --permissions dev
+# Output: Token: mcd_abc123...  Hash: e35f...
+```
+
+**3. Create an agent entry** with the hash and model reference:
+
+```toml
+[[agents]]
+name = "my-app"
+token_hash = "e35f..."   # from step 2
+permissions = "dev"
+model = "vertex-claude"  # points to the model entry from step 1
+```
+
+**4. Point your application** at `http://localhost:9315/v1` using
+the token from step 2 as the API key.
 
 ### OpenAI-compatible (`/v1/chat/completions`)
 
-Forwards OpenAI Chat Completions format to Ollama or any
-OpenAI-compatible backend. Default upstream: `localhost:11434`.
+Forwards OpenAI Chat Completions format. Works with any OpenAI SDK
+client, LangChain, LiteLLM, or custom code. Without a per-agent
+model entry, defaults to Ollama at `localhost:11434`.
+
+```bash
+# Python (openai SDK)
+OPENAI_BASE_URL=http://localhost:9315/v1 \
+OPENAI_API_KEY=mcd_abc123... \
+python my_app.py
+
+# curl
+curl http://localhost:9315/v1/chat/completions \
+  -H "Authorization: Bearer mcd_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gemma4:e4b", "messages": [{"role": "user", "content": "hello"}]}'
+```
 
 ### Anthropic Messages API (`/v1/messages`)
 
 Forwards the Anthropic Messages API format as-is, preserving
 thinking blocks, multi-part content, cache_control, and tool use.
 
-For Vertex AI upstreams, navra dynamically constructs the
-rawPredict URL from the model field in the request body and
-obtains OAuth tokens from Google Application Default Credentials
-(`~/.config/gcloud/application_default_credentials.json`).
-
-```toml
-[models.vertex-claude]
-task = "chat"
-base_url = "https://aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/global/publishers/anthropic/models"
-locality = "remote"
-
-[[agents]]
-name = "claude-code"
-token_hash = "..."
-permissions = "dev"
-model = "vertex-claude"
-```
-
-Claude Code connects with:
-
 ```bash
-ANTHROPIC_BASE_URL=http://127.0.0.1:9315/v1 \
-ANTHROPIC_API_KEY=mcd_... \
+# Claude Code
+ANTHROPIC_BASE_URL=http://localhost:9315/v1 \
+ANTHROPIC_API_KEY=mcd_abc123... \
 claude
+
+# curl
+curl http://localhost:9315/v1/messages \
+  -H "x-api-key: mcd_abc123..." \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "claude-sonnet-4-20250514", "max_tokens": 100, "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
-For direct Anthropic API (non-Vertex), set `api_key` in the model
-config to the Anthropic API key.
+### Vertex AI authentication
+
+For Vertex AI upstreams (detected by `googleapis.com` in the
+`base_url`), navra obtains OAuth tokens automatically from Google
+Application Default Credentials
+(`~/.config/gcloud/application_default_credentials.json`). Run
+`gcloud auth application-default login` once to set this up.
+
+Alternatively, set `api_key` in the model config to a Google
+OAuth token (must be refreshed manually before expiry).
 
 ## Upstream MCP Servers
 
