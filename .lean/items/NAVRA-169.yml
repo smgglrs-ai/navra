@@ -1,0 +1,35 @@
+id: NAVRA-169
+title: "IFC bypass: inline injection skips taint propagation for ≤3 deps"
+status: backlog
+priority: high
+effort: 2-3d
+tags: [ifc, security, flow]
+depends_on: []
+description: |
+  When a flow task has ≤3 dependencies, their outputs are injected
+  inline into the downstream agent's prompt (flow_tools.rs:990-1004).
+  This path does NOT propagate taint — the downstream session does
+  not absorb the upstream agent's context_label via lattice join.
+
+  A PII-tainted specialist with ≤3 deps injects its output directly
+  into the planner/synthesizer prompt without taint propagation.
+  The code comment (line 992) calls this "acceptable for small dep
+  counts where IFC risk is low" but this is a conscious gap in
+  Bell-LaPadula enforcement.
+
+  The >5 dep path (line 970) and 4-5 dep path (line 1005) both
+  route through the blackboard with taint-on-read, which is correct.
+
+  Fix: for the ≤3 dep inline path, join each dependency's
+  session context_label into the downstream agent's session
+  before prompt assembly. This preserves the inline injection
+  optimization while closing the IFC gap.
+
+  Auto-publish (line 1434) already writes all outputs to the
+  blackboard with UNTRUSTED_PUBLIC, but the inline path never
+  reads from it, so taint-on-read never fires.
+acceptance:
+  - Inline injection path (≤3 deps) propagates upstream taint
+  - Downstream session context_label reflects join of all dep labels
+  - Existing blackboard path behavior unchanged
+  - Kani or integration test covers the ≤3 dep taint propagation

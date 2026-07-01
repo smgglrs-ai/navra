@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 15 active items
+# 16 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -9,7 +9,7 @@ items:
     title: "Binary distribution (GitHub releases + cargo-binstall)"
     status: planned
     priority: high
-    effort: 3-5d
+    effort: 1-3d
 
   - id: "NAVRA-152"
     title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
@@ -74,6 +74,12 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
+
+  - id: "NAVRA-169"
+    title: "IFC bypass: inline injection skips taint propagation for ≤3 deps"
+    status: backlog
+    priority: high
+    effort: 2-3d
 
   - id: "NAVRA-150"
     title: "Contribute rate limiting middleware to rmcp (issue #388)"
