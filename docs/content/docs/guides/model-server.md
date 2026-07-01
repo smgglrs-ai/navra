@@ -17,8 +17,32 @@ or embedded in the gateway process.
 
 When `model_server` is not set in `config.toml`, navra loads models
 directly into the gateway process. ONNX models (embedding,
-classification) run in-process. Chat and generate models spawn an
-inference server (llama.cpp or vLLM) as a child process.
+classification) run in-process. Chat and generate models use the
+configured runtime:
+
+- `runtime = "embedded"` — llama.cpp linked into navra itself (no
+  external process). Models load on first request and are managed
+  in an LRU pool. GPU offloading is automatic: navra probes VRAM
+  and offloads all layers when sufficient, falls back to CPU otherwise.
+- `runtime = "direct"` — spawns `llama-server` as a child process.
+- `runtime = "auto"` — picks the best available (embedded if built
+  with the `embedded` feature, else direct/podman).
+
+```toml
+[models.chat]
+source = "ollama://qwen2.5:0.5b"
+task = "chat"
+runtime = "embedded"
+port = 19316
+context_size = 4096
+```
+
+The `port` field gives the model a predictable URL (`http://127.0.0.1:19316`).
+When omitted, a random port is auto-selected.
+
+**Hot-swap**: when per-agent model routing sends requests to different
+models, the embedded runtime loads each model on demand. If memory is
+constrained, the least-recently-used model is evicted to free RAM/VRAM.
 
 ### Standalone
 

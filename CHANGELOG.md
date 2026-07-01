@@ -13,10 +13,17 @@ All notable changes to navra are documented here.
 
 ### Added
 
-- **model-runtime**: Embedded llama.cpp runtime — load GGUF models in-process
-  via `llama-cpp-4`, no Ollama or subprocess needed. Config: `runtime = "embedded"`.
-  Serves an internal OpenAI-compatible endpoint with chat template support,
-  configurable sampling (temp, top_k, top_p), and automatic fallback in `auto_runtime()`
+- **model-runtime**: Embedded llama.cpp runtime with LRU model pool — load
+  GGUF models in-process on demand, evict least-recently-used when memory
+  constrained. GPU-aware: probes VRAM (nvidia-smi + sysfs), offloads all
+  layers when sufficient, falls back to CPU otherwise. Configurable port
+  for predictable endpoints. Config: `runtime = "embedded"`, `port = 19316`
+- **server**: Per-agent model, upstream, and quota assignment — agents get
+  their own model, upstream MCP server scope, and concurrency limits via
+  `[[agents]]` config with cascade from `[permissions.*]` defaults
+- **model-hub**: Resolve `ollama://` models from local Ollama store
+  (`~/.ollama/models/`) before network pull — instant startup for
+  already-downloaded models
 - **ci**: Multi-platform release builds for 4 targets (x86_64-linux, aarch64-linux,
   x86_64-macos, aarch64-macos). Both `navra` and `navra-agent` binaries per target.
   SHA256 checksums and SLSA build provenance attestation
