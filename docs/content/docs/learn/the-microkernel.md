@@ -179,7 +179,7 @@ navra's kernel crates have a combined size that is small enough to audit and ver
 | `navra-safety` | ~3,000 | — | Yes |
 | `navra-core` | ~8,000 | — | Yes |
 
-Compare this to the full workspace (~40,000+ LOC across 22 crates). The security-critical code is roughly 15-20% of the total codebase. The rest — tools, personas, memory, flows, voice, vision — is userland that can have bugs without breaking security guarantees.
+Compare this to the full workspace (~40,000+ LOC across 23 crates). The security-critical code is roughly 15-20% of the total codebase. The rest — tools, personas, memory, flows, voice, vision — is userland that can have bugs without breaking security guarantees.
 
 The Kani proofs are concentrated in the kernel crates because that is where formal verification pays off. Proving that `validate_delegation()` cannot allow ring escalation is valuable because that function is in the TCB. Proving that a persona YAML parser handles edge cases correctly is less valuable because a parsing bug does not break security.
 

@@ -1,6 +1,6 @@
 +++
 title = "20. What Kani Proves"
-description = "Bounded model checking with Kani does not test your code — it proves properties hold for all inputs within bounds. navra has 154 proofs. This chapter explains what that means and why it matters."
+description = "Bounded model checking with Kani does not test your code — it proves properties hold for all inputs within bounds. navra has 715+ proofs. This chapter explains what that means and why it matters."
 weight = 200
 template = "docs/page.html"
 
@@ -47,9 +47,9 @@ Other languages have model checkers (CBMC for C, JPF for Java, TLA+ for specific
 
 This is why navra is written in Rust rather than Go, Python, or TypeScript. The language's safety guarantees compound with formal verification to produce stronger assurance than either one alone.
 
-## navra's 154 proofs
+## navra's 715+ proofs
 
-navra uses Kani proofs for security-critical code. Here are the categories:
+navra uses Kani proofs for security-critical code. Here are the major categories:
 
 **IFC lattice properties (12 proofs).** The information flow control system relies on a mathematical lattice. navra proves that the `join` operation is commutative, associative, idempotent, and monotonic. It proves that `can_write_to` and `can_read_from` satisfy the Bell-LaPadula no-write-down and no-read-up properties. These are not correctness tests -- they are proofs that the lattice axioms hold for every possible label combination.
 
@@ -123,7 +123,7 @@ Kani is powerful but not omniscient:
 - **No concurrency.** Data races, deadlocks, and other concurrency issues are outside Kani's model.
 - **No floating point.** Kani's support for floating-point operations is limited. Security-critical code in navra avoids floats for exactly this reason -- IFC labels, rings, and ACL decisions are all integer-based.
 
-These limitations are why navra has 2,500+ tests in addition to 154 proofs. Each verification technique covers different ground. The proof map in `formal/PROOF_MAP.md` documents every proof, the Rust function it verifies, the input space it covers, and whether coverage is exhaustive or bounded. When evaluating navra's verification claims, read the proof map -- it is the authoritative record of what is proven and what is not.
+These limitations are why navra has 2,800+ tests in addition to 715+ proofs. Each verification technique covers different ground. The proof map in `formal/PROOF_MAP.md` documents every proof, the Rust function it verifies, the input space it covers, and whether coverage is exhaustive or bounded. When evaluating navra's verification claims, read the proof map -- it is the authoritative record of what is proven and what is not.
 
 ## The cost of proofs
 
@@ -132,7 +132,7 @@ Kani proofs are not free. Each proof takes time to write, time to run, and time 
 In navra's experience, the cost is modest:
 
 - **Writing time.** Most proofs are 5-15 lines of code. The pattern is consistent (declare symbolic inputs, assume bounds, call function, assert property). A developer familiar with the pattern can write a proof in minutes.
-- **Run time.** Individual proofs complete in 1-30 seconds. The full suite of 154 proofs takes several minutes. This is comparable to the test suite and is not a bottleneck.
+- **Run time.** Individual proofs complete in 1-30 seconds. The full suite of 715+ proofs takes several minutes. This is comparable to the test suite and is not a bottleneck.
 - **Maintenance.** When a function's signature or semantics changes, the proof needs updating. In practice, this happens infrequently for security-critical pure functions, which are designed to be stable interfaces.
 
 The return on investment is high for security-critical code. A Kani proof that takes 10 minutes to write provides a guarantee that no amount of testing can match. For non-security code, the investment makes less sense -- tests are cheaper and cover I/O and async behavior that proofs cannot.

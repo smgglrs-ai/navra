@@ -489,7 +489,7 @@ execution without full trajectory replay.
 
 ### 7.1 Self-Analysis
 
-The framework analyzed its own codebase (22 crates, ~150K LoC)
+The framework analyzed its own codebase (23 crates, ~150K LoC)
 through its own gateway. Initial persona coverage scored 28/100
 (engineering-only). After adding 5 general-purpose personas and
 the 12-judge panel, coverage rose to 45/100. The framework

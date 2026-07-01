@@ -1,7 +1,7 @@
 +++
 title = "Papers"
 description = "Research papers and workshop drafts on navra's architecture and security model."
-weight = 50
+weight = 60
 template = "docs/section.html"
 
 [extra]

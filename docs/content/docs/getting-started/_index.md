@@ -1,7 +1,7 @@
 +++
 title = "Getting Started"
 description = "Install and run navra on your Linux desktop."
-weight = 10
+weight = 5
 template = "docs/section.html"
 
 [extra]
@@ -87,70 +87,6 @@ extensions:
 navra speaks standard MCP over Streamable HTTP. Any MCP client can
 connect to `http://localhost:9315/mcp` with a bearer token.
 
-## Run an agent task
-
-With navra running and Ollama available:
-
-```bash
-# Run a one-shot task through the gateway
-navra run "List the files in the current directory" \
-    --model granite3.3:8b
-```
-
-## Run a flow
-
-navra includes multi-agent flows. Try the security audit:
-
-```bash
-navra run "Audit examples/payments-app" \
-    --model granite3.3:8b \
-    --flow examples/flows/security-audit.yaml
-```
-
-Available flows in `examples/flows/`:
-
-| Flow | Description |
-|------|-------------|
-| `review.yaml` | Domain-agnostic review (scout → planner → swarm → synthesize) |
-| `deep-research.yaml` | Multi-source research with adversarial verification |
-| `security-audit.yaml` | Security-focused review with OWASP coverage |
-| `improve.yaml` | Code improvement with iterative refinement |
-| `self-improve.yaml` | Self-improving agent pattern |
-
-## Agent bundles
-
-Agent bundles package personas, workflows, and credential
-requirements into installable directories.
-
-```bash
-# Install a bundle from a local directory
-navra agent install ./my-agent/
-
-# Initialize an instance
-navra agent init my-agent --name work-assistant
-
-# Run a workflow from the instance
-navra run work-assistant/day-planner
-```
-
-## Model server
-
-The model server manages GPU resources and can be shared across
-multiple agent instances.
-
-```bash
-# Start a shared model server
-navra model serve --auto
-
-# In another terminal, run tasks against it
-navra run "summarize my emails" --model granite-8b
-```
-
-When the model server is running, the gateway connects to it
-instead of loading models in-process. See
-[Configuration](/docs/configuration/#model-server) for the
-`model_server` setting.
-
 ## Verify the setup
 
 ```bash
@@ -164,29 +100,10 @@ navra audit --limit 5
 navra status  # shows tool count and registered agents
 ```
 
-## Project structure
-
-navra is a 22-crate Rust workspace:
-
-| Layer | Crates | Role |
-|-------|--------|------|
-| Protocol | navra-protocol | MCP types (via rmcp SDK), A2A |
-| Security | navra-auth, navra-safety-hooks | Auth, ACLs, IFC, safety hooks |
-| Kernel | navra-core | Server, module trait, session |
-| Models | navra-model, navra-model-hub, navra-model-runtime, navra-model-server | Backends, registry, shared server |
-| Cognitive | navra-cognitive | Personas, prompt weaving |
-| Agent | navra-agent | ReAct loop, builder API, typed actions |
-| Orchestration | navra-flow | DAG, handoff, mesh |
-| Memory | navra-memory | Working memory, entity graph, decay |
-| Tools | navra-mcp, navra-openapi | Upstream MCP, OpenAPI gen |
-| Modalities | navra-modal-voice, navra-modal-vision | Speech, image |
-| RAG | navra-rag | Hybrid search, chunking |
-| Binary | navra-server | CLI, config, wiring |
-
 ## Next steps
 
-- [Integration guides](/docs/integrations/) — Claude Code, Goose, OpenAI clients, LangGraph, custom MCP
-- [Agent SDK guide](/docs/sdk/) — build agents in Rust with navra-agent
-- [Configuration reference](/docs/configuration/) — full config.toml reference
-- [Architecture](/docs/architecture/) — security model and design decisions
-- [Learn](/docs/learn/) — concepts behind IFC, capability tokens, and more
+- [Integrations](/docs/integrations/) — detailed guides for Claude Code, Goose, OpenAI clients, LangGraph
+- [Guides](/docs/guides/) — multi-agent flows, personas, RAG, memory, model server, agent bundles
+- [Configuration](/docs/configuration/) — full config.toml reference
+- [CLI Reference](/docs/cli/) — all commands and flags
+- [Architecture](/docs/architecture/) — microkernel design, crate layering, security model

@@ -1,7 +1,7 @@
 +++
 title = "Architecture"
 description = "Microkernel design, crate layering, and dependency boundaries."
-weight = 20
+weight = 40
 template = "docs/section.html"
 
 [extra]
@@ -100,7 +100,7 @@ security profiles across machines.
 
 ## Formal Verification
 
-- **146 Kani proofs** — Property-level verification of capability
+- **715+ Kani proofs** — Property-level verification of capability
   attenuation, IFC lattice monotonicity, token roundtrip correctness
 - **6 TLA+ specifications** — Protocol-level model checking
 - **2,800+ tests** — Unit, integration, security evaluation

@@ -1,7 +1,7 @@
 +++
 title = "Guides"
 description = "Task-oriented guides for navra features and subsystems."
-weight = 25
+weight = 15
 sort_by = "weight"
 template = "docs/section.html"
 

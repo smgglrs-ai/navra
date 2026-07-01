@@ -1,7 +1,7 @@
 +++
 title = "Evaluations"
 description = "Benchmarks, security evaluations, and proof gap analysis."
-weight = 60
+weight = 70
 template = "docs/section.html"
 
 [extra]

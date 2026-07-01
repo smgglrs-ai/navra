@@ -1,7 +1,7 @@
 +++
 title = "Integrations"
 description = "Connect popular AI agents and clients to navra."
-weight = 15
+weight = 10
 sort_by = "weight"
 template = "docs/section.html"
 

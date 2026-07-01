@@ -17,7 +17,7 @@ toc = true
 
 - **DECIDED — Standalone, priority 2 for submission** (see
   `restructuring-decisions.md`). Flagship workshop paper.
-- **DONE — Microkernel framing**: Security microkernel with 146 Kani
+- **DONE — Microkernel framing**: Security microkernel with 715+ Kani
   proofs, process table, IPC, memory management, scheduler, MAC.
 - **DONE — Narrow to 3 contributions**: (1) gateway-enforced IFC, (2)
   capability delegation with attenuation, (3) hash-chained audit.
@@ -25,7 +25,7 @@ toc = true
 - **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways.
 - **DONE — Compliance reframing**: "compliance infrastructure" in
   §7.4, EU AI Act Art 12+14 language corrected.
-- **DONE — Formal verification**: 146 Kani proofs + 6 TLA+ specs
+- **DONE — Formal verification**: 715+ Kani proofs + 6 TLA+ specs
   added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
   invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
 - **DONE — No-read-up**: Bell-LaPadula Simple Security Property
@@ -430,7 +430,7 @@ child ring 0 < parent ring 1").
 
 Two-dimensional labels: `(Integrity, Confidentiality)` where
 `Integrity in {Trusted, Untrusted}` and `Confidentiality in
-{Public, Sensitive, Secret}`. Lattice join: `max(integrity),
+{Public, Sensitive, Pii, Secret}`. Lattice join: `max(integrity),
 max(confidentiality)`. Taint only rises, never drops.
 
 ### 5.2 Automatic Labeling
@@ -968,7 +968,7 @@ reasoning.
   verified exhaustively via Kani bounded model checking and
   TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
   formal non-interference proofs set the bar that gateway-level
-  IFC should aspire to — navra provides 146 Kani proofs and
+  IFC should aspire to — navra provides 715+ Kani proofs and
   6 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
   value (arXiv:2503.18813, March 2025). Provable security on
