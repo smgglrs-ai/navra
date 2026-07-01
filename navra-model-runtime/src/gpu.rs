@@ -193,11 +193,19 @@ pub struct GpuMemoryUsage {
     pub total: u64,
 }
 
-/// Sample NVIDIA GPU memory usage from procfs.
+/// Sample NVIDIA GPU memory usage.
 ///
-/// Reads `/proc/driver/nvidia/gpus/*/fb_memory_usage` which provides
-/// free/used memory without requiring NVML bindings.
+/// Tries procfs first (`/proc/driver/nvidia/gpus/*/fb_memory_usage`),
+/// falls back to `nvidia-smi` for newer drivers that removed fb_memory_usage.
 pub fn sample_nvidia_memory() -> Vec<GpuMemoryUsage> {
+    let results = sample_nvidia_procfs();
+    if !results.is_empty() {
+        return results;
+    }
+    sample_nvidia_smi()
+}
+
+fn sample_nvidia_procfs() -> Vec<GpuMemoryUsage> {
     let proc_nvidia = Path::new("/proc/driver/nvidia/gpus");
     if !proc_nvidia.exists() {
         return Vec::new();
@@ -234,6 +242,94 @@ pub fn sample_nvidia_memory() -> Vec<GpuMemoryUsage> {
         }
     }
     results
+}
+
+fn sample_nvidia_smi() -> Vec<GpuMemoryUsage> {
+    let Ok(output) = std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let mut parts = line.split(',');
+            let used_mb: u64 = parts.next()?.trim().parse().ok()?;
+            let total_mb: u64 = parts.next()?.trim().parse().ok()?;
+            Some(GpuMemoryUsage {
+                index: index as u32,
+                used: used_mb * 1024 * 1024,
+                total: total_mb * 1024 * 1024,
+            })
+        })
+        .collect()
+}
+
+/// Sample AMD GPU memory usage from sysfs.
+fn sample_amd_memory() -> Vec<GpuMemoryUsage> {
+    let drm = Path::new("/sys/class/drm");
+    let Ok(entries) = fs::read_dir(drm) else {
+        return Vec::new();
+    };
+    let mut results = Vec::new();
+    let mut index = 0u32;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if !name_str.starts_with("card") || name_str.contains('-') {
+            continue;
+        }
+        let vendor_path = entry.path().join("device/vendor");
+        let vendor = fs::read_to_string(&vendor_path).unwrap_or_default();
+        if vendor.trim() != "0x1002" {
+            continue;
+        }
+        let total = fs::read_to_string(entry.path().join("device/mem_info_vram_total"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+        let used = fs::read_to_string(entry.path().join("device/mem_info_vram_used"))
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+        if total > 0 {
+            results.push(GpuMemoryUsage { index, used, total });
+            index += 1;
+        }
+    }
+    results
+}
+
+/// Returns total available (free) VRAM in bytes across all detected GPUs.
+///
+/// Probes NVIDIA via procfs, AMD via sysfs. Returns 0 if no GPU
+/// detected or memory info unavailable.
+pub fn available_vram() -> u64 {
+    let nvidia = sample_nvidia_memory();
+    if !nvidia.is_empty() {
+        return nvidia.iter().map(|g| g.total.saturating_sub(g.used)).sum();
+    }
+    let amd = sample_amd_memory();
+    if !amd.is_empty() {
+        return amd.iter().map(|g| g.total.saturating_sub(g.used)).sum();
+    }
+    0
+}
+
+/// Returns total VRAM in bytes across all detected GPUs.
+pub fn total_vram() -> u64 {
+    let nvidia = sample_nvidia_memory();
+    if !nvidia.is_empty() {
+        return nvidia.iter().map(|g| g.total).sum();
+    }
+    let amd = sample_amd_memory();
+    if !amd.is_empty() {
+        return amd.iter().map(|g| g.total).sum();
+    }
+    0
 }
 
 #[cfg(test)]

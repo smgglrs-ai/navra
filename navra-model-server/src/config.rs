@@ -78,6 +78,9 @@ pub struct ModelEntry {
     /// Runtime: "auto", "direct", "podman", "ollama", "ogx", "none".
     #[serde(default)]
     pub runtime: Option<String>,
+    /// Port for the model's HTTP endpoint (0 = auto).
+    #[serde(default)]
+    pub port: Option<u16>,
     /// Context window size.
     #[serde(default)]
     pub context_size: Option<u32>,

@@ -5394,6 +5394,7 @@ fn convert_model_configs(
                     format: mc.format.clone(),
                     execution_mode: mc.execution_mode,
                     runtime: mc.runtime.clone(),
+                    port: mc.port,
                     context_size: mc.context_size,
                     parallel: mc.parallel,
                     model_name: mc.model_name.clone(),
