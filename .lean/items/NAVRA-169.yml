@@ -1,6 +1,6 @@
 id: NAVRA-169
 title: "IFC bypass: inline injection skips taint propagation for ≤3 deps"
-status: backlog
+status: done
 priority: high
 effort: 2-3d
 tags: [ifc, security, flow]

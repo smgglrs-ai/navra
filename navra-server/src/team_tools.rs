@@ -1335,6 +1335,12 @@ pub struct TeammateSpawnContext {
     pub compression_start_ratio: Option<f32>,
     /// Recent items kept verbatim during conversation compaction. None = derive.
     pub compaction_keep_recent: Option<usize>,
+    /// Initial IFC taint label for the teammate's session.
+    /// When set, the teammate's session context_label is raised to this
+    /// value after initialization. Used for inline-injected upstream outputs
+    /// (≤3 deps) to propagate taint that would otherwise be absorbed via
+    /// blackboard taint-on-read (NAVRA-169).
+    pub initial_label: Option<navra_core::protocol::label::DataLabel>,
     /// Context fill ratio to trigger conversation compaction. None = derive.
     pub compaction_trigger_ratio: Option<f32>,
 }
