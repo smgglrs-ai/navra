@@ -1,7 +1,7 @@
 +++
 title = "CLI Reference"
 description = "navra command-line interface — all subcommands and options."
-weight = 45
+weight = 25
 template = "docs/section.html"
 
 [extra]

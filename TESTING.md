@@ -1,6 +1,6 @@
 # Testing
 
-navra has 2750+ tests across 22 crates: unit tests, integration
+navra has 2800+ tests across 23 crates: unit tests, integration
 tests, and end-to-end tests that spawn a real server process.
 
 ## Prerequisites
@@ -89,17 +89,16 @@ Run `cargo test --workspace --no-fail-fast` for exact numbers.
 | navra-model-hub | 33 | — | — | 33 |
 | navra-responses | 26 | — | — | 26 |
 | navra-macros | — | 19 | — | 19 |
-| navra-tools-gitlab | 10 | — | — | 10 |
 | navra-modal-voice | 9 | — | — | 9 |
-| navra-tools-exec | 8 | — | — | 8 |
-| **Total** | **2591** | **218** | **12** | **2821** |
+| **Total** | **2573** | **218** | **12** | **2803** |
 
-Totals exclude doc-tests (~15). Full `cargo test --workspace` runs 2750+.
+Totals exclude doc-tests (~15). Full `cargo test --workspace` runs 2800+.
 
-Crates removed since previous count: navra-tools-file (replaced by
+Crates removed since previous counts: navra-tools-file (replaced by
 upstream Filesystem MCP), navra-tools-git (replaced by upstream git
-MCP server). New crates: navra-auth (split from navra-security),
-navra-safety-hooks, navra-openapi.
+MCP server), navra-tools-exec, navra-tools-gitlab. New crates:
+navra-auth (split from navra-security), navra-safety-hooks,
+navra-openapi, navra-mcp, navra-model-server.
 
 ## Known caveats
 

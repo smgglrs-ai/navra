@@ -2,7 +2,7 @@
 title = "Learn"
 description = "From zero to understanding how a security gateway protects AI agents — threats, OS primitives, cryptography, protocols, and verification."
 sort_by = "weight"
-weight = 5
+weight = 50
 template = "docs/section.html"
 
 [extra]

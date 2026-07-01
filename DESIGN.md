@@ -22,23 +22,23 @@ of origin.
 
 | Crate | Category | Role |
 |---|---|---|
-| `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, upstream client transports (stdio/HTTP/SSE) |
-| `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic implementations |
+| `navra-protocol` | Infrastructure | MCP/A2A/JSON-RPC types, IFC labels, upstream config |
+| `navra-model` | Infrastructure | Model backend trait + ONNX/OpenAI/Anthropic/OGX/CLI implementations |
 | `navra-model-hub` | Infrastructure | Pull/cache models from OCI, HuggingFace, Ollama registries |
-| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (embedded, direct, Podman, OpenShell) |
+| `navra-model-runtime` | Infrastructure | Serve models with pluggable isolation (embedded, direct, Podman, OpenShell, Kubernetes) |
+| `navra-model-server` | Infrastructure | Standalone multi-model HTTP inference gateway (OpenAI-compatible API) |
 | `navra-responses` | Infrastructure | Open Responses API types (spec-compliant, no client, no runtime) |
 | `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
-| `navra-safety` | Infrastructure | ML safety filters (NER, PII), hooks pipeline, integrity monitoring |
-| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety |
+| `navra-safety` | Infrastructure | ML safety filters (NER, PII), regex patterns, pseudonymization |
+| `navra-safety-hooks` | Infrastructure | Hook pipeline (20+ hook types), integrity monitoring, bridges navra-safety to workspace |
+| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety-hooks |
+| `navra-mcp` | Infrastructure | Lightweight Module trait, handler type aliases, MCP re-exports |
+| `navra-openapi` | Infrastructure | OpenAPI/Swagger-to-MCP bridge with OAuth support |
 | `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
 | `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
 | `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
 | `navra-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
 | `navra-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
-| `navra-tools-file` | Tool | File tools (file_read, file_write, etc.), SQLite FTS5 + sqlite-vec, MCP resources for file:// URIs |
-| `navra-tools-git` | Tool | Git tools (status, diff, log, branch, commit, push, pull, fetch) |
-| `navra-tools-exec` | Tool | Command execution inside OpenShell sandboxes |
-| `navra-tools-gitlab` | Tool | GitLab forge tools (MR, issues) via `glab` CLI |
 | `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
 | `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `navra-modal-vision` | Modality | Image/screen understanding (GPU tier) |
@@ -61,19 +61,22 @@ navra-model             (responses)
 navra-auth              (protocol, NO ML deps)
     ↓
 navra-safety            (auth + protocol + model, HAS ort/tokenizers)
-navra-security          (facade: auth + safety)
+navra-safety-hooks      (safety + auth, hook pipeline, NO direct ML deps)
+navra-security          (facade: auth + safety-hooks)
+navra-mcp               (protocol + auth + model + safety, Module trait)
     ↓
-navra-core              (protocol + model + auth + safety)
+navra-core              (protocol + model + auth + safety-hooks + mcp)
+navra-openapi           (protocol + auth, OpenAPI bridge)
     ↓
 navra-memory            (core + model, opt: rag)
 navra-agent             (protocol + model + auth + safety + cognitive)
-navra-tools-*           (core, exec also: model-runtime)
 navra-rag               (core)
 navra-modal-*           (core or core + auth)
     ↓
 navra-flow              (agent + cognitive + protocol + model + auth + safety)
     ↓
-navra-server            (all + hub + runtime)
+navra-model-server      (model + model-hub + model-runtime)
+navra-server            (all + hub + runtime + model-server)
 ```
 
 ## Architecture
@@ -88,8 +91,8 @@ navra-server            (all + hub + runtime)
 │                         navra-server (gateway)                      │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐  │
 │  │ System Tray │  │    Config    │  │      Module Loader          │  │
-│  │   (ksni)    │  │    (TOML)    │  │ FileModule, GitModule       │  │
-│  │ Approve/Deny│  │              │  │ + upstream MCP servers      │  │
+│  │   (ksni)    │  │    (TOML)    │  │ Upstream MCP servers         │  │
+│  │ Approve/Deny│  │              │  │ + OpenAPI bridges           │  │
 │  │ Pause/Resume│  │              │  │                             │  │
 │  └──────┬──────┘  └──────────────┘  └──────────────┬──────────────┘  │
 │         │                                          │                 │
@@ -120,15 +123,10 @@ navra-server            (all + hub + runtime)
 │  │  └────────────────────────────────────────────────────────┘    │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 │                                                                      │
-│  ┌─ Built-in Modules ─────────────────────────────────────────────┐  │
-│  │  navra-tools-file: file_search, file_read, file_write, ...     │  │
-│  │  navra-tools-git:  git_status, git_diff, git_log, git_branch  │  │
-│  │                 git_commit (approval required)                 │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                      │
 │  ┌─ Upstream MCP Servers (proxied) ───────────────────────────────┐  │
-│  │  External MCP servers — stdio / HTTP / SSE                     │  │
+│  │  External MCP servers — stdio / HTTP / SSE / OpenAPI           │  │
 │  │  Discovered at startup, registered as Module, safety-filtered  │  │
+│  │  File, git, and other tools provided by upstream MCP servers   │  │
 │  └────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────┘
 
@@ -1306,80 +1304,8 @@ above is the recommended production pattern.
 
 Default path: `~/.config/navra/config.toml`
 
-```toml
-[server]
-socket = "$XDG_RUNTIME_DIR/navra/navra.sock"
-tcp = "127.0.0.1:9315"    # optional, for development
-
-[modules.file]
-enabled = true
-# db = "$XDG_DATA_HOME/navra/index.db"
-watch = ["~/Documents", "~/Notes"]   # auto-reindex on file changes
-
-[modules.git]
-enabled = true
-
-# --- ONNX models (install via: navra model pull <name>) ---
-[models.safety]
-model_path = "~/.local/share/navra/models/guardian-hap/model.onnx"
-tokenizer_path = "~/.local/share/navra/models/guardian-hap/tokenizer.json"
-task = "classification"
-labels = ["safe", "hap"]
-threshold = 0.5
-
-[models.embeddings]
-model_path = "~/.local/share/navra/models/granite-embed/model.onnx"
-tokenizer_path = "~/.local/share/navra/models/granite-embed/tokenizer.json"
-task = "embedding"
-dimensions = 768
-
-[approval]
-timeout_secs = 300
-notify = "dbus"  # "dbus" or "none"
-
-# --- Upstream MCP servers ---
-[[upstream]]
-name = "navra"
-transport = "stdio"
-command = ["poetry", "run", "python", "-m", "navra.memory.mcp_server"]
-cwd = "/home/user/navra"
-retry_base_delay_ms = 1000
-
-[[upstream]]
-name = "api-server"
-transport = "http"
-url = "http://localhost:8001/mcp"
-
-# --- Agents ---
-[[agents]]
-name = "claude-code"
-token_hash = "20a8c34a..."  # BLAKE3 hex hash from `navra token generate`
-permissions = "developer"
-
-[permissions.developer]
-allow = ["~/Documents/**", "~/Notes/**", "~/Code/**"]
-deny = ["**/.env", "**/*secret*", "**/credentials*"]
-operations = ["read", "write", "search", "list", "git.status", "git.diff",
-              "git.log", "git.branch", "git.commit"]
-approve = ["write", "git.commit"]
-safety = "standard"
-default_tool_policy = "allow"
-
-[[permissions.developer.tool_rules]]
-tool = "git_commit"
-policy = "approve"
-
-[[permissions.developer.safety_patterns]]
-category = "internal-url"
-pattern = "https://internal\\.corp\\.com/\\S+"
-
-[permissions.readonly]
-allow = ["~/Documents/shared/**"]
-deny = []
-operations = ["read", "search", "list"]
-approve = []
-safety = "standard"
-```
+See [Configuration Reference](https://navra.smgglrs.ai/docs/configuration/)
+for the full config spec, or `examples/config.toml` for a commented example.
 
 ## CLI
 

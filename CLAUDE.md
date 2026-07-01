@@ -17,7 +17,7 @@ cargo run -- serve
 
 ## Workspace
 
-22-crate Rust workspace. See `DESIGN.md` for the full crate table,
+23-crate Rust workspace. See `DESIGN.md` for the full crate table,
 dependency layering, architecture diagrams, and design decisions.
 
 ## Agent Workflow (MANDATORY)
@@ -59,6 +59,28 @@ Stale worktrees with uncommitted changes will be lost on cleanup.
 
 See `AGENTS.md` for parallel development rules.
 
+## Documentation Maintenance (MANDATORY)
+
+When adding, removing, or changing a feature, update the relevant
+documentation in the same commit:
+
+- **Crate changes** (add/remove/rename): update the crate table and
+  dependency graph in `DESIGN.md`, crate count in this file, and
+  test counts in `TESTING.md`.
+- **New tools, hooks, or config fields**: update
+  `docs/content/docs/configuration/_index.md` and the relevant
+  section in `docs/content/docs/security/_index.md` or guides.
+- **IFC, auth, or safety changes**: update
+  `docs/content/docs/security/_index.md` and
+  `docs/content/docs/learn/information-flow-control.md`.
+- **Proof count changes** (Kani/Verus/TLA+): update counts in
+  `docs/content/docs/architecture/_index.md` and
+  `docs/content/docs/learn/what-kani-proves.md`.
+
+The docs site (`docs/content/`) is the single source of truth for
+user-facing documentation. Do not duplicate content in root-level
+markdown files — link to the docs site instead.
+
 ## Conventions
 
 ### Naming
@@ -75,7 +97,7 @@ See `AGENTS.md` for parallel development rules.
 
 ### Testing
 
-2400+ tests. **Always use `just` to run tests** — it sets ORT
+2800+ tests. **Always use `just` to run tests** — it sets ORT
 environment variables, serializes navra-server tests one binary at
 a time, and cleans up leaked server processes between runs.
 
@@ -126,7 +148,8 @@ Default path: `~/.config/navra/config.toml`
 Key sections: `[server]`, `[modules.*]`, `[models.*]`, `[[agents]]`,
 `[permissions.*]`, `[[upstream]]`, `discover`, `[[registry]]`.
 
-See DESIGN.md for full config reference.
+See `docs/content/docs/configuration/_index.md` for the full config
+reference, or `examples/config.toml` for a commented example.
 
 ## Resource Limits
 

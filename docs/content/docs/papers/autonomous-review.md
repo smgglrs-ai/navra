@@ -396,7 +396,7 @@ cycle's verified fixes.
 ### 8.1 Hardcoded vs. Dynamic Persona Selection
 
 We ran both `comprehensive-review.yaml` (hardcoded) and
-`review.yaml` (dynamic) on the navra codebase (22 crates,
+`review.yaml` (dynamic) on the navra codebase (23 crates,
 ~150K LoC Rust).
 
 | Metric | Hardcoded | Dynamic |

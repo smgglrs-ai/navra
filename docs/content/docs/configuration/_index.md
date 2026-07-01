@@ -1,7 +1,7 @@
 +++
 title = "Configuration"
 description = "config.toml reference — server, permissions, modules, agents, upstream."
-weight = 40
+weight = 20
 template = "docs/section.html"
 
 [extra]

@@ -11,7 +11,7 @@ toc = true
 
 ## What you already know
 
-You have seen navra's three-layer verification pyramid: 154 Kani proofs for per-function correctness, 6 TLA+ specifications for protocol behavior, and 2,500+ tests covering integration and adversarial scenarios. That sounds like a lot. This chapter is about what it does not cover.
+You have seen navra's three-layer verification pyramid: 715+ Kani proofs for per-function correctness, 6 TLA+ specifications for protocol behavior, and 2,800+ tests covering integration and adversarial scenarios. That sounds like a lot. This chapter is about what it does not cover.
 
 ## No end-to-end proof
 
@@ -101,7 +101,7 @@ But the proof map is maintained by hand. It can become stale. A rename that chan
 
 ## The completeness gap
 
-navra's 154 Kani proofs cover security-critical pure functions. They do not cover all functions. Large parts of the codebase -- HTTP routing, configuration parsing, transport negotiation, module loading -- have tests but no proofs.
+navra's 715+ Kani proofs cover security-critical pure functions. They do not cover all functions. Large parts of the codebase -- HTTP routing, configuration parsing, transport negotiation, module loading -- have tests but no proofs.
 
 The decision about what to prove is a risk assessment. Functions that enforce security boundaries (ACLs, IFC, capability delegation) get proofs. Functions that format log messages or parse TOML do not. This is reasonable, but it means a bug in the configuration parser could misconfigure a security boundary in a way that no proof catches.
 
@@ -124,7 +124,7 @@ Honesty about limitations is not the same as resignation. navra takes specific a
 
 It is worth putting navra's verification gap in perspective. Most agent frameworks have no formal verification at all. No Kani proofs, no TLA+ specs, no proof map. The security model is "trust the developer" and the audit trail is "check the logs, if they exist."
 
-navra's gap is real, but it is a documented gap in a system that has 154 proofs, 6 TLA+ specs, 2,500+ tests, and explicit mapping between formal properties and implementations. The alternative is not a better-verified system -- it is an unverified one.
+navra's gap is real, but it is a documented gap in a system that has 715+ proofs, 6 TLA+ specs, 2,800+ tests, and explicit mapping between formal properties and implementations. The alternative is not a better-verified system -- it is an unverified one.
 
 The honest comparison is not "navra vs. seL4" (navra loses). It is "navra vs. running agents with no gateway" (navra wins by a wide margin). The verification gap tells you where to focus future work, not where to abandon the approach.
 

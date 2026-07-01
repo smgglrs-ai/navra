@@ -1,7 +1,7 @@
 +++
 title = "Security Model"
 description = "Capability tokens, IFC, privilege rings, and credential brokering."
-weight = 30
+weight = 45
 template = "docs/section.html"
 
 [extra]
@@ -37,13 +37,13 @@ parent's signature, and the kernel verifies the full chain.
 
 navra enforces a 2×4 product lattice:
 
-- **Confidentiality**: Public < Internal < Confidential < Restricted
-- **Integrity**: Untrusted < Validated
+- **Confidentiality**: Public < Sensitive < Pii < Secret
+- **Integrity**: Trusted < Untrusted
 
 Taint labels propagate through tool chains. When an agent reads a
-Confidential file, all subsequent tool calls in that session carry
-the Confidential label. The IFC pipeline blocks exfiltration
-attempts (e.g., writing Confidential data to a Public channel).
+Secret file, all subsequent tool calls in that session carry
+the Secret label. The IFC pipeline blocks exfiltration
+attempts (e.g., writing Secret data to a Public channel).
 
 ## Privilege Rings
 
@@ -152,7 +152,8 @@ Every tool call passes through an ordered pipeline of hooks before
 and after execution. Pre-hooks can modify arguments, block execution,
 simulate results, or suspend pending human approval. Post-hooks can
 modify or suppress results. The pipeline is fail-closed: if any hook
-times out, the tool call is blocked.
+times out, the tool call is blocked. The following hook types are
+available:
 
 ### Execution order
 
@@ -303,10 +304,10 @@ Rate limits are set per permission set in `config.toml`:
 
 ```toml
 [permissions.dev]
-rate_limit = { max_calls = 120, window_secs = 60 }
+rate_limit = "120/60"   # 120 tool calls per 60-second window
 
 [permissions.restricted]
-rate_limit = { max_calls = 30, window_secs = 60 }
+rate_limit = "30/60"    # 30 tool calls per 60-second window
 ```
 
 Permission sets without a `rate_limit` field are unlimited. Query
