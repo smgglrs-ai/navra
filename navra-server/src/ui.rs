@@ -482,16 +482,18 @@ pub(crate) fn attach_ui_routes(
     let proxy_model_entries = cfg.models.clone();
     let proxy_models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
         models.clone();
+    let proxy_gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
     let v1_router = axum::Router::new()
         .route(
             "/chat/completions",
             axum::routing::post(
                 move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
                     let model_entries = proxy_model_entries.clone();
-                    let all_models = proxy_models.clone();
+                    let _all_models = proxy_models.clone();
                     let backend = proxy_backend.clone();
                     let forge = proxy_forge.clone();
                     let srv = proxy_server.clone();
+                    let gcp = proxy_gcp_tokens.clone();
                     async move {
                         let start = std::time::Instant::now();
                         let Some(_backend) = backend else {
@@ -573,42 +575,183 @@ pub(crate) fn attach_ui_routes(
                                 }));
                             }
 
-                        // Proxy to Ollama, preserving full OpenAI format (tools, tool_choice, etc.)
                         let mut proxy_body = body.0.clone();
                         proxy_body["messages"] = serde_json::Value::Array(messages);
                         let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
-                        // Route to the correct model endpoint:
-                        // 1. Agent-level model override
-                        // 2. Model name from request body
-                        // 3. Default to Ollama
-                        let requested_model = agent
+                        // Resolve model entry from agent config
+                        let model_entry = agent
                             .as_ref()
-                            .and_then(|a| a.model.clone())
-                            .or_else(|| model_name.to_string().into());
-                        let upstream_url = requested_model
-                            .as_deref()
-                            .and_then(|name| {
-                                let entry = model_entries.get(name)?;
-                                if let Some(url) = entry.base_url.as_deref() {
-                                    return Some(format!("{url}/v1/chat/completions"));
+                            .and_then(|a| a.model.as_ref())
+                            .and_then(|name| model_entries.get(name));
+
+                        let is_vertex = model_entry
+                            .and_then(|e| e.base_url.as_deref())
+                            .map(|u| u.contains("googleapis.com"))
+                            .unwrap_or(false);
+
+                        // Build upstream URL and request body
+                        let (upstream_url, send_body) = if is_vertex {
+                            // Vertex AI: translate OpenAI format → Anthropic Messages format
+                            let entry = model_entry.unwrap();
+                            let base = entry.base_url.as_deref().unwrap().trim_end_matches('/');
+
+                            // Use model_name from config, or from request body
+                            let vertex_model = entry.model_name.as_deref().unwrap_or(model_name);
+                            // Convert dash-date to @date for Vertex
+                            let vertex_model = if !vertex_model.contains('@') {
+                                if let Some(pos) = vertex_model.rfind('-') {
+                                    let suffix = &vertex_model[pos + 1..];
+                                    if suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_digit()) {
+                                        std::borrow::Cow::Owned(format!("{}@{}", &vertex_model[..pos], suffix))
+                                    } else {
+                                        std::borrow::Cow::Borrowed(vertex_model)
+                                    }
+                                } else {
+                                    std::borrow::Cow::Borrowed(vertex_model)
                                 }
-                                if let Some(port) = entry.port {
-                                    return Some(format!("http://127.0.0.1:{port}/v1/chat/completions"));
+                            } else {
+                                std::borrow::Cow::Borrowed(vertex_model)
+                            };
+                            let specifier = if is_streaming { "streamRawPredict" } else { "rawPredict" };
+                            let url = format!("{base}/{vertex_model}:{specifier}");
+
+                            // Convert OpenAI messages → Anthropic messages
+                            let oai_messages = proxy_body["messages"].as_array().cloned().unwrap_or_default();
+                            let mut system_text: Option<String> = None;
+                            let anthropic_messages: Vec<serde_json::Value> = oai_messages
+                                .into_iter()
+                                .filter_map(|msg| {
+                                    let role = msg["role"].as_str().unwrap_or("").to_string();
+                                    if role == "system" {
+                                        system_text = msg["content"].as_str().map(String::from);
+                                        return None;
+                                    }
+                                    // Map tool calls in assistant messages
+                                    if role == "assistant" {
+                                        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+                                            let mut content = Vec::new();
+                                            if let Some(text) = msg["content"].as_str() {
+                                                if !text.is_empty() {
+                                                    content.push(serde_json::json!({"type": "text", "text": text}));
+                                                }
+                                            }
+                                            for tc in tool_calls {
+                                                let args: serde_json::Value = tc["function"]["arguments"]
+                                                    .as_str()
+                                                    .and_then(|s| serde_json::from_str(s).ok())
+                                                    .unwrap_or(serde_json::json!({}));
+                                                content.push(serde_json::json!({
+                                                    "type": "tool_use",
+                                                    "id": tc["id"],
+                                                    "name": tc["function"]["name"],
+                                                    "input": args,
+                                                }));
+                                            }
+                                            return Some(serde_json::json!({"role": "assistant", "content": content}));
+                                        }
+                                    }
+                                    // Map tool result messages
+                                    if role == "tool" {
+                                        return Some(serde_json::json!({
+                                            "role": "user",
+                                            "content": [{
+                                                "type": "tool_result",
+                                                "tool_use_id": msg["tool_call_id"],
+                                                "content": msg["content"],
+                                            }],
+                                        }));
+                                    }
+                                    Some(serde_json::json!({"role": role, "content": msg["content"]}))
+                                })
+                                .collect();
+
+                            let max_tokens = proxy_body["max_tokens"].as_u64()
+                                .or(proxy_body["max_completion_tokens"].as_u64())
+                                .unwrap_or(4096);
+                            let mut body = serde_json::json!({
+                                "anthropic_version": "vertex-2023-10-16",
+                                "max_tokens": max_tokens,
+                                "messages": anthropic_messages,
+                            });
+                            if let Some(ref sys) = system_text {
+                                body["system"] = serde_json::json!(sys);
+                            }
+                            if let Some(temp) = proxy_body.get("temperature") {
+                                body["temperature"] = temp.clone();
+                            }
+                            // Convert OpenAI tools format → Anthropic tools format
+                            if let Some(tools) = proxy_body["tools"].as_array() {
+                                let anthropic_tools: Vec<serde_json::Value> = tools
+                                    .iter()
+                                    .filter_map(|t| {
+                                        let func = &t["function"];
+                                        Some(serde_json::json!({
+                                            "name": func["name"],
+                                            "description": func.get("description").cloned().unwrap_or(serde_json::json!("")),
+                                            "input_schema": func.get("parameters").cloned().unwrap_or(serde_json::json!({"type": "object"})),
+                                        }))
+                                    })
+                                    .collect();
+                                body["tools"] = serde_json::json!(anthropic_tools);
+                                if let Some(tc) = proxy_body.get("tool_choice") {
+                                    body["tool_choice"] = match tc.as_str() {
+                                        Some("auto") => serde_json::json!({"type": "auto"}),
+                                        Some("none") => serde_json::json!({"type": "none"}),
+                                        Some("required") => serde_json::json!({"type": "any"}),
+                                        _ => serde_json::json!({"type": "auto"}),
+                                    };
                                 }
-                                None
-                            })
-                            .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
+                            }
+                            if is_streaming {
+                                body["stream"] = serde_json::json!(true);
+                            }
+                            (url, body)
+                        } else {
+                            // Standard OpenAI-compatible upstream
+                            let url = model_entry
+                                .and_then(|e| {
+                                    if let Some(url) = e.base_url.as_deref() {
+                                        return Some(format!("{url}/v1/chat/completions"));
+                                    }
+                                    if let Some(port) = e.port {
+                                        return Some(format!("http://127.0.0.1:{port}/v1/chat/completions"));
+                                    }
+                                    None
+                                })
+                                .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
+                            (url, proxy_body)
+                        };
+
                         let client = reqwest::Client::builder()
                             .timeout(std::time::Duration::from_secs(600))
                             .build()
                             .unwrap_or_else(|_| reqwest::Client::new());
-                        let resp = match client
-                            .post(upstream_url)
-                            .json(&proxy_body)
-                            .send()
-                            .await
-                        {
+                        let mut req = client.post(&upstream_url).json(&send_body);
+
+                        // Upstream auth
+                        if is_vertex {
+                            if let Some(entry) = model_entry
+                                && let Some(ref key) = entry.api_key
+                            {
+                                req = req.header("Authorization", format!("Bearer {key}"));
+                            } else if let Some(ref cache) = gcp {
+                                match cache.token().await {
+                                    Ok(t) => req = req.header("Authorization", format!("Bearer {t}")),
+                                    Err(e) => {
+                                        return axum::Json(serde_json::json!({
+                                            "error": {"message": e, "type": "authentication_error"}
+                                        })).into_response();
+                                    }
+                                }
+                            } else {
+                                return axum::Json(serde_json::json!({
+                                    "error": {"message": "No Vertex AI credentials", "type": "authentication_error"}
+                                })).into_response();
+                            }
+                        }
+
+                        let resp = match req.send().await {
                             Ok(r) => r,
                             Err(e) => {
                                 return axum::Json(serde_json::json!({
@@ -619,7 +762,6 @@ pub(crate) fn attach_ui_routes(
 
                         let status = resp.status();
 
-                        // Streaming: pass through SSE chunks directly (safety filter on final text is skipped)
                         if is_streaming {
                             let stream = resp.bytes_stream();
                             srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -641,6 +783,69 @@ pub(crate) fn attach_ui_routes(
                                 return (axum::http::StatusCode::OK, axum::body::Body::from(resp_bytes)).into_response();
                             }
                         };
+
+                        // For Vertex responses, convert Anthropic format → OpenAI format
+                        if is_vertex {
+                            let mut text_parts = Vec::new();
+                            let mut tool_calls = Vec::new();
+                            if let Some(blocks) = resp_json["content"].as_array() {
+                                for block in blocks {
+                                    match block["type"].as_str() {
+                                        Some("text") => {
+                                            if let Some(t) = block["text"].as_str() {
+                                                text_parts.push(t.to_string());
+                                            }
+                                        }
+                                        Some("tool_use") => {
+                                            tool_calls.push(serde_json::json!({
+                                                "id": block["id"],
+                                                "type": "function",
+                                                "function": {
+                                                    "name": block["name"],
+                                                    "arguments": serde_json::to_string(&block["input"]).unwrap_or_else(|_| "{}".to_string()),
+                                                },
+                                            }));
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            let finish_reason = match resp_json["stop_reason"].as_str() {
+                                Some("end_turn") | Some("stop_sequence") => "stop",
+                                Some("max_tokens") => "length",
+                                Some("tool_use") => "tool_calls",
+                                _ => "stop",
+                            };
+                            let content = if text_parts.is_empty() {
+                                serde_json::Value::Null
+                            } else {
+                                serde_json::Value::String(text_parts.join(""))
+                            };
+                            let mut message = serde_json::json!({
+                                "role": "assistant",
+                                "content": content,
+                            });
+                            if !tool_calls.is_empty() {
+                                message["tool_calls"] = serde_json::json!(tool_calls);
+                            }
+                            let input_tokens = resp_json["usage"]["input_tokens"].as_u64().unwrap_or(0);
+                            let output_tokens = resp_json["usage"]["output_tokens"].as_u64().unwrap_or(0);
+                            resp_json = serde_json::json!({
+                                "id": resp_json["id"],
+                                "object": "chat.completion",
+                                "model": resp_json["model"],
+                                "choices": [{
+                                    "index": 0,
+                                    "message": message,
+                                    "finish_reason": finish_reason,
+                                }],
+                                "usage": {
+                                    "prompt_tokens": input_tokens,
+                                    "completion_tokens": output_tokens,
+                                    "total_tokens": input_tokens + output_tokens,
+                                },
+                            });
+                        }
 
                         // Safety filter: scan outbound assistant content
                         if let Some(pipeline) = srv.safety_pipeline(permissions) {
@@ -881,7 +1086,24 @@ pub(crate) fn attach_ui_routes(
                                 if is_vertex {
                                     let base = base.trim_end_matches('/');
                                     let specifier = if is_streaming { "streamRawPredict" } else { "rawPredict" };
-                                    format!("{base}/{model_name}:{specifier}")
+                                    // Vertex uses @ before the version date (claude-sonnet-4-5@20250929)
+                                    // but Anthropic SDK sends a dash (claude-sonnet-4-5-20250929).
+                                    // Convert the last -YYYYMMDD to @YYYYMMDD if no @ is present.
+                                    let vertex_model = if !model_name.contains('@') {
+                                        if let Some(pos) = model_name.rfind('-') {
+                                            let suffix = &model_name[pos + 1..];
+                                            if suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_digit()) {
+                                                format!("{}@{}", &model_name[..pos], suffix)
+                                            } else {
+                                                model_name.to_string()
+                                            }
+                                        } else {
+                                            model_name.to_string()
+                                        }
+                                    } else {
+                                        model_name.to_string()
+                                    };
+                                    format!("{base}/{vertex_model}:{specifier}")
                                 } else {
                                     format!("{base}/v1/messages")
                                 }

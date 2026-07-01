@@ -335,17 +335,58 @@ Forwards OpenAI Chat Completions format. Works with any OpenAI SDK
 client, LangChain, LiteLLM, or custom code. Without a per-agent
 model entry, defaults to Ollama at `localhost:11434`.
 
+When the agent's model entry points to a Vertex AI upstream, navra
+translates the OpenAI request to the Anthropic Messages format,
+forwards it to Vertex, and translates the response back to OpenAI
+format. The `model_name` in the model config entry sets the Vertex
+model (using the `name@date` format); the client's `model` field
+is ignored.
+
 ```bash
 # Python (openai SDK)
 OPENAI_BASE_URL=http://localhost:9315/v1 \
 OPENAI_API_KEY=mcd_abc123... \
 python my_app.py
 
+# navra run (built-in agent runner)
+MCPD_TOKEN=mcd_abc123... navra run "Summarise the last 5 emails"
+
 # curl
 curl http://localhost:9315/v1/chat/completions \
   -H "Authorization: Bearer mcd_abc123..." \
   -H "Content-Type: application/json" \
-  -d '{"model": "gemma4:e4b", "messages": [{"role": "user", "content": "hello"}]}'
+  -d '{"model": "claude-haiku-4-5@20251001", "max_tokens": 100, "messages": [{"role": "user", "content": "hello"}]}'
+```
+
+**Example: OpenAI-compatible agent using Claude via Vertex AI**
+
+```toml
+# Model entry — pins to a specific Claude model on Vertex
+[models.vertex-claude]
+task = "chat"
+base_url = "https://aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/global/publishers/anthropic/models"
+model_name = "claude-sonnet-4-5@20250929"
+locality = "remote"
+
+# Agent identity
+[[agents]]
+name = "my-agent"
+token_hash = "..."        # navra token generate --name my-agent --permissions dev
+permissions = "dev"
+model = "vertex-claude"   # routes /v1/chat/completions to Vertex
+```
+
+```bash
+# Generate token
+navra token generate --name my-agent --permissions dev
+
+# Run with navra's built-in agent runner (model name, not config key)
+MCPD_TOKEN=mcd_... navra run -m claude-sonnet-4-5@20250929 "Summarise the latest reports"
+
+# Or point any OpenAI SDK client at navra
+OPENAI_BASE_URL=http://localhost:9315/v1 \
+OPENAI_API_KEY=mcd_... \
+python my_app.py
 ```
 
 ### Anthropic Messages API (`/v1/messages`)

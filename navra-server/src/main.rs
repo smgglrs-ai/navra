@@ -5041,8 +5041,13 @@ async fn run_agent(
             .unwrap_or_else(|_| "us-east5".to_string());
 
         if !project.is_empty() {
+            let host = if region == "global" {
+                "aiplatform.googleapis.com".to_string()
+            } else {
+                format!("{region}-aiplatform.googleapis.com")
+            };
             let url = format!(
-                "https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
+                "https://{host}/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
             );
             let token = std::process::Command::new("gcloud")
                 .args(["auth", "print-access-token"])
