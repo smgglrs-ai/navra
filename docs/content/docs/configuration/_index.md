@@ -284,11 +284,17 @@ the OpenAI or Anthropic API can use navra as its model endpoint.
 **1. Define a model entry** pointing to your upstream provider:
 
 ```toml
-# Vertex AI (Claude via Google Cloud)
+# Vertex AI — global endpoint (routes to nearest region)
 [models.vertex-claude]
 task = "chat"
 base_url = "https://aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/global/publishers/anthropic/models"
 locality = "remote"
+
+# Vertex AI — regional endpoint (pin to a specific region)
+# [models.vertex-claude]
+# task = "chat"
+# base_url = "https://us-east5-aiplatform.googleapis.com/v1/projects/MY_PROJECT/locations/us-east5/publishers/anthropic/models"
+# locality = "remote"
 
 # Or: direct Anthropic API
 [models.anthropic]
