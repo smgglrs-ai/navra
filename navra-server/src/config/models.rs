@@ -48,6 +48,10 @@ pub struct ModelConfig {
     /// Used for chat/generate tasks served via navra-model-runtime.
     #[serde(default)]
     pub runtime: Option<String>,
+    /// Port for the model's HTTP endpoint (default: auto-select).
+    /// Set this to a fixed port for predictable URLs.
+    #[serde(default)]
+    pub port: Option<u16>,
     /// Context window size for runtime-served models (default: 4096).
     #[serde(default)]
     pub context_size: Option<u32>,

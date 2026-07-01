@@ -50,16 +50,20 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             archive_suffix: linux-x86_64
+            embedded_feature: embedded-cuda
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-latest
             archive_suffix: linux-aarch64
             use_cross: true
+            embedded_feature: embedded
           - target: x86_64-apple-darwin
             runner: macos-13
             archive_suffix: darwin-x86_64
+            embedded_feature: embedded-metal
           - target: aarch64-apple-darwin
             runner: macos-14
             archive_suffix: darwin-aarch64
+            embedded_feature: embedded-metal
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,7 +80,7 @@ jobs:
       - name: Build binaries
         run: |
           BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
-          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra --features embedded
+          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra --features ${{ matrix.embedded_feature }}
           $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra-agent
 
       - name: Package

@@ -234,6 +234,7 @@ impl ModelRegistry {
                 });
         let serve_cfg = navra_model_runtime::ServeConfig {
             model_path: resolved_path.to_path_buf(),
+            port: entry.port.unwrap_or(0),
             gpus,
             target,
             format,

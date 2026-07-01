@@ -1,8 +1,13 @@
 //! Embedded runtime — run llama.cpp in-process via llama-cpp-4.
 //!
-//! Loads a GGUF model directly into the navra process and serves
-//! an OpenAI-compatible `/v1/chat/completions` endpoint on a local
-//! port. No external process, no container, no Ollama required.
+//! Loads GGUF models on demand into the navra process and serves
+//! OpenAI-compatible `/v1/chat/completions` endpoints on local ports.
+//! Models are managed in an LRU pool — when memory is constrained,
+//! the least-recently-used model is evicted to free RAM/VRAM.
+//!
+//! GPU-aware: probes available VRAM before loading and offloads
+//! model layers to GPU when sufficient VRAM exists, falling back
+//! to CPU otherwise.
 
 use crate::{
     Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError,
@@ -10,8 +15,10 @@ use crate::{
 };
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use axum::{extract::State, routing::get, routing::post, Json, Router};
 use llama_cpp_4::context::params::LlamaContextParams;
@@ -23,19 +30,73 @@ use llama_cpp_4::token::LlamaToken;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-struct RunningInstance {
+struct LoadedModel {
+    endpoint: Endpoint,
     shutdown: tokio::sync::oneshot::Sender<()>,
+    model_size: u64,
+    gpu_offloaded: bool,
+    last_used: Instant,
+    model_path: PathBuf,
 }
 
 pub struct EmbeddedRuntime {
-    instances: Mutex<HashMap<String, RunningInstance>>,
+    pool: Mutex<HashMap<String, LoadedModel>>,
+    backend: OnceLock<Arc<LlamaBackend>>,
 }
 
 impl EmbeddedRuntime {
     pub fn new() -> Self {
         Self {
-            instances: Mutex::new(HashMap::new()),
+            pool: Mutex::new(HashMap::new()),
+            backend: OnceLock::new(),
         }
+    }
+
+    fn init_backend(&self) -> Result<Arc<LlamaBackend>, RuntimeError> {
+        if let Some(b) = self.backend.get() {
+            return Ok(Arc::clone(b));
+        }
+        let backend = LlamaBackend::init()
+            .map_err(|e| RuntimeError::Start(format!("llama backend init failed: {e}")))?;
+        let arc = Arc::new(backend);
+        let _ = self.backend.set(Arc::clone(&arc));
+        Ok(self.backend.get().map(Arc::clone).unwrap_or(arc))
+    }
+
+    fn evict_lru(&self) -> Option<(String, tokio::sync::oneshot::Sender<()>, u64, bool)> {
+        let mut pool = self.pool.lock().unwrap();
+        let oldest = pool
+            .iter()
+            .min_by_key(|(_, m)| m.last_used)
+            .map(|(k, _)| k.clone());
+        if let Some(key) = oldest {
+            let model = pool.remove(&key).unwrap();
+            tracing::info!(
+                model = %key,
+                size_mb = model.model_size / (1024 * 1024),
+                gpu = model.gpu_offloaded,
+                "Evicting LRU model"
+            );
+            Some((key, model.shutdown, model.model_size, model.gpu_offloaded))
+        } else {
+            None
+        }
+    }
+
+    pub fn touch(&self, model_path: &str) {
+        let mut pool = self.pool.lock().unwrap();
+        if let Some(model) = pool.values_mut().find(|m| m.model_path.to_string_lossy() == model_path) {
+            model.last_used = Instant::now();
+        }
+    }
+
+    fn find_loaded(&self, model_path: &std::path::Path) -> Option<Endpoint> {
+        let mut pool = self.pool.lock().unwrap();
+        if let Some(model) = pool.values_mut().find(|m| m.model_path == model_path) {
+            model.last_used = Instant::now();
+            return Some(model.endpoint.clone());
+        }
+        None
     }
 }
 
@@ -290,6 +351,16 @@ impl ModelRuntime for EmbeddedRuntime {
     ) -> Pin<Box<dyn Future<Output = Result<Endpoint, RuntimeError>> + Send + '_>> {
         let config = config.clone();
         Box::pin(async move {
+            // Return existing endpoint if model is already loaded
+            if let Some(endpoint) = self.find_loaded(&config.model_path) {
+                tracing::debug!(
+                    path = %config.model_path.display(),
+                    url = %endpoint.url,
+                    "Model already loaded, reusing endpoint"
+                );
+                return Ok(endpoint);
+            }
+
             let port = if config.port == 0 {
                 crate::pick_free_port()?
             } else {
@@ -298,17 +369,74 @@ impl ModelRuntime for EmbeddedRuntime {
 
             let model_path = config.model_path.clone();
             let context_size = config.context_size;
-            let n_gpu_layers = if config.gpus.is_empty() { 0 } else { 999 };
+            let model_size = std::fs::metadata(&model_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
 
-            let (model, backend) = tokio::task::spawn_blocking(move || {
-                let backend = LlamaBackend::init().map_err(|e| {
-                    RuntimeError::Start(format!("llama backend init failed: {e}"))
-                })?;
+            // GPU-aware offloading: check available VRAM
+            let available_vram = crate::gpu::available_vram();
+            let has_gpu = !config.gpus.is_empty();
+            let n_gpu_layers = if has_gpu && available_vram > model_size {
+                tracing::info!(
+                    vram_free_mb = available_vram / (1024 * 1024),
+                    model_size_mb = model_size / (1024 * 1024),
+                    "VRAM sufficient, offloading all layers to GPU"
+                );
+                999
+            } else if has_gpu {
+                tracing::warn!(
+                    vram_free_mb = available_vram / (1024 * 1024),
+                    model_size_mb = model_size / (1024 * 1024),
+                    "VRAM insufficient, falling back to CPU"
+                );
+                0
+            } else {
+                0
+            };
+            let gpu_offloaded = n_gpu_layers > 0;
 
+            // Evict LRU if we're memory-constrained
+            // Simple heuristic: if loading this model would exceed
+            // available system RAM, evict the oldest model
+            let available_ram = {
+                let meminfo = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+                meminfo
+                    .lines()
+                    .find(|l| l.starts_with("MemAvailable:"))
+                    .and_then(|l| l.split_whitespace().nth(1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .map(|kb| kb * 1024)
+                    .unwrap_or(u64::MAX)
+            };
+
+            if !gpu_offloaded && model_size > available_ram {
+                if let Some((name, shutdown, _, _)) = self.evict_lru() {
+                    let _ = shutdown.send(());
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    tracing::info!(evicted = %name, "Freed memory for new model");
+                }
+            }
+
+            if gpu_offloaded && model_size > available_vram {
+                if let Some((name, shutdown, _, was_gpu)) = self.evict_lru() {
+                    let _ = shutdown.send(());
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    tracing::info!(
+                        evicted = %name,
+                        freed_gpu = was_gpu,
+                        "Freed VRAM for new model"
+                    );
+                }
+            }
+
+            let backend = self.init_backend()?;
+            let backend_clone = Arc::clone(&backend);
+
+            let model = tokio::task::spawn_blocking(move || {
                 let model_params = LlamaModelParams::default()
                     .with_n_gpu_layers(n_gpu_layers);
 
-                let model = LlamaModel::load_from_file(&backend, model_path, &model_params)
+                let model = LlamaModel::load_from_file(&backend_clone, model_path, &model_params)
                     .map_err(|e| RuntimeError::Start(format!("model load failed: {e}")))?;
 
                 tracing::info!(
@@ -316,17 +444,19 @@ impl ModelRuntime for EmbeddedRuntime {
                     layers = model.n_layer(),
                     embd = model.n_embd(),
                     ctx_train = model.n_ctx_train(),
+                    gpu_layers = n_gpu_layers,
+                    size_mb = model_size / (1024 * 1024),
                     "Embedded model loaded"
                 );
 
-                Ok::<_, RuntimeError>((model, backend))
+                Ok::<_, RuntimeError>(model)
             })
             .await
             .map_err(|e| RuntimeError::Start(format!("model load task panicked: {e}")))??;
 
             let state = AppState {
                 model: Arc::new(model),
-                backend: Arc::new(backend),
+                backend,
                 context_size,
             };
 
@@ -354,23 +484,30 @@ impl ModelRuntime for EmbeddedRuntime {
             let id = format!("embedded-{port}");
             let url = format!("http://{}:{port}", config.host);
 
-            tracing::info!(port = port, "Embedded llama.cpp server ready");
+            tracing::info!(port = port, gpu = gpu_offloaded, "Embedded llama.cpp server ready");
 
-            self.instances.lock().unwrap().insert(
-                id.clone(),
-                RunningInstance {
-                    shutdown: shutdown_tx,
-                },
-            );
-
-            Ok(Endpoint {
+            let endpoint = Endpoint {
                 url,
-                id,
+                id: id.clone(),
                 backend: RuntimeBackend::new(
                     crate::engine::Engine::LlamaCpp,
                     Isolation::Direct,
                 ),
-            })
+            };
+
+            self.pool.lock().unwrap().insert(
+                id,
+                LoadedModel {
+                    endpoint: endpoint.clone(),
+                    shutdown: shutdown_tx,
+                    model_size,
+                    gpu_offloaded,
+                    last_used: Instant::now(),
+                    model_path: config.model_path,
+                },
+            );
+
+            Ok(endpoint)
         })
     }
 
@@ -380,10 +517,15 @@ impl ModelRuntime for EmbeddedRuntime {
     ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         let id = endpoint.id.clone();
         Box::pin(async move {
-            let instance = self.instances.lock().unwrap().remove(&id);
-            if let Some(instance) = instance {
-                let _ = instance.shutdown.send(());
-                tracing::info!(id = %id, "Stopped embedded llama.cpp server");
+            let model = self.pool.lock().unwrap().remove(&id);
+            if let Some(model) = model {
+                let _ = model.shutdown.send(());
+                tracing::info!(
+                    id = %id,
+                    size_mb = model.model_size / (1024 * 1024),
+                    gpu = model.gpu_offloaded,
+                    "Stopped embedded model"
+                );
             }
             Ok(())
         })
@@ -421,7 +563,7 @@ mod tests {
     #[test]
     fn embedded_runtime_creates() {
         let rt = EmbeddedRuntime::new();
-        assert!(rt.instances.lock().unwrap().is_empty());
+        assert!(rt.pool.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -436,7 +578,6 @@ mod tests {
                 content: "Hello".to_string(),
             },
         ];
-        // Without a model, test the fallback formatter
         let mut prompt = String::new();
         for msg in &messages {
             match msg.role.as_str() {

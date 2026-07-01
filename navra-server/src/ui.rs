@@ -420,12 +420,15 @@ pub(crate) fn attach_ui_routes(
     let proxy_server = Arc::clone(server);
     let proxy_forge = ui_forge.clone();
     let proxy_model_entries = cfg.models.clone();
+    let proxy_models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
+        models.clone();
     let v1_router = axum::Router::new()
         .route(
             "/chat/completions",
             axum::routing::post(
                 move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
                     let model_entries = proxy_model_entries.clone();
+                    let all_models = proxy_models.clone();
                     let backend = proxy_backend.clone();
                     let forge = proxy_forge.clone();
                     let srv = proxy_server.clone();
@@ -515,13 +518,26 @@ pub(crate) fn attach_ui_routes(
                         proxy_body["messages"] = serde_json::Value::Array(messages);
                         let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
-                        // Route to per-agent model if configured, else default Ollama
-                        let upstream_url = agent
+                        // Route to the correct model endpoint:
+                        // 1. Agent-level model override
+                        // 2. Model name from request body
+                        // 3. Default to Ollama
+                        let requested_model = agent
                             .as_ref()
-                            .and_then(|a| a.model.as_ref())
-                            .and_then(|model_name| model_entries.get(model_name))
-                            .and_then(|entry| entry.base_url.as_deref())
-                            .map(|url| format!("{url}/v1/chat/completions"))
+                            .and_then(|a| a.model.clone())
+                            .or_else(|| model_name.to_string().into());
+                        let upstream_url = requested_model
+                            .as_deref()
+                            .and_then(|name| {
+                                let entry = model_entries.get(name)?;
+                                if let Some(url) = entry.base_url.as_deref() {
+                                    return Some(format!("{url}/v1/chat/completions"));
+                                }
+                                if let Some(port) = entry.port {
+                                    return Some(format!("http://127.0.0.1:{port}/v1/chat/completions"));
+                                }
+                                None
+                            })
                             .unwrap_or_else(|| "http://localhost:11434/v1/chat/completions".to_string());
                         let client = reqwest::Client::builder()
                             .timeout(std::time::Duration::from_secs(600))
@@ -624,6 +640,318 @@ pub(crate) fn attach_ui_routes(
                     }
                 },
             ),
+        )
+        .route(
+            "/messages",
+            {
+                let anthropic_server = Arc::clone(server);
+                let anthropic_model_entries = cfg.models.clone();
+                let anthropic_forge = ui_forge.clone();
+                axum::routing::post(
+                    move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
+                        let model_entries = anthropic_model_entries.clone();
+                        let forge = anthropic_forge.clone();
+                        let srv = anthropic_server.clone();
+                        async move {
+                            let start = std::time::Instant::now();
+
+                            // Authenticate caller
+                            let agent = srv.authenticator().authenticate(&headers).ok();
+                            let agent_name = agent.as_ref().map(|a| a.name.as_str()).unwrap_or("anonymous");
+                            let permissions = agent.as_ref().map(|a| a.permissions.as_str()).unwrap_or("dev");
+
+                            // Concurrency limit
+                            let _concurrency_permit = if let Some(ref a) = agent
+                                && let Some(max) = a.max_concurrent {
+                                    match srv.acquire_concurrency_permit(&a.name, max) {
+                                        Ok(permit) => Some(permit),
+                                        Err(()) => {
+                                            return axum::Json(serde_json::json!({
+                                                "type": "error",
+                                                "error": {"type": "rate_limit_error", "message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name)}
+                                            })).into_response();
+                                        }
+                                    }
+                                } else {
+                                    None
+                                };
+
+                            let mut proxy_body = body.0.clone();
+                            let model_name = proxy_body["model"].as_str().unwrap_or("default").to_string();
+
+                            // Safety filter: scan inbound user messages
+                            // Anthropic content is either a string or an array of content blocks
+                            if let Some(pipeline) = srv.safety_pipeline(permissions) {
+                                let filter_ctx = navra_core::safety::FilterContext {
+                                    agent_name,
+                                    operation: "model_proxy",
+                                    path: None,
+                                };
+                                if let Some(messages) = proxy_body["messages"].as_array_mut() {
+                                    for msg in messages.iter_mut() {
+                                        let role = msg["role"].as_str().unwrap_or("");
+                                        if role != "user" { continue; }
+                                        // String content
+                                        if let Some(text) = msg["content"].as_str().map(String::from) {
+                                            match pipeline.process_inbound(&text, &filter_ctx).await {
+                                                Ok(filtered) => {
+                                                    msg["content"] = serde_json::Value::String(filtered);
+                                                }
+                                                Err(reason) => {
+                                                    return axum::Json(serde_json::json!({
+                                                        "type": "error",
+                                                        "error": {"type": "invalid_request_error", "message": format!("Content blocked: {reason}")}
+                                                    })).into_response();
+                                                }
+                                            }
+                                        }
+                                        // Array of content blocks — filter text blocks only
+                                        if let Some(blocks) = msg["content"].as_array_mut() {
+                                            for block in blocks.iter_mut() {
+                                                if block["type"].as_str() == Some("text") {
+                                                    if let Some(text) = block["text"].as_str().map(String::from) {
+                                                        match pipeline.process_inbound(&text, &filter_ctx).await {
+                                                            Ok(filtered) => {
+                                                                block["text"] = serde_json::Value::String(filtered);
+                                                            }
+                                                            Err(reason) => {
+                                                                return axum::Json(serde_json::json!({
+                                                                    "type": "error",
+                                                                    "error": {"type": "invalid_request_error", "message": format!("Content blocked: {reason}")}
+                                                                })).into_response();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // Filter system prompt (string or array of text blocks)
+                                if let Some(text) = proxy_body["system"].as_str().map(String::from) {
+                                    match pipeline.process_inbound(&text, &filter_ctx).await {
+                                        Ok(filtered) => {
+                                            proxy_body["system"] = serde_json::Value::String(filtered);
+                                        }
+                                        Err(reason) => {
+                                            return axum::Json(serde_json::json!({
+                                                "type": "error",
+                                                "error": {"type": "invalid_request_error", "message": format!("Content blocked: {reason}")}
+                                            })).into_response();
+                                        }
+                                    }
+                                }
+                                if let Some(blocks) = proxy_body["system"].as_array_mut() {
+                                    for block in blocks.iter_mut() {
+                                        if block["type"].as_str() == Some("text") {
+                                            if let Some(text) = block["text"].as_str().map(String::from) {
+                                                match pipeline.process_inbound(&text, &filter_ctx).await {
+                                                    Ok(filtered) => {
+                                                        block["text"] = serde_json::Value::String(filtered);
+                                                    }
+                                                    Err(reason) => {
+                                                        return axum::Json(serde_json::json!({
+                                                            "type": "error",
+                                                            "error": {"type": "invalid_request_error", "message": format!("Content blocked: {reason}")}
+                                                        })).into_response();
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Persona injection into the system prompt
+                            let persona_name = headers
+                                .get("x-persona")
+                                .and_then(|v| v.to_str().ok())
+                                .map(String::from)
+                                .or_else(|| {
+                                    proxy_body["system"]
+                                        .as_str()
+                                        .and_then(|s| s.strip_prefix("persona:"))
+                                        .map(|p| p.trim().to_string())
+                                });
+                            if let Some(ref pname) = persona_name
+                                && let Ok(output) =
+                                    navra_cognitive::assemble(&forge, pname, "", None, None)
+                            {
+                                let persona_text = output.system_prompt().to_string();
+                                match proxy_body.get("system") {
+                                    Some(serde_json::Value::String(existing)) => {
+                                        proxy_body["system"] = serde_json::Value::String(
+                                            format!("{persona_text}\n\n{existing}"),
+                                        );
+                                    }
+                                    Some(serde_json::Value::Array(_)) => {
+                                        if let Some(blocks) = proxy_body["system"].as_array_mut() {
+                                            blocks.insert(0, serde_json::json!({
+                                                "type": "text",
+                                                "text": persona_text,
+                                            }));
+                                        }
+                                    }
+                                    _ => {
+                                        proxy_body["system"] = serde_json::Value::String(persona_text);
+                                    }
+                                }
+                            }
+
+                            // Resolve upstream URL and auth
+                            let model_entry = agent
+                                .as_ref()
+                                .and_then(|a| a.model.as_ref())
+                                .and_then(|name| model_entries.get(name));
+
+                            let is_vertex;
+                            let upstream_url = if let Some(entry) = model_entry
+                                && let Some(ref base) = entry.base_url
+                            {
+                                is_vertex = base.contains("googleapis.com");
+                                if is_vertex {
+                                    base.clone()
+                                } else {
+                                    format!("{base}/v1/messages")
+                                }
+                            } else {
+                                is_vertex = false;
+                                "https://api.anthropic.com/v1/messages".to_string()
+                            };
+
+                            // Build upstream request with auth headers
+                            let client = reqwest::Client::builder()
+                                .timeout(std::time::Duration::from_secs(600))
+                                .build()
+                                .unwrap_or_else(|_| reqwest::Client::new());
+                            let mut req = client.post(&upstream_url).json(&proxy_body);
+
+                            // Auth: model config key wins, then pass through client headers
+                            if let Some(entry) = model_entry
+                                && let Some(ref key) = entry.api_key
+                            {
+                                if is_vertex {
+                                    req = req.header("Authorization", format!("Bearer {key}"));
+                                } else {
+                                    req = req.header("x-api-key", key);
+                                }
+                            } else if let Some(val) = headers.get("x-api-key") {
+                                req = req.header("x-api-key", val);
+                            } else if let Some(val) = headers.get("Authorization") {
+                                req = req.header("Authorization", val);
+                            }
+
+                            // Forward anthropic-version from client (or use default)
+                            if let Some(ver) = headers.get("anthropic-version") {
+                                req = req.header("anthropic-version", ver);
+                            } else {
+                                req = req.header("anthropic-version", "2023-06-01");
+                            }
+
+                            let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
+
+                            let resp = match req.send().await {
+                                Ok(r) => r,
+                                Err(e) => {
+                                    return axum::Json(serde_json::json!({
+                                        "type": "error",
+                                        "error": {"type": "api_error", "message": format!("Upstream error: {e}")}
+                                    })).into_response();
+                                }
+                            };
+
+                            let status = resp.status();
+
+                            // Streaming: SSE pass-through
+                            if is_streaming {
+                                let stream = resp.bytes_stream();
+                                srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                return axum::body::Body::from_stream(stream).into_response();
+                            }
+
+                            let resp_bytes = resp.bytes().await.unwrap_or_default();
+                            if !status.is_success() {
+                                return (
+                                    axum::http::StatusCode::from_u16(status.as_u16())
+                                        .unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
+                                    axum::body::Body::from(resp_bytes),
+                                ).into_response();
+                            }
+
+                            let mut resp_json: serde_json::Value = match serde_json::from_slice(&resp_bytes) {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    return (axum::http::StatusCode::OK, axum::body::Body::from(resp_bytes)).into_response();
+                                }
+                            };
+
+                            // Safety filter: scan outbound content blocks
+                            if let Some(pipeline) = srv.safety_pipeline(permissions) {
+                                let filter_ctx = navra_core::safety::FilterContext {
+                                    agent_name,
+                                    operation: "model_proxy",
+                                    path: None,
+                                };
+                                if let Some(blocks) = resp_json["content"].as_array_mut() {
+                                    for block in blocks.iter_mut() {
+                                        if block["type"].as_str() == Some("text") {
+                                            if let Some(text) = block["text"].as_str().map(String::from) {
+                                                match pipeline.process_outbound(&text, &filter_ctx).await {
+                                                    Ok(filtered) => {
+                                                        block["text"] = serde_json::Value::String(filtered);
+                                                    }
+                                                    Err(reason) => {
+                                                        block["text"] = serde_json::Value::String(
+                                                            format!("[FILTERED: {reason}]"),
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Blackbox audit
+                            let duration_us = start.elapsed().as_micros() as u64;
+                            if let Some(bb) = srv.blackbox() {
+                                let output_summary = resp_json["content"]
+                                    .as_array()
+                                    .and_then(|blocks| {
+                                        blocks.iter().find_map(|b| {
+                                            if b["type"].as_str() == Some("text") {
+                                                b["text"].as_str()
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    })
+                                    .unwrap_or("")
+                                    .chars().take(500).collect::<String>();
+                                bb.record(
+                                    agent_name, permissions, "",
+                                    "model_proxy",
+                                    &format!("model={model_name}"),
+                                    &output_summary,
+                                    "ok", duration_us, "Trusted",
+                                );
+                            }
+                            srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                            // Token metrics (Anthropic usage format)
+                            if let Some(usage) = resp_json.get("usage") {
+                                let input = usage["input_tokens"].as_u64().unwrap_or(0);
+                                let output = usage["output_tokens"].as_u64().unwrap_or(0);
+                                let cached = usage["cache_read_input_tokens"].as_u64().unwrap_or(0);
+                                let uncached = input.saturating_sub(cached);
+                                srv.metrics().record_tokens(uncached, output, cached);
+                            }
+
+                            axum::Json(resp_json).into_response()
+                        }
+                    },
+                )
+            },
         )
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(server),
@@ -807,6 +1135,7 @@ mod tests {
                 locality: None,
                 agentic: None,
                 execution_mode: None,
+                port: None,
             },
         );
         cfg
