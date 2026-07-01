@@ -130,14 +130,19 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 impl Authenticator for TokenAuthenticator {
     fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AgentIdentity, AuthError> {
-        let header = headers
-            .get("authorization")
-            .ok_or(AuthError::MissingToken)?;
-
-        let value = header.to_str().map_err(|_| AuthError::InvalidToken)?;
-        let token = value
-            .strip_prefix("Bearer ")
-            .ok_or(AuthError::InvalidToken)?;
+        // Accept token from Authorization: Bearer or x-api-key header.
+        // x-api-key is checked as fallback so Anthropic SDK clients
+        // (Claude Code) can authenticate with ANTHROPIC_API_KEY.
+        let token = if let Some(header) = headers.get("authorization") {
+            let value = header.to_str().map_err(|_| AuthError::InvalidToken)?;
+            value
+                .strip_prefix("Bearer ")
+                .ok_or(AuthError::InvalidToken)?
+        } else if let Some(header) = headers.get("x-api-key") {
+            header.to_str().map_err(|_| AuthError::InvalidToken)?
+        } else {
+            return Err(AuthError::MissingToken);
+        };
 
         let hash = Self::hash_token(token);
         // Iterate all entries for constant-time behavior — prevents
@@ -279,6 +284,46 @@ mod tests {
         let hash1 = TokenAuthenticator::hash_token("token-a");
         let hash2 = TokenAuthenticator::hash_token("token-b");
         assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn x_api_key_authenticates() {
+        let mut auth = TokenAuthenticator::new();
+        auth.register("secret-token-123", test_identity());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "secret-token-123".parse().unwrap());
+
+        let identity = auth.authenticate(&headers).unwrap();
+        assert_eq!(identity.name, "test-agent");
+    }
+
+    #[test]
+    fn x_api_key_invalid_token() {
+        let mut auth = TokenAuthenticator::new();
+        auth.register("correct-token", test_identity());
+
+        let mut headers = HeaderMap::new();
+        headers.insert("x-api-key", "wrong-token".parse().unwrap());
+
+        let err = auth.authenticate(&headers).unwrap_err();
+        assert!(matches!(err, AuthError::InvalidToken));
+    }
+
+    #[test]
+    fn authorization_header_takes_precedence_over_x_api_key() {
+        let mut auth = TokenAuthenticator::new();
+        let id_a = AgentIdentity::new("agent-a", "dev");
+        let id_b = AgentIdentity::new("agent-b", "dev");
+        auth.register("token-a", id_a);
+        auth.register("token-b", id_b);
+
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer token-a".parse().unwrap());
+        headers.insert("x-api-key", "token-b".parse().unwrap());
+
+        let identity = auth.authenticate(&headers).unwrap();
+        assert_eq!(identity.name, "agent-a");
     }
 
     #[test]

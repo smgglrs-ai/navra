@@ -8,6 +8,30 @@ template = "docs/section.html"
 toc = true
 +++
 
+## Agent Authentication
+
+Agents authenticate to the gateway via bearer tokens. The token is
+sent as `Authorization: Bearer <token>` or as `x-api-key: <token>`.
+Both headers are checked against BLAKE3 hashes stored in the agent
+config using constant-time comparison (CWE-208 mitigation).
+
+The `x-api-key` fallback exists so Anthropic SDK clients (e.g.
+Claude Code) can authenticate using `ANTHROPIC_API_KEY`, which the
+SDK sends as `x-api-key`. When both headers are present,
+`Authorization` takes precedence.
+
+Token hashes are generated with `navra token generate` and stored
+in `config.toml` — the plaintext token is never persisted.
+
+### Model proxy auth flow
+
+When an agent calls `/v1/messages` or `/v1/chat/completions`, the
+gateway authenticates the agent, then uses separate credentials to
+call the upstream model provider. The agent never sees the upstream
+API key or OAuth token. For Vertex AI, the gateway obtains OAuth
+tokens from Application Default Credentials and caches them until
+60 seconds before expiry.
+
 ## Capability Tokens
 
 Agents authenticate with Ed25519-signed capability tokens that encode:

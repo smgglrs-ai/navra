@@ -10,6 +10,66 @@ use crate::ui_events::UiBroadcaster;
 mod ui_assets_gen;
 use ui_assets_gen::UI_DIST_AVAILABLE;
 
+/// Cached Google OAuth token from Application Default Credentials.
+/// Refreshes automatically when the token is within 60s of expiry.
+struct GcpTokenCache {
+    client_id: String,
+    client_secret: String,
+    refresh_token: String,
+    state: tokio::sync::Mutex<(String, std::time::Instant)>,
+}
+
+impl GcpTokenCache {
+    fn from_adc() -> Option<Arc<Self>> {
+        let path = dirs::config_dir()?.join("gcloud/application_default_credentials.json");
+        let data = std::fs::read_to_string(path).ok()?;
+        let json: serde_json::Value = serde_json::from_str(&data).ok()?;
+        Some(Arc::new(Self {
+            client_id: json["client_id"].as_str()?.to_string(),
+            client_secret: json["client_secret"].as_str()?.to_string(),
+            refresh_token: json["refresh_token"].as_str()?.to_string(),
+            state: tokio::sync::Mutex::new((String::new(), std::time::Instant::now())),
+        }))
+    }
+
+    async fn token(&self) -> Result<String, String> {
+        let mut state = self.state.lock().await;
+        if !state.0.is_empty() && state.1 > std::time::Instant::now() {
+            return Ok(state.0.clone());
+        }
+        let client = reqwest::Client::new();
+        let form_body = format!(
+            "client_id={}&client_secret={}&refresh_token={}&grant_type=refresh_token",
+            urlencoding::encode(&self.client_id),
+            urlencoding::encode(&self.client_secret),
+            urlencoding::encode(&self.refresh_token),
+        );
+        let resp = client
+            .post("https://oauth2.googleapis.com/token")
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(form_body)
+            .send()
+            .await
+            .map_err(|e| format!("OAuth token refresh failed: {e}"))?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("OAuth token parse failed: {e}"))?;
+        let token = json["access_token"]
+            .as_str()
+            .ok_or_else(|| {
+                let err = json["error_description"].as_str().unwrap_or("unknown error");
+                format!("OAuth token refresh error: {err}")
+            })?
+            .to_string();
+        let expires_in = json["expires_in"].as_u64().unwrap_or(3600);
+        let expiry = std::time::Instant::now()
+            + std::time::Duration::from_secs(expires_in.saturating_sub(60));
+        *state = (token.clone(), expiry);
+        Ok(token)
+    }
+}
+
 /// Axum middleware that authenticates requests against the MCP server's
 /// authenticator. Applied as a route layer on all `/api/*` routes.
 async fn auth_middleware(
@@ -647,11 +707,13 @@ pub(crate) fn attach_ui_routes(
                 let anthropic_server = Arc::clone(server);
                 let anthropic_model_entries = cfg.models.clone();
                 let anthropic_forge = ui_forge.clone();
+                let gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
                 axum::routing::post(
                     move |headers: axum::http::HeaderMap, body: axum::Json<serde_json::Value>| {
                         let model_entries = anthropic_model_entries.clone();
                         let forge = anthropic_forge.clone();
                         let srv = anthropic_server.clone();
+                        let gcp = gcp_tokens.clone();
                         async move {
                             let start = std::time::Instant::now();
 
@@ -727,8 +789,10 @@ pub(crate) fn attach_ui_routes(
                                         }
                                     }
                                 }
-                                // Filter system prompt (string or array of text blocks)
-                                if let Some(text) = proxy_body["system"].as_str().map(String::from) {
+                                // Filter system prompt (string or array of text blocks).
+                                // Use .get() to avoid inserting null for missing keys —
+                                // Vertex rejects "system": null.
+                                if let Some(text) = proxy_body.get("system").and_then(|v| v.as_str()).map(String::from) {
                                     match pipeline.process_inbound(&text, &filter_ctx).await {
                                         Ok(filtered) => {
                                             proxy_body["system"] = serde_json::Value::String(filtered);
@@ -740,8 +804,8 @@ pub(crate) fn attach_ui_routes(
                                             })).into_response();
                                         }
                                     }
-                                }
-                                if let Some(blocks) = proxy_body["system"].as_array_mut() {
+                                } else if proxy_body.get("system").and_then(|v| v.as_array()).is_some() {
+                                    let blocks = proxy_body["system"].as_array_mut().unwrap();
                                     for block in blocks.iter_mut() {
                                         if block["type"].as_str() == Some("text") {
                                             if let Some(text) = block["text"].as_str().map(String::from) {
@@ -768,8 +832,8 @@ pub(crate) fn attach_ui_routes(
                                 .and_then(|v| v.to_str().ok())
                                 .map(String::from)
                                 .or_else(|| {
-                                    proxy_body["system"]
-                                        .as_str()
+                                    proxy_body.get("system")
+                                        .and_then(|v| v.as_str())
                                         .and_then(|s| s.strip_prefix("persona:"))
                                         .map(|p| p.trim().to_string())
                                 });
@@ -798,19 +862,26 @@ pub(crate) fn attach_ui_routes(
                                 }
                             }
 
-                            // Resolve upstream URL and auth
+                            // Resolve upstream URL and auth.
+                            // For Vertex AI, base_url is the project endpoint prefix and
+                            // we construct the full rawPredict/streamRawPredict URL from
+                            // the model name in the request body — matching the Anthropic
+                            // Vertex SDK's URL construction.
                             let model_entry = agent
                                 .as_ref()
                                 .and_then(|a| a.model.as_ref())
                                 .and_then(|name| model_entries.get(name));
 
                             let is_vertex;
+                            let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
                             let upstream_url = if let Some(entry) = model_entry
                                 && let Some(ref base) = entry.base_url
                             {
                                 is_vertex = base.contains("googleapis.com");
                                 if is_vertex {
-                                    base.clone()
+                                    let base = base.trim_end_matches('/');
+                                    let specifier = if is_streaming { "streamRawPredict" } else { "rawPredict" };
+                                    format!("{base}/{model_name}:{specifier}")
                                 } else {
                                     format!("{base}/v1/messages")
                                 }
@@ -819,6 +890,15 @@ pub(crate) fn attach_ui_routes(
                                 "https://api.anthropic.com/v1/messages".to_string()
                             };
 
+                            // Vertex AI body adjustments: model goes in URL, version in body
+                            if is_vertex {
+                                proxy_body.as_object_mut().map(|o| o.remove("model"));
+                                if let Some(obj) = proxy_body.as_object_mut() {
+                                    obj.entry("anthropic_version")
+                                        .or_insert(serde_json::json!("vertex-2023-10-16"));
+                                }
+                            }
+
                             // Build upstream request with auth headers
                             let client = reqwest::Client::builder()
                                 .timeout(std::time::Duration::from_secs(600))
@@ -826,7 +906,10 @@ pub(crate) fn attach_ui_routes(
                                 .unwrap_or_else(|_| reqwest::Client::new());
                             let mut req = client.post(&upstream_url).json(&proxy_body);
 
-                            // Auth: model config key wins, then pass through client headers
+                            // Upstream auth. The client's x-api-key contains the navra
+                            // token — never forward it upstream. Model config api_key
+                            // is used when set; for Vertex without a configured key,
+                            // shell out to gcloud for a fresh OAuth token.
                             if let Some(entry) = model_entry
                                 && let Some(ref key) = entry.api_key
                             {
@@ -835,10 +918,27 @@ pub(crate) fn attach_ui_routes(
                                 } else {
                                     req = req.header("x-api-key", key);
                                 }
-                            } else if let Some(val) = headers.get("x-api-key") {
-                                req = req.header("x-api-key", val);
-                            } else if let Some(val) = headers.get("Authorization") {
-                                req = req.header("Authorization", val);
+                            } else if is_vertex {
+                                let Some(ref cache) = gcp else {
+                                    return axum::Json(serde_json::json!({
+                                        "type": "error",
+                                        "error": {"type": "authentication_error", "message": "No Vertex AI credentials: set api_key in model config or run gcloud auth application-default login"}
+                                    })).into_response();
+                                };
+                                match cache.token().await {
+                                    Ok(t) => {
+                                        req = req.header("Authorization", format!("Bearer {t}"));
+                                    }
+                                    Err(e) => {
+                                        return axum::Json(serde_json::json!({
+                                            "type": "error",
+                                            "error": {"type": "authentication_error", "message": e}
+                                        })).into_response();
+                                    }
+                                }
+                            } else {
+                                // Direct Anthropic: use api_key from model config if set,
+                                // otherwise the endpoint is unauthenticated (will fail upstream)
                             }
 
                             // Forward anthropic-version from client (or use default)
@@ -847,8 +947,6 @@ pub(crate) fn attach_ui_routes(
                             } else {
                                 req = req.header("anthropic-version", "2023-06-01");
                             }
-
-                            let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
                             let resp = match req.send().await {
                                 Ok(r) => r,
