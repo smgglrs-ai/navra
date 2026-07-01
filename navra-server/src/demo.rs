@@ -690,8 +690,13 @@ safety = "standard"
                 .unwrap_or_else(|_| "my-project".to_string());
             let region =
                 std::env::var("CLOUD_ML_REGION").unwrap_or_else(|_| "us-east5".to_string());
+            let host = if region == "global" {
+                "aiplatform.googleapis.com".to_string()
+            } else {
+                format!("{region}-aiplatform.googleapis.com")
+            };
             let base_url = format!(
-                "https://{region}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
+                "https://{host}/v1/projects/{project_id}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
             );
             // Get Google OAuth token via gcloud
             let token_output = std::process::Command::new("gcloud")
