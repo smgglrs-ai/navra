@@ -34,6 +34,7 @@ All notable changes to navra are documented here.
 - Rewrite model proxy section with step-by-step setup
 - Add learn chapter on the model proxy security layer
 - Show both global and regional Vertex AI endpoints
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -41,6 +42,8 @@ All notable changes to navra are documented here.
 - Release profile for embedded builds, wire context_size
 - Per-instance socket paths, block test-crate navra-server
 - Close IFC bypass for inline injection ≤3 deps (NAVRA-169)
+- Simplify Dockerfile.agent and add GHA build cache
+- Include benchmarks/ in container build context
 
 ### Maintenance
 
