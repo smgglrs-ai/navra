@@ -1,6 +1,7 @@
 //! Typed agent action model for classification, risk assessment, and audit.
 
 use serde_json::Value;
+use vstd::prelude::*;
 
 /// Typed agent action — classifies what a tool call does.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -387,6 +388,34 @@ mod tests {
         assert!(matches!(action, AgentAction::FileRead { ref path } if path.is_empty()));
     }
 }
+
+verus! {
+
+// Action types: 0-2=read-only(None/Low), 3-5=write(Medium), 6-7=destructive(High), 8-10=critical
+// RiskLevel: None=0, Low=1, Medium=2, High=3, Critical=4
+spec fn spec_risk_level(action_type: nat) -> nat {
+    if action_type <= 2 { 0 }       // FileRead, GitStatus, GitDiff → None
+    else if action_type <= 5 { 1 }  // FileSearch, RagSearch, MemoryQuery → Low
+    else if action_type <= 8 { 2 }  // FileWrite, FileEdit, MemoryStore, McpToolCall, Unknown → Medium
+    else if action_type <= 10 { 3 } // FileDelete, GitCommit → High
+    else { 4 }                       // TeamCreate, TeamMessage, FlowStart → Critical
+}
+
+proof fn read_only_implies_low_risk(action_type: nat)
+    requires action_type <= 5,
+    ensures spec_risk_level(action_type) <= 1,
+{}
+
+proof fn write_actions_at_least_medium_risk(action_type: nat)
+    requires action_type >= 6,
+    ensures spec_risk_level(action_type) >= 2,
+{}
+
+proof fn risk_level_total(action_type: nat)
+    ensures spec_risk_level(action_type) <= 4,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

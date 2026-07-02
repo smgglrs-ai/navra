@@ -2,6 +2,7 @@ use navra_protocol::permissions::{PermissionGrantEntry, PermissionScope};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use vstd::prelude::*;
 
 /// A dynamic permission grant for a session.
 #[derive(Debug, Clone)]
@@ -370,3 +371,43 @@ mod tests {
         assert!(!store.check_tool("s1", "tool_a"));
     }
 }
+
+verus! {
+
+// Dynamic grant expiry: gc retains grants where expires_at > now or None
+spec fn spec_gc_retains(expires_at_set: bool, expires_at: nat, now: nat) -> bool {
+    !expires_at_set || expires_at > now
+}
+
+proof fn no_expiry_never_gc()
+    ensures spec_gc_retains(false, 0, 999999),
+{}
+
+proof fn fresh_grant_retained(expires_at: nat, now: nat)
+    requires expires_at > now,
+    ensures spec_gc_retains(true, expires_at, now),
+{}
+
+proof fn expired_grant_removed(expires_at: nat, now: nat)
+    requires expires_at <= now,
+    ensures !spec_gc_retains(true, expires_at, now),
+{}
+
+// Path matching: exact or prefix with "/"
+spec fn spec_path_matches(granted_len: nat, requested_len: nat, is_exact: bool, is_child: bool) -> bool {
+    is_exact || is_child
+}
+
+proof fn exact_path_matches()
+    ensures spec_path_matches(10, 10, true, false),
+{}
+
+proof fn child_path_matches()
+    ensures spec_path_matches(10, 15, false, true),
+{}
+
+proof fn unrelated_path_denied()
+    ensures !spec_path_matches(10, 12, false, false),
+{}
+
+} // verus!

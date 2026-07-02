@@ -4,6 +4,7 @@ use crate::definition::BackEdgeDefinition;
 use crate::error::FlowError;
 use crate::task::TaskResult;
 use std::collections::HashMap;
+use vstd::prelude::*;
 
 /// Condition for activating a back-edge.
 #[derive(Debug, Clone)]
@@ -300,6 +301,23 @@ mod tests {
         ));
     }
 }
+
+verus! {
+
+spec fn spec_should_activate(condition_true: bool, count: nat, max_iter: nat) -> bool {
+    condition_true && count < max_iter
+}
+
+proof fn should_activate_respects_max_iterations(count: nat, max_iter: nat)
+    requires count >= max_iter,
+    ensures !spec_should_activate(true, count, max_iter),
+{}
+
+proof fn always_condition_always_true()
+    ensures spec_should_activate(true, 0, 1),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

@@ -6,6 +6,7 @@
 //! - Irreversible (High/Critical risk) → hard gate with explicit confirmation
 
 use serde::{Deserialize, Serialize};
+use vstd::prelude::*;
 
 /// Risk tier for an action, determined by the action's risk level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +146,49 @@ mod tests {
         assert_eq!(back.auto_approve_max, RiskLevelThreshold::Low);
     }
 }
+
+verus! {
+
+// RiskLevelThreshold: None=0, Low=1, Medium=2, High=3, Critical=4
+// RiskTier: AutoApprove=0, RequireApproval=1, HardGate=2
+
+pub open spec fn risk_rank(r: nat) -> nat { r }
+
+pub open spec fn tier_rank(t: nat) -> nat { t }
+
+pub open spec fn spec_classify(risk: nat, auto_max: nat, approval_max: nat) -> nat {
+    if risk <= auto_max { 0 }       // AutoApprove
+    else if risk <= approval_max { 1 } // RequireApproval
+    else { 2 }                         // HardGate
+}
+
+proof fn rank_is_total_order(a: nat, b: nat, c: nat)
+    requires a <= 4, b <= 4, c <= 4, a <= b, b <= c,
+    ensures a <= c,
+{}
+
+proof fn classify_monotonic(r1: nat, r2: nat, auto_max: nat, approval_max: nat)
+    requires
+        r1 <= 4, r2 <= 4, auto_max <= 4, approval_max <= 4,
+        auto_max <= approval_max,
+        r1 <= r2,
+    ensures
+        spec_classify(r1, auto_max, approval_max) <= spec_classify(r2, auto_max, approval_max),
+{}
+
+proof fn valid_config_auto_below_approval(auto_max: nat, approval_max: nat)
+    requires auto_max <= 4, approval_max <= 4, auto_max <= approval_max,
+    ensures
+        forall|r: nat| r <= 4 ==>
+            spec_classify(r, auto_max, approval_max) == 0 ==> r <= auto_max,
+{}
+
+proof fn classify_safe_even_if_invalid(risk: nat, auto_max: nat, approval_max: nat)
+    requires risk <= 4, auto_max <= 4, approval_max <= 4,
+    ensures spec_classify(risk, auto_max, approval_max) <= 2,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

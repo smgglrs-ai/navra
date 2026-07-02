@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use vstd::prelude::*;
 
 /// Token quota configuration for an agent.
 #[derive(Debug, Clone)]
@@ -201,6 +202,22 @@ mod tests {
         assert_eq!(tracker.check("agent-2"), QuotaStatus::WithinBudget);
     }
 }
+
+verus! {
+
+spec fn spec_check_quota(used: nat, max: nat) -> (bool, nat) {
+    if used <= max { (true, 0) } else { (false, (used - max) as nat) }
+}
+
+proof fn quota_check_correct(used: nat, max: nat)
+    ensures ({
+        let (within, over) = spec_check_quota(used, max);
+        (used <= max ==> within && over == 0)
+        && (used > max ==> !within && over == used - max)
+    }),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

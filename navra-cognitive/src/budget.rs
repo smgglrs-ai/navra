@@ -9,6 +9,8 @@
 //! for English text). This is deliberately simple — exact tokenization
 //! would require a model-specific tokenizer dependency.
 
+use vstd::prelude::*;
+
 /// Approximate tokens from character count.
 /// English averages ~4 chars/token for most LLM tokenizers.
 /// Conservative: slightly overestimates to avoid overflow.
@@ -369,6 +371,26 @@ mod tests {
         );
     }
 }
+
+verus! {
+
+// available() = total.saturating_sub(sys).saturating_sub(reserve)
+spec fn spec_available(total: nat, sys: nat, reserve: nat) -> nat {
+    let after_sys: nat = if total > sys { (total - sys) as nat } else { 0 };
+    if after_sys > reserve { (after_sys - reserve) as nat } else { 0 }
+}
+
+proof fn available_never_underflows(total: nat, sys: nat, reserve: nat)
+    ensures spec_available(total, sys, reserve) <= total,
+{}
+
+// output_reserve = total / 5
+proof fn default_budget_reserve_positive(total: nat)
+    requires total >= 5,
+    ensures total / 5 > 0 && total / 5 <= total,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

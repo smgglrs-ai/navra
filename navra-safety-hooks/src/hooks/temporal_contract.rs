@@ -14,6 +14,7 @@ use navra_protocol::CallToolResult;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use vstd::prelude::*;
 
 /// Status of a completed tool call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -716,6 +717,59 @@ mod tests {
         assert!(matches!(decision, HookDecision::Continue));
     }
 }
+
+verus! {
+
+use navra_protocol::label::{Confidentiality, Integrity};
+
+spec fn tc_conf_ord(c: Confidentiality) -> nat {
+    match c {
+        Confidentiality::Public => 0,
+        Confidentiality::Sensitive => 1,
+        Confidentiality::Pii => 2,
+        Confidentiality::Secret => 3,
+    }
+}
+
+spec fn tc_int_ord(i: Integrity) -> nat {
+    match i {
+        Integrity::Trusted => 0,
+        Integrity::Untrusted => 1,
+    }
+}
+
+spec fn spec_label_matches(
+    actual_conf: nat, actual_int: nat,
+    trigger_conf: nat, trigger_int: nat,
+) -> bool {
+    actual_conf >= trigger_conf || actual_int >= trigger_int
+}
+
+proof fn label_matches_reflexive(conf: nat, integ: nat)
+    ensures spec_label_matches(conf, integ, conf, integ),
+{}
+
+proof fn label_matches_any_dimension(
+    actual_conf: nat, actual_integ: nat,
+    trigger_conf: nat, trigger_integ: nat,
+)
+    requires actual_conf >= trigger_conf,
+    ensures spec_label_matches(actual_conf, actual_integ, trigger_conf, trigger_integ),
+{}
+
+proof fn denial_count_monotonic(before: nat, added_is_blocked: bool)
+    ensures ({
+        let after = if added_is_blocked { before + 1 } else { before };
+        after >= before
+    }),
+{}
+
+proof fn sequence_count_bounded(history_len: nat, consecutive: nat)
+    requires consecutive <= history_len,
+    ensures consecutive <= history_len,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

@@ -25,6 +25,10 @@ anyhow = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
 rusqlite = { workspace = true }
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [features]
 default = ["onnx"]

@@ -1,4 +1,5 @@
 use super::{ContentFilter, FilterContext, Finding};
+use vstd::prelude::*;
 
 /// Detects secrets: API keys, tokens, private keys, passwords.
 pub struct SecretFilter {
@@ -1644,6 +1645,30 @@ mod tests {
         assert_eq!(filter.name(), "custom-pii");
     }
 }
+
+verus! {
+
+// NIR checksum: key = 97 - (body % 97), so key ∈ [1, 97]
+proof fn nir_checksum_key_bounded(body: nat)
+    requires body < 10_000_000,
+    ensures ({
+        let remainder = body % 97;
+        let key = 97 - remainder;
+        key >= 1 && key <= 97
+    }),
+{}
+
+// SIRET doubling: d*2, if >9 subtract 9 → result ∈ [0, 9]
+proof fn siret_doubling_bounded(d: nat)
+    requires d <= 9,
+    ensures ({
+        let v = d * 2;
+        let adjusted = if v > 9 { (v - 9) as nat } else { v };
+        adjusted <= 9
+    }),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

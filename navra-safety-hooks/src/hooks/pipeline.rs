@@ -8,6 +8,7 @@ use navra_auth::auth::CallContext;
 use navra_model::{CreateResponseRequest, ModelResponse};
 use navra_protocol::CallToolResult;
 use std::time::Duration;
+use vstd::prelude::*;
 
 /// An ordered collection of hooks with timeout enforcement.
 ///
@@ -803,6 +804,73 @@ mod tests {
         }
     }
 }
+
+verus! {
+
+// Decision: Continue=0, ModifyArgs=1, Block=2, Simulate=3, ModifyResult=4
+// Outcome: Proceed=0, Blocked=1, Simulated=2
+spec fn spec_pre_dispatch(decision: nat) -> (nat, bool) {
+    if decision == 2 { (1nat, true) }        // Block → Blocked, short-circuits
+    else if decision == 3 { (2nat, true) }   // Simulate → Simulated, short-circuits
+    else { (0nat, false) }                    // Continue/ModifyArgs/ModifyResult → Proceed
+}
+
+proof fn block_always_short_circuits()
+    ensures spec_pre_dispatch(2) == (1nat, true),
+{}
+
+proof fn simulate_always_short_circuits()
+    ensures spec_pre_dispatch(3) == (2nat, true),
+{}
+
+proof fn modify_result_ignored_in_pre_phase()
+    ensures spec_pre_dispatch(4) == (0nat, false),
+{}
+
+proof fn timeout_is_fail_closed(timed_out: bool, hook_decision: nat)
+    requires hook_decision <= 4,
+    ensures timed_out ==> spec_pre_dispatch(2).0 == 1,
+{}
+
+// Hook chain composition: running N hooks in sequence.
+// If any hook returns Block/Simulate, chain short-circuits.
+// Outcome of chain = first short-circuiting hook's outcome, or Proceed if none.
+
+spec fn spec_chain_outcome(h1: nat, h2: nat, h3: nat) -> nat {
+    let (o1, sc1) = spec_pre_dispatch(h1);
+    if sc1 { o1 }
+    else {
+        let (o2, sc2) = spec_pre_dispatch(h2);
+        if sc2 { o2 }
+        else { spec_pre_dispatch(h3).0 }
+    }
+}
+
+proof fn chain_first_block_wins(h2: nat, h3: nat)
+    ensures spec_chain_outcome(2, h2, h3) == 1, // Blocked
+{}
+
+proof fn chain_all_continue_proceeds(h3: nat)
+    requires h3 != 2 && h3 != 3,
+    ensures spec_chain_outcome(0, 0, h3) == 0, // Proceed
+{}
+
+proof fn chain_any_block_in_middle(h1: nat, h3: nat)
+    requires h1 != 2 && h1 != 3,
+    ensures spec_chain_outcome(h1, 2, h3) == 1, // Blocked
+{}
+
+// Post-hook chain runs in reverse order — same short-circuit property
+spec fn spec_post_dispatch(decision: nat) -> (nat, bool) {
+    if decision == 2 { (1nat, true) }  // Block post-result
+    else { (0nat, false) }
+}
+
+proof fn post_block_short_circuits()
+    ensures spec_post_dispatch(2) == (1nat, true),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

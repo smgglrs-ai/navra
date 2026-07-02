@@ -8,6 +8,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use vstd::prelude::*;
 
 // ========================================================================
 // Re-exports from rmcp
@@ -314,6 +315,29 @@ mod tests {
         assert_eq!(PROTOCOL_VERSION_2026, "2026-07-28");
     }
 }
+
+verus! {
+
+spec fn spec_paginate(item_count: nat, offset: nat, page_size: nat) -> (nat, bool) {
+    if offset >= item_count {
+        (0, false)
+    } else {
+        let end: nat = if offset + page_size < item_count { offset + page_size } else { item_count };
+        ((end - offset) as nat, end < item_count)
+    }
+}
+
+proof fn paginate_offset_past_end_empty(item_count: nat, offset: nat, page_size: nat)
+    requires offset >= item_count, page_size >= 1,
+    ensures spec_paginate(item_count, offset, page_size) == (0nat, false),
+{}
+
+proof fn paginate_page_size_bounded(item_count: nat, offset: nat, page_size: nat)
+    requires page_size >= 1,
+    ensures spec_paginate(item_count, offset, page_size).0 <= page_size,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

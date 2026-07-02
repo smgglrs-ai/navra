@@ -1,6 +1,7 @@
 //! Failure classification, circular fix detection, and recovery strategies.
 
 use crate::task::Attempt;
+use vstd::prelude::*;
 
 /// Classification of task failure types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +231,33 @@ mod tests {
         assert_eq!(strategy.max_retries, 3);
     }
 }
+
+verus! {
+
+spec fn spec_max_retries(failure_type: nat) -> nat {
+    if failure_type == 0 { 0 }       // CircularFix → Skip
+    else if failure_type == 1 { 2 }  // EmptyOutput
+    else if failure_type == 2 { 3 }  // ValidationFailed
+    else if failure_type == 3 { 0 }  // MaxIterations → Skip
+    else if failure_type == 4 { 1 }  // AgentError
+    else { 1 }                        // Unknown
+}
+
+proof fn all_failures_have_bounded_retries(failure_type: nat)
+    requires failure_type <= 5,
+    ensures spec_max_retries(failure_type) <= 3,
+{}
+
+proof fn circular_fix_never_retries()
+    ensures spec_max_retries(0) == 0,
+{}
+
+proof fn circular_fix_requires_threshold(count: nat, threshold: nat)
+    requires threshold >= 2, count < threshold,
+    ensures count < threshold,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

@@ -41,6 +41,10 @@ subtle = "2"
 zeroize = "1"
 hex = "0.4"
 oauth2-reqwest = "0.1.0-alpha.3"
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [features]
 default = ["desktop"]

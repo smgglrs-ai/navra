@@ -46,6 +46,7 @@ pub use navra_responses::{
 use futures_util::stream::Stream;
 use std::future::Future;
 use std::pin::Pin;
+use vstd::prelude::*;
 
 /// Error type for model operations.
 #[derive(Debug, thiserror::Error)]
@@ -488,6 +489,20 @@ fn rand_id() -> u64 {
     hasher.write_u8(0);
     hasher.finish()
 }
+
+verus! {
+
+// Exponential backoff: delay = 1 << attempt, bounded for attempt < 3
+proof fn backoff_bounded(attempt: u64)
+    by(bit_vector)
+    requires attempt < 3,
+    ensures ({
+        let delay: u64 = 1u64 << attempt;
+        delay >= 1 && delay <= 4
+    }),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

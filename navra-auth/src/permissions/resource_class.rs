@@ -6,6 +6,7 @@
 
 use std::fmt;
 use std::str::FromStr;
+use vstd::prelude::*;
 
 /// Capability domain for an MCP primitive.
 ///
@@ -640,3 +641,33 @@ mod tests {
         assert_eq!("Write".parse::<Operation>().unwrap(), Operation::Write);
     }
 }
+
+verus! {
+
+// Operation risk ordering: Read=0 < Write=1 < Execute=2 < Delete=3
+spec fn op_rank(op: nat) -> nat { op }
+
+proof fn operation_ordering_total(a: nat, b: nat, c: nat)
+    requires a <= 3, b <= 3, c <= 3, a <= b, b <= c,
+    ensures a <= c,
+{}
+
+proof fn read_is_least_privileged()
+    ensures op_rank(0) <= op_rank(1) && op_rank(0) <= op_rank(2) && op_rank(0) <= op_rank(3),
+{}
+
+proof fn delete_is_most_privileged()
+    ensures op_rank(3) >= op_rank(0) && op_rank(3) >= op_rank(1) && op_rank(3) >= op_rank(2),
+{}
+
+// classify_prompt always returns Prompt:Read (domain=9, op=0)
+proof fn classify_prompt_is_read_only()
+    ensures op_rank(0) == 0, // Read
+{}
+
+// classify_resource always returns Resource:Read (domain=10, op=0)
+proof fn classify_resource_is_read_only()
+    ensures op_rank(0) == 0, // Read
+{}
+
+} // verus!

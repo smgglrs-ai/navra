@@ -6,6 +6,7 @@
 
 use super::resource_class::{Domain, Operation, ResourceClass};
 use std::collections::{HashMap, HashSet};
+use vstd::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DomainPolicy {
@@ -150,3 +151,51 @@ mod tests {
         assert_eq!(r.check(&class("filesystem:read")), DomainPolicy::Deny);
     }
 }
+
+verus! {
+
+// Domain rules evaluation model:
+// has_domain_rule: explicit domain entry exists
+// op_in_domain: operation is in that domain's allowed set
+// has_wildcard: Domain::Unknown entry exists
+// op_in_wildcard: operation is in wildcard's allowed set
+// Result: Allow=0, Deny=1
+
+spec fn spec_domain_check(
+    has_domain_rule: bool, op_in_domain: bool,
+    has_wildcard: bool, op_in_wildcard: bool,
+) -> nat {
+    if has_domain_rule {
+        if op_in_domain { 0 } else { 1 } // Allow or Deny
+    } else if has_wildcard {
+        if op_in_wildcard { 0 } else { 1 }
+    } else {
+        1 // fail-closed: Deny
+    }
+}
+
+proof fn explicit_domain_takes_precedence(
+    op_in_domain: bool, has_wildcard: bool, op_in_wildcard: bool,
+)
+    ensures
+        spec_domain_check(true, op_in_domain, has_wildcard, op_in_wildcard)
+            == if op_in_domain { 0nat } else { 1nat },
+{}
+
+proof fn fail_closed_no_rules()
+    ensures spec_domain_check(false, false, false, false) == 1,
+{}
+
+proof fn wildcard_only_when_no_explicit(
+    op_in_wildcard: bool,
+)
+    ensures
+        spec_domain_check(false, false, true, op_in_wildcard)
+            == if op_in_wildcard { 0nat } else { 1nat },
+{}
+
+proof fn empty_ops_denies_all(has_wildcard: bool, op_in_wildcard: bool)
+    ensures spec_domain_check(true, false, has_wildcard, op_in_wildcard) == 1,
+{}
+
+} // verus!

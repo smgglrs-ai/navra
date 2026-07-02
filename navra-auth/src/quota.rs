@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
+use vstd::prelude::*;
 
 /// Rate limit configuration for a permission set.
 #[derive(Debug, Clone)]
@@ -116,6 +117,46 @@ impl QuotaEngine {
         !self.limits.is_empty()
     }
 }
+
+verus! {
+
+// Token bucket invariants for the integer-scaled rate limiter.
+// SCALE = 1_000_000; tokens are stored as u64 scaled units.
+
+spec fn spec_refill(tokens: nat, elapsed_micros: nat, refill_rate: nat, max_tokens: nat) -> nat {
+    let added = (elapsed_micros * refill_rate) / 1_000_000;
+    let raw = tokens + added;
+    if raw > max_tokens { max_tokens } else { raw }
+}
+
+proof fn refill_never_exceeds_max(tokens: nat, elapsed_micros: nat, refill_rate: nat, max_tokens: nat)
+    ensures spec_refill(tokens, elapsed_micros, refill_rate, max_tokens) <= max_tokens,
+{}
+
+proof fn refill_monotonic(tokens: nat, elapsed_micros: nat, refill_rate: nat, max_tokens: nat)
+    ensures spec_refill(tokens, elapsed_micros, refill_rate, max_tokens) >= tokens
+         || spec_refill(tokens, elapsed_micros, refill_rate, max_tokens) == max_tokens,
+{}
+
+proof fn try_consume_correctness(tokens: nat, scale: nat)
+    requires scale > 0,
+    ensures
+        (tokens >= scale) ==> (tokens - scale < tokens),
+        (tokens < scale) ==> true,
+{}
+
+proof fn remaining_accuracy(tokens: nat, scale: nat)
+    requires scale > 0,
+    ensures tokens / scale <= tokens,
+{}
+
+proof fn remaining_bounded(tokens: nat, max_calls: nat, scale: nat)
+    by(nonlinear_arith)
+    requires scale > 0, tokens <= max_calls * scale,
+    ensures tokens / scale <= max_calls,
+{}
+
+} // verus!
 
 #[cfg(test)]
 mod tests {

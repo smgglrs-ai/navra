@@ -11,6 +11,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
+use vstd::prelude::*;
 
 use crate::identity::CapSigner;
 
@@ -1551,6 +1552,74 @@ mod tests {
         assert!(err.to_string().contains("sandbox escalation"));
     }
 }
+
+verus! {
+
+pub open spec fn spec_check_attenuation(
+    parent_ring: nat, child_ring: nat,
+    parent_exp: nat, child_exp: nat,
+) -> bool {
+    child_ring >= parent_ring && child_exp <= parent_exp
+}
+
+proof fn ring_escalation_rejected(parent_ring: nat, child_ring: nat)
+    requires child_ring < parent_ring,
+    ensures !spec_check_attenuation(parent_ring, child_ring, 1000, 1000),
+{}
+
+proof fn valid_ring_accepted(parent_ring: nat, child_ring: nat)
+    requires child_ring >= parent_ring,
+    ensures spec_check_attenuation(parent_ring, child_ring, 1000, 1000),
+{}
+
+proof fn expiry_extension_rejected(parent_exp: nat, child_exp: nat)
+    requires child_exp > parent_exp,
+    ensures !spec_check_attenuation(0, 0, parent_exp, child_exp),
+{}
+
+proof fn valid_expiry_accepted(parent_exp: nat, child_exp: nat)
+    requires child_exp <= parent_exp,
+    ensures spec_check_attenuation(0, 0, parent_exp, child_exp),
+{}
+
+proof fn transitive_attenuation(
+    r0: nat, r1: nat, r2: nat,
+    e0: nat, e1: nat, e2: nat,
+)
+    requires
+        spec_check_attenuation(r0, r1, e0, e1),
+        spec_check_attenuation(r1, r2, e1, e2),
+    ensures
+        spec_check_attenuation(r0, r2, e0, e2),
+{}
+
+pub open spec fn spec_check_obo(
+    parent_has: bool, child_has: bool, matches: bool,
+) -> bool {
+    if !parent_has && child_has { false }
+    else if parent_has && child_has && !matches { false }
+    else { true }
+}
+
+proof fn obo_escalation_rejected(parent_has: bool, child_has: bool, matches: bool)
+    ensures
+        (!parent_has && child_has) ==> !spec_check_obo(parent_has, child_has, matches),
+        (parent_has && child_has && !matches) ==> !spec_check_obo(parent_has, child_has, matches),
+        (!child_has || (parent_has && child_has && matches) || (!parent_has && !child_has))
+            ==> spec_check_obo(parent_has, child_has, matches),
+{}
+
+pub open spec fn spec_check_sandbox(parent_has: bool, child_has: bool) -> bool {
+    !(parent_has && !child_has)
+}
+
+proof fn sandbox_removal_rejected(parent_has: bool, child_has: bool)
+    ensures
+        (parent_has && !child_has) ==> !spec_check_sandbox(parent_has, child_has),
+        !(parent_has && !child_has) ==> spec_check_sandbox(parent_has, child_has),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

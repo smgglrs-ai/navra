@@ -28,6 +28,10 @@ dirs = { version = "6", optional = true }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 ndarray = { version = "0.17", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"], optional = true }
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
