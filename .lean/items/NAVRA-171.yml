@@ -1,0 +1,51 @@
+id: NAVRA-171
+title: "Self-Harness out-of-band flow improvement via blackbox traces"
+status: planned
+priority: high
+effort: 5-8d
+depends_on: []
+feeds: []
+source: tech-watch-2026-07-01
+description: |
+  Implement Self-Harness pattern for gateway-driven self-improvement:
+  mine weaknesses from blackbox execution traces, propose flow/policy
+  edits, validate against historical traces — all out-of-band.
+
+  Self-Harness (arxiv 2606.09498, verified 3-0) achieves +21.4pp on
+  Terminal-Bench-2.0 through: weakness mining → harness proposal →
+  regression-tested validation. navra maps this to:
+
+  1. Weakness mining: event_log.rs + causal_graph.rs analyze execution
+     traces for failure patterns (tool errors, safety violations,
+     flow retries, timeout chains)
+  2. Harness proposal: evolution.rs generates improved flow DAGs,
+     tool policies, or safety hook configurations
+  3. Regression validation: eval.rs runs proposed changes against
+     recorded traces before applying
+
+  Unique differentiator: no other Claw has the observability depth
+  to do gateway-driven self-improvement. The gateway sees everything
+  agents do — it's the ideal vantage point for weakness mining.
+
+  Caveat (verified): Self-Harness uses a stronger model as weakness
+  miner (teacher-student, not pure self-play). navra should use a
+  capable model for the mining step, applied out-of-band.
+
+  Also see SIA (arxiv 2605.27276, github.com/hexo-ai/sia, MIT) for
+  the interleaved scaffold improvement loop pattern.
+
+  Reference: arxiv.org/abs/2606.09498 (Self-Harness, June 2026)
+  Reference: arxiv.org/abs/2605.27276 (SIA, May 2026)
+acceptance:
+  - Weakness mining from event_log traces produces actionable findings
+  - Proposed flow edits validated against historical traces
+  - No regressions on existing passing traces
+  - Out-of-band process, agents unaware
+scope:
+  - navra-flow/src/event_log.rs
+  - navra-flow/src/causal_graph.rs
+  - navra-flow/src/eval.rs
+  - navra-cognitive/src/evolution.rs
+  - navra-flow/src/blackboard.rs
+verification:
+  quick: cargo test -p navra-flow -- eval

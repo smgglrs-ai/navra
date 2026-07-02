@@ -1,0 +1,40 @@
+id: NAVRA-173
+title: "Implement DNS-AID integration for agent discovery"
+status: planned
+priority: high
+effort: 3-5d
+depends_on: []
+feeds: []
+source: tech-watch-2026-07-01
+description: |
+  Implement DNS-AID (draft-mozleywilliams-dnsop-dnsaid-02) for
+  agent discovery using existing SVCB records.
+
+  Deep research (verified 3-0) confirms DNS-AID:
+  - Uses SVCB records (RFC 9460) with new SvcParamKeys:
+    cap, cap-sha256, well-known, bap, policy, realm
+  - Registers ALPN IDs for MCP and A2A protocols
+  - Creates NO new DNS record types
+  - Explicitly delegates trust to external systems:
+    "trust judgments MUST be made out of band by combining DNS-AID
+    records with reputation, attestation, or organizational policy"
+
+  This is a perfect integration point for navra: DNS-AID handles
+  discovery, navra handles trust (deny-wins ACLs, IFC taint tracking).
+  navra becomes the "organizational policy system" that DNS-AID
+  delegates to.
+
+  DNS-AID also references ANS (draft-narajala-courtney-ansv2) as
+  complementary for cross-domain capability-based search.
+
+  Reference: datatracker.ietf.org/doc/draft-mozleywilliams-dnsop-dnsaid/
+acceptance:
+  - navra can resolve agent endpoints via DNS-AID SVCB lookups
+  - Discovered agents subject to existing deny-wins ACL policy
+  - MCP and A2A ALPN IDs recognized
+scope:
+  - navra-protocol/src/
+  - navra-mcp/src/
+  - navra-server/src/
+verification:
+  quick: cargo test -p navra-protocol

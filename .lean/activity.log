@@ -626,3 +626,8 @@
     - "NAVRA-168: done (agent upgrade diff)"
   remaining:
     - "NAVRA-162: daemon (scheduler, events) — deferred, needs full design"
+
+- timestamp: "2026-07-01T16:30:00Z"
+  actor: claude
+  action: tech-watch
+  summary: "38 sources via 4 deep-research workflows (427 agents, 18.7M tokens). 6 new items (NAVRA-170 through NAVRA-175): SelfCompact flow-driven compression, Self-Harness blackbox improvement, WIMSE/SPIFFE identity, DNS-AID, ARD discovery, actor-chain JWTs. 2 enriched (NAVRA-147, NAVRA-092). 7 ecosystem-positioning sections added. Key finding: IETF agent identity has zero DID awareness."

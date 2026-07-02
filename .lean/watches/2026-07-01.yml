@@ -1,0 +1,209 @@
+date: "2026-07-01"
+mode: reactive
+method: deep-research (4 parallel workflows, 427 agents, 18.7M tokens)
+sources:
+  - url: "https://datatracker.ietf.org/doc/draft-klrc-aiagent-auth/"
+    title: "AIMS — Agent Identity Management System (IETF)"
+    impact: HIGH
+    relationship: threatens
+
+  - url: "https://datatracker.ietf.org/doc/draft-ni-wimse-ai-agent-identity/"
+    title: "WIMSE AI Agent Identity (IETF)"
+    impact: HIGH
+    relationship: threatens
+
+  - url: "https://datatracker.ietf.org/doc/draft-mozleywilliams-dnsop-dnsaid/"
+    title: "DNS-AID — DNS for AI Discovery (IETF)"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"
+    title: "OpenAI Secure MCP Tunnel"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://agenticresourcediscovery.org/spec/"
+    title: "ARD v0.9 — Agentic Resource Discovery"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/"
+    title: "Uber Agent Identity Architecture"
+    impact: HIGH
+    relationship: validates
+
+  - url: "https://arxiv.org/abs/2606.23525"
+    title: "SelfCompact — context compression rubric"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://arxiv.org/abs/2606.09498"
+    title: "Self-Harness — agent self-improvement framework"
+    impact: HIGH
+    relationship: complements
+
+  - url: "https://www.linuxfoundation.org/press/linux-foundation-announces-intent-to-launch-agent-name-service-to-establish-trusted-identity-infrastructure-for-ai-agents"
+    title: "LF Agent Name Service (ANS)"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://github.com/harbor-framework"
+    title: "Harbor Framework (eval, not gateway)"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://www.anthropic.com/news/introducing-claude-tag"
+    title: "Claude Tag — Slack AI teammate"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://github.com/CopilotKit/OpenTag"
+    title: "OpenTag — open-source Claude Tag alternative"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine"
+    title: "llama.cpp vs vLLM (Red Hat)"
+    impact: LOW
+    relationship: irrelevant
+
+  - url: "https://www.infoworld.com/article/4183716/33-llm-metrics-to-watch-closely.html"
+    title: "33 LLM Metrics"
+    impact: MEDIUM
+    relationship: validates
+
+  - url: "https://towardsdatascience.com/vector-rag-isnt-enough-i-built-a-context-graph-layer-for-multi-agent-memory/"
+    title: "Context Graph for Multi-Agent Memory"
+    impact: MEDIUM
+    relationship: complements
+
+  - url: "https://www.freecodecamp.org/news/how-to-build-production-grade-ai-guardrails-for-enterprise-applications-a-practical-guide/"
+    title: "AI Guardrails Guide"
+    impact: LOW
+    relationship: validates
+
+  - url: "https://huggingface.co/blog/peft-beyond-lora"
+    title: "PEFT Beyond LoRA"
+    impact: LOW
+    relationship: enriches
+
+findings:
+  - source: "https://datatracker.ietf.org/doc/draft-klrc-aiagent-auth/"
+    title: "IETF AIMS mandates WIMSE/SPIFFE, zero DID awareness"
+    action: plan
+    item_id: "NAVRA-172"
+    detail: "navra needs WIMSE/SPIFFE alongside DID:key — standards track ignores DIDs entirely"
+
+  - source: "https://datatracker.ietf.org/doc/draft-mozleywilliams-dnsop-dnsaid/"
+    title: "DNS-AID delegates trust to external policy systems"
+    action: plan
+    item_id: "NAVRA-173"
+    detail: "Perfect integration point — navra is the policy system DNS-AID delegates to"
+
+  - source: "https://agenticresourcediscovery.org/spec/"
+    title: "ARD v0.9 ai-catalog.json discovery protocol"
+    action: plan
+    item_id: "NAVRA-174"
+    detail: "Pre-invocation discovery for MCP server registry"
+
+  - source: "https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/"
+    title: "Actor-chain JWT delegation tracking"
+    action: plan
+    item_id: "NAVRA-175"
+    detail: "Multi-agent delegation lineage via act_chain JWT claims"
+
+  - source: "https://arxiv.org/abs/2606.23525"
+    title: "SelfCompact flow-driven compression rubric"
+    action: plan
+    item_id: "NAVRA-170"
+    detail: "Gateway-enforced compression timing using flow execution state"
+
+  - source: "https://arxiv.org/abs/2606.09498"
+    title: "Self-Harness out-of-band flow improvement"
+    action: plan
+    item_id: "NAVRA-171"
+    detail: "Weakness mining from blackbox traces → harness proposal → regression validation"
+
+  - source: "https://www.uber.com/us/en/blog/solving-the-agent-identity-crisis/"
+    title: "Uber actor-chain enriches NAVRA-147"
+    action: enrich
+    item_id: "NAVRA-147"
+    detail: "Added Uber architecture, AIMS draft, and DID gap to notes"
+
+  - source: "https://arxiv.org/abs/2606.23525"
+    title: "SelfCompact enriches NAVRA-092"
+    action: enrich
+    item_id: "NAVRA-092"
+    detail: "Added compression timing insight and NAVRA-170 cross-reference"
+
+  - source: "multiple"
+    title: "Ecosystem positioning update"
+    action: update-positioning
+    detail: "Added 7 sections: OpenAI MCP, OpenClaw update, Harbor, Claude Tag/OpenTag, IETF identity, Self-improving gateway"
+
+  - source: "https://towardsdatascience.com/vector-rag-isnt-enough-i-built-a-context-graph-layer-for-multi-agent-memory/"
+    title: "Context graph memory for cognitive layer"
+    action: investigate
+    questions:
+      - "Can navra-cognitive use NetworkX-style graph memory?"
+      - "How does it compose with existing weaver.rs?"
+    detail: "88.9% accuracy at 26.9 tokens vs vector RAG 50% at 75.9 tokens"
+
+  - source: "https://github.com/harbor-framework"
+    title: "Harbor is eval framework, not gateway"
+    action: dismiss
+    detail: "Agent evaluation/benchmarking — completely different category"
+
+  - source: "https://www.anthropic.com/news/introducing-claude-tag"
+    title: "Claude Tag is MCP consumer, not competitor"
+    action: dismiss
+    detail: "Slack AI teammate — orthogonal to gateway infrastructure"
+
+  - source: "https://github.com/CopilotKit/OpenTag"
+    title: "OpenTag is early-stage Slack bot"
+    action: dismiss
+    detail: "482 stars, 22 commits. MCP consumer, not gateway"
+
+  - source: "https://www.freecodecamp.org/news/how-to-build-production-grade-ai-guardrails-for-enterprise-applications-a-practical-guide/"
+    title: "AI Guardrails validates navra approach"
+    action: dismiss
+    detail: "'Can't use LLM to secure itself' — navra already does deterministic enforcement"
+
+  - source: "https://www.marktechpost.com/2026/06/20/yandex-open-sources-yaff-a-zero-copy-wire-format-for-protobuf-with-near-struct-read-speed/"
+    title: "YAFF zero-copy protobuf"
+    action: watch
+    detail: "22x faster than protobuf, but C++ only v0.1.0 — monitor for Rust bindings"
+
+  - source: "https://www.marktechpost.com/2026/06/19/vibethinker-3b-a-3b-dense-reasoning-model-built-on-qwen2-5-coder-3b-with-the-spectrum-to-signal-post-training-pipeline/"
+    title: "VibeThinker 3B"
+    action: watch
+    detail: "3B reasoning model, MIT — monitor for ONNX export as safety classifier candidate"
+
+  - source: "https://developers.openai.com/blog/connect-private-mcp-servers-to-openai-products"
+    title: "OpenAI tunnel policy evolution"
+    action: watch
+    detail: "Transport-only today — monitor for governance layer additions"
+
+  - source: "https://datatracker.ietf.org/doc/draft-narajala-courtney-ansv2/"
+    title: "ANS v2 architecture"
+    action: watch
+    detail: "Go reference implementation exists but architecture details unverified"
+
+follow_ups_resolved:
+  - from_watch: "2026-06-19"
+    title: "PEFT beyond LoRA"
+    resolution: "Covered in depth — rs-LoRA and OFT outperform base LoRA; no action for navra"
+  - from_watch: "2026-06-19"
+    title: "Hermes async subagents (investigate)"
+    resolution: "Self-Harness and Uber actor-chains add further weight. NAVRA-171 covers the improvement loop."
+
+summary: |
+  38 sources analyzed via 4 deep-research workflows (427 agents, 18.7M tokens).
+  6 new plan items (NAVRA-170 through NAVRA-175).
+  2 existing items enriched (NAVRA-147, NAVRA-092).
+  7 sections added to ecosystem-positioning.md.
+  1 item to investigate (context graph memory).
+  4 items to watch (YAFF, VibeThinker 3B, OpenAI tunnel, ANS v2).
+  4 items dismissed (Harbor, Claude Tag, OpenTag, AI Guardrails).
+  Key insight: IETF agent identity standards have ZERO DID awareness —
+  navra needs WIMSE/SPIFFE support alongside DID:key.

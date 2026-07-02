@@ -1,0 +1,43 @@
+id: NAVRA-175
+title: "Implement Uber-style actor-chain JWT delegation tracking"
+status: planned
+priority: medium
+effort: 3-5d
+depends_on: ["NAVRA-172"]
+feeds: ["NAVRA-147"]
+source: tech-watch-2026-07-01
+description: |
+  Implement actor-chain JWT pattern for multi-agent delegation
+  tracking, based on Uber's production architecture.
+
+  Uber (verified 3-0) embeds act_chain claims in JWTs containing
+  ordered entries with sub, agent_id, and iat fields. This enables
+  authorization based on full request lineage across multi-agent
+  delegations. P99 latency below 40ms. Based on OAuth 2.0 Token
+  Exchange (RFC 8693).
+
+  For navra: the gateway is the natural point to mint and verify
+  actor-chain JWTs. When agent A delegates to agent B through navra,
+  the gateway appends to the chain and can enforce policies based
+  on the full lineage (e.g., "agent B can only access resource X
+  if the chain includes agent A with role Y").
+
+  This complements IFC taint tracking: actor chains track WHO
+  delegated, IFC tracks WHAT data flowed.
+
+  Also aligns with AIMS draft (draft-klrc-aiagent-auth-02) which
+  specifies RFC 8693 Token Exchange for multi-agent delegation.
+
+  Reference: uber.com/us/en/blog/solving-the-agent-identity-crisis/
+  Reference: datatracker.ietf.org/doc/draft-klrc-aiagent-auth/
+acceptance:
+  - Actor-chain JWT minted at gateway on delegation
+  - Chain entries include sub, agent_id, iat
+  - Policy can reference chain lineage for authorization
+  - IFC taint tracking complementary, not duplicative
+scope:
+  - navra-auth/src/
+  - navra-security/src/
+  - navra-flow/src/
+verification:
+  quick: cargo test -p navra-auth
