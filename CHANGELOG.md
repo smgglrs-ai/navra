@@ -39,6 +39,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -50,6 +51,7 @@ All notable changes to navra are documented here.
 - Include benchmarks/ in container build context
 - Switch all builds to rust:1.96-bookworm base image
 - Add protoc to CI, drop musl target from Dockerfiles
+- Container verify steps and agent-full glibc mismatch
 
 ### Maintenance
 
