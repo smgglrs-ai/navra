@@ -17,6 +17,7 @@ All notable changes to navra are documented here.
 - Add Anthropic Messages API proxy (/v1/messages)
 - Add Vertex AI support to /v1/chat/completions proxy
 - Add Verus proofs across 10 crates and extend TLA+ session isolation
+- Containerized CI and ghcr.io image publishing
 
 ### Documentation
 
@@ -34,6 +35,7 @@ All notable changes to navra are documented here.
 - Rewrite model proxy section with step-by-step setup
 - Add learn chapter on the model proxy security layer
 - Show both global and regional Vertex AI endpoints
+- Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 
 ### Fixed
