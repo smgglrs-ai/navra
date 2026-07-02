@@ -13,18 +13,15 @@ WORKDIR /build
 RUN git clone --depth 1 --branch v0.4.2 \
     https://github.com/rust-mcp-stack/rust-mcp-filesystem.git .
 
-RUN rustup target add x86_64-unknown-linux-musl
-RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
-
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 ENV CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_PANIC=abort
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target x86_64-unknown-linux-gnu
 
 FROM scratch
 
-COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/rust-mcp-filesystem \
+COPY --from=builder /build/target/x86_64-unknown-linux-gnu/release/rust-mcp-filesystem \
     /usr/local/bin/rust-mcp-filesystem
 
 USER 65534
