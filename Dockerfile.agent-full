@@ -1,32 +1,27 @@
 # navra-agent container image (full runtime with ONNX)
 #
-# Build:   podman build -f Dockerfile.agent-full -t navra-agent:latest .
+# Includes ONNX Runtime for local safety model inference.
+# Uses fedora-minimal as runtime (not distroless) since ONNX
+# needs shared libraries at runtime.
+#
+# Build:   podman build -f Dockerfile.agent-full -t navra-agent-full:latest .
 # Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
 #            -e NAVRA_ENDPOINT=http://10.0.2.2:9400/mcp \
 #            -e NAVRA_MODEL_ENDPOINT=http://10.0.2.2:8091/v1 \
 #            -e NAVRA_MODEL_NAME=nemotron-omni \
 #            -e NAVRA_TASK="Review the project" \
-#            navra-agent:latest
+#            navra-agent-full:latest
 
-# Stage 1: Build
-FROM quay.io/hummingbird/rust:latest-builder AS builder
+FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
 
-RUN dnf5 install -y tar gzip && dnf5 clean all
+RUN dnf install -y gcc make rust cargo && \
+    dnf clean all
 
 WORKDIR /src
 COPY . .
 
-RUN for dir in benchmarks; do \
-      if [ ! -f "$dir/Cargo.toml" ]; then \
-        mkdir -p "$dir/src" && \
-        printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"' "$dir" > "$dir/Cargo.toml" && \
-        echo 'fn main() {}' > "$dir/src/main.rs"; \
-      fi; \
-    done
-
 RUN cargo build --release --bin navra-agent
 
-# Stage 2: Runtime
 FROM registry.fedoraproject.org/fedora-minimal:latest
 
 COPY --from=builder /src/target/release/navra-agent /usr/bin/navra-agent
