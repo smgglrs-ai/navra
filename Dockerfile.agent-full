@@ -1,8 +1,7 @@
 # navra-agent container image (full runtime with ONNX)
 #
 # Includes ONNX Runtime for local safety model inference.
-# Uses fedora-minimal as runtime (not distroless) since ONNX
-# needs shared libraries at runtime.
+# Uses fedora as both builder and runtime to avoid glibc mismatch.
 #
 # Build:   podman build -f Dockerfile.agent-full -t navra-agent-full:latest .
 # Run:     podman run --rm --network=slirp4netns:allow_host_loopback=true \
@@ -12,7 +11,11 @@
 #            -e NAVRA_TASK="Review the project" \
 #            navra-agent-full:latest
 
-FROM rust:1.96-bookworm AS builder
+FROM registry.fedoraproject.org/fedora:latest AS builder
+
+RUN dnf install -y gcc make pkg-config && dnf clean all
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /src
 COPY . .
