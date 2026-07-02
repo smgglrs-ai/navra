@@ -37,6 +37,7 @@ All notable changes to navra are documented here.
 - Show both global and regional Vertex AI endpoints
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -46,6 +47,7 @@ All notable changes to navra are documented here.
 - Close IFC bypass for inline injection ≤3 deps (NAVRA-169)
 - Simplify Dockerfile.agent and add GHA build cache
 - Include benchmarks/ in container build context
+- Switch all builds to rust:1.96-bookworm base image
 
 ### Maintenance
 
