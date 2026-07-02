@@ -9,8 +9,8 @@
 //! (starting with `eyJ`) are tried as ID-JAG first; plain BLAKE3 tokens
 //! fall through.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -158,13 +158,14 @@ impl IdJagAuthenticator {
             if kty == "OKP" {
                 // Ed25519 key: decode the "x" parameter (base64url, 32 bytes)
                 if let Some(x) = key_json.get("x").and_then(|v| v.as_str())
-                    && let Ok(pk_bytes) = URL_SAFE_NO_PAD.decode(x) {
-                        keys.push(JwkKey {
-                            kid,
-                            algorithm: alg.to_string(),
-                            public_key_bytes: pk_bytes,
-                        });
-                    }
+                    && let Ok(pk_bytes) = URL_SAFE_NO_PAD.decode(x)
+                {
+                    keys.push(JwkKey {
+                        kid,
+                        algorithm: alg.to_string(),
+                        public_key_bytes: pk_bytes,
+                    });
+                }
             }
         }
 
@@ -391,8 +392,8 @@ fn build_test_jwt(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::chain::ChainAuthenticator;
     use crate::auth::TokenAuthenticator;
+    use crate::auth::chain::ChainAuthenticator;
     use crate::identity::{CapSigner, Ed25519Signer};
     use axum::http::HeaderMap;
 
@@ -804,9 +805,11 @@ mod tests {
         };
 
         let json = serde_json::to_value(&caps).unwrap();
-        assert!(json["extensions"]
-            .get("io.modelcontextprotocol/enterprise-managed-authorization")
-            .is_some());
+        assert!(
+            json["extensions"]
+                .get("io.modelcontextprotocol/enterprise-managed-authorization")
+                .is_some()
+        );
     }
 
     #[test]

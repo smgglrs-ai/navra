@@ -27,9 +27,9 @@
 //! ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo bench -p navra-benchmarks -- embedding
 //! ```
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use navra_rag::chunk::Chunk;
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use navra_rag::ChunkStore;
+use navra_rag::chunk::Chunk;
 use std::path::PathBuf;
 use std::sync::Arc;
 

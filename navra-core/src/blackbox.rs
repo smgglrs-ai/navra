@@ -9,7 +9,7 @@
 //! - **Transparent**: agents don't know they're recorded.
 
 use crate::safety::{FilterContext, FilterPipeline};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex};
 use vstd::prelude::*;
 
@@ -316,15 +316,17 @@ impl Blackbox {
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
         if let Some(agent) = agent_filter
-            && !agent.is_empty() {
-                where_clauses.push("agent_name LIKE ?");
-                param_values.push(Box::new(format!("%{agent}%")));
-            }
+            && !agent.is_empty()
+        {
+            where_clauses.push("agent_name LIKE ?");
+            param_values.push(Box::new(format!("%{agent}%")));
+        }
         if let Some(tool) = tool_filter
-            && !tool.is_empty() {
-                where_clauses.push("tool_name LIKE ?");
-                param_values.push(Box::new(format!("%{tool}%")));
-            }
+            && !tool.is_empty()
+        {
+            where_clauses.push("tool_name LIKE ?");
+            param_values.push(Box::new(format!("%{tool}%")));
+        }
 
         let where_sql = if where_clauses.is_empty() {
             String::new()
@@ -336,8 +338,10 @@ impl Blackbox {
         let total: u64 = {
             let params_ref: Vec<&dyn rusqlite::types::ToSql> =
                 param_values.iter().map(|p| p.as_ref()).collect();
-            db.query_row(&count_sql, params_ref.as_slice(), |row| row.get::<_, i64>(0))
-                .unwrap_or(0) as u64
+            db.query_row(&count_sql, params_ref.as_slice(), |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as u64
         };
 
         let query_sql = format!(
@@ -475,8 +479,10 @@ impl Blackbox {
     /// Entry count.
     pub fn count(&self) -> u64 {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
-        db.query_row("SELECT COUNT(*) FROM blackbox", [], |row| row.get::<_, i64>(0))
-            .unwrap_or(0) as u64
+        db.query_row("SELECT COUNT(*) FROM blackbox", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as u64
     }
 }
 

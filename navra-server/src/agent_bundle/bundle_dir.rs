@@ -190,9 +190,10 @@ pub fn list_workflows(dir: &Path) -> Vec<String> {
                 .extension()
                 .map(|e| e == "yaml" || e == "yml")
                 .unwrap_or(false)
-                && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    names.push(stem.to_string());
-                }
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                names.push(stem.to_string());
+            }
         }
     }
     names.sort();
@@ -432,11 +433,13 @@ workflows:
         let triage = &bundle.workflows["triage"];
         assert_eq!(triage.steps.len(), 2);
         assert_eq!(triage.steps[1].name, "respond");
-        assert!(triage.steps[1]
-            .permissions
-            .get("gmail")
-            .unwrap()
-            .contains(&"send".to_string()));
+        assert!(
+            triage.steps[1]
+                .permissions
+                .get("gmail")
+                .unwrap()
+                .contains(&"send".to_string())
+        );
     }
 
     #[test]

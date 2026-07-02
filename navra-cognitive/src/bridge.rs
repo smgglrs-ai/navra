@@ -47,13 +47,14 @@ pub fn import_from_agent_dir(dir: &Path) -> Option<PortablePersona> {
     let mut tools = Vec::new();
     let skills_dir = dir.join("skills");
     if skills_dir.is_dir()
-        && let Ok(entries) = std::fs::read_dir(&skills_dir) {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.path().file_stem() {
-                    tools.push(name.to_string_lossy().to_string());
-                }
+        && let Ok(entries) = std::fs::read_dir(&skills_dir)
+    {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.path().file_stem() {
+                tools.push(name.to_string_lossy().to_string());
             }
         }
+    }
 
     Some(PortablePersona {
         name,

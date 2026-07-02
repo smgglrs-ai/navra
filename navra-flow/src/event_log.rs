@@ -5,7 +5,7 @@
 //! connection recovery with backfill.
 
 use crate::error::FlowError;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Mutex;
@@ -201,12 +201,13 @@ impl EventLog {
         let events = self.events_since(flow_id, after_seq)?;
         for event in &events {
             if let Some(ref model) = event.model_version
-                && model != expected_model {
-                    return Ok(Some(format!(
-                        "Replay divergence at seq {}: model was '{}', now '{}'",
-                        event.seq, model, expected_model
-                    )));
-                }
+                && model != expected_model
+            {
+                return Ok(Some(format!(
+                    "Replay divergence at seq {}: model was '{}', now '{}'",
+                    event.seq, model, expected_model
+                )));
+            }
         }
         Ok(None)
     }

@@ -28,7 +28,7 @@ pub mod safe_backend;
 
 pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
-pub use ogx::{OgxBackend, DEFAULT_OGX_URL};
+pub use ogx::{DEFAULT_OGX_URL, OgxBackend};
 #[cfg(feature = "onnx")]
 pub use onnx::{Device, ModelTask, OnnxBackend, OpenVinoDevice};
 pub use openai::OpenAiBackend;

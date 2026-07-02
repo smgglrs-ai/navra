@@ -4,10 +4,10 @@
 //! - **YAML** (no sandbox): declarative steps with variable passing
 //! - **Python** (sandbox): CodeAct via OpenShell or Podman
 
+use navra_core::McpServer;
 use navra_core::auth::CallContext;
 use navra_core::protocol::{CallToolParams, CallToolResult, ToolDefinition};
-use navra_core::McpServer;
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 use std::collections::HashMap;
 
 /// Error handling strategy for a step.
@@ -237,11 +237,7 @@ fn evaluate_when(condition: &str, vars: &HashMap<String, StepResult>) -> bool {
         && resolved != "0"
         && !resolved.starts_with("<unresolved:");
 
-    if negated {
-        !is_truthy
-    } else {
-        is_truthy
-    }
+    if negated { !is_truthy } else { is_truthy }
 }
 
 // ---------------------------------------------------------------------------
@@ -375,17 +371,18 @@ async fn execute_tool_step(
 
     // Evaluate conditional
     if let Some(ref when) = step.when
-        && !evaluate_when(when, vars) {
-            let sr = StepResult {
-                step: Some(step_name.clone()),
-                tool: step.tool.clone(),
-                result: "Skipped (condition not met)".to_string(),
-                success: true,
-            };
-            results.push(sr.clone());
-            vars.insert(step_name, sr);
-            return;
-        }
+        && !evaluate_when(when, vars)
+    {
+        let sr = StepResult {
+            step: Some(step_name.clone()),
+            tool: step.tool.clone(),
+            result: "Skipped (condition not met)".to_string(),
+            success: true,
+        };
+        results.push(sr.clone());
+        vars.insert(step_name, sr);
+        return;
+    }
 
     // Resolve variable references in arguments
     let resolved_args = if step.args.is_null() {
@@ -494,17 +491,18 @@ async fn execute_for_each_step(
 
     // Evaluate conditional
     if let Some(ref when) = fe.when
-        && !evaluate_when(when, vars) {
-            let sr = StepResult {
-                step: Some(fe_name.clone()),
-                tool: "for_each".to_string(),
-                result: "Skipped (condition not met)".to_string(),
-                success: true,
-            };
-            results.push(sr.clone());
-            vars.insert(fe_name, sr);
-            return;
-        }
+        && !evaluate_when(when, vars)
+    {
+        let sr = StepResult {
+            step: Some(fe_name.clone()),
+            tool: "for_each".to_string(),
+            result: "Skipped (condition not met)".to_string(),
+            success: true,
+        };
+        results.push(sr.clone());
+        vars.insert(fe_name, sr);
+        return;
+    }
 
     // Resolve the for_each source value
     let source = substitute_string(&fe.for_each, vars);

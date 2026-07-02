@@ -7,10 +7,10 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::{
+    FnArg, Ident, ItemFn, LitStr, Pat, Token, Type,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    FnArg, Ident, ItemFn, LitStr, Pat, Token, Type,
 };
 
 /// Attribute macro that transforms an async function into a
@@ -69,7 +69,7 @@ impl Parse for ToolAttrs {
                     return Err(syn::Error::new_spanned(
                         pair.key,
                         format!("unknown attribute `{other}`, expected `name` or `description`"),
-                    ))
+                    ));
                 }
             }
         }
@@ -160,7 +160,7 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
                             return Err(syn::Error::new_spanned(
                                 kv.key,
                                 format!("unknown arg attribute `{other}`"),
-                            ))
+                            ));
                         }
                     }
                 }

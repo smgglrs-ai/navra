@@ -6,13 +6,13 @@
 //! - **FileWatch**: Filesystem monitoring with glob filtering and debounce
 
 use axum::{
+    Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::post,
-    Router,
 };
-use navra_protocol::compat::{content_as_text, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, content_as_text};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::collections::HashMap;

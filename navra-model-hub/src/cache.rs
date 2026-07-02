@@ -11,10 +11,10 @@
 //!     └── ollama_granite-code_3b.json  # composite model card
 //! ```
 
+use crate::CachedModel;
 use crate::card::ModelCard;
 use crate::error::HubError;
 use crate::uri::ModelUri;
-use crate::CachedModel;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -189,9 +189,10 @@ impl ModelCache {
             if path.extension().is_some_and(|e| e == "json")
                 && !entry.file_name().to_string_lossy().starts_with(".tmp-")
                 && let Ok(data) = fs::read_to_string(&path)
-                    && let Ok(card) = serde_json::from_str::<ModelCard>(&data) {
-                        cards.push(card);
-                    }
+                && let Ok(card) = serde_json::from_str::<ModelCard>(&data)
+            {
+                cards.push(card);
+            }
         }
         Ok(cards)
     }
@@ -218,9 +219,10 @@ impl ModelCache {
                     target
                 };
                 if let Ok(resolved_canonical) = fs::canonicalize(&resolved)
-                    && resolved_canonical == canonical {
-                        count += 1;
-                    }
+                    && resolved_canonical == canonical
+                {
+                    count += 1;
+                }
             }
         }
         Ok(count)

@@ -6,8 +6,8 @@
 //! the lattice join, enabling per-value write-blocking instead of
 //! per-session taint.
 
-use navra_protocol::label::DataLabel;
 use navra_protocol::Content;
+use navra_protocol::label::DataLabel;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
@@ -98,9 +98,9 @@ impl ValueStore {
                 .values()
                 .min_by_key(|v| v.created_at)
                 .map(|v| v.id.clone())
-            {
-                values.remove(&oldest_id);
-            }
+        {
+            values.remove(&oldest_id);
+        }
 
         values.insert(id.clone(), value);
         id

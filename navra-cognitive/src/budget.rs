@@ -216,7 +216,7 @@ mod tests {
     fn budget_available() {
         let mut budget = ContextBudget::new(4096);
         budget.set_system_prompt(&"x".repeat(1400)); // ~400 tokens
-                                                     // 4096 - 400 - 819(20%) ≈ 2877
+        // 4096 - 400 - 819(20%) ≈ 2877
         let avail = budget.available();
         assert!(avail > 2500 && avail < 3200, "available={avail}");
     }

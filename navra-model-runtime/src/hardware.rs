@@ -5,9 +5,9 @@
 //! and hardware compatibility checks that were previously scattered
 //! across `Engine` methods and runtime implementations.
 
+use crate::RuntimeError;
 use crate::engine::Engine;
 use crate::gpu::{GpuDevice, GpuKind};
-use crate::RuntimeError;
 use serde::{Deserialize, Serialize};
 
 /// Hardware accelerator target for model inference.
@@ -205,9 +205,11 @@ mod tests {
             HardwareTarget::Amd.container_image(&Engine::Vllm).unwrap(),
             "vllm/vllm-openai:latest-rocm"
         );
-        assert!(HardwareTarget::Intel
-            .container_image(&Engine::Vllm)
-            .is_err());
+        assert!(
+            HardwareTarget::Intel
+                .container_image(&Engine::Vllm)
+                .is_err()
+        );
         assert!(HardwareTarget::Cpu.container_image(&Engine::Vllm).is_err());
     }
 

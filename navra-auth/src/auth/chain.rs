@@ -152,8 +152,8 @@ impl Authenticator for ChainAuthenticator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auth::capability::{build_payload, encode_token, CapabilitySet};
     use crate::auth::TokenAuthenticator;
+    use crate::auth::capability::{CapabilitySet, build_payload, encode_token};
     use crate::identity::Ed25519Signer;
     use axum::http::HeaderMap;
 

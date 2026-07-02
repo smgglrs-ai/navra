@@ -1,4 +1,4 @@
-use super::manifest::{AgentManifest, AGENT_BUNDLE_ARTIFACT_TYPE};
+use super::manifest::{AGENT_BUNDLE_ARTIFACT_TYPE, AgentManifest};
 
 pub async fn fetch_agent_manifest(
     client: &reqwest::Client,

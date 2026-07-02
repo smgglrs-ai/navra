@@ -3,7 +3,7 @@
 use crate::decay::effective_score;
 use crate::error::MemoryError;
 use crate::types::{MergeStrategy, Message, Role, Turn};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -1046,9 +1046,11 @@ mod tests {
         assert_eq!(main.len(), 2);
         let summary = &main[1];
         assert_eq!(summary.messages.len(), 1);
-        assert!(summary.messages[0]
-            .content
-            .contains("Summary of fork 'experiment'"));
+        assert!(
+            summary.messages[0]
+                .content
+                .contains("Summary of fork 'experiment'")
+        );
     }
 
     #[test]

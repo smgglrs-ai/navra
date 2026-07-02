@@ -1,5 +1,5 @@
-use crate::server::navra_handler::NavraHandler;
 use crate::server::McpServer;
+use crate::server::navra_handler::NavraHandler;
 use rmcp::service::ServiceExt;
 use std::sync::Arc;
 

@@ -401,11 +401,7 @@ mod tests {
         let content = embedded_content("my-surface", "[{}]");
         if let Some(res) = content.raw.as_resource() {
             match &res.resource {
-                crate::ResourceContent::TextResourceContents {
-                    uri,
-                    mime_type,
-                    ..
-                } => {
+                crate::ResourceContent::TextResourceContents { uri, mime_type, .. } => {
                     assert_eq!(uri, "a2ui://dynamic-ui/my-surface");
                     assert_eq!(mime_type.as_deref(), Some("application/a2ui+json"));
                 }

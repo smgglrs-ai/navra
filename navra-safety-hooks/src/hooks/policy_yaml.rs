@@ -151,9 +151,10 @@ impl PolicyYamlHook {
 /// Check whether a compiled rule's conditions match for pre_tool_call.
 fn matches_pre(rule: &CompiledRule, tool_name: &str, arguments: &serde_json::Value) -> bool {
     if let Some(re) = &rule.tool_name_re
-        && !re.is_match(tool_name) {
-            return false;
-        }
+        && !re.is_match(tool_name)
+    {
+        return false;
+    }
     if let (Some(field), Some(re)) = (&rule.arg_field, &rule.arg_pattern_re) {
         let val = arguments
             .get(field.as_str())
@@ -184,9 +185,10 @@ fn matches_post(
     result: &CallToolResult,
 ) -> bool {
     if let Some(re) = &rule.tool_name_re
-        && !re.is_match(tool_name) {
-            return false;
-        }
+        && !re.is_match(tool_name)
+    {
+        return false;
+    }
     if let (Some(field), Some(re)) = (&rule.arg_field, &rule.arg_pattern_re) {
         let val = arguments
             .get(field.as_str())

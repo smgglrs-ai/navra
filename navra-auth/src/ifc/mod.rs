@@ -44,8 +44,8 @@ pub mod value_store;
 pub mod witness;
 
 pub use navra_protocol::label::{Confidentiality, DataLabel, Integrity};
-pub use witness::DeclassificationWitness;
 use vstd::prelude::*;
+pub use witness::DeclassificationWitness;
 
 use crate::identity::CapSigner;
 
@@ -227,7 +227,7 @@ impl ReadClearance {
                 return Err(format!(
                     "unknown read_clearance level '{}' (valid: public, sensitive, pii, secret)",
                     level
-                ))
+                ));
             }
         };
         Ok(Self {
@@ -293,18 +293,20 @@ pub fn is_trusted_path(path: &str, patterns: &[String]) -> bool {
         }
         // "~/dir/**" should also match "~/dir" itself
         if let Some(prefix) = expanded.strip_suffix("/**")
-            && (normalized == prefix || normalized == format!("{prefix}/")) {
-                return true;
-            }
+            && (normalized == prefix || normalized == format!("{prefix}/"))
+        {
+            return true;
+        }
     }
     false
 }
 
 fn expand_tilde(pattern: &str) -> String {
     if pattern.starts_with("~/")
-        && let Some(home) = dirs::home_dir() {
-            return format!("{}{}", home.display(), &pattern[1..]);
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        return format!("{}{}", home.display(), &pattern[1..]);
+    }
     pattern.to_string()
 }
 
@@ -648,13 +650,15 @@ mod tests {
     #[test]
     fn declassify_step_up_rejected() {
         let mut tracker = TaintTracker::new();
-        assert!(tracker
-            .declassify(
-                Confidentiality::Pii,
-                &test_authority("attacker"),
-                "no reason"
-            )
-            .is_none());
+        assert!(
+            tracker
+                .declassify(
+                    Confidentiality::Pii,
+                    &test_authority("attacker"),
+                    "no reason"
+                )
+                .is_none()
+        );
     }
 
     #[test]

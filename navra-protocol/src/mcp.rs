@@ -5,7 +5,7 @@
 //! don't exist in rmcp (pagination, server capabilities with permissions,
 //! protocol version constants, notification method strings).
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use vstd::prelude::*;
@@ -285,10 +285,12 @@ mod tests {
         let json = serde_json::to_value(&tool).unwrap();
         assert_eq!(json["name"], "file_search");
         assert_eq!(json["inputSchema"]["type"], "object");
-        assert!(json["inputSchema"]["required"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("query")));
+        assert!(
+            json["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("query"))
+        );
     }
 
     #[test]

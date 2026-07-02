@@ -56,14 +56,15 @@ impl RoutingHook {
     fn classify(&self, tool_name: &str, args: &serde_json::Value) -> &str {
         // 1. Explicit routing hint in arguments
         if let Some(hint) = args.get("_routing_hint").and_then(|v| v.as_str())
-            && self.tiers.iter().any(|t| t.name == hint) {
-                return self
-                    .tiers
-                    .iter()
-                    .find(|t| t.name == hint)
-                    .map(|t| t.name.as_str())
-                    .unwrap();
-            }
+            && self.tiers.iter().any(|t| t.name == hint)
+        {
+            return self
+                .tiers
+                .iter()
+                .find(|t| t.name == hint)
+                .map(|t| t.name.as_str())
+                .unwrap();
+        }
 
         // 2. Tool name pattern matching
         for tier in &self.tiers {

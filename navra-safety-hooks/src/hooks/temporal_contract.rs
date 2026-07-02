@@ -7,9 +7,9 @@
 
 use super::{Hook, HookDecision};
 use navra_auth::auth::CallContext;
+use navra_protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::label::DataLabel;
-use navra_protocol::CallToolResult;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

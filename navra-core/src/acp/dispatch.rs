@@ -416,16 +416,17 @@ fn parse_tool_call(content: &str) -> Option<ToolCall> {
     }
 
     if let Ok(obj) = serde_json::from_str::<serde_json::Value>(trimmed)
-        && let Some(tool_name) = obj.get("tool").and_then(|v| v.as_str()) {
-            let arguments = obj
-                .get("arguments")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            return Some(ToolCall {
-                tool_name: tool_name.to_string(),
-                arguments,
-            });
-        }
+        && let Some(tool_name) = obj.get("tool").and_then(|v| v.as_str())
+    {
+        let arguments = obj
+            .get("arguments")
+            .cloned()
+            .unwrap_or(serde_json::json!({}));
+        return Some(ToolCall {
+            tool_name: tool_name.to_string(),
+            arguments,
+        });
+    }
 
     None
 }

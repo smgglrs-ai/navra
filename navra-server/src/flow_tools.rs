@@ -5,7 +5,7 @@
 //! multi-agent flows — all through standard MCP tool calls.
 
 use navra_core::protocol::ToolDefinition;
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -162,19 +162,20 @@ impl FlowRegistry {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get_mut(flow_id)
-            && let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id) {
-                // Track timing transitions
-                if status == "running" && node.started_at.is_none() {
-                    node.started_at = Some(Instant::now());
-                }
-                if matches!(status, "done" | "failed") && node.completed_at.is_none() {
-                    node.completed_at = Some(Instant::now());
-                }
-                node.status = status.to_string();
-                if output.is_some() {
-                    node.output = output;
-                }
+            && let Some(node) = run.node_statuses.iter_mut().find(|n| n.id == node_id)
+        {
+            // Track timing transitions
+            if status == "running" && node.started_at.is_none() {
+                node.started_at = Some(Instant::now());
             }
+            if matches!(status, "done" | "failed") && node.completed_at.is_none() {
+                node.completed_at = Some(Instant::now());
+            }
+            node.status = status.to_string();
+            if output.is_some() {
+                node.output = output;
+            }
+        }
     }
 
     /// Mark a flow as completed with output.
@@ -516,93 +517,94 @@ pub async fn handle_flow_result(
         None => {
             // Fall back to audit log for persisted results (survives restart)
             if let Some(ref audit) = audit_log
-                && let Ok(tasks) = audit.get_flow_results(flow_id) {
-                    if tasks.is_empty() {
-                        return CallToolResult::error_msg(format!(
-                            "No results for flow: {flow_id}"
-                        ));
-                    }
-                    if let Some(nid) = node_id {
-                        if let Some(task) = tasks.iter().find(|t| t.task_id == nid) {
-                            return CallToolResult::text(
-                                serde_json::to_string_pretty(&serde_json::json!({
-                                    "flow_id": flow_id,
-                                    "node": nid,
-                                    "status": task.status,
-                                    "output": task.output,
-                                    "source": "persistent",
-                                }))
-                                .unwrap_or_default(),
-                            );
-                        }
-                        return CallToolResult::error_msg(format!(
-                            "No results for node {nid} in flow {flow_id}"
-                        ));
-                    }
-                    let all_done = tasks
-                        .iter()
-                        .all(|t| t.status == "done" || t.status == "failed");
-                    let status = if all_done {
-                        if tasks.iter().any(|t| t.status == "failed") {
-                            "failed"
-                        } else {
-                            "completed"
-                        }
-                    } else {
-                        "running"
-                    };
-                    let task_results: Vec<serde_json::Value> = tasks
-                        .iter()
-                        .map(|t| {
-                            serde_json::json!({
-                                "task_id": t.task_id,
-                                "specialist": t.specialist,
-                                "model": t.model,
-                                "status": t.status,
-                                "output": t.output,
-                                "iterations": t.iterations,
-                                "tokens": t.tokens,
-                            })
-                        })
-                        .collect();
-                    return CallToolResult::text(
-                        serde_json::to_string_pretty(&serde_json::json!({
-                            "flow_id": flow_id,
-                            "status": status,
-                            "output": tasks.last().and_then(|t| t.output.as_deref()),
-                            "tasks": task_results,
-                            "source": "persistent",
-                        }))
-                        .unwrap_or_default(),
-                    );
+                && let Ok(tasks) = audit.get_flow_results(flow_id)
+            {
+                if tasks.is_empty() {
+                    return CallToolResult::error_msg(format!("No results for flow: {flow_id}"));
                 }
+                if let Some(nid) = node_id {
+                    if let Some(task) = tasks.iter().find(|t| t.task_id == nid) {
+                        return CallToolResult::text(
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "flow_id": flow_id,
+                                "node": nid,
+                                "status": task.status,
+                                "output": task.output,
+                                "source": "persistent",
+                            }))
+                            .unwrap_or_default(),
+                        );
+                    }
+                    return CallToolResult::error_msg(format!(
+                        "No results for node {nid} in flow {flow_id}"
+                    ));
+                }
+                let all_done = tasks
+                    .iter()
+                    .all(|t| t.status == "done" || t.status == "failed");
+                let status = if all_done {
+                    if tasks.iter().any(|t| t.status == "failed") {
+                        "failed"
+                    } else {
+                        "completed"
+                    }
+                } else {
+                    "running"
+                };
+                let task_results: Vec<serde_json::Value> = tasks
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "task_id": t.task_id,
+                            "specialist": t.specialist,
+                            "model": t.model,
+                            "status": t.status,
+                            "output": t.output,
+                            "iterations": t.iterations,
+                            "tokens": t.tokens,
+                        })
+                    })
+                    .collect();
+                return CallToolResult::text(
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "flow_id": flow_id,
+                        "status": status,
+                        "output": tasks.last().and_then(|t| t.output.as_deref()),
+                        "tasks": task_results,
+                        "source": "persistent",
+                    }))
+                    .unwrap_or_default(),
+                );
+            }
             return CallToolResult::error_msg(format!("No results for flow: {flow_id}"));
         }
     };
 
     // Enrich with persisted task outputs when available
-    if include_tasks && node_id.is_none()
+    if include_tasks
+        && node_id.is_none()
         && let Some(ref audit) = audit_log
-            && let Ok(tasks) = audit.get_flow_results(flow_id)
-                && !tasks.is_empty() {
-                    let task_results: Vec<serde_json::Value> = tasks
-                        .iter()
-                        .map(|t| {
-                            serde_json::json!({
-                                "task_id": t.task_id,
-                                "specialist": t.specialist,
-                                "model": t.model,
-                                "status": t.status,
-                                "output": t.output,
-                                "iterations": t.iterations,
-                                "tokens": t.tokens,
-                            })
-                        })
-                        .collect();
-                    if let Some(obj) = result.as_object_mut() {
-                        obj.insert("tasks".to_string(), serde_json::json!(task_results));
-                    }
-                }
+        && let Ok(tasks) = audit.get_flow_results(flow_id)
+        && !tasks.is_empty()
+    {
+        let task_results: Vec<serde_json::Value> = tasks
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "task_id": t.task_id,
+                    "specialist": t.specialist,
+                    "model": t.model,
+                    "status": t.status,
+                    "output": t.output,
+                    "iterations": t.iterations,
+                    "tokens": t.tokens,
+                })
+            })
+            .collect();
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert("tasks".to_string(), serde_json::json!(task_results));
+        }
+    }
 
     CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default())
 }
@@ -820,12 +822,13 @@ fn compute_file_tree(docs_root: &Option<String>) -> String {
                     if path.is_dir() {
                         collect(&path, root, files);
                     } else if path.is_file()
-                        && let Ok(rel) = path.strip_prefix(root) {
-                            let lines = std::fs::read_to_string(&path)
-                                .map(|c| c.lines().count())
-                                .unwrap_or(0);
-                            files.push(format!("  {} ({} lines)", rel.display(), lines));
-                        }
+                        && let Ok(rel) = path.strip_prefix(root)
+                    {
+                        let lines = std::fs::read_to_string(&path)
+                            .map(|c| c.lines().count())
+                            .unwrap_or(0);
+                        files.push(format!("  {} ({} lines)", rel.display(), lines));
+                    }
                 }
             }
             collect(root_path, root_path, &mut files);
@@ -1133,7 +1136,7 @@ pub async fn handle_flow_start(
             .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
         {
             return CallToolResult::error_msg(
-                "Invalid flow_name: only alphanumeric characters, hyphens, and underscores are allowed"
+                "Invalid flow_name: only alphanumeric characters, hyphens, and underscores are allowed",
             );
         }
         let mut found = None;
@@ -1163,7 +1166,7 @@ pub async fn handle_flow_start(
             None => {
                 return CallToolResult::error_msg(format!(
                     "Flow '{name}' not found in flow_dirs. Use flow_list to see available flows."
-                ))
+                ));
             }
         }
     } else if let Some(def) = args.get("flow_definition").and_then(|v| v.as_str()) {
@@ -1478,15 +1481,16 @@ async fn run_dag_execution(
                     }) {
                     Ok(builder) => {
                         if let Ok(mut agent) = builder.build().await
-                            && let Ok(result) = agent.run(&correction_prompt).await {
-                                new_tasks = navra_flow::parse_planner_tasks(&result.response);
-                                if !new_tasks.is_empty() {
-                                    tracing::info!(
-                                        flow_id = %flow_id, count = new_tasks.len(),
-                                        "Planner retry succeeded"
-                                    );
-                                }
+                            && let Ok(result) = agent.run(&correction_prompt).await
+                        {
+                            new_tasks = navra_flow::parse_planner_tasks(&result.response);
+                            if !new_tasks.is_empty() {
+                                tracing::info!(
+                                    flow_id = %flow_id, count = new_tasks.len(),
+                                    "Planner retry succeeded"
+                                );
                             }
+                        }
                     }
                     Err(e) => tracing::warn!(error = %e, "Correction agent build failed"),
                 }
@@ -1629,12 +1633,13 @@ pub async fn handle_flow_escalate(
         .and_then(|v| v.as_str())
         .map(String::from);
     if let Some(ref ctx_text) = context
-        && ctx_text.len() > MAX_MANDATE_LEN {
-            return CallToolResult::error_msg(format!(
-                "Context too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your context.",
-                ctx_text.len()
-            ));
-        }
+        && ctx_text.len() > MAX_MANDATE_LEN
+    {
+        return CallToolResult::error_msg(format!(
+            "Context too long ({} chars, max {MAX_MANDATE_LEN}). Summarize your context.",
+            ctx_text.len()
+        ));
+    }
 
     // Extract depth and model from calling agent's team
     let caller_did = agent_name;
@@ -2152,110 +2157,111 @@ pub async fn handle_flow_resume(
 
     // Try checkpoint first — it has the most complete state
     if let Some(ref cp) = ctx.checkpoint
-        && let Ok(Some(cp_state)) = cp.load(&flow_id) {
-            tracing::info!(
-                flow_id = %flow_id,
-                completed = cp_state.completed.len(),
-                failed = cp_state.failed.len(),
-                remaining = cp_state.task_defs.len(),
-                "Resuming flow from checkpoint"
-            );
+        && let Ok(Some(cp_state)) = cp.load(&flow_id)
+    {
+        tracing::info!(
+            flow_id = %flow_id,
+            completed = cp_state.completed.len(),
+            failed = cp_state.failed.len(),
+            remaining = cp_state.task_defs.len(),
+            "Resuming flow from checkpoint"
+        );
 
-            if cp_state.task_defs.is_empty() {
-                return CallToolResult::text(format!(
-                    "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
-                    cp_state.completed.len(),
-                    cp_state.failed.len()
-                ));
-            }
-
-            // Re-register the flow
-            let new_flow_id = ctx.flow_registry.register(&format!("{flow_id}-resumed"));
-
-            // Copy completed results to audit log for the new flow
-            if let Some(ref audit) = ctx.audit_log {
-                for (task_id, output) in &cp_state.completed {
-                    let _ = audit.record_flow_task(
-                        &new_flow_id,
-                        task_id,
-                        None,
-                        None,
-                        "done",
-                        Some(output),
-                        None,
-                        None,
-                    );
-                }
-            }
-
-            // Publish completed outputs to blackboard so downstream tasks
-            // can see their dependencies' results
-            let team_budget = crate::team_tools::TeamBudget {
-                max_agents: ctx
-                    .budget_cfg
-                    .max_agents
-                    .max(cp_state.task_defs.len() as u32 + 2),
-                max_depth: ctx.budget_cfg.max_depth,
-                max_iterations: ctx.budget_cfg.max_iterations,
-                timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
-                ..Default::default()
-            };
-            let team_id = match ctx.team_registry.create_team(
-                &format!("{flow_id}-resumed"),
-                None,
-                agent_name,
-                0,
-                team_budget,
-            ) {
-                Ok(id) => id,
-                Err(e) => {
-                    return CallToolResult::error_msg(format!("Failed to create resume team: {e}"))
-                }
-            };
-            ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
-
-            // Publish completed outputs to blackboard for dependency resolution
-            for (task_id, output) in &cp_state.completed {
-                let truncated = if output.len() > 4096 {
-                    format!(
-                        "{}...\n[truncated, {} chars total]",
-                        &output[..4096],
-                        output.len()
-                    )
-                } else {
-                    output.clone()
-                };
-                ctx.team_registry.bb_publish(
-                    &team_id,
-                    &format!("findings/{task_id}"),
-                    &truncated,
-                    task_id,
-                    navra_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC,
-                );
-            }
-
-            let final_output = run_dag_execution(
-                &ctx,
-                &new_flow_id,
-                &team_id,
-                &cp_state.prompt,
-                cp_state.task_defs,
-            )
-            .await;
-
-            // Clean up the old checkpoint
-            let _ = cp.delete(&flow_id);
-
-            if let Some(ref audit) = ctx.audit_log {
-                let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
-            }
-
+        if cp_state.task_defs.is_empty() {
             return CallToolResult::text(format!(
-                "Flow resumed from checkpoint.\nOriginal: {flow_id}\nResumed as: {new_flow_id}\n\
-                 Previously completed: {} tasks\n\n{final_output}",
-                cp_state.completed.len()
+                "Flow {flow_id} has no remaining tasks. {} completed, {} failed.",
+                cp_state.completed.len(),
+                cp_state.failed.len()
             ));
         }
+
+        // Re-register the flow
+        let new_flow_id = ctx.flow_registry.register(&format!("{flow_id}-resumed"));
+
+        // Copy completed results to audit log for the new flow
+        if let Some(ref audit) = ctx.audit_log {
+            for (task_id, output) in &cp_state.completed {
+                let _ = audit.record_flow_task(
+                    &new_flow_id,
+                    task_id,
+                    None,
+                    None,
+                    "done",
+                    Some(output),
+                    None,
+                    None,
+                );
+            }
+        }
+
+        // Publish completed outputs to blackboard so downstream tasks
+        // can see their dependencies' results
+        let team_budget = crate::team_tools::TeamBudget {
+            max_agents: ctx
+                .budget_cfg
+                .max_agents
+                .max(cp_state.task_defs.len() as u32 + 2),
+            max_depth: ctx.budget_cfg.max_depth,
+            max_iterations: ctx.budget_cfg.max_iterations,
+            timeout_secs: ctx.budget_cfg.timeout_secs.max(600),
+            ..Default::default()
+        };
+        let team_id = match ctx.team_registry.create_team(
+            &format!("{flow_id}-resumed"),
+            None,
+            agent_name,
+            0,
+            team_budget,
+        ) {
+            Ok(id) => id,
+            Err(e) => {
+                return CallToolResult::error_msg(format!("Failed to create resume team: {e}"));
+            }
+        };
+        ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
+
+        // Publish completed outputs to blackboard for dependency resolution
+        for (task_id, output) in &cp_state.completed {
+            let truncated = if output.len() > 4096 {
+                format!(
+                    "{}...\n[truncated, {} chars total]",
+                    &output[..4096],
+                    output.len()
+                )
+            } else {
+                output.clone()
+            };
+            ctx.team_registry.bb_publish(
+                &team_id,
+                &format!("findings/{task_id}"),
+                &truncated,
+                task_id,
+                navra_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC,
+            );
+        }
+
+        let final_output = run_dag_execution(
+            &ctx,
+            &new_flow_id,
+            &team_id,
+            &cp_state.prompt,
+            cp_state.task_defs,
+        )
+        .await;
+
+        // Clean up the old checkpoint
+        let _ = cp.delete(&flow_id);
+
+        if let Some(ref audit) = ctx.audit_log {
+            let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
+        }
+
+        return CallToolResult::text(format!(
+            "Flow resumed from checkpoint.\nOriginal: {flow_id}\nResumed as: {new_flow_id}\n\
+                 Previously completed: {} tasks\n\n{final_output}",
+            cp_state.completed.len()
+        ));
+    }
 
     // Fall back to audit log recovery
     let metadata = match &ctx.audit_log {
@@ -2264,16 +2270,16 @@ pub async fn handle_flow_resume(
             Ok(None) => {
                 return CallToolResult::error_msg(format!(
                     "Flow {flow_id} not found in audit.db or checkpoint"
-                ))
+                ));
             }
             Err(e) => {
-                return CallToolResult::error_msg(format!("Failed to load flow metadata: {e}"))
+                return CallToolResult::error_msg(format!("Failed to load flow metadata: {e}"));
             }
         },
         None => {
             return CallToolResult::error_msg(
                 "Audit log not configured and no checkpoint available",
-            )
+            );
         }
     };
 
@@ -2282,7 +2288,7 @@ pub async fn handle_flow_resume(
         Some(audit) => match audit.get_flow_results(&flow_id) {
             Ok(r) => r,
             Err(e) => {
-                return CallToolResult::error_msg(format!("Failed to load flow results: {e}"))
+                return CallToolResult::error_msg(format!("Failed to load flow results: {e}"));
             }
         },
         None => Vec::new(),
@@ -2384,7 +2390,7 @@ pub async fn handle_flow_resume(
         {
             Ok(id) => id,
             Err(e) => {
-                return CallToolResult::error_msg(format!("Failed to create resume team: {e}"))
+                return CallToolResult::error_msg(format!("Failed to create resume team: {e}"));
             }
         };
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
@@ -2410,12 +2416,16 @@ mod tests {
     #[test]
     fn flow_name_rejects_path_traversal() {
         // Valid names
-        assert!("security-audit"
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
-        assert!("my_flow_v2"
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_'));
+        assert!(
+            "security-audit"
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        );
+        assert!(
+            "my_flow_v2"
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        );
 
         // Path traversal attempts must be rejected
         let bad_names = vec![

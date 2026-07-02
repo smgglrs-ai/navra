@@ -164,11 +164,7 @@ pub fn compare(a: &EvalSummary, b: &EvalSummary) -> ComparisonResult {
         let num = (s1 + s2).powi(2);
         let den = s1.powi(2) / (a.n.max(1) - 1).max(1) as f64
             + s2.powi(2) / (b.n.max(1) - 1).max(1) as f64;
-        if den == 0.0 {
-            1.0
-        } else {
-            num / den
-        }
+        if den == 0.0 { 1.0 } else { num / den }
     };
 
     // Approximate p-value from t-distribution (two-tailed)
@@ -441,11 +437,7 @@ mod kani_proofs {
         let num = (s1 + s2).powi(2);
         let den =
             s1.powi(2) / (n1.max(1) - 1).max(1) as f64 + s2.powi(2) / (n2.max(1) - 1).max(1) as f64;
-        if den == 0.0 {
-            1.0
-        } else {
-            num / den
-        }
+        if den == 0.0 { 1.0 } else { num / den }
     }
 
     #[kani::proof]

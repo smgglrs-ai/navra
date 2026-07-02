@@ -120,9 +120,10 @@ pub fn discover_from_tools(tools: &[rmcp::model::Tool]) -> NetworkRequirements {
             let val = serde_json::Value::String(desc.to_string());
             for url in extract_urls(&val) {
                 if let Some(domain) = extract_domain(&url)
-                    && seen.insert(domain.clone()) {
-                        reqs.from_descriptions.push(domain);
-                    }
+                    && seen.insert(domain.clone())
+                {
+                    reqs.from_descriptions.push(domain);
+                }
             }
         }
 
@@ -225,10 +226,11 @@ mod tests {
             r#"{"type":"object","properties":{"path":{"type":"string"}}}"#,
         )];
         let reqs = discover_from_tools(&tools);
-        assert!(reqs
-            .from_descriptions
-            .iter()
-            .any(|d| d == "docs.example.com"));
+        assert!(
+            reqs.from_descriptions
+                .iter()
+                .any(|d| d == "docs.example.com")
+        );
     }
 
     #[test]
@@ -239,9 +241,10 @@ mod tests {
             r#"{"type":"object","properties":{"url":{"type":"string"},"method":{"type":"string"}}}"#,
         )];
         let reqs = discover_from_tools(&tools);
-        assert!(reqs
-            .url_accepting_tools
-            .contains(&"http_request".to_string()));
+        assert!(
+            reqs.url_accepting_tools
+                .contains(&"http_request".to_string())
+        );
     }
 
     #[test]

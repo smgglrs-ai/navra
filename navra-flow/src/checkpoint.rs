@@ -6,7 +6,7 @@
 //! execution resumes from where it left off.
 
 use crate::definition::TaskDefinition;
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

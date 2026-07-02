@@ -3,14 +3,14 @@
 use crate::blackboard::Blackboard;
 use crate::definition::FlowDefinition;
 use crate::error::FlowError;
-use crate::handoff::{handoff_tool_def, parse_handoff, routing_instructions, HANDOFF_TOOL_NAME};
+use crate::handoff::{HANDOFF_TOOL_NAME, handoff_tool_def, parse_handoff, routing_instructions};
 use crate::mailbox::MailboxRegistry;
 use crate::mesh_tools::{
     self, bb_keys_tool_def, bb_publish_tool_def, bb_read_tool_def, mesh_post_tool_def,
     mesh_recv_tool_def,
 };
 use navra_agent::signal::{AgentSignal, SignalHandle};
-use navra_agent::{extract_text, Agent};
+use navra_agent::{Agent, extract_text};
 use navra_auth::ifc::TaintTracker;
 use navra_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent, FunctionCallOutputItem,

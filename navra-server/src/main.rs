@@ -36,11 +36,11 @@ mod ui_events;
 pub(crate) mod workspace;
 
 use clap::Parser;
+use navra_core::Module;
 use navra_core::auth::{AgentIdentity, TokenAuthenticator};
 use navra_core::credentials::CredentialStore as _;
 use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine, ToolPermissions, ToolPolicy, ToolRule};
-use navra_core::Module;
 use navra_protocol::compat::CallToolResultExt;
 use std::sync::Arc;
 
@@ -603,13 +603,14 @@ async fn wrap_command(
     let egress_active = sandbox.is_some() && !allow_all;
 
     if egress_active
-        && let Some(known) = network_discovery::known_server_domains(&upstream_name, &command) {
-            for d in known {
-                if !egress_domains.contains(&d) {
-                    egress_domains.push(d);
-                }
+        && let Some(known) = network_discovery::known_server_domains(&upstream_name, &command)
+    {
+        for d in known {
+            if !egress_domains.contains(&d) {
+                egress_domains.push(d);
             }
         }
+    }
 
     let egress_section = if egress_active {
         let domain_list = egress_domains
@@ -945,10 +946,11 @@ fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
 /// a file-based identity. Otherwise, uses the OS keyring.
 async fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signer> {
     if let Some(ref identity_cfg) = cfg.server.identity
-        && let Some(ref key_path) = identity_cfg.key_path {
-            let path = std::path::Path::new(key_path);
-            return Ok(identity::load_or_create_file_identity(path)?);
-        }
+        && let Some(ref key_path) = identity_cfg.key_path
+    {
+        let path = std::path::Path::new(key_path);
+        return Ok(identity::load_or_create_file_identity(path)?);
+    }
     // keyring 4 uses zbus which calls block_on internally —
     // must run on a blocking thread to avoid runtime nesting
     match tokio::task::spawn_blocking(identity::load_or_create_keyring_identity)
@@ -1028,10 +1030,11 @@ async fn start_model_server_container(
         if let Some(ref source) = model_cfg.source {
             if let Some(ref h) = hub
                 && let Ok(uri) = navra_model_hub::ModelUri::parse(source)
-                    && let Ok(p) = h.pull(&uri).await {
-                        model_path = Some(p);
-                        break;
-                    }
+                && let Ok(p) = h.pull(&uri).await
+            {
+                model_path = Some(p);
+                break;
+            }
         } else if let Some(ref path_str) = model_cfg.model_path {
             let expanded = expand_tilde(path_str);
             let p = std::path::PathBuf::from(&expanded);
@@ -1108,11 +1111,12 @@ async fn start_model_server_container(
     for attempt in 0..240 {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Ok(resp) = client.get(&health_url).send().await
-            && resp.status().is_success() {
-                tracing::info!(port = port, "Model server container is ready");
-                let endpoint = format!("http://127.0.0.1:{port}/v1");
-                return Ok((endpoint, port, container_name));
-            }
+            && resp.status().is_success()
+        {
+            tracing::info!(port = port, "Model server container is ready");
+            let endpoint = format!("http://127.0.0.1:{port}/v1");
+            return Ok((endpoint, port, container_name));
+        }
         if attempt % 20 == 19 {
             tracing::info!(
                 attempt = attempt + 1,
@@ -1230,23 +1234,23 @@ async fn serve_inner(
     for (name, pset) in &cfg.permissions {
         if let Some(ref rate_limit_str) = pset.rate_limit
             && let Some((max_str, window_str)) = rate_limit_str.split_once('/')
-                && let (Ok(max_calls), Ok(window_secs)) =
-                    (max_str.parse::<u64>(), window_str.parse::<u64>())
-                {
-                    quota_engine.add_limit(
-                        name.clone(),
-                        navra_core::quota::RateLimit {
-                            max_calls,
-                            window_secs,
-                        },
-                    );
-                    tracing::info!(
-                        permission_set = %name,
-                        max_calls = max_calls,
-                        window_secs = window_secs,
-                        "Rate limit"
-                    );
-                }
+            && let (Ok(max_calls), Ok(window_secs)) =
+                (max_str.parse::<u64>(), window_str.parse::<u64>())
+        {
+            quota_engine.add_limit(
+                name.clone(),
+                navra_core::quota::RateLimit {
+                    max_calls,
+                    window_secs,
+                },
+            );
+            tracing::info!(
+                permission_set = %name,
+                max_calls = max_calls,
+                window_secs = window_secs,
+                "Rate limit"
+            );
+        }
     }
 
     // Build server, registering enabled modules
@@ -1512,13 +1516,18 @@ async fn serve_inner(
                     signing_key: agent.signing_key.clone(),
                     did: agent.did.clone(),
                     capabilities: None,
-                    model: agent.model.clone().or_else(|| perm_set.and_then(|p| p.model.clone())),
+                    model: agent
+                        .model
+                        .clone()
+                        .or_else(|| perm_set.and_then(|p| p.model.clone())),
                     allowed_upstreams: if !agent.upstream.is_empty() {
                         agent.upstream.clone()
                     } else {
                         perm_set.map(|p| p.upstream.clone()).unwrap_or_default()
                     },
-                    max_concurrent: agent.max_concurrent.or(perm_set.and_then(|p| p.max_concurrent)),
+                    max_concurrent: agent
+                        .max_concurrent
+                        .or(perm_set.and_then(|p| p.max_concurrent)),
                     max_context: agent.max_context.or(perm_set.and_then(|p| p.max_context)),
                 },
             );
@@ -1740,34 +1749,35 @@ async fn serve_inner(
         // Add ML safety filter from any loaded classification model
         for (model_name, model_cfg) in &cfg.models {
             if model_cfg.task == "classification"
-                && let Some(model) = models.get(model_name) {
-                    let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
-                        std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
-                            model.clone(),
-                        ));
-                    if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
-                        // Multi-label filter with per-category thresholds
-                        pipeline.add_model_filter(
-                            navra_core::safety::MultiLabelFilter::from_thresholds(
-                                classifier,
-                                pset.safety_thresholds.clone(),
-                            ),
-                        );
-                        tracing::info!(
-                            permission_set = %name,
-                            categories = pset.safety_thresholds.len(),
-                            "Multi-label safety filter"
-                        );
-                    } else {
-                        // Single-label (binary) filter
-                        let threshold = model_cfg.threshold.unwrap_or(0.5);
-                        pipeline.add_model_filter(navra_core::safety::MlFilter::new(
+                && let Some(model) = models.get(model_name)
+            {
+                let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
+                    std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
+                        model.clone(),
+                    ));
+                if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
+                    // Multi-label filter with per-category thresholds
+                    pipeline.add_model_filter(
+                        navra_core::safety::MultiLabelFilter::from_thresholds(
                             classifier,
-                            threshold,
-                            "ml-unsafe",
-                        ));
-                    }
+                            pset.safety_thresholds.clone(),
+                        ),
+                    );
+                    tracing::info!(
+                        permission_set = %name,
+                        categories = pset.safety_thresholds.len(),
+                        "Multi-label safety filter"
+                    );
+                } else {
+                    // Single-label (binary) filter
+                    let threshold = model_cfg.threshold.unwrap_or(0.5);
+                    pipeline.add_model_filter(navra_core::safety::MlFilter::new(
+                        classifier,
+                        threshold,
+                        "ml-unsafe",
+                    ));
                 }
+            }
         }
 
         #[cfg(feature = "onnx")]
@@ -2117,7 +2127,9 @@ async fn serve_inner(
                             cascade_for_retriever,
                             Some(metrics.clone()),
                         )));
-                    tracing::info!("Module 'rag' enabled (db: {rag_db_path}, dims: {dims}, cascade: on, graphability: 0.3)");
+                    tracing::info!(
+                        "Module 'rag' enabled (db: {rag_db_path}, dims: {dims}, cascade: on, graphability: 0.3)"
+                    );
                     builder = builder.module(rag);
                 }
                 Err(e) => {
@@ -2705,7 +2717,7 @@ async fn serve_inner(
                 let default_ttl = default_ttl;
                 Box::pin(async move {
                     use navra_core::auth::capability::{
-                        build_payload, encode_token, validate_delegation, CapabilitySet,
+                        CapabilitySet, build_payload, encode_token, validate_delegation,
                     };
                     use navra_core::protocol::CallToolResult;
 
@@ -2979,7 +2991,9 @@ async fn serve_inner(
             Box::pin(flow_tools::handle_flow_list(flow_dirs))
         });
 
-        tracing::info!("Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list, flow_escalate)");
+        tracing::info!(
+            "Registered flow orchestration tools (flow_start, flow_status, flow_result, flow_list, flow_escalate)"
+        );
     }
 
     // Trigger infrastructure: initialized after flow_ctx is built.
@@ -2998,21 +3012,23 @@ async fn serve_inner(
             .send()
             .await
             && let Ok(tags) = resp.json::<serde_json::Value>().await
-                && let Some(models) = tags["models"].as_array() {
-                    for m in models {
-                        if let Some(name) = m["name"].as_str() {
-                            // Query /api/show for detailed model info
-                            if let Ok(show_resp) = reqwest::Client::new()
-                                .post("http://localhost:11434/api/show")
-                                .json(&serde_json::json!({"name": name}))
-                                .send()
-                                .await
-                                && let Ok(info) = show_resp.json::<serde_json::Value>().await {
-                                    ollama_meta.insert(name.to_string(), info);
-                                }
-                        }
+            && let Some(models) = tags["models"].as_array()
+        {
+            for m in models {
+                if let Some(name) = m["name"].as_str() {
+                    // Query /api/show for detailed model info
+                    if let Ok(show_resp) = reqwest::Client::new()
+                        .post("http://localhost:11434/api/show")
+                        .json(&serde_json::json!({"name": name}))
+                        .send()
+                        .await
+                        && let Ok(info) = show_resp.json::<serde_json::Value>().await
+                    {
+                        ollama_meta.insert(name.to_string(), info);
                     }
                 }
+            }
+        }
         if !ollama_meta.is_empty() {
             tracing::info!(
                 models = ollama_meta.len(),
@@ -3087,51 +3103,58 @@ async fn serve_inner(
                         // Extract context window from model metadata
                         for (key, val) in model_info.as_object().into_iter().flatten() {
                             if key.ends_with(".context_length")
-                                && let Some(ctx) = val.as_u64() {
-                                    card.vendor.context_window = Some(ctx as u32);
-                                }
+                                && let Some(ctx) = val.as_u64()
+                            {
+                                card.vendor.context_window = Some(ctx as u32);
+                            }
                             if key.ends_with(".embedding_length")
-                                && let Some(dim) = val.as_u64() {
-                                    card.vendor
-                                        .custom
-                                        .insert("embedding_dim".into(), serde_json::json!(dim));
-                                }
+                                && let Some(dim) = val.as_u64()
+                            {
+                                card.vendor
+                                    .custom
+                                    .insert("embedding_dim".into(), serde_json::json!(dim));
+                            }
                         }
                         // Parameter count from general.parameter_count
                         if let Some(params) = model_info.get("general.parameter_count")
-                            && let Some(p) = params.as_u64() {
-                                let label = if p >= 1_000_000_000 {
-                                    format!("{}B", p / 1_000_000_000)
-                                } else if p >= 1_000_000 {
-                                    format!("{}M", p / 1_000_000)
-                                } else {
-                                    format!("{p}")
-                                };
-                                card.vendor.parameters = Some(label);
-                            }
+                            && let Some(p) = params.as_u64()
+                        {
+                            let label = if p >= 1_000_000_000 {
+                                format!("{}B", p / 1_000_000_000)
+                            } else if p >= 1_000_000 {
+                                format!("{}M", p / 1_000_000)
+                            } else {
+                                format!("{p}")
+                            };
+                            card.vendor.parameters = Some(label);
+                        }
                         // Architecture / family
                         if let Some(arch) = model_info.get("general.architecture")
-                            && let Some(a) = arch.as_str() {
-                                card.vendor.family = Some(a.to_string());
-                            }
+                            && let Some(a) = arch.as_str()
+                        {
+                            card.vendor.family = Some(a.to_string());
+                        }
                     }
                     // Quantization from details
                     if let Some(details) = info.get("details") {
                         if let Some(quant) = details.get("quantization_level")
-                            && let Some(q) = quant.as_str() {
-                                card.vendor.quantization = Some(q.to_string());
-                            }
+                            && let Some(q) = quant.as_str()
+                        {
+                            card.vendor.quantization = Some(q.to_string());
+                        }
                         if let Some(family) = details.get("family")
-                            && card.vendor.family.is_none() {
-                                card.vendor.family = family.as_str().map(|s| s.to_string());
-                            }
+                            && card.vendor.family.is_none()
+                        {
+                            card.vendor.family = family.as_str().map(|s| s.to_string());
+                        }
                     }
                     // License from license field
                     if let Some(license) = info.get("license")
-                        && let Some(l) = license.as_str() {
-                            // Take first line as the license identifier
-                            card.vendor.license = l.lines().next().map(|s| s.to_string());
-                        }
+                        && let Some(l) = license.as_str()
+                    {
+                        // Take first line as the license identifier
+                        card.vendor.license = l.lines().next().map(|s| s.to_string());
+                    }
                     card.vendor.format = Some("gguf".into());
                 }
 
@@ -3151,9 +3174,10 @@ async fn serve_inner(
 
                 // Merge operator-defined agentic metadata from config
                 if let Some(mcfg) = mcfg_ref
-                    && let Some(agentic_cfg) = &mcfg.agentic {
-                        card.merge_agentic(&agentic_cfg.to_agentic_meta());
-                    }
+                    && let Some(agentic_cfg) = &mcfg.agentic
+                {
+                    card.merge_agentic(&agentic_cfg.to_agentic_meta());
+                }
 
                 card
             })
@@ -3167,7 +3191,9 @@ async fn serve_inner(
                 if team_tools::is_podman_available() {
                     true
                 } else {
-                    tracing::warn!("Containerized mode requested but Podman not available, falling back to in-process");
+                    tracing::warn!(
+                        "Containerized mode requested but Podman not available, falling back to in-process"
+                    );
                     false
                 }
             }
@@ -3423,7 +3449,9 @@ async fn serve_inner(
             })
         });
 
-        tracing::info!("Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, team_bb_notifications, models_list)");
+        tracing::info!(
+            "Registered team tools (team_create, team_add, team_message, team_status, team_result, team_shutdown, team_bb_publish, team_bb_read, team_bb_notifications, models_list)"
+        );
 
         // Initialize checkpoint store if enabled
         let checkpoint = if cfg.budget.checkpoint {
@@ -3432,13 +3460,14 @@ async fn serve_inner(
                 Ok(cp) => {
                     tracing::info!(path = %db_path, "Flow checkpoint store opened");
                     if let Ok(incomplete) = cp.list_incomplete()
-                        && !incomplete.is_empty() {
-                            tracing::info!(
-                                count = incomplete.len(),
-                                flows = ?incomplete,
-                                "Found incomplete flows from previous run (use flow_resume to continue)"
-                            );
-                        }
+                        && !incomplete.is_empty()
+                    {
+                        tracing::info!(
+                            count = incomplete.len(),
+                            flows = ?incomplete,
+                            "Found incomplete flows from previous run (use flow_resume to continue)"
+                        );
+                    }
                     Some(Arc::new(cp))
                 }
                 Err(e) => {
@@ -3656,7 +3685,9 @@ async fn serve_inner(
             }
         }
 
-        tracing::info!("Registered memory tools (memory_store, memory_query, memory_forget, memory_purge_pii, memory_forget_by_content, pii_report, memory_consent)");
+        tracing::info!(
+            "Registered memory tools (memory_store, memory_query, memory_forget, memory_purge_pii, memory_forget_by_content, pii_report, memory_consent)"
+        );
     }
 
     // --- Registry proxy module ---
@@ -4124,27 +4155,28 @@ async fn serve_inner(
             // Re-add ML filters
             for (model_name, model_cfg) in &cfg.models {
                 if model_cfg.task == "classification"
-                    && let Some(model) = models.get(model_name) {
-                        let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
-                            std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
-                                model.clone(),
-                            ));
-                        if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
-                            pipeline.add_model_filter(
-                                navra_core::safety::MultiLabelFilter::from_thresholds(
-                                    classifier,
-                                    pset.safety_thresholds.clone(),
-                                ),
-                            );
-                        } else {
-                            let threshold = model_cfg.threshold.unwrap_or(0.5);
-                            pipeline.add_model_filter(navra_core::safety::MlFilter::new(
+                    && let Some(model) = models.get(model_name)
+                {
+                    let classifier: std::sync::Arc<dyn navra_core::safety::Classifier> =
+                        std::sync::Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
+                            model.clone(),
+                        ));
+                    if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
+                        pipeline.add_model_filter(
+                            navra_core::safety::MultiLabelFilter::from_thresholds(
                                 classifier,
-                                threshold,
-                                "ml-unsafe",
-                            ));
-                        }
+                                pset.safety_thresholds.clone(),
+                            ),
+                        );
+                    } else {
+                        let threshold = model_cfg.threshold.unwrap_or(0.5);
+                        pipeline.add_model_filter(navra_core::safety::MlFilter::new(
+                            classifier,
+                            threshold,
+                            "ml-unsafe",
+                        ));
                     }
+                }
             }
             #[cfg(feature = "onnx")]
             if let Some(ref ner) = pii_ner_filter {
@@ -4586,22 +4618,22 @@ async fn serve_inner(
                                 && let Ok(flow) = serde_yaml::from_str::<
                                     navra_flow::yaml_loader::FlowFile,
                                 >(&content)
-                                {
-                                    summaries.push(navra_core::acp::types::FlowSummary {
-                                        name: flow.name.clone(),
-                                        description: flow
-                                            .description
-                                            .unwrap_or_else(|| flow.name.clone()),
-                                        nodes: flow
-                                            .tasks
-                                            .iter()
-                                            .map(|t| navra_core::acp::types::FlowNodeSummary {
-                                                id: t.id.clone(),
-                                                description: t.mandate.clone(),
-                                            })
-                                            .collect(),
-                                    });
-                                }
+                            {
+                                summaries.push(navra_core::acp::types::FlowSummary {
+                                    name: flow.name.clone(),
+                                    description: flow
+                                        .description
+                                        .unwrap_or_else(|| flow.name.clone()),
+                                    nodes: flow
+                                        .tasks
+                                        .iter()
+                                        .map(|t| navra_core::acp::types::FlowNodeSummary {
+                                            id: t.id.clone(),
+                                            description: t.mandate.clone(),
+                                        })
+                                        .collect(),
+                                });
+                            }
                         }
                     }
                 }
@@ -4641,7 +4673,9 @@ async fn serve_inner(
             // --- Flow graph API ---
             let flow_api = flow_api::flow_api_router(Arc::clone(&flow_registry), None);
             let router = router.merge(flow_api);
-            tracing::info!("Flow graph API at /flows/{{id}}/graph, /flows/{{id}}/graph/dot, /flows/{{id}}/events");
+            tracing::info!(
+                "Flow graph API at /flows/{{id}}/graph, /flows/{{id}}/graph/dot, /flows/{{id}}/events"
+            );
 
             // --- Web UI: shared state + API routes ---
             // Detect first available Ollama model for UI chat fallback
@@ -4919,17 +4953,19 @@ pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
         .args(["--user", "daemon-reload"])
         .status();
     if let Ok(status) = reload
-        && status.success() {
-            println!("Reloaded systemd user daemon");
-        }
+        && status.success()
+    {
+        println!("Reloaded systemd user daemon");
+    }
 
     let enable = std::process::Command::new("systemctl")
         .args(["--user", "enable", "navra.service", "navra.socket"])
         .status();
     if let Ok(status) = enable
-        && status.success() {
-            println!("Enabled navra.service and navra.socket");
-        }
+        && status.success()
+    {
+        println!("Enabled navra.service and navra.socket");
+    }
 
     println!("\nTo start now:  systemctl --user start navra.service");
     println!("To check logs: journalctl --user -u navra.service -f");
@@ -5059,7 +5095,9 @@ async fn run_agent(
         } else if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
             ModelProvider::AnthropicDirect { key }
         } else {
-            anyhow::bail!("Claude model requested but no ANTHROPIC_VERTEX_PROJECT_ID or ANTHROPIC_API_KEY set");
+            anyhow::bail!(
+                "Claude model requested but no ANTHROPIC_VERTEX_PROJECT_ID or ANTHROPIC_API_KEY set"
+            );
         }
     } else {
         ModelProvider::Ollama
@@ -5339,9 +5377,10 @@ async fn run_agent(
 pub(crate) fn expand_tilde(path: &str) -> String {
     let mut result = path.to_string();
     if result.starts_with("~/")
-        && let Some(home) = dirs::home_dir() {
-            result = format!("{}{}", home.display(), &result[1..]);
-        }
+        && let Some(home) = dirs::home_dir()
+    {
+        result = format!("{}{}", home.display(), &result[1..]);
+    }
     // Expand $VAR and ${VAR} patterns
     let mut out = String::with_capacity(result.len());
     let mut chars = result.chars().peekable();
@@ -5761,7 +5800,7 @@ fn resolve_env_vars(s: &str) -> String {
 mod tests {
     use super::*;
     use navra_core::protocol::{ReadResourceResult, ResourceContent};
-    use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+    use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 
     fn extract_resource_text(rc: &ResourceContent) -> String {
         match rc {

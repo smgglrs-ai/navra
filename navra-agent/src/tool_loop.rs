@@ -13,8 +13,8 @@ use navra_model::{
     FunctionCallOutputItem, InputItem, ItemStatus, ModelBackend, ModelResponse, OutputItem,
     ResponseTool,
 };
-use navra_protocol::label::DataLabel;
 use navra_protocol::CallToolResult;
+use navra_protocol::label::DataLabel;
 use navra_safety_hooks::hooks::{
     HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome,
 };
@@ -389,11 +389,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         nb += y * y;
     }
     let denom = na.sqrt() * nb.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// Split text into paragraphs. Uses double newline for prose,
@@ -1034,17 +1030,18 @@ pub async fn run_tool_loop(
         // to prevent small models from wasting context on explanation.
         if let Some(max_tokens) = config.max_reasoning_tokens
             && let Some(text) = response.text()
-                && text.len() > max_tokens * 4 {
-                    let truncated = truncate_reasoning(&text, max_tokens);
-                    tracing::info!(
-                        original_chars = text.len(),
-                        max_tokens = max_tokens,
-                        "Truncated verbose model reasoning"
-                    );
-                    // Replace text in input context so subsequent turns
-                    // don't carry the full verbose reasoning
-                    input.push(InputItem::user(&truncated));
-                }
+            && text.len() > max_tokens * 4
+        {
+            let truncated = truncate_reasoning(&text, max_tokens);
+            tracing::info!(
+                original_chars = text.len(),
+                max_tokens = max_tokens,
+                "Truncated verbose model reasoning"
+            );
+            // Replace text in input context so subsequent turns
+            // don't carry the full verbose reasoning
+            input.push(InputItem::user(&truncated));
+        }
 
         // Repetition loop detection: if the model produces the same
         // output 5 times in a row, abort to avoid infinite loops.
@@ -2488,9 +2485,12 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         }
         println!();
 
-        assert!(extract_hits >= trunc_hits,
+        assert!(
+            extract_hits >= trunc_hits,
             "Extractive ({} hits) should keep at least as many security keywords as truncation ({} hits)",
-            extract_hits, trunc_hits);
+            extract_hits,
+            trunc_hits
+        );
     }
 
     #[test]
@@ -2842,11 +2842,13 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert!(matches!(block.status, crate::block::BlockStatus::Completed));
         assert!(!block.is_error);
         assert!(block.duration_ms.is_some());
-        assert!(block
-            .result_preview
-            .as_deref()
-            .unwrap()
-            .contains("nothing to commit"));
+        assert!(
+            block
+                .result_preview
+                .as_deref()
+                .unwrap()
+                .contains("nothing to commit")
+        );
     }
 
     #[tokio::test]
@@ -2866,11 +2868,13 @@ pub fn render_template(name: &str, vars: &HashMap<String, String>) -> String {\n
         assert_eq!(block.tool_name, "nonexistent_tool");
         assert!(matches!(block.status, crate::block::BlockStatus::Failed));
         assert!(block.is_error);
-        assert!(block
-            .result_preview
-            .as_deref()
-            .unwrap()
-            .contains("Unknown tool"));
+        assert!(
+            block
+                .result_preview
+                .as_deref()
+                .unwrap()
+                .contains("Unknown tool")
+        );
     }
 
     #[tokio::test]

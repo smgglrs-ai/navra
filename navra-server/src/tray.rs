@@ -270,8 +270,8 @@ fn install_tray_icon() -> bool {
 /// The tray runs on its own tokio task. The caller receives:
 /// - `TrayCommand` receiver for menu actions (approve, deny, pause, quit)
 /// - `ksni::Handle` to push state updates (pending approvals, agents)
-pub async fn spawn_tray(
-) -> anyhow::Result<(mpsc::UnboundedReceiver<TrayCommand>, ksni::Handle<McpdTray>)> {
+pub async fn spawn_tray()
+-> anyhow::Result<(mpsc::UnboundedReceiver<TrayCommand>, ksni::Handle<McpdTray>)> {
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
     let has_custom_icon = install_tray_icon();

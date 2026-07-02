@@ -48,11 +48,11 @@ pub use self::confidentiality::Confidentiality;
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 #[cfg(feature = "onnx")]
 pub use self::ner::{
-    default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter, NerFilter,
+    NerFilter, default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter,
 };
 #[cfg(feature = "onnx")]
 pub use self::privacy_filter::{
-    default_privacy_filter_model_dir, load_privacy_filter, PrivacyFilterModel,
+    PrivacyFilterModel, default_privacy_filter_model_dir, load_privacy_filter,
 };
 pub use self::privacy_router::{PrivacyRouter, PrivacyRouterBuilder, PrivacyRouterConfig};
 pub use self::projection::{ProjectionError, SparseProjectionMatrix};
@@ -65,8 +65,8 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// PII finding categories produced by the PII filter.
 const PII_CATEGORIES: &[&str] = &[
@@ -193,25 +193,28 @@ impl Declassification {
         let (new_conf, reason) = match action {
             FilterAction::Redact if findings_count > 0 && all_handled => (
                 Some(Confidentiality::Sensitive),
-                format!("Full redaction: {findings_count} PII findings replaced with [REDACTED] markers. \
+                format!(
+                    "Full redaction: {findings_count} PII findings replaced with [REDACTED] markers. \
                          Structural metadata retained (markers reveal PII existed). \
-                         Declassified Pii → Sensitive."),
+                         Declassified Pii → Sensitive."
+                ),
             ),
             FilterAction::Redact if findings_count > 0 && !all_handled => (
                 None,
-                format!("Partial redaction: not all {findings_count} findings were handled. \
-                         Declassification denied — raw PII may remain."),
+                format!(
+                    "Partial redaction: not all {findings_count} findings were handled. \
+                         Declassification denied — raw PII may remain."
+                ),
             ),
             FilterAction::Pseudonymize => (
                 None,
-                format!("Pseudonymization: {findings_count} findings replaced with pseudonyms. \
+                format!(
+                    "Pseudonymization: {findings_count} findings replaced with pseudonyms. \
                          No declassification — pseudonymized data is still personal data \
-                         under GDPR Article 4(5) (reversible with key)."),
+                         under GDPR Article 4(5) (reversible with key)."
+                ),
             ),
-            FilterAction::Pass => (
-                None,
-                "No filtering applied. Label unchanged.".to_string(),
-            ),
+            FilterAction::Pass => (None, "No filtering applied. Label unchanged.".to_string()),
             FilterAction::Block => (
                 None,
                 "Content blocked. No declassification needed.".to_string(),

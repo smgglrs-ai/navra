@@ -7,7 +7,7 @@
 //! See `docs/designs/openshell-sandbox.md` Section 2 for the full spec.
 
 use super::{AgentIdentity, AuthError, Authenticator};
-use jsonwebtoken::{decode, decode_header, jwk, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -289,9 +289,10 @@ impl OpenShellAuthenticator {
                 e.into_inner()
             });
             if let Some(ref cached) = *cache
-                && cached.fetched_at.elapsed().as_secs() < cache_ttl {
-                    return Ok(cached.keys.clone());
-                }
+                && cached.fetched_at.elapsed().as_secs() < cache_ttl
+            {
+                return Ok(cached.keys.clone());
+            }
         }
 
         let timeout = std::time::Duration::from_secs(self.config.http_timeout_secs);
@@ -431,7 +432,7 @@ mod tests {
     use super::*;
     use axum::http::HeaderMap;
     use base64::Engine;
-    use jsonwebtoken::{encode, EncodingKey, Header};
+    use jsonwebtoken::{EncodingKey, Header, encode};
 
     /// Generate an Ed25519 keypair and return (encoding_key, decoding_key_pem).
     fn generate_ed25519_keypair() -> (EncodingKey, Vec<u8>) {
@@ -610,7 +611,7 @@ mod tests {
 
     #[test]
     fn chain_ordering_cap_tokens_take_priority() {
-        use crate::auth::capability::{build_payload, encode_token, CapabilitySet};
+        use crate::auth::capability::{CapabilitySet, build_payload, encode_token};
         use crate::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
         use crate::identity::{CapSigner, Ed25519Signer};
 

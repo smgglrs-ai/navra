@@ -168,9 +168,10 @@ impl ModelTransport for HuggingFaceTransport {
 
             // License (direct field)
             if meta.license.is_none()
-                && let Some(license) = info["cardData"]["license"].as_str() {
-                    meta.license = Some(license.to_string());
-                }
+                && let Some(license) = info["cardData"]["license"].as_str()
+            {
+                meta.license = Some(license.to_string());
+            }
 
             // Languages
             if let Some(langs) = info["cardData"]["language"].as_array() {

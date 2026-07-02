@@ -26,28 +26,7 @@ RUN dnf install -y gcc make rust cargo glibc-static && \
 
 WORKDIR /src
 
-# Copy only the crates navra-agent needs
-COPY Cargo.toml Cargo.lock ./
-COPY navra-agent/ navra-agent/
-COPY navra-protocol/ navra-protocol/
-COPY navra-model/ navra-model/
-COPY navra-auth/ navra-auth/
-COPY navra-safety/ navra-safety/
-COPY navra-cognitive/ navra-cognitive/
-COPY navra-responses/ navra-responses/
-COPY navra-macros/ navra-macros/
-
-# Stub out workspace members we didn't copy
-RUN for dir in benchmarks navra-core navra-server navra-rag \
-              navra-modal-voice navra-modal-vision navra-flow \
-              navra-model-hub navra-model-runtime navra-model-server \
-              navra-security navra-memory navra-mcp navra-openapi \
-              navra-safety-hooks; do \
-      mkdir -p "$dir/src" && \
-      printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n' \
-        "$(basename $dir)" > "$dir/Cargo.toml" && \
-      echo '' > "$dir/src/lib.rs"; \
-    done
+COPY . .
 
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 RUN cargo build \

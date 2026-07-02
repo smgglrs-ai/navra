@@ -87,43 +87,44 @@ pub async fn execute_operation(
     // On 401/403 with OAuth configured, try one token refresh then retry
     if let Some(ref mgr) = auth.oauth
         && let Ok(ref r) = resp
-            && r.is_error == Some(true) {
-                let body_text = r
-                    .content
-                    .first()
-                    .and_then(|c| c.raw.as_text())
-                    .map(|t| t.text.as_str())
-                    .unwrap_or("");
-                if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {
-                    tracing::info!("OAuth: received 401/403, attempting token refresh");
-                    match mgr.force_refresh().await {
-                        Ok(new_token) => {
-                            let mut retry_headers = auth.headers();
-                            if let Ok(val) = reqwest::header::HeaderValue::from_str(&format!(
-                                "Bearer {new_token}"
-                            )) {
-                                retry_headers.insert(reqwest::header::AUTHORIZATION, val);
-                            }
-                            return send_request(
-                                client,
-                                &method,
-                                &url,
-                                &retry_headers,
-                                meta,
-                                args,
-                                max_response_bytes,
-                            )
-                            .await
-                            .unwrap_or_else(|e| {
-                                CallToolResult::error_msg(format!("HTTP retry failed: {e}"))
-                            });
-                        }
-                        Err(e) => {
-                            tracing::warn!("OAuth token refresh failed: {e}");
-                        }
+        && r.is_error == Some(true)
+    {
+        let body_text = r
+            .content
+            .first()
+            .and_then(|c| c.raw.as_text())
+            .map(|t| t.text.as_str())
+            .unwrap_or("");
+        if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {
+            tracing::info!("OAuth: received 401/403, attempting token refresh");
+            match mgr.force_refresh().await {
+                Ok(new_token) => {
+                    let mut retry_headers = auth.headers();
+                    if let Ok(val) =
+                        reqwest::header::HeaderValue::from_str(&format!("Bearer {new_token}"))
+                    {
+                        retry_headers.insert(reqwest::header::AUTHORIZATION, val);
                     }
+                    return send_request(
+                        client,
+                        &method,
+                        &url,
+                        &retry_headers,
+                        meta,
+                        args,
+                        max_response_bytes,
+                    )
+                    .await
+                    .unwrap_or_else(|e| {
+                        CallToolResult::error_msg(format!("HTTP retry failed: {e}"))
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("OAuth token refresh failed: {e}");
                 }
             }
+        }
+    }
 
     resp.unwrap_or_else(|e| CallToolResult::error_msg(format!("HTTP request failed: {e}")))
 }
@@ -141,21 +142,23 @@ async fn send_request(
     req = req.headers(headers.clone());
 
     if meta.has_body
-        && let Some(body) = args.get("body") {
-            req = req.header("Content-Type", "application/json");
-            req = req.json(body);
-        }
+        && let Some(body) = args.get("body")
+    {
+        req = req.header("Content-Type", "application/json");
+        req = req.json(body);
+    }
 
     let resp = req.send().await.map_err(|e| e.to_string())?;
 
     let status = resp.status();
     let max_body = max_response_bytes.unwrap_or(1024 * 1024);
     if let Some(len) = resp.content_length()
-        && len as usize > max_body {
-            return Ok(CallToolResult::error_msg(format!(
-                "Response too large ({len} bytes, limit {max_body})"
-            )));
-        }
+        && len as usize > max_body
+    {
+        return Ok(CallToolResult::error_msg(format!(
+            "Response too large ({len} bytes, limit {max_body})"
+        )));
+    }
     let body = match resp.bytes().await {
         Ok(b) => {
             if b.len() > max_body {
@@ -167,7 +170,7 @@ async fn send_request(
         Err(e) => {
             return Ok(CallToolResult::error_msg(format!(
                 "Failed to read response: {e}"
-            )))
+            )));
         }
     };
 

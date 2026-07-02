@@ -4,9 +4,9 @@
 //! and type conversions using mock transports.
 
 use navra_agent::{
-    extract_text, run_tool_loop, Agent, AgentError, CallToolResult, Content, CreateResponseRequest,
-    DataLabel, FunctionCallItem, ItemStatus, McpClient, MessageItem, ModelBackend, ModelResponse,
-    OutputItem, ResponseStatus, ToolLoopConfig,
+    Agent, AgentError, CallToolResult, Content, CreateResponseRequest, DataLabel, FunctionCallItem,
+    ItemStatus, McpClient, MessageItem, ModelBackend, ModelResponse, OutputItem, ResponseStatus,
+    ToolLoopConfig, extract_text, run_tool_loop,
 };
 use navra_model::ModelError;
 use navra_protocol::compat::CallToolResultExt;

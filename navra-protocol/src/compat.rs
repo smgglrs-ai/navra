@@ -77,24 +77,25 @@ pub fn compress_result(result: &mut CallToolResult, max_tokens: u32) {
     let chars_budget = (max_tokens as usize) * 4;
     for content in &mut result.content {
         if let Some(tc) = content.raw.as_text()
-            && tc.text.len() > chars_budget {
-                let cut = chars_budget.saturating_sub(40).min(tc.text.len());
-                let mut safe_cut = cut;
-                while safe_cut > 0 && !tc.text.is_char_boundary(safe_cut) {
-                    safe_cut -= 1;
-                }
-                let slice = &tc.text[..safe_cut];
-                let cut_point = slice
-                    .rfind(". ")
-                    .or_else(|| slice.rfind('\n'))
-                    .map(|p| p + 1)
-                    .unwrap_or(safe_cut);
-                let remaining = tc.text.len() - cut_point;
-                let new_text = format!(
-                    "{}\n[compressed — {remaining} chars omitted]",
-                    &tc.text[..cut_point]
-                );
-                *content = Content::text(new_text);
+            && tc.text.len() > chars_budget
+        {
+            let cut = chars_budget.saturating_sub(40).min(tc.text.len());
+            let mut safe_cut = cut;
+            while safe_cut > 0 && !tc.text.is_char_boundary(safe_cut) {
+                safe_cut -= 1;
             }
+            let slice = &tc.text[..safe_cut];
+            let cut_point = slice
+                .rfind(". ")
+                .or_else(|| slice.rfind('\n'))
+                .map(|p| p + 1)
+                .unwrap_or(safe_cut);
+            let remaining = tc.text.len() - cut_point;
+            let new_text = format!(
+                "{}\n[compressed — {remaining} chars omitted]",
+                &tc.text[..cut_point]
+            );
+            *content = Content::text(new_text);
+        }
     }
 }

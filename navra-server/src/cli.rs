@@ -613,18 +613,18 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
         .join("navra/agent-bundles")
         .join(&new_bundle.meta.name);
     if existing_dir.exists()
-        && let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir) {
-            let diff =
-                bundle_dir::diff_permissions(&old_bundle.permissions, &new_bundle.permissions);
-            if !diff.is_empty() {
-                println!(
-                    "Upgrading {} v{} → v{}",
-                    old_bundle.meta.name, old_bundle.meta.version, new_bundle.meta.version
-                );
-                print!("{diff}");
-                println!();
-            }
+        && let Ok(old_bundle) = bundle_dir::load_bundle(&existing_dir)
+    {
+        let diff = bundle_dir::diff_permissions(&old_bundle.permissions, &new_bundle.permissions);
+        if !diff.is_empty() {
+            println!(
+                "Upgrading {} v{} → v{}",
+                old_bundle.meta.name, old_bundle.meta.version, new_bundle.meta.version
+            );
+            print!("{diff}");
+            println!();
         }
+    }
 
     let installed = bundle_dir::install_from_dir(dir)?;
     println!("Installed: {} v{}", installed.name, installed.version);
@@ -638,10 +638,11 @@ fn agent_install_local(dir: &std::path::Path) -> anyhow::Result<()> {
     }
 
     if let Ok(Some(template)) = bundle_dir::load_config_template(dir)
-        && !template.credentials.is_empty() {
-            println!("\nThis agent needs credentials. Run:");
-            println!("  navra agent init {}", installed.name);
-        }
+        && !template.credentials.is_empty()
+    {
+        println!("\nThis agent needs credentials. Run:");
+        println!("  navra agent init {}", installed.name);
+    }
 
     Ok(())
 }
@@ -687,24 +688,25 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
 
     // Credential references
     if let Some(ref tmpl) = template
-        && !tmpl.credentials.is_empty() {
-            config.push_str("\n[credentials]\n");
-            for cred in &tmpl.credentials {
-                let required = if cred.required { "" } else { "  # optional" };
-                config.push_str(&format!("# {} ({}){}", cred.name, cred.cred_type, required));
-                if let Some(ref desc) = cred.description {
-                    config.push_str(&format!(" — {desc}"));
-                }
-                config.push('\n');
-                if !cred.scopes.is_empty() {
-                    config.push_str(&format!("# scopes: {}\n", cred.scopes.join(", ")));
-                }
-                config.push_str(&format!(
-                    "{} = \"navra/{instance}/{}\"\n\n",
-                    cred.name, cred.name
-                ));
+        && !tmpl.credentials.is_empty()
+    {
+        config.push_str("\n[credentials]\n");
+        for cred in &tmpl.credentials {
+            let required = if cred.required { "" } else { "  # optional" };
+            config.push_str(&format!("# {} ({}){}", cred.name, cred.cred_type, required));
+            if let Some(ref desc) = cred.description {
+                config.push_str(&format!(" — {desc}"));
             }
+            config.push('\n');
+            if !cred.scopes.is_empty() {
+                config.push_str(&format!("# scopes: {}\n", cred.scopes.join(", ")));
+            }
+            config.push_str(&format!(
+                "{} = \"navra/{instance}/{}\"\n\n",
+                cred.name, cred.name
+            ));
         }
+    }
 
     // Permission envelope
     if !bundle.permissions.operations.is_empty() || !bundle.permissions.default.is_empty() {
@@ -753,18 +755,19 @@ pub(crate) fn agent_init(bundle_name: &str, instance_name: Option<&str>) -> anyh
     println!("Config: {}", config_path.display());
 
     if let Some(ref tmpl) = template
-        && !tmpl.credentials.is_empty() {
-            println!("\nCredentials needed:");
-            for cred in &tmpl.credentials {
-                let req = if cred.required {
-                    "(required)"
-                } else {
-                    "(optional)"
-                };
-                println!("  {} — {} {}", cred.name, cred.cred_type, req);
-            }
-            println!("\nStore credentials in your OS keyring under 'navra/{instance}/<name>'");
+        && !tmpl.credentials.is_empty()
+    {
+        println!("\nCredentials needed:");
+        for cred in &tmpl.credentials {
+            let req = if cred.required {
+                "(required)"
+            } else {
+                "(optional)"
+            };
+            println!("  {} — {} {}", cred.name, cred.cred_type, req);
         }
+        println!("\nStore credentials in your OS keyring under 'navra/{instance}/<name>'");
+    }
 
     if !bundle.workflows.is_empty() {
         println!("\nAvailable workflows:");
@@ -954,7 +957,9 @@ pub(crate) async fn model_pull(name: &str) -> anyhow::Result<()> {
     println!("[models.{}]", uri.cache_key());
     println!("source = \"{}\"", uri);
     println!("task = \"chat\"");
-    println!("runtime = \"auto\"  # auto, llama-cpp, llama-cpp-podman, vllm, vllm-podman, llama-cpp-openshell, vllm-openshell, none");
+    println!(
+        "runtime = \"auto\"  # auto, llama-cpp, llama-cpp-podman, vllm, vllm-podman, llama-cpp-openshell, vllm-openshell, none"
+    );
     println!("# format = \"gguf\"  # gguf, safetensors, awq, gptq (auto-detected if omitted)");
 
     Ok(())
@@ -991,13 +996,14 @@ pub(crate) fn model_list() -> anyhow::Result<()> {
 
     // Hub-cached models
     if let Ok(hub) = navra_model_hub::ModelHub::new()
-        && let Ok(cached) = hub.list() {
-            for model in cached {
-                let size = format!("{:.1} MB", model.size as f64 / 1_048_576.0);
-                println!("{:<40} {size:<12} hub", model.uri);
-                found = true;
-            }
+        && let Ok(cached) = hub.list()
+    {
+        for model in cached {
+            let size = format!("{:.1} MB", model.size as f64 / 1_048_576.0);
+            println!("{:<40} {size:<12} hub", model.uri);
+            found = true;
         }
+    }
 
     if !found {
         println!("No models installed.");

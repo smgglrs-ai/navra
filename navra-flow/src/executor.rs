@@ -5,12 +5,12 @@ use crate::blackboard::Blackboard;
 use crate::checkpoint::DagCheckpoint;
 use crate::dag::DependencyGraph;
 use crate::error::FlowError;
-use crate::recovery::{classify_failure, detect_circular_fix, get_strategy, RecoveryAction};
+use crate::recovery::{RecoveryAction, classify_failure, detect_circular_fix, get_strategy};
 use crate::task::{Attempt, Task, TaskResult, TaskStatus};
 use crate::validation::validate_mandate;
 use crate::verification;
-use navra_agent::signal::{AgentSignal, SignalHandle};
 use navra_agent::Agent;
+use navra_agent::signal::{AgentSignal, SignalHandle};
 use navra_auth::ifc::TaintTracker;
 use navra_protocol::label::DataLabel;
 use std::collections::{HashMap, HashSet};
@@ -255,31 +255,32 @@ impl DagExecutor {
 
         // Resume from checkpoint: pre-populate completed tasks
         if let Some((ref cp, ref flow_id)) = self.checkpoint
-            && let Ok(Some(cp_state)) = cp.load(flow_id) {
-                for (task_id, output) in &cp_state.completed {
-                    completed.insert(task_id.clone());
-                    results.insert(
-                        task_id.clone(),
-                        TaskResult {
-                            task_id: task_id.clone(),
-                            status: TaskStatus::Complete,
-                            output: output.clone(),
-                            prompt_tokens: 0,
-                            completion_tokens: 0,
-                            taint: DataLabel::TRUSTED_PUBLIC,
-                            validation_score: None,
-                            validation_notes: Vec::new(),
-                        },
-                    );
-                }
-                if !completed.is_empty() {
-                    tracing::info!(
-                        flow_id = %flow_id,
-                        resumed = completed.len(),
-                        "Resuming DAG from checkpoint"
-                    );
-                }
+            && let Ok(Some(cp_state)) = cp.load(flow_id)
+        {
+            for (task_id, output) in &cp_state.completed {
+                completed.insert(task_id.clone());
+                results.insert(
+                    task_id.clone(),
+                    TaskResult {
+                        task_id: task_id.clone(),
+                        status: TaskStatus::Complete,
+                        output: output.clone(),
+                        prompt_tokens: 0,
+                        completion_tokens: 0,
+                        taint: DataLabel::TRUSTED_PUBLIC,
+                        validation_score: None,
+                        validation_notes: Vec::new(),
+                    },
+                );
             }
+            if !completed.is_empty() {
+                tracing::info!(
+                    flow_id = %flow_id,
+                    resumed = completed.len(),
+                    "Resuming DAG from checkpoint"
+                );
+            }
+        }
 
         loop {
             // Hop limit enforcement
@@ -379,7 +380,11 @@ impl DagExecutor {
                                         let findings_str = ver_result.findings.join("; ");
                                         let error_msg = format!(
                                             "Cross-validation failed ({}/{} verifiers rejected): {}",
-                                            ver_result.verdicts.iter().filter(|v| !v.passed).count(),
+                                            ver_result
+                                                .verdicts
+                                                .iter()
+                                                .filter(|v| !v.passed)
+                                                .count(),
                                             ver_result.verdicts.len(),
                                             findings_str
                                         );
@@ -469,13 +474,13 @@ impl DagExecutor {
                                 if let Some((ref cp, ref flow_id)) = self.checkpoint
                                     && let Err(e) =
                                         cp.save_node(flow_id, &task.id, &task_result.output)
-                                    {
-                                        tracing::warn!(
-                                            task = %task.id,
-                                            error = %e,
-                                            "Failed to save per-node checkpoint"
-                                        );
-                                    }
+                                {
+                                    tracing::warn!(
+                                        task = %task.id,
+                                        error = %e,
+                                        "Failed to save per-node checkpoint"
+                                    );
+                                }
 
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
@@ -627,9 +632,10 @@ impl DagExecutor {
 
         // Delete checkpoint on successful completion
         if let Some((ref cp, ref flow_id)) = self.checkpoint
-            && let Err(e) = cp.delete(flow_id) {
-                tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
-            }
+            && let Err(e) = cp.delete(flow_id)
+        {
+            tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
+        }
 
         Ok(DagResult {
             task_results: results,

@@ -6,8 +6,8 @@
 use navra_core::session::{Session, SessionBackend};
 use navra_mcp::auth::AgentIdentity;
 use navra_mcp::ifc::DataLabel;
-use navra_mcp::protocol::label::{Confidentiality, Integrity};
 use navra_mcp::protocol::ClientInfo;
+use navra_mcp::protocol::label::{Confidentiality, Integrity};
 use rusqlite::Connection;
 use std::sync::Mutex;
 

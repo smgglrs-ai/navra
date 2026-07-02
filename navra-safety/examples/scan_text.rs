@@ -1,5 +1,5 @@
 use navra_safety::{
-    build_pipeline, FilterAction, FilterContext, FilterPipeline, PiiFilter, SecretFilter,
+    FilterAction, FilterContext, FilterPipeline, PiiFilter, SecretFilter, build_pipeline,
 };
 
 fn main() {

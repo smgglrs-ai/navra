@@ -151,9 +151,10 @@ impl ProcessTable {
     pub fn complete_call(&self, agent_name: &str, tool_name: &str) {
         let mut entries = self.entries.write().unwrap();
         if let Some(entry) = entries.get_mut(agent_name)
-            && let Some(pos) = entry.active_calls.iter().position(|t| t == tool_name) {
-                entry.active_calls.remove(pos);
-            }
+            && let Some(pos) = entry.active_calls.iter().position(|t| t == tool_name)
+        {
+            entry.active_calls.remove(pos);
+        }
     }
 
     /// Get a snapshot of all process entries.

@@ -11,7 +11,7 @@
 
 use navra_core::protocol::ToolDefinition;
 use navra_core::safety::{FilterContext, FilterPipeline, PiiMetrics};
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 use navra_rag::ChunkStore;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -231,7 +231,7 @@ pub async fn handle_memory_store(
         Err(_) => {
             return CallToolResult::error_msg(format!(
                 "Invalid kind: {kind_str}. Use: fact, event, instruction, insight"
-            ))
+            ));
         }
     };
 
@@ -504,7 +504,7 @@ pub async fn handle_memory_purge_pii(
         _ => {
             return CallToolResult::error_msg(
                 "Missing or invalid parameter: action (must be 'redact' or 'delete')",
-            )
+            );
         }
     };
 
@@ -878,14 +878,23 @@ pub async fn handle_memory_consent(
                 None => {
                     return CallToolResult::error_msg(
                         "Missing required parameter: id (for 'set' mode)",
-                    )
+                    );
                 }
             };
             let basis = match args.get("basis").and_then(|v| v.as_str()) {
-                Some(b @ ("legitimate_interest" | "consent" | "legal_obligation" | "vital_interest" | "public_task" | "not_set")) => b,
-                _ => return CallToolResult::error_msg(
-                    "Missing or invalid parameter: basis (must be one of: legitimate_interest, consent, legal_obligation, vital_interest, public_task, not_set)"
-                ),
+                Some(
+                    b @ ("legitimate_interest"
+                    | "consent"
+                    | "legal_obligation"
+                    | "vital_interest"
+                    | "public_task"
+                    | "not_set"),
+                ) => b,
+                _ => {
+                    return CallToolResult::error_msg(
+                        "Missing or invalid parameter: basis (must be one of: legitimate_interest, consent, legal_obligation, vital_interest, public_task, not_set)",
+                    );
+                }
             };
 
             match store.set_consent_basis(id, basis) {
@@ -903,7 +912,7 @@ pub async fn handle_memory_consent(
                 None => {
                     return CallToolResult::error_msg(
                         "Missing required parameter: id (for 'get' mode)",
-                    )
+                    );
                 }
             };
 
@@ -921,7 +930,7 @@ pub async fn handle_memory_consent(
                 None => {
                     return CallToolResult::error_msg(
                         "Missing required parameter: basis (for 'list' mode)",
-                    )
+                    );
                 }
             };
 

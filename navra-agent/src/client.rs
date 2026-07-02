@@ -1,7 +1,7 @@
 //! MCP client with authentication and IFC taint tracking.
 
 use crate::error::AgentError;
-use navra_auth::ifc::{is_external_read_tool, TaintTracker};
+use navra_auth::ifc::{TaintTracker, is_external_read_tool};
 use navra_protocol::label::DataLabel;
 use navra_protocol::{
     CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, PromptDefinition,

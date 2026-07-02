@@ -47,7 +47,6 @@ pub async fn capture_screen() -> Result<String, String> {
     .map_err(|e| format!("Failed to create request proxy: {e}"))?;
 
     // Wait for the Response signal (with timeout)
-    
 
     tokio::time::timeout(
         std::time::Duration::from_secs(30),

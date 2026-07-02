@@ -6,7 +6,7 @@
 
 use crate::cache::{QueryCache, QueryCacheConfig};
 use crate::chunk::Chunk;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Once};
 use zerocopy::IntoBytes;
@@ -154,9 +154,10 @@ impl ChunkStore {
         limit: usize,
     ) -> rusqlite::Result<Vec<ChunkResult>> {
         if let Some(ref cache) = self.query_cache
-            && let Some(results) = cache.lookup(query_text, query_embedding) {
-                return Ok(results);
-            }
+            && let Some(results) = cache.lookup(query_text, query_embedding)
+        {
+            return Ok(results);
+        }
 
         let results = self.search(query_embedding, limit)?;
 
@@ -593,9 +594,10 @@ impl ChunkStore {
         limit: usize,
     ) -> rusqlite::Result<Vec<ChunkResult>> {
         if let Some(ref cache) = self.query_cache
-            && let Some(results) = cache.lookup(query_text, query_embedding) {
-                return Ok(results);
-            }
+            && let Some(results) = cache.lookup(query_text, query_embedding)
+        {
+            return Ok(results);
+        }
 
         let results =
             self.search_hybrid_with_hyde(query_text, query_embedding, hyde_embedding, limit)?;

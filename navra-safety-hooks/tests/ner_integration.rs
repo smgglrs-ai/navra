@@ -7,7 +7,7 @@
 //!   ORT_LIB_PATH=/usr/lib64 ORT_PREFER_DYNAMIC_LINK=1 cargo test -p navra-safety -- --ignored
 
 use navra_safety_hooks::safety::ContentFilter;
-use navra_safety_hooks::safety::{default_pii_ner_model_dir, FilterContext, NerFilter};
+use navra_safety_hooks::safety::{FilterContext, NerFilter, default_pii_ner_model_dir};
 
 fn model_dir() -> std::path::PathBuf {
     default_pii_ner_model_dir()

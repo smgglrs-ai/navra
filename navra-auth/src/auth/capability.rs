@@ -6,8 +6,8 @@
 //! granted capabilities, ring level, expiry, and a nonce. The signature
 //! covers the raw CBOR bytes.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -241,9 +241,10 @@ pub fn decode_token_with_revocation(
     }
 
     if let Some(rl) = revocation_list
-        && rl.is_revoked(&payload.nonce) {
-            return Err(CapabilityError::Revoked);
-        }
+        && rl.is_revoked(&payload.nonce)
+    {
+        return Err(CapabilityError::Revoked);
+    }
 
     Ok(payload)
 }
@@ -259,12 +260,13 @@ pub fn decode_token_with_audience(
 ) -> Result<CapabilityPayload, CapabilityError> {
     let payload = decode_token(token, verifier)?;
     if let Some(ref aud) = payload.aud
-        && aud != expected_audience {
-            return Err(CapabilityError::DelegationViolation(format!(
-                "audience mismatch: token is for '{}', server is '{}'",
-                aud, expected_audience
-            )));
-        }
+        && aud != expected_audience
+    {
+        return Err(CapabilityError::DelegationViolation(format!(
+            "audience mismatch: token is for '{}', server is '{}'",
+            aud, expected_audience
+        )));
+    }
     Ok(payload)
 }
 
@@ -379,11 +381,11 @@ fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
         if let Some(parent_prefix) = parent.strip_suffix("/**") {
             if let Some(child_prefix) = child.strip_suffix("/**")
                 && child_prefix.starts_with(parent_prefix)
-                    && (child_prefix.len() == parent_prefix.len()
-                        || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
-                {
-                    return true;
-                }
+                && (child_prefix.len() == parent_prefix.len()
+                    || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
+            {
+                return true;
+            }
             // Literal child path under parent's glob tree
             if child.starts_with(parent_prefix)
                 && (child.len() == parent_prefix.len()
@@ -395,9 +397,10 @@ fn is_glob_covered_by(child: &str, parent_patterns: &[String]) -> bool {
         // Parent with * wildcard: check if it matches the child literally
         if parent.contains('*')
             && let Ok(pat) = glob::Pattern::new(parent)
-                && pat.matches(child) {
-                    return true;
-                }
+            && pat.matches(child)
+        {
+            return true;
+        }
     }
     false
 }
@@ -414,7 +417,7 @@ pub fn validate_delegation(
         _ => {
             return Err(CapabilityError::DelegationViolation(
                 "child token does not reference parent nonce".to_string(),
-            ))
+            ));
         }
     }
 
@@ -450,12 +453,13 @@ pub fn validate_delegation(
             ));
         }
         (Some(parent_obo), Some(child_obo))
-            if (parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss) => {
-                return Err(CapabilityError::DelegationViolation(format!(
-                    "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
-                    child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
-                )));
-            }
+            if (parent_obo.sub != child_obo.sub || parent_obo.iss != child_obo.iss) =>
+        {
+            return Err(CapabilityError::DelegationViolation(format!(
+                "obo mismatch: child obo (sub={}, iss={}) differs from parent (sub={}, iss={})",
+                child_obo.sub, child_obo.iss, parent_obo.sub, parent_obo.iss
+            )));
+        }
         _ => {}
     }
 
@@ -521,8 +525,8 @@ fn cbor_decode(bytes: &[u8]) -> Result<CapabilityPayload, CapabilityError> {
 /// Generate a random 16-byte nonce.
 pub fn generate_nonce() -> [u8; 16] {
     let mut nonce = [0u8; 16];
-    use rand::rngs::OsRng;
     use rand::RngCore;
+    use rand::rngs::OsRng;
     OsRng.fill_bytes(&mut nonce);
     nonce
 }
@@ -701,10 +705,12 @@ mod tests {
         // Wrong audience fails
         let result = decode_token_with_audience(&token, &signer, "https://server-b.example.com");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("audience mismatch"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("audience mismatch")
+        );
     }
 
     #[test]

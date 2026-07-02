@@ -49,9 +49,9 @@ pub use builder::FlowBuilder;
 pub use checkpoint::{CheckpointState, DagCheckpoint};
 pub use dag::DependencyGraph;
 pub use definition::{
-    generic_flow_dag, parse_planner_tasks, single_task_dag, BackEdgeDefinition, DagConfig,
-    DagDefinition, EdgeDefinition, FlowConfig, FlowDefinition, NodeDefinition, ParameterDef,
-    TaskDefinition,
+    BackEdgeDefinition, DagConfig, DagDefinition, EdgeDefinition, FlowConfig, FlowDefinition,
+    NodeDefinition, ParameterDef, TaskDefinition, generic_flow_dag, parse_planner_tasks,
+    single_task_dag,
 };
 pub use engine::{Flow, FlowNode, FlowResult};
 pub use error::FlowError;
@@ -60,17 +60,17 @@ pub use handoff::HANDOFF_TOOL_NAME;
 pub use iterative::{Finding, IterativeConfig, IterativeExecutor, IterativeResult, RoundMetric};
 pub use mailbox::{MailboxMessage, MailboxRegistry, MessageBody};
 pub use mesh::{AgentCardDirectory, MeshRouter, TeammateLocation};
-pub use mesh_tools::{flow_kill_tool_def, FLOW_KILL};
+pub use mesh_tools::{FLOW_KILL, flow_kill_tool_def};
 pub use recovery::{
-    classify_failure, detect_circular_fix, FailureType, RecoveryAction, RecoveryStrategy,
+    FailureType, RecoveryAction, RecoveryStrategy, classify_failure, detect_circular_fix,
 };
 pub use task::{Attempt, Task, TaskResult, TaskStatus};
 pub use validation::{
-    extract_dominators, validate_against_dominators, validate_mandate, DominatorTree,
-    ExecutionTrace, PrefixTreeAcceptor, TraceEvent, ValidationResult,
+    DominatorTree, ExecutionTrace, PrefixTreeAcceptor, TraceEvent, ValidationResult,
+    extract_dominators, validate_against_dominators, validate_mandate,
 };
 pub use verification::{
-    verify_result, VerificationConfig, VerificationResult, VerificationThreshold,
-    VerificationVerdict,
+    VerificationConfig, VerificationResult, VerificationThreshold, VerificationVerdict,
+    verify_result,
 };
 pub use yaml_loader::{LoadedFlow, YamlLoadError};

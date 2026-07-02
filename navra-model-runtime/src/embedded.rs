@@ -20,7 +20,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-use axum::{extract::State, routing::get, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, routing::get, routing::post};
 use llama_cpp_4::context::params::LlamaContextParams;
 use llama_cpp_4::llama_backend::LlamaBackend;
 use llama_cpp_4::model::params::LlamaModelParams;
@@ -85,7 +85,10 @@ impl EmbeddedRuntime {
 
     pub fn touch(&self, model_path: &str) {
         let mut pool = self.pool.lock().unwrap();
-        if let Some(model) = pool.values_mut().find(|m| m.model_path.to_string_lossy() == model_path) {
+        if let Some(model) = pool
+            .values_mut()
+            .find(|m| m.model_path.to_string_lossy() == model_path)
+        {
             model.last_used = Instant::now();
         }
     }
@@ -206,8 +209,8 @@ fn generate_response(
 ) -> Result<ChatCompletionResponse, String> {
     let prompt = format_chat_prompt(model, &req.messages);
 
-    let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(std::num::NonZeroU32::new(context_size));
+    let ctx_params =
+        LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(context_size));
 
     let mut ctx = model
         .new_context(_backend, ctx_params)
@@ -329,13 +332,12 @@ fn format_chat_prompt(model: &LlamaModel, messages: &[ChatMessage]) -> String {
     prompt
 }
 
-fn apply_chat_template(
-    model: &LlamaModel,
-    messages: &[(&str, &str)],
-) -> Result<String, String> {
+fn apply_chat_template(model: &LlamaModel, messages: &[(&str, &str)]) -> Result<String, String> {
     let chat_messages: Vec<llama_cpp_4::model::LlamaChatMessage> = messages
         .iter()
-        .map(|(role, content)| llama_cpp_4::model::LlamaChatMessage::new(role.to_string(), content.to_string()))
+        .map(|(role, content)| {
+            llama_cpp_4::model::LlamaChatMessage::new(role.to_string(), content.to_string())
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("chat message creation failed: {e}"))?;
 
@@ -369,9 +371,7 @@ impl ModelRuntime for EmbeddedRuntime {
 
             let model_path = config.model_path.clone();
             let context_size = config.context_size;
-            let model_size = std::fs::metadata(&model_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let model_size = std::fs::metadata(&model_path).map(|m| m.len()).unwrap_or(0);
 
             // GPU-aware offloading: check available VRAM
             let available_vram = crate::gpu::available_vram();
@@ -433,8 +433,7 @@ impl ModelRuntime for EmbeddedRuntime {
             let backend_clone = Arc::clone(&backend);
 
             let model = tokio::task::spawn_blocking(move || {
-                let model_params = LlamaModelParams::default()
-                    .with_n_gpu_layers(n_gpu_layers);
+                let model_params = LlamaModelParams::default().with_n_gpu_layers(n_gpu_layers);
 
                 let model = LlamaModel::load_from_file(&backend_clone, model_path, &model_params)
                     .map_err(|e| RuntimeError::Start(format!("model load failed: {e}")))?;
@@ -466,9 +465,9 @@ impl ModelRuntime for EmbeddedRuntime {
                 .with_state(state);
 
             let addr = format!("{}:{port}", config.host);
-            let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
-                RuntimeError::Start(format!("bind {addr} failed: {e}"))
-            })?;
+            let listener = tokio::net::TcpListener::bind(&addr)
+                .await
+                .map_err(|e| RuntimeError::Start(format!("bind {addr} failed: {e}")))?;
 
             let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
 
@@ -484,15 +483,16 @@ impl ModelRuntime for EmbeddedRuntime {
             let id = format!("embedded-{port}");
             let url = format!("http://{}:{port}", config.host);
 
-            tracing::info!(port = port, gpu = gpu_offloaded, "Embedded llama.cpp server ready");
+            tracing::info!(
+                port = port,
+                gpu = gpu_offloaded,
+                "Embedded llama.cpp server ready"
+            );
 
             let endpoint = Endpoint {
                 url,
                 id: id.clone(),
-                backend: RuntimeBackend::new(
-                    crate::engine::Engine::LlamaCpp,
-                    Isolation::Direct,
-                ),
+                backend: RuntimeBackend::new(crate::engine::Engine::LlamaCpp, Isolation::Direct),
             };
 
             self.pool.lock().unwrap().insert(

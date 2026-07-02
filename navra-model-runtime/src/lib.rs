@@ -35,9 +35,9 @@ pub mod podman;
 pub use engine::Engine;
 pub use error::RuntimeError;
 pub use format::ModelFormat;
-pub use gpu::{detect_gpus, GpuDevice, GpuKind};
+pub use gpu::{GpuDevice, GpuKind, detect_gpus};
 pub use hardware::HardwareTarget;
-pub use npu::{detect_npus, NpuDevice};
+pub use npu::{NpuDevice, detect_npus};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

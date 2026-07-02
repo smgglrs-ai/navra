@@ -2,14 +2,14 @@ use super::dispatch::{extract_arguments, resolve_tool};
 use super::*;
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::a2a::{
-    Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, Task, TaskIdParams,
-    TaskQueryParams, TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND,
+    Artifact, Message, MessageKind, MessageRole, MessageSendParams, Part, TASK_NOT_CANCELABLE,
+    TASK_NOT_FOUND, Task, TaskIdParams, TaskQueryParams, TaskState, TaskStatus,
     UNSUPPORTED_OPERATION,
 };
 use crate::protocol::{CallToolResult, ToolDefinition};
 use crate::server::McpServer;
-use navra_protocol::compat::empty_input_schema;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::compat::empty_input_schema;
 use std::collections::HashMap;
 
 fn test_server() -> McpServer {

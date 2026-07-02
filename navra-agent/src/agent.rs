@@ -3,7 +3,7 @@
 use crate::client::McpClient;
 use crate::error::AgentError;
 use crate::signal::SignalHandle;
-use crate::tool_loop::{run_tool_loop, ToolLoopConfig, ToolLoopResult};
+use crate::tool_loop::{ToolLoopConfig, ToolLoopResult, run_tool_loop};
 use navra_auth::identity::CapSigner;
 use navra_model::ModelBackend;
 use navra_protocol::label::DataLabel;

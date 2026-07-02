@@ -697,10 +697,12 @@ mod tests {
             parsed["models"]["default"]["api_key"].as_str().unwrap(),
             "sk-test-123"
         );
-        assert!(parsed["models"]["default"]["base_url"]
-            .as_str()
-            .unwrap()
-            .contains("anthropic"));
+        assert!(
+            parsed["models"]["default"]["base_url"]
+                .as_str()
+                .unwrap()
+                .contains("anthropic")
+        );
     }
 
     #[test]

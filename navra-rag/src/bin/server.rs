@@ -22,7 +22,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use clap::Parser;
 use navra_mcp::models::{Locality, ModelBackend, OpenAiBackend};
-use navra_rag::chunk::{inject_breadcrumbs, predict_chunk_value, ChunkConfig};
+use navra_rag::chunk::{ChunkConfig, inject_breadcrumbs, predict_chunk_value};
 use navra_rag::{CascadeConfig, ChunkStore, NoopReranker, Reranker};
 use std::sync::Arc;
 

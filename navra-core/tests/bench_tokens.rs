@@ -4,7 +4,7 @@
 //! print results for the paper's evaluation section.
 
 use navra_core::auth::capability::{
-    build_payload, encode_token, validate_delegation, CapabilitySet,
+    CapabilitySet, build_payload, encode_token, validate_delegation,
 };
 use navra_core::identity::{CapSigner, Ed25519Signer};
 use std::time::Instant;

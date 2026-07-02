@@ -11,8 +11,8 @@ use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use vstd::prelude::*;
 use tonic::transport::Channel;
+use vstd::prelude::*;
 
 pub struct ExecState {
     client: ComputeDriverClient<Channel>,
@@ -96,7 +96,7 @@ async fn handle_exec_run(
     let did = match &ctx.agent.did {
         Some(d) => d.clone(),
         None => {
-            return CallToolResult::error_msg("exec_run requires agent DID to identify sandbox")
+            return CallToolResult::error_msg("exec_run requires agent DID to identify sandbox");
         }
     };
 
@@ -105,7 +105,7 @@ async fn handle_exec_run(
         match sandboxes.get(&did) {
             Some(id) => id.clone(),
             None => {
-                return CallToolResult::error_msg(format!("no sandbox registered for agent {did}"))
+                return CallToolResult::error_msg(format!("no sandbox registered for agent {did}"));
             }
         }
     };

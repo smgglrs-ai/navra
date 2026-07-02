@@ -13,14 +13,14 @@ use crate::acp::types::*;
 use crate::server::McpServer;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::IntoResponse;
+use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use std::convert::Infallible;
 use std::sync::Arc;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 
 #[derive(Clone)]
 struct AcpState {
@@ -477,8 +477,8 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use http_body_util::BodyExt;
-    use navra_protocol::compat::empty_input_schema;
     use navra_protocol::compat::CallToolResultExt;
+    use navra_protocol::compat::empty_input_schema;
     use tower::util::ServiceExt;
 
     fn test_server() -> Arc<McpServer> {

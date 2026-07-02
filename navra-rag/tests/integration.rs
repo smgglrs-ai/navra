@@ -3,9 +3,9 @@
 //! Tests ChunkStore, ChunkConfig, chunk_text, and RagModule through
 //! the public interface only.
 
+use navra_core::Module;
 use navra_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
 use navra_core::permissions::{PathAcl, PermissionEngine};
-use navra_core::Module;
 use navra_rag::chunk::chunk_text;
 use navra_rag::{ChunkConfig, ChunkStore, RagModule};
 use std::collections::HashSet;

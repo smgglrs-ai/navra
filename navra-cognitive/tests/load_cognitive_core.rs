@@ -1,7 +1,7 @@
 //! Integration test: load the full cognitive_core directory
 //! (38 personas, 36 heuristics, 7 directives, 3 specializations).
 
-use navra_cognitive::{assemble, ForgeService};
+use navra_cognitive::{ForgeService, assemble};
 use std::path::Path;
 
 fn cognitive_core_path() -> std::path::PathBuf {

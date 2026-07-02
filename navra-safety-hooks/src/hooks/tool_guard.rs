@@ -39,44 +39,47 @@ impl Hook for ToolGuardHook {
             // Check for empty required fields on write operations
             if (tool_name == "file_write" || tool_name == "file_edit")
                 && let Some(path) = obj.get("path")
-                    && path.as_str().is_some_and(|p| p.is_empty()) {
-                        return HookDecision::Block("file path cannot be empty".to_string());
-                    }
+                && path.as_str().is_some_and(|p| p.is_empty())
+            {
+                return HookDecision::Block("file path cannot be empty".to_string());
+            }
         }
 
         // file_write guard: if the target file exists, suggest file_edit
         if tool_name == "file_write"
             && let Some(path) = arguments.get("path").and_then(|v| v.as_str())
-                && std::path::Path::new(path).exists() {
-                    tracing::info!(
-                        path = %path,
-                        "file_write to existing file — consider file_edit instead"
-                    );
-                    // Warn but don't block: inject a note into the arguments
-                    // so the handler and audit log capture the suggestion.
-                    let mut modified = arguments.clone();
-                    modified["_guard_warning"] = serde_json::json!(format!(
-                        "Warning: '{}' already exists. Consider using file_edit \
+            && std::path::Path::new(path).exists()
+        {
+            tracing::info!(
+                path = %path,
+                "file_write to existing file — consider file_edit instead"
+            );
+            // Warn but don't block: inject a note into the arguments
+            // so the handler and audit log capture the suggestion.
+            let mut modified = arguments.clone();
+            modified["_guard_warning"] = serde_json::json!(format!(
+                "Warning: '{}' already exists. Consider using file_edit \
                              to modify it instead of file_write which overwrites the \
                              entire file.",
-                        path
-                    ));
-                    return HookDecision::ModifyArgs(modified);
-                }
+                path
+            ));
+            return HookDecision::ModifyArgs(modified);
+        }
 
         // file_delete guard: user-friendly path message
         if tool_name == "file_delete"
-            && let Some(path) = arguments.get("path").and_then(|v| v.as_str()) {
-                if path.is_empty() {
-                    return HookDecision::Block("file_delete: path cannot be empty".to_string());
-                }
-                if path == "/" || path == "." {
-                    return HookDecision::Block(format!(
-                        "file_delete: refusing to delete '{}' — this would be destructive",
-                        path
-                    ));
-                }
+            && let Some(path) = arguments.get("path").and_then(|v| v.as_str())
+        {
+            if path.is_empty() {
+                return HookDecision::Block("file_delete: path cannot be empty".to_string());
             }
+            if path == "/" || path == "." {
+                return HookDecision::Block(format!(
+                    "file_delete: refusing to delete '{}' — this would be destructive",
+                    path
+                ));
+            }
+        }
 
         HookDecision::Continue
     }
@@ -101,10 +104,12 @@ mod tests {
             .await;
         match decision {
             HookDecision::ModifyArgs(modified) => {
-                assert!(modified["_guard_warning"]
-                    .as_str()
-                    .unwrap()
-                    .contains("file_edit"));
+                assert!(
+                    modified["_guard_warning"]
+                        .as_str()
+                        .unwrap()
+                        .contains("file_edit")
+                );
             }
             other => panic!("Expected ModifyArgs with warning, got {other:?}"),
         }

@@ -272,9 +272,10 @@ pub fn validate_against_dominators(
         match seq.iter().position(|n| n == dom_node) {
             Some(pos) => {
                 if let Some(prev) = last_pos
-                    && pos <= prev {
-                        order_violated = true;
-                    }
+                    && pos <= prev
+                {
+                    order_violated = true;
+                }
                 last_pos = Some(pos);
             }
             None => {
