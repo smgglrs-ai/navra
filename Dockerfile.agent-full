@@ -12,10 +12,7 @@
 #            -e NAVRA_TASK="Review the project" \
 #            navra-agent-full:latest
 
-FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
-
-RUN dnf install -y gcc make rust cargo && \
-    dnf clean all
+FROM rust:1.96-bookworm AS builder
 
 WORKDIR /src
 COPY . .
