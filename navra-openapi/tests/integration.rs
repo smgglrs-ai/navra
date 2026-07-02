@@ -1,7 +1,7 @@
-use axum::{routing, Json, Router};
+use axum::{Json, Router, routing};
 use navra_mcp::Module;
-use navra_openapi::auth::AuthConfig;
 use navra_openapi::OpenApiModule;
+use navra_openapi::auth::AuthConfig;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;

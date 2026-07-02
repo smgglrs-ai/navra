@@ -7,8 +7,8 @@
 //! - Dynamic client registration: `POST /oauth/register`
 //! - Bearer token validation via Ed25519-signed JWTs
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -351,9 +351,10 @@ impl OAuthProvider {
 
         // Validate requested_token_type if present
         if let Some(ref rtt) = request.requested_token_type
-            && rtt != "urn:ietf:params:oauth:token-type:access_token" {
-                return Err("invalid_request: unsupported requested_token_type".to_string());
-            }
+            && rtt != "urn:ietf:params:oauth:token-type:access_token"
+        {
+            return Err("invalid_request: unsupported requested_token_type".to_string());
+        }
 
         // Extract human identity from the subject token
         let claims = if let Some(validator) = validate_subject {
@@ -580,8 +581,8 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// Generate a random client secret (32 bytes, hex-encoded).
 fn generate_client_secret() -> String {
     let mut bytes = [0u8; 32];
-    use rand::rngs::OsRng;
     use rand::RngCore;
+    use rand::rngs::OsRng;
     OsRng.fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

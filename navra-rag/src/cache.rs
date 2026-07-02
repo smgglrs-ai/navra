@@ -6,8 +6,8 @@
 //! full vector search pipeline.
 
 use crate::store::ChunkResult;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Configuration for the query cache.
@@ -120,10 +120,11 @@ impl QueryCache {
         }
 
         if best_sim >= self.config.similarity_threshold
-            && let Some(idx) = best_idx {
-                self.hits.fetch_add(1, Ordering::Relaxed);
-                return Some(entries[idx].results.clone());
-            }
+            && let Some(idx) = best_idx
+        {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+            return Some(entries[idx].results.clone());
+        }
 
         None
     }
@@ -200,11 +201,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     }
 
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 #[cfg(test)]

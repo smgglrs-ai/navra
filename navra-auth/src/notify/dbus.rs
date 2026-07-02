@@ -2,8 +2,8 @@ use super::NotifyError;
 use crate::permissions::{ApprovalRequest, ApprovalStore};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use zbus::zvariant::Value;
 use zbus::Connection;
+use zbus::zvariant::Value;
 
 /// D-Bus notification IDs mapped to approval request IDs.
 type NotificationMap = Arc<Mutex<HashMap<u32, NotificationEntry>>>;

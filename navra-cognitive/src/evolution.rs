@@ -4,7 +4,7 @@
 //! staying static YAML. After each session, observed behavioral signals
 //! update a trait vector with exponential moving average.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::collections::HashMap;
 use std::path::Path;
 

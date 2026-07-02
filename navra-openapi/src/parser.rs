@@ -223,9 +223,10 @@ fn glob_match(pattern: &str, text: &str) -> bool {
         }
     }
     if let Some(last) = parts.last()
-        && !last.is_empty() {
-            return text.ends_with(last);
-        }
+        && !last.is_empty()
+    {
+        return text.ends_with(last);
+    }
     true
 }
 
@@ -511,9 +512,11 @@ mod tests {
     fn tool_name_prefixed_and_sanitized() {
         let spec = parse_spec(petstore_spec()).unwrap();
         let tools = generate_tools(&spec, "my_api", &[]);
-        assert!(tools
-            .iter()
-            .all(|t| t.definition.name.starts_with("my_api_")));
+        assert!(
+            tools
+                .iter()
+                .all(|t| t.definition.name.starts_with("my_api_"))
+        );
     }
 
     #[test]

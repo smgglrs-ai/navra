@@ -223,9 +223,10 @@ mod tests {
         };
         let diff = compare_permissions(&requested, &make_restrictive_policy());
         assert!(!diff.allowed);
-        assert!(diff
-            .denied_operations
-            .contains(&"shell.execute".to_string()));
+        assert!(
+            diff.denied_operations
+                .contains(&"shell.execute".to_string())
+        );
     }
 
     #[test]
@@ -254,9 +255,11 @@ mod tests {
         let diff = compare_permissions(&requested, &make_restrictive_policy());
         assert!(!diff.allowed);
         assert_eq!(diff.denied_domain_rules.len(), 1);
-        assert!(diff.denied_domain_rules[0]
-            .operations
-            .contains(&"write".to_string()));
+        assert!(
+            diff.denied_domain_rules[0]
+                .operations
+                .contains(&"write".to_string())
+        );
     }
 
     #[test]

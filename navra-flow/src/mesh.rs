@@ -14,10 +14,10 @@ use navra_protocol::a2a::{AgentCard, Message, MessageKind, MessageRole, Part};
 use navra_protocol::a2a_client::A2aClient;
 use navra_protocol::label::{Confidentiality, DataLabel};
 use std::collections::HashMap;
-use vstd::prelude::*;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::mpsc;
+use vstd::prelude::*;
 
 /// Where a teammate lives and how to reach it.
 #[derive(Debug, Clone)]
@@ -289,7 +289,7 @@ fn uuid_v4_simple() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_protocol::a2a::{AgentCapabilities, AgentCard, AgentSkill, A2A_PROTOCOL_VERSION};
+    use navra_protocol::a2a::{A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentSkill};
 
     // --- AgentCardDirectory tests ---
 

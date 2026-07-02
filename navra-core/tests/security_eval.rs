@@ -4,11 +4,11 @@
 //! prevents. Organized by the five security properties from Section 4.7.
 
 use axum::http::HeaderMap;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use navra_core::auth::capability::{
-    build_payload, decode_token, encode_token, validate_delegation, CapabilityPayload,
-    CapabilitySet,
+    CapabilityPayload, CapabilitySet, build_payload, decode_token, encode_token,
+    validate_delegation,
 };
 use navra_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use navra_core::auth::{AgentIdentity, Authenticator, TokenAuthenticator};

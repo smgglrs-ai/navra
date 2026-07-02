@@ -2,9 +2,9 @@
 //!
 //! Uses a Python test server (test_upstream.py) that speaks MCP over stdio.
 
+use navra_core::UpstreamModule;
 use navra_core::permissions::{Domain, DomainRules, Operation, ResourceClass};
 use navra_core::protocol::{CallToolParams, GetPromptParams};
-use navra_core::UpstreamModule;
 use std::path::PathBuf;
 
 fn test_server_path() -> PathBuf {

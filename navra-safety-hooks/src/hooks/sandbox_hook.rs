@@ -8,12 +8,12 @@
 //! - PathRewrite: rewrite path arguments before execution
 
 use crate::hooks::{Hook, HookDecision};
+use navra_auth::auth::CallContext;
 use navra_auth::auth::sandbox_profile::SandboxAction;
 #[cfg(test)]
 use navra_auth::auth::sandbox_profile::SandboxProfile;
-use navra_auth::auth::CallContext;
-use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::CallToolResult;
+use navra_protocol::compat::CallToolResultExt;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -78,14 +78,15 @@ impl SandboxHook {
         if let Some(obj) = args.as_object_mut() {
             for key in ["path", "file", "directory", "repo"] {
                 if let Some(val) = obj.get_mut(key)
-                    && let Some(s) = val.as_str() {
-                        let rewritten = if let Some(rest) = s.strip_prefix(strip_prefix) {
-                            format!("{}{}", add_prefix, rest)
-                        } else {
-                            s.to_string()
-                        };
-                        *val = serde_json::Value::String(rewritten);
-                    }
+                    && let Some(s) = val.as_str()
+                {
+                    let rewritten = if let Some(rest) = s.strip_prefix(strip_prefix) {
+                        format!("{}{}", add_prefix, rest)
+                    } else {
+                        s.to_string()
+                    };
+                    *val = serde_json::Value::String(rewritten);
+                }
             }
         }
         args
@@ -197,8 +198,8 @@ impl Hook for SandboxHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use navra_auth::auth::sandbox_profile::ToolSandboxRule;
     use navra_auth::auth::AgentIdentity;
+    use navra_auth::auth::sandbox_profile::ToolSandboxRule;
 
     fn test_ctx_with_sandbox(profile: SandboxProfile) -> CallContext {
         let mut ctx = CallContext::new(AgentIdentity::new("test-agent", "dev"), "test-session");

@@ -2,7 +2,7 @@
 
 use crate::error::MemoryError;
 use crate::types::{DistilledEntry, MemoryEntry, MemoryScope, MemoryType};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
@@ -1164,9 +1164,11 @@ mod tests {
         assert!(store.set_consent_basis("e1", "consent").unwrap());
         assert_eq!(store.get_consent_basis("e1").unwrap().unwrap(), "consent");
 
-        assert!(store
-            .set_consent_basis("e1", "legitimate_interest")
-            .unwrap());
+        assert!(
+            store
+                .set_consent_basis("e1", "legitimate_interest")
+                .unwrap()
+        );
         assert_eq!(
             store.get_consent_basis("e1").unwrap().unwrap(),
             "legitimate_interest"

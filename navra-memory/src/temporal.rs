@@ -11,7 +11,7 @@
 //! downward automatically.
 
 use crate::error::MemoryError;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;

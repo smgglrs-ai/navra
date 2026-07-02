@@ -1,7 +1,7 @@
 use crate::auth::CallContext;
 use crate::protocol::a2a::{
-    self, Artifact, Message, MessageSendParams, Part, Task, TaskIdParams, TaskQueryParams,
-    TaskState, TaskStatus, TASK_NOT_CANCELABLE, TASK_NOT_FOUND, UNSUPPORTED_OPERATION,
+    self, Artifact, Message, MessageSendParams, Part, TASK_NOT_CANCELABLE, TASK_NOT_FOUND, Task,
+    TaskIdParams, TaskQueryParams, TaskState, TaskStatus, UNSUPPORTED_OPERATION,
 };
 use crate::protocol::{CallToolParams, JsonRpcError};
 use crate::server::McpServer;
@@ -17,16 +17,18 @@ use super::TaskStore;
 pub(super) fn resolve_tool(message: &Message) -> Option<String> {
     // 1. Explicit skill in metadata
     if let Some(meta) = &message.metadata
-        && let Some(skill) = meta.get("skill").and_then(|v| v.as_str()) {
-            return Some(skill.to_string());
-        }
+        && let Some(skill) = meta.get("skill").and_then(|v| v.as_str())
+    {
+        return Some(skill.to_string());
+    }
 
     // 2. DataPart with a "tool" field
     for part in &message.parts {
         if let Part::Data { data, .. } = part
-            && let Some(tool) = data.get("tool").and_then(|v| v.as_str()) {
-                return Some(tool.to_string());
-            }
+            && let Some(tool) = data.get("tool").and_then(|v| v.as_str())
+        {
+            return Some(tool.to_string());
+        }
     }
 
     None
@@ -42,9 +44,10 @@ pub(super) fn extract_arguments(message: &Message) -> serde_json::Value {
     // Look for explicit arguments in DataParts
     for part in &message.parts {
         if let Part::Data { data, .. } = part
-            && let Some(args) = data.get("arguments") {
-                return args.clone();
-            }
+            && let Some(args) = data.get("arguments")
+        {
+            return args.clone();
+        }
     }
 
     // Use the first DataPart's content as arguments (excluding "tool" key)

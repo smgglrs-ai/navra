@@ -3,7 +3,7 @@
 //! Compares write throughput, temporal queries, and retrieval for
 //! flat KnowledgeStore vs hierarchical TemporalTree.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use navra_memory::temporal::{TemporalTree, TreeType};
 use navra_memory::{KnowledgeStore, MemoryEntry, MemoryType};
 

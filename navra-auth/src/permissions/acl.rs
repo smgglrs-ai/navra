@@ -301,9 +301,10 @@ impl PermissionEngine {
     /// Expand `~` to the user's home directory.
     fn expand_tilde(pattern: &str) -> String {
         if pattern.starts_with("~/")
-            && let Some(home) = dirs::home_dir() {
-                return format!("{}{}", home.display(), &pattern[1..]);
-            }
+            && let Some(home) = dirs::home_dir()
+        {
+            return format!("{}{}", home.display(), &pattern[1..]);
+        }
         pattern.to_string()
     }
 

@@ -5,7 +5,7 @@
 //! flow to verify fixes don't break the build.
 
 use navra_core::protocol::{CallToolResult, ToolDefinition};
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 use std::collections::HashMap;
 
 pub fn build_test_tool_def() -> ToolDefinition {
@@ -185,14 +185,15 @@ fn parse_test_results(stdout: &str, stderr: &str) -> (u32, u32, u32) {
             let words: Vec<&str> = line.split_whitespace().collect();
             for (i, word) in words.iter().enumerate() {
                 if i > 0
-                    && let Ok(n) = words[i - 1].parse::<u32>() {
-                        match *word {
-                            "passed" | "passed;" => passed += n,
-                            "failed" | "failed;" => failed += n,
-                            "ignored" | "ignored;" => ignored += n,
-                            _ => {}
-                        }
+                    && let Ok(n) = words[i - 1].parse::<u32>()
+                {
+                    match *word {
+                        "passed" | "passed;" => passed += n,
+                        "failed" | "failed;" => failed += n,
+                        "ignored" | "ignored;" => ignored += n,
+                        _ => {}
                     }
+                }
             }
         }
     }
@@ -237,9 +238,11 @@ test result: ok. 20 passed; 1 failed; 3 ignored; 0 measured; 0 filtered out";
         let def = build_test_tool_def();
         assert_eq!(def.name, "build_test");
         let schema_val = serde_json::to_value(&*def.input_schema).unwrap();
-        assert!(schema_val["required"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("path")));
+        assert!(
+            schema_val["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("path"))
+        );
     }
 }

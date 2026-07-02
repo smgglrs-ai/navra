@@ -5,17 +5,17 @@
 
 use navra_model::responses::response::Usage;
 use navra_model::{
-    safe_backend::{ModelSafetyFilter, SafeModelBackend},
     AnthropicBackend, ClassifyLabel, ClassifyRequest, ClassifyResponse, CliBackend,
     CreateResponseRequest, EmbedRequest, GenerateRequest, InputItem, Locality, MessageItem,
     ModelBackend, ModelError, ModelResponse, OpenAiBackend, OutputItem, ResponseStatus,
+    safe_backend::{ModelSafetyFilter, SafeModelBackend},
 };
 #[cfg(feature = "onnx")]
 use navra_model::{Device, ModelTask, OnnxBackend};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 // =====================================================================
 // 1. ClassifyResponse helpers

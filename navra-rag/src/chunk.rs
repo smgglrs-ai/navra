@@ -169,10 +169,11 @@ fn normalize_segments(text: &str, paragraphs: &[Segment], config: &ChunkConfig) 
 
     // Flush remaining
     if let Some(start) = current_start
-        && current_len > 0 {
-            let end = paragraphs.last().map(|p| p.end).unwrap_or(start);
-            result.push(Segment { start, end });
-        }
+        && current_len > 0
+    {
+        let end = paragraphs.last().map(|p| p.end).unwrap_or(start);
+        result.push(Segment { start, end });
+    }
 
     result
 }

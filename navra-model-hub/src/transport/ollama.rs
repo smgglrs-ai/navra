@@ -141,9 +141,10 @@ impl ModelTransport for OllamaTransport {
 
             // Extract parameter count from tag (e.g. "3b", "8b-instruct")
             if let Some(params) = tag.split('-').next()
-                && (params.ends_with('b') || params.ends_with('B')) {
-                    meta.parameters = Some(params.to_uppercase());
-                }
+                && (params.ends_with('b') || params.ends_with('B'))
+            {
+                meta.parameters = Some(params.to_uppercase());
+            }
 
             // Parse layers for quantization info and context size
             if let Some(layers) = manifest["layers"].as_array() {
@@ -180,7 +181,9 @@ fn ollama_models_dir() -> Option<PathBuf> {
             return Some(p);
         }
     }
-    dirs::home_dir().map(|h| h.join(".ollama/models")).filter(|p| p.is_dir())
+    dirs::home_dir()
+        .map(|h| h.join(".ollama/models"))
+        .filter(|p| p.is_dir())
 }
 
 /// Try to read a model blob from the local Ollama store.
@@ -203,11 +206,7 @@ pub fn try_local_ollama(model: &str, tag: &str) -> Option<PathBuf> {
 
     let model_layer = layers
         .iter()
-        .filter(|l| {
-            l["mediaType"]
-                .as_str()
-                .is_some_and(|m| m.contains("model"))
-        })
+        .filter(|l| l["mediaType"].as_str().is_some_and(|m| m.contains("model")))
         .max_by_key(|l| l["size"].as_u64().unwrap_or(0))?;
 
     let digest = model_layer["digest"].as_str()?;

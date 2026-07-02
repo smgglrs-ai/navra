@@ -87,11 +87,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         norm_b += y * y;
     }
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom == 0.0 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom == 0.0 { 0.0 } else { dot / denom }
 }
 
 /// Pre-compute embeddings for all domain exemplars.

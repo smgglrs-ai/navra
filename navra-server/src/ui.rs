@@ -58,7 +58,9 @@ impl GcpTokenCache {
         let token = json["access_token"]
             .as_str()
             .ok_or_else(|| {
-                let err = json["error_description"].as_str().unwrap_or("unknown error");
+                let err = json["error_description"]
+                    .as_str()
+                    .unwrap_or("unknown error");
                 format!("OAuth token refresh error: {err}")
             })?
             .to_string();

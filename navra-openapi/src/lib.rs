@@ -167,9 +167,10 @@ async fn fetch_spec(source: &str) -> anyhow::Result<String> {
             anyhow::bail!("Failed to fetch OpenAPI spec from {source}: HTTP {status}");
         }
         if let Some(len) = resp.content_length()
-            && len as usize > MAX_SPEC_SIZE {
-                anyhow::bail!("OpenAPI spec too large ({len} bytes, max {MAX_SPEC_SIZE})");
-            }
+            && len as usize > MAX_SPEC_SIZE
+        {
+            anyhow::bail!("OpenAPI spec too large ({len} bytes, max {MAX_SPEC_SIZE})");
+        }
         let bytes = resp
             .bytes()
             .await
@@ -185,12 +186,13 @@ async fn fetch_spec(source: &str) -> anyhow::Result<String> {
     } else {
         let meta = tokio::fs::metadata(source).await.ok();
         if let Some(m) = meta
-            && m.len() as usize > MAX_SPEC_SIZE {
-                anyhow::bail!(
-                    "OpenAPI spec file too large ({} bytes, max {MAX_SPEC_SIZE})",
-                    m.len()
-                );
-            }
+            && m.len() as usize > MAX_SPEC_SIZE
+        {
+            anyhow::bail!(
+                "OpenAPI spec file too large ({} bytes, max {MAX_SPEC_SIZE})",
+                m.len()
+            );
+        }
         tokio::fs::read_to_string(source)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read OpenAPI spec from {source}: {e}"))

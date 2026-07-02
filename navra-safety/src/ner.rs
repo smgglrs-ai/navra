@@ -166,9 +166,7 @@ pub(crate) fn group_bio_tags(tokens: &[BioToken]) -> Vec<EntitySpan> {
 
         match (&mut current, entity_type) {
             // Inside tag continues the current entity (same type)
-            (Some(span), Some(etype))
-                if is_inside_tag(label) && span.entity_type == etype =>
-            {
+            (Some(span), Some(etype)) if is_inside_tag(label) && span.entity_type == etype => {
                 if let Some((_, end)) = offsets {
                     span.end = *end;
                 }

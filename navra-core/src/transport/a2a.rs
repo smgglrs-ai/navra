@@ -7,11 +7,11 @@ use crate::a2a::TaskStore;
 use crate::protocol::a2a::{MessageSendParams, TaskIdParams, TaskQueryParams};
 use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use crate::server::McpServer;
+use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use std::convert::Infallible;
 use std::sync::Arc;
 

@@ -384,8 +384,8 @@ impl Default for Config {
 
 pub fn generate_token() -> String {
     let mut bytes = [0u8; 32];
-    use rand::rngs::OsRng;
     use rand::RngCore;
+    use rand::rngs::OsRng;
     OsRng.fill_bytes(&mut bytes);
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     format!("mcd_{hex}")

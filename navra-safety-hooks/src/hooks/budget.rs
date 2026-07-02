@@ -120,11 +120,7 @@ fn find_line_boundary_after(text: &str, pos: usize) -> usize {
     match text[pos..].find('\n') {
         Some(offset) => {
             let nl = pos + offset;
-            if nl < text.len() {
-                nl + 1
-            } else {
-                text.len()
-            }
+            if nl < text.len() { nl + 1 } else { text.len() }
         }
         None => pos,
     }
@@ -436,10 +432,12 @@ mod tests {
                 assert!(text_items.len() >= 3, "Expected at least 3 text items");
                 assert!(text_items[0].contains("[truncated"));
                 assert!(text_items[1].contains("[truncated"));
-                assert!(text_items
-                    .last()
-                    .unwrap()
-                    .contains("[Output truncated from"));
+                assert!(
+                    text_items
+                        .last()
+                        .unwrap()
+                        .contains("[Output truncated from")
+                );
             }
             other => panic!("Expected ModifyResult, got {other:?}"),
         }

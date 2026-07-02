@@ -1,5 +1,5 @@
 use crate::protocol::a2a::{
-    AgentCapabilities, AgentCard, AgentProvider, AgentSkill, A2A_PROTOCOL_VERSION,
+    A2A_PROTOCOL_VERSION, AgentCapabilities, AgentCard, AgentProvider, AgentSkill,
 };
 
 use super::McpServer;

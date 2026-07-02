@@ -28,17 +28,17 @@ mod types;
 mod weaver;
 
 pub use budget::{
-    apply_compaction, compact_history, estimate_tokens, recommended_strategy, truncate_to_budget,
-    CompactionStrategy, ContextBudget,
+    CompactionStrategy, ContextBudget, apply_compaction, compact_history, estimate_tokens,
+    recommended_strategy, truncate_to_budget,
 };
 pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
 pub use forge::{
-    generate_checksums, ForgeService, Severity, SpecializationMeta, ValidationFinding,
+    ForgeService, Severity, SpecializationMeta, ValidationFinding, generate_checksums,
 };
 pub use skill_lifecycle::{
-    validate_skill, Skill, SkillError, SkillMemoryEntry, SkillOutcome, SkillRegistry, SkillTest,
-    TestStatus,
+    Skill, SkillError, SkillMemoryEntry, SkillOutcome, SkillRegistry, SkillTest, TestStatus,
+    validate_skill,
 };
 pub use skill_pipeline::{DirectorySource, SkillPipeline, SkillSource};
 pub use types::{
@@ -46,6 +46,6 @@ pub use types::{
     McpPromptRef, Persona, Reference, ResolvedPrompt, Scope, SkillCard, Specialization,
 };
 pub use weaver::{
-    assemble, assemble_full, assemble_with_phase, format_skill_cards, load_skill_cards,
-    select_skill_cards, WeaverOutput,
+    WeaverOutput, assemble, assemble_full, assemble_with_phase, format_skill_cards,
+    load_skill_cards, select_skill_cards,
 };

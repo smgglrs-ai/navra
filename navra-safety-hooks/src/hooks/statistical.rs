@@ -190,11 +190,7 @@ pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
         norm_b += bi * bi;
     }
     let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom < 1e-12 {
-        0.0
-    } else {
-        dot / denom
-    }
+    if denom < 1e-12 { 0.0 } else { dot / denom }
 }
 
 // ---------------------------------------------------------------------------
@@ -365,12 +361,13 @@ impl ToolTransitionTracker {
         // Evict oldest entry if window is full
         if self.window.len() >= self.window_size
             && let Some(old_pair) = self.window.pop_front()
-                && let Some(c) = self.counts.get_mut(&old_pair) {
-                    *c = c.saturating_sub(1);
-                    if *c == 0 {
-                        self.counts.remove(&old_pair);
-                    }
-                }
+            && let Some(c) = self.counts.get_mut(&old_pair)
+        {
+            *c = c.saturating_sub(1);
+            if *c == 0 {
+                self.counts.remove(&old_pair);
+            }
+        }
 
         // Record the new transition
         *self.counts.entry(pair.clone()).or_insert(0) += 1;

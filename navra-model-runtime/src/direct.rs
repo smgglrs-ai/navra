@@ -67,10 +67,11 @@ impl ModelRuntime for DirectRuntime {
             for attempt in 0..max_attempts {
                 tokio::time::sleep(std::time::Duration::from_millis(HEALTH_POLL_INTERVAL_MS)).await;
                 if let Ok(resp) = client.get(&health_url).send().await
-                    && resp.status().is_success() {
-                        tracing::info!(port = port, engine = %self.engine, "Server is ready");
-                        break;
-                    }
+                    && resp.status().is_success()
+                {
+                    tracing::info!(port = port, engine = %self.engine, "Server is ready");
+                    break;
+                }
                 if attempt == max_attempts - 1 {
                     let timeout_secs = max_attempts as u64 * HEALTH_POLL_INTERVAL_MS / 1000;
                     return Err(RuntimeError::Health(format!(

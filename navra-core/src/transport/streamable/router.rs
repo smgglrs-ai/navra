@@ -1,9 +1,9 @@
-use crate::server::navra_handler::NavraHandler;
 use crate::server::McpServer;
+use crate::server::navra_handler::NavraHandler;
 use crate::transport::a2a::A2aState;
 use crate::transport::sse::SseBroadcaster;
-use axum::routing::{get, post};
 use axum::Router;
+use axum::routing::{get, post};
 use rmcp::transport::StreamableHttpService;
 use std::sync::Arc;
 

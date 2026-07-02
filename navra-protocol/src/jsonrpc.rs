@@ -184,13 +184,14 @@ impl JsonRpcRequest {
             )));
         }
         if let RequestId::String(ref s) = self.id
-            && s.len() > MAX_REQUEST_ID_LENGTH {
-                return Err(JsonRpcError::invalid_request(format!(
-                    "request id too long ({} bytes, max {})",
-                    s.len(),
-                    MAX_REQUEST_ID_LENGTH
-                )));
-            }
+            && s.len() > MAX_REQUEST_ID_LENGTH
+        {
+            return Err(JsonRpcError::invalid_request(format!(
+                "request id too long ({} bytes, max {})",
+                s.len(),
+                MAX_REQUEST_ID_LENGTH
+            )));
+        }
         Ok(())
     }
 }
@@ -244,10 +245,12 @@ mod tests {
         );
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["error"]["code"], -32601);
-        assert!(json["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("foo/bar"));
+        assert!(
+            json["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("foo/bar")
+        );
         assert!(json.get("result").is_none());
     }
 

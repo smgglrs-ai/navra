@@ -1,5 +1,5 @@
 use crate::oauth::OAuthTokenManager;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue, AUTHORIZATION};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 #[derive(Clone, Default)]
 pub struct AuthConfig {
@@ -43,17 +43,19 @@ impl AuthConfig {
     pub fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
         if let Some(ref token) = self.bearer
-            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}")) {
-                headers.insert(AUTHORIZATION, val);
-            }
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
+        {
+            headers.insert(AUTHORIZATION, val);
+        }
         if let Some(ref api_key) = self.api_key
             && matches!(api_key.location, ApiKeyLocation::Header)
-                && let (Ok(name), Ok(val)) = (
-                    HeaderName::from_bytes(api_key.name.as_bytes()),
-                    HeaderValue::from_str(&api_key.value),
-                ) {
-                    headers.insert(name, val);
-                }
+            && let (Ok(name), Ok(val)) = (
+                HeaderName::from_bytes(api_key.name.as_bytes()),
+                HeaderValue::from_str(&api_key.value),
+            )
+        {
+            headers.insert(name, val);
+        }
         if let Some(ref basic) = self.basic {
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD
@@ -82,18 +84,20 @@ impl AuthConfig {
     pub async fn headers_with_oauth(&self) -> HeaderMap {
         let mut headers = self.headers();
         if let Some(token) = self.oauth_bearer().await
-            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}")) {
-                headers.insert(AUTHORIZATION, val);
-            }
+            && let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}"))
+        {
+            headers.insert(AUTHORIZATION, val);
+        }
         headers
     }
 
     pub fn query_params(&self) -> Vec<(String, String)> {
         let mut params = Vec::new();
         if let Some(ref api_key) = self.api_key
-            && matches!(api_key.location, ApiKeyLocation::Query) {
-                params.push((api_key.name.clone(), api_key.value.clone()));
-            }
+            && matches!(api_key.location, ApiKeyLocation::Query)
+        {
+            params.push((api_key.name.clone(), api_key.value.clone()));
+        }
         params
     }
 }

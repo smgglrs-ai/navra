@@ -7,8 +7,8 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use std::convert::Infallible;
 use std::sync::Arc;
 

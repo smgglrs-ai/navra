@@ -6,15 +6,15 @@
 //! Tier 2 (real LLM, gated by MYELIX_TEST_LLM_URL): actual LLM
 //! follows prompt injection, IFC blocks the exfiltration attempt.
 
+use navra_core::McpServer;
 use navra_core::auth::{AgentIdentity, CallContext};
 use navra_core::ifc::{DataLabel, TaintedWritePolicy};
 use navra_core::protocol::{
     CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ProtocolVersion,
     ToolDefinition,
 };
-use navra_core::McpServer;
-use navra_protocol::compat::empty_input_schema;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::compat::empty_input_schema;
 
 // --- Helpers ---
 

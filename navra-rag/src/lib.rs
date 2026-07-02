@@ -12,12 +12,12 @@ mod store;
 mod tools;
 
 pub use agentic::{
-    apply_fts5_negation, classify_strategy, decompose_query, detect_numeric_predicate,
     AgenticResult, AgenticRetriever, NumericOp, NumericPredicate, SearchStrategy, SubQuery,
+    apply_fts5_negation, classify_strategy, decompose_query, detect_numeric_predicate,
 };
 pub use cache::{CacheMetrics, QueryCache, QueryCacheConfig};
 pub use chunk::ChunkConfig;
-pub use rerank::{load_reranker, ConfidenceGate, GatedReranker, NoopReranker, Reranker};
+pub use rerank::{ConfidenceGate, GatedReranker, NoopReranker, Reranker, load_reranker};
 #[cfg(feature = "onnx")]
 pub use rerank::{CrossEncoderError, CrossEncoderReranker};
 pub use store::{CascadeConfig, ChunkStore, SearchFilter};

@@ -1,9 +1,9 @@
 use crate::auth::{AgentIdentity, NoAuthenticator};
 use crate::protocol::{CallToolResult, ToolDefinition};
-use crate::server::navra_handler::NavraHandler;
 use crate::server::McpServer;
-use navra_protocol::compat::empty_input_schema;
+use crate::server::navra_handler::NavraHandler;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::compat::empty_input_schema;
 use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
 use rmcp::service::ServiceExt;
 use std::sync::Arc;

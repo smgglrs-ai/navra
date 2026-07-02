@@ -63,7 +63,7 @@ pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
 pub use tool_loop::{
-    extract_text, run_tool_loop, ContextRetriever, ToolLoopConfig, ToolLoopResult,
+    ContextRetriever, ToolLoopConfig, ToolLoopResult, extract_text, run_tool_loop,
 };
 pub use trace::{
     ContentSanitizer, HermesMessage, HermesTrace, ToolCallEntry, ToolResponseEntry, TraceExporter,
@@ -76,7 +76,7 @@ pub use trace::{
 // deps and import from the source crates instead.
 pub use audit::{AuditSink, SharedAuditSink};
 pub use convert::tool_def_to_response;
-pub use navra_auth::identity::{load_or_create_file_identity, CapSigner, Ed25519Signer};
+pub use navra_auth::identity::{CapSigner, Ed25519Signer, load_or_create_file_identity};
 pub use navra_auth::ifc::TaintTracker;
 pub use navra_model::{
     AnthropicBackend, CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent,

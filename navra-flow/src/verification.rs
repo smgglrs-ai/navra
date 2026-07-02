@@ -131,27 +131,28 @@ fn parse_verdict(response: &str, verifier_index: usize) -> VerificationVerdict {
     let json_str = extract_json_object(response);
 
     if let Some(json) = json_str
-        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json) {
-            let passed = parsed
-                .get("passed")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let findings = parsed
-                .get("findings")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json)
+    {
+        let passed = parsed
+            .get("passed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let findings = parsed
+            .get("findings")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
 
-            return VerificationVerdict {
-                verifier_index,
-                passed,
-                findings,
-            };
-        }
+        return VerificationVerdict {
+            verifier_index,
+            passed,
+            findings,
+        };
+    }
 
     // Fallback: heuristic parsing
     let lower = response.to_lowercase();
@@ -184,9 +185,10 @@ fn extract_json_object(text: &str) -> Option<String> {
             '}' => {
                 depth -= 1;
                 if depth == 0
-                    && let Some(s) = start {
-                        return Some(text[s..=i].to_string());
-                    }
+                    && let Some(s) = start
+                {
+                    return Some(text[s..=i].to_string());
+                }
             }
             _ => {}
         }

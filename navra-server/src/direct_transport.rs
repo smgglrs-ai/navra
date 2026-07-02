@@ -4,9 +4,9 @@
 //! between a NavraHandler (server-side) and an rmcp client, returning
 //! a `Peer<RoleClient>` without any network I/O.
 
-use navra_core::auth::AgentIdentity;
 use navra_core::McpServer;
 use navra_core::NavraHandler;
+use navra_core::auth::AgentIdentity;
 use rmcp::service::ServiceExt;
 use std::sync::Arc;
 

@@ -319,7 +319,9 @@ pub(crate) async fn run_demo_live(
         } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
             println!("  Using Anthropic API (model: {})", model_name);
         } else {
-            anyhow::bail!("Claude requires ANTHROPIC_API_KEY or Vertex AI config (ANTHROPIC_VERTEX_PROJECT_ID)");
+            anyhow::bail!(
+                "Claude requires ANTHROPIC_API_KEY or Vertex AI config (ANTHROPIC_VERTEX_PROJECT_ID)"
+            );
         }
     } else {
         let client = reqwest::Client::new();
@@ -451,23 +453,24 @@ locality = "remote"
         .send()
         .await
         && let Ok(tags) = resp.json::<serde_json::Value>().await
-            && let Some(models) = tags["models"].as_array() {
-                for m in models {
-                    if let Some(name) = m["name"].as_str() {
-                        let model_key = name.replace([':', '-', '.', '/'], "_");
-                        let size_gb = m["size"].as_u64().unwrap_or(0) as f64 / 1e9;
+        && let Some(models) = tags["models"].as_array()
+    {
+        for m in models {
+            if let Some(name) = m["name"].as_str() {
+                let model_key = name.replace([':', '-', '.', '/'], "_");
+                let size_gb = m["size"].as_u64().unwrap_or(0) as f64 / 1e9;
 
-                        // Derive speed tier from model size
-                        let speed = if size_gb < 5.0 {
-                            "fast"
-                        } else if size_gb < 12.0 {
-                            "medium"
-                        } else {
-                            "slow"
-                        };
+                // Derive speed tier from model size
+                let speed = if size_gb < 5.0 {
+                    "fast"
+                } else if size_gb < 12.0 {
+                    "medium"
+                } else {
+                    "slow"
+                };
 
-                        model_sections.push_str(&format!(
-                            r#"
+                model_sections.push_str(&format!(
+                    r#"
 [models.{model_key}]
 task = "chat"
 model_name = "{name}"
@@ -477,13 +480,13 @@ cost_tier = "free"
 speed_tier = "{speed}"
 locality = "local"
 "#,
-                            model_key = model_key,
-                            name = name,
-                            speed = speed
-                        ));
-                    }
-                }
+                    model_key = model_key,
+                    name = name,
+                    speed = speed
+                ));
             }
+        }
+    }
 
     std::fs::write(
         demo_config_path,

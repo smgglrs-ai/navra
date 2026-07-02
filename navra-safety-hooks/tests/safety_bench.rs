@@ -7,8 +7,8 @@
 //! Run with: cargo test -p navra-safety --test safety_bench
 
 use navra_auth::tool_scanner::{
-    check_description_injection, check_hidden_unicode, check_schema_abuse, check_tool_poisoning,
-    ToolScanConfig,
+    ToolScanConfig, check_description_injection, check_hidden_unicode, check_schema_abuse,
+    check_tool_poisoning,
 };
 use navra_safety_hooks::safety::{ContentFilter, FilterContext, SecretFilter};
 

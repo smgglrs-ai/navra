@@ -11,10 +11,10 @@ use crate::entity_graph::EntityGraph;
 use crate::knowledge::KnowledgeStore;
 use crate::retrieval::MemoryRetriever;
 use navra_macros::tool;
+use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::protocol::CallToolResult;
-use navra_mcp::Module;
 use navra_protocol::compat::CallToolResultExt;
 use rusqlite::params;
 use std::sync::{Arc, Mutex};
@@ -357,47 +357,48 @@ async fn handle_distill(
 
     // If memory_type=auto, use the classifier if available
     if memory_type.as_deref() == Some("auto")
-        && let Some(ref classifier) = state.classifier_model {
-            let entries: Vec<serde_json::Value> = {
-                let mut results = Vec::new();
-                for paragraph in text.split("\n\n").filter(|p| !p.trim().is_empty()).take(20) {
-                    let trimmed = paragraph.trim();
-                    let request = navra_mcp::models::ClassifyRequest {
-                        text: trimmed.to_string(),
-                    };
-                    let (kind, confidence) = match classifier.classify(&request).await {
-                        Ok(response) => {
-                            if let Some(top) = response.top_label() {
-                                (top.label.clone(), top.score)
-                            } else {
-                                ("fact".to_string(), 0.5)
-                            }
+        && let Some(ref classifier) = state.classifier_model
+    {
+        let entries: Vec<serde_json::Value> = {
+            let mut results = Vec::new();
+            for paragraph in text.split("\n\n").filter(|p| !p.trim().is_empty()).take(20) {
+                let trimmed = paragraph.trim();
+                let request = navra_mcp::models::ClassifyRequest {
+                    text: trimmed.to_string(),
+                };
+                let (kind, confidence) = match classifier.classify(&request).await {
+                    Ok(response) => {
+                        if let Some(top) = response.top_label() {
+                            (top.label.clone(), top.score)
+                        } else {
+                            ("fact".to_string(), 0.5)
                         }
-                        Err(_) => ("fact".to_string(), 0.5),
-                    };
-                    let title = if trimmed.len() > 80 {
-                        format!("{}...", &trimmed[..77])
-                    } else {
-                        trimmed.to_string()
-                    };
-                    results.push(serde_json::json!({
-                        "kind": kind,
-                        "title": title,
-                        "content": trimmed,
-                        "tags": [],
-                        "confidence": confidence,
-                    }));
-                }
-                results
-            };
+                    }
+                    Err(_) => ("fact".to_string(), 0.5),
+                };
+                let title = if trimmed.len() > 80 {
+                    format!("{}...", &trimmed[..77])
+                } else {
+                    trimmed.to_string()
+                };
+                results.push(serde_json::json!({
+                    "kind": kind,
+                    "title": title,
+                    "content": trimmed,
+                    "tags": [],
+                    "confidence": confidence,
+                }));
+            }
+            results
+        };
 
-            let result = serde_json::json!({
-                "method": "classifier",
-                "source": source,
-                "entries": entries,
-            });
-            return CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default());
-        }
+        let result = serde_json::json!({
+            "method": "classifier",
+            "source": source,
+            "entries": entries,
+        });
+        return CallToolResult::text(serde_json::to_string_pretty(&result).unwrap_or_default());
+    }
 
     // Try LLM-based extraction if a model is available
     if let Some(ref model) = state.distill_model {

@@ -35,7 +35,7 @@ pub use entity_graph::{EntityGraph, Relationship};
 pub use error::MemoryError;
 pub use knowledge::KnowledgeStore;
 pub use pipeline::{
-    extract_failure_insight, extract_success_insight, ContentSanitizer, DistillationPipeline,
+    ContentSanitizer, DistillationPipeline, extract_failure_insight, extract_success_insight,
 };
 pub use retrieval::{MemoryRetriever, ScoredEntry};
 pub use session_store::SqliteSessionBackend;

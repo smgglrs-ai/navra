@@ -27,7 +27,7 @@ mod tool_guard;
 pub mod verifier;
 
 pub use approval_gate::{ApprovalGateConfig, ApprovalGateHook, ApprovalStatus, PendingApproval};
-pub use budget::{estimate_tokens, BudgetHook, TruncationStrategy};
+pub use budget::{BudgetHook, TruncationStrategy, estimate_tokens};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use html_markdown::{HtmlToMarkdownConfig, HtmlToMarkdownHook};
@@ -37,8 +37,8 @@ pub use leakage::{
 };
 pub use memory_extraction::{ExtractionStore, MemoryExtractionConfig, MemoryExtractionHook};
 pub use monitoring::{
-    escalation_channel, monitoring_loop, EscalationEvent, EscalationSender, EscalationSource,
-    MonitoringConfig, MonitoringHook, MonitoringMetrics, Severity, Verdict, VerdictSink,
+    EscalationEvent, EscalationSender, EscalationSource, MonitoringConfig, MonitoringHook,
+    MonitoringMetrics, Severity, Verdict, VerdictSink, escalation_channel, monitoring_loop,
 };
 pub use pipeline::HookPipeline;
 pub use policy_yaml::PolicyYamlHook;

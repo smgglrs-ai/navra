@@ -4,7 +4,7 @@ use crate::auth::CallContext;
 use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::protocol::{CallToolParams, CallToolResult, ToolDefinition};
 use navra_mcp::ToolHandler;
-use navra_protocol::compat::{empty_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, empty_input_schema};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -363,9 +363,11 @@ fn greeting_prompt_def() -> crate::protocol::PromptDefinition {
     crate::protocol::PromptDefinition::new(
         "greeting",
         Some("A greeting prompt"),
-        Some(vec![crate::protocol::PromptArgument::new("name")
-            .with_description("Name to greet")
-            .with_required(true)]),
+        Some(vec![
+            crate::protocol::PromptArgument::new("name")
+                .with_description("Name to greet")
+                .with_required(true),
+        ]),
     )
 }
 
@@ -541,10 +543,12 @@ fn register_module_with_resources() {
     let base_count = test_builder().build().resource_count();
     assert_eq!(server.resource_count(), base_count + 1);
     let result = server.handle_list_resources(&test_agent(), &Default::default());
-    assert!(result
-        .resources
-        .iter()
-        .any(|r| r.uri == "info://server/status"));
+    assert!(
+        result
+            .resources
+            .iter()
+            .any(|r| r.uri == "info://server/status")
+    );
 }
 
 #[tokio::test]
@@ -1023,7 +1027,7 @@ async fn dispatch_request(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid initialize params"),
-                        )
+                        );
                     }
                 };
             match server.handle_initialize(p, agent) {
@@ -1084,7 +1088,7 @@ async fn dispatch_request_inner(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid tool call params"),
-                        )
+                        );
                     }
                 };
             let mut ctx = crate::auth::CallContext::new(agent.clone(), sid.to_string());
@@ -1118,7 +1122,7 @@ async fn dispatch_request_inner(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid resource read params"),
-                        )
+                        );
                     }
                 };
             match server.handle_read_resource(p, &agent, &sid).await {
@@ -1143,7 +1147,7 @@ async fn dispatch_request_inner(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid prompt get params"),
-                        )
+                        );
                     }
                 };
             match server.handle_get_prompt(p, &agent, &sid).await {
@@ -1160,7 +1164,7 @@ async fn dispatch_request_inner(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid completion/complete params"),
-                        )
+                        );
                     }
                 };
             let result = server.handle_complete(p);
@@ -1184,7 +1188,7 @@ async fn dispatch_request_inner(
                         return JsonRpcResponse::error(
                             id,
                             JsonRpcError::invalid_params("Invalid logging/setLevel params"),
-                        )
+                        );
                     }
                 };
             server.handle_set_log_level(p, &sid);
@@ -1200,7 +1204,7 @@ async fn dispatch_request_inner(
                     return JsonRpcResponse::error(
                         id,
                         JsonRpcError::invalid_params("Missing 'uri' parameter"),
-                    )
+                    );
                 }
             };
             match server.handle_resource_subscribe(&uri, &sid) {
@@ -1218,7 +1222,7 @@ async fn dispatch_request_inner(
                     return JsonRpcResponse::error(
                         id,
                         JsonRpcError::invalid_params("Missing 'uri' parameter"),
-                    )
+                    );
                 }
             };
             match server.handle_resource_unsubscribe(&uri, &sid) {
@@ -1274,10 +1278,12 @@ async fn dispatch_completion_complete_returns_empty_values() {
     .await;
     assert!(resp.error.is_none());
     let result = resp.result.unwrap();
-    assert!(result["completion"]["values"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        result["completion"]["values"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     assert!(!result["completion"]["hasMore"].as_bool().unwrap());
 }
 
@@ -2077,9 +2083,11 @@ fn permission_grant_creates_dynamic_grant() {
     assert!(grant.expires_at.is_none());
 
     // Verify the grant is active in the session permission store
-    assert!(server
-        .session_permission_store()
-        .check_tool("s1", "git_push"));
+    assert!(
+        server
+            .session_permission_store()
+            .check_tool("s1", "git_push")
+    );
 }
 
 #[test]
@@ -2132,9 +2140,11 @@ fn permission_deny_removes_pending() {
     assert!(result.is_ok());
 
     // Tool should not be granted
-    assert!(!server
-        .session_permission_store()
-        .check_tool("s3", "shell_exec"));
+    assert!(
+        !server
+            .session_permission_store()
+            .check_tool("s3", "shell_exec")
+    );
 }
 
 #[test]
@@ -2315,18 +2325,24 @@ fn resource_list_filtered_by_capability_token_globs() {
 
     // Only navra://proc should be visible (matches glob)
     assert!(result.resources.iter().any(|r| r.uri == "navra://proc"));
-    assert!(!result
-        .resources
-        .iter()
-        .any(|r| r.uri == "navra://ifc/labels"));
-    assert!(!result
-        .resources
-        .iter()
-        .any(|r| r.uri == "navra://audit/recent"));
-    assert!(!result
-        .resources
-        .iter()
-        .any(|r| r.uri == "navra://budget/gpu"));
+    assert!(
+        !result
+            .resources
+            .iter()
+            .any(|r| r.uri == "navra://ifc/labels")
+    );
+    assert!(
+        !result
+            .resources
+            .iter()
+            .any(|r| r.uri == "navra://audit/recent")
+    );
+    assert!(
+        !result
+            .resources
+            .iter()
+            .any(|r| r.uri == "navra://budget/gpu")
+    );
 }
 
 #[test]
@@ -2345,15 +2361,19 @@ fn resource_list_filtered_by_read_clearance() {
 
     // Public resources visible
     assert!(result.resources.iter().any(|r| r.uri == "navra://proc"));
-    assert!(result
-        .resources
-        .iter()
-        .any(|r| r.uri == "navra://budget/gpu"));
+    assert!(
+        result
+            .resources
+            .iter()
+            .any(|r| r.uri == "navra://budget/gpu")
+    );
     // Sensitive resources hidden
-    assert!(!result
-        .resources
-        .iter()
-        .any(|r| r.uri == "navra://audit/recent"));
+    assert!(
+        !result
+            .resources
+            .iter()
+            .any(|r| r.uri == "navra://audit/recent")
+    );
 }
 
 #[test]

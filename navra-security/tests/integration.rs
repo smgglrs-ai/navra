@@ -3,11 +3,11 @@
 //! Tests cross-module behavior: auth → permissions → IFC → hooks → safety.
 
 use axum::http::HeaderMap;
-use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::Content;
+use navra_protocol::compat::CallToolResultExt;
 use navra_security::auth::capability::{
-    build_delegated_payload, build_payload, decode_token, encode_token, resolve_capabilities,
-    validate_delegation, CapabilitySet,
+    CapabilitySet, build_delegated_payload, build_payload, decode_token, encode_token,
+    resolve_capabilities, validate_delegation,
 };
 use navra_security::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use navra_security::auth::{
@@ -15,13 +15,13 @@ use navra_security::auth::{
 };
 use navra_security::hooks::{Hook, HookDecision, HookPipeline};
 use navra_security::identity::{CapSigner, Ed25519Signer};
-use navra_security::ifc::value_store::{resolve_variable_refs, StoredValue, ValueStore};
+use navra_security::ifc::value_store::{StoredValue, ValueStore, resolve_variable_refs};
 use navra_security::ifc::{DataLabel, TaintTracker};
 use navra_security::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 use navra_security::permissions::{PathAcl, PermissionEngine, PermissionResult};
 use navra_security::process::ProcessTable;
 use navra_security::quota::{QuotaEngine, RateLimit};
-use navra_security::safety::{build_pipeline, FilterContext};
+use navra_security::safety::{FilterContext, build_pipeline};
 use std::path::Path;
 use std::time::Duration;
 

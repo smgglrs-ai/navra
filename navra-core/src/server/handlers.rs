@@ -9,8 +9,8 @@ use crate::protocol::{
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
 use navra_protocol::compat::CallToolResultExt;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use super::McpServer;
 
@@ -327,9 +327,10 @@ impl McpServer {
         // Wire sandbox profile from capability token into CallContext
         if ctx.sandbox.is_none()
             && let Some(ref caps) = ctx.agent.capabilities
-                && let Some(ref sandbox) = caps.sandbox {
-                    ctx.sandbox = Some(sandbox.clone());
-                }
+            && let Some(ref sandbox) = caps.sandbox
+        {
+            ctx.sandbox = Some(sandbox.clone());
+        }
 
         let arguments = params
             .arguments
@@ -460,61 +461,60 @@ impl McpServer {
         // If a tool is classified as "write" and the agent's permission
         // set only allows "read", block it.
         if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions)
-            && let Some(tool_op) = self.tool_operations.get(params.name.as_ref()) {
-                match tool_op {
-                    navra_mcp::ToolOperation::Write if !ops.contains("write") => {
-                        self.process_table.record_denied(
-                            &ctx.agent.name,
-                            &ctx.agent.permissions,
-                            agent_did,
-                            agent_ring,
-                        );
-                        tracing::warn!(
-                            tool = %params.name,
-                            permission_set = %ctx.agent.permissions,
-                            "Write operation denied by permission set"
-                        );
-                        return CallToolResult::error_msg(format!(
-                            "Permission denied: '{}'",
-                            params.name
-                        ));
-                    }
-                    navra_mcp::ToolOperation::Deny => {
-                        return CallToolResult::error_msg(format!(
-                            "Permission denied: '{}'",
-                            params.name
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-
-        // Domain-based enforcement (semantic classification gate).
-        // If domain_rules are configured for this permission set, check
-        // the tool's classified domain:operation against allowed pairs.
-        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions)
-            && let Some(class) = self.tool_classifications.get(params.name.as_ref())
-                && rules.check(class) == crate::permissions::DomainPolicy::Deny {
+            && let Some(tool_op) = self.tool_operations.get(params.name.as_ref())
+        {
+            match tool_op {
+                navra_mcp::ToolOperation::Write if !ops.contains("write") => {
                     self.process_table.record_denied(
                         &ctx.agent.name,
                         &ctx.agent.permissions,
                         agent_did,
                         agent_ring,
                     );
-                    self.metrics
-                        .tool_calls_denied
-                        .fetch_add(1, Ordering::Relaxed);
                     tracing::warn!(
                         tool = %params.name,
-                        classification = %class,
                         permission_set = %ctx.agent.permissions,
-                        "Domain classification denied"
+                        "Write operation denied by permission set"
                     );
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
                     ));
                 }
+                navra_mcp::ToolOperation::Deny => {
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        // Domain-based enforcement (semantic classification gate).
+        // If domain_rules are configured for this permission set, check
+        // the tool's classified domain:operation against allowed pairs.
+        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions)
+            && let Some(class) = self.tool_classifications.get(params.name.as_ref())
+            && rules.check(class) == crate::permissions::DomainPolicy::Deny
+        {
+            self.process_table.record_denied(
+                &ctx.agent.name,
+                &ctx.agent.permissions,
+                agent_did,
+                agent_ring,
+            );
+            self.metrics
+                .tool_calls_denied
+                .fetch_add(1, Ordering::Relaxed);
+            tracing::warn!(
+                tool = %params.name,
+                classification = %class,
+                permission_set = %ctx.agent.permissions,
+                "Domain classification denied"
+            );
+            return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name));
+        }
 
         // Cedar policy check (second gate — can only further restrict)
         #[cfg(feature = "cedar")]
@@ -560,43 +560,44 @@ impl McpServer {
             .or_else(|| arguments.get("file_path"))
             .or_else(|| arguments.get("repo_path"))
             .and_then(|v| v.as_str())
-            && let Some(acl) = self.path_acls.get(&ctx.agent.permissions) {
-                let path = std::path::Path::new(path_str);
-                let tool_op = if crate::ifc::is_write_tool(
-                    &params.name,
-                    self.tools
-                        .get(params.name.as_ref())
-                        .and_then(|t| t.definition.annotations.as_ref()),
-                ) {
-                    "write"
-                } else {
-                    "read"
-                };
-                match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, path) {
-                    navra_auth::permissions::PermissionResult::Allowed => {}
-                    result => {
-                        self.process_table.record_denied(
-                            &ctx.agent.name,
-                            &ctx.agent.permissions,
-                            agent_did,
-                            agent_ring,
-                        );
-                        self.metrics
-                            .tool_calls_denied
-                            .fetch_add(1, Ordering::Relaxed);
-                        tracing::info!(
-                            tool = %params.name,
-                            path = %path_str,
-                            result = ?result,
-                            "Path ACL denied at gateway"
-                        );
-                        return CallToolResult::error_msg(format!(
-                            "Access denied: path '{}' blocked by ACL policy",
-                            path_str
-                        ));
-                    }
+            && let Some(acl) = self.path_acls.get(&ctx.agent.permissions)
+        {
+            let path = std::path::Path::new(path_str);
+            let tool_op = if crate::ifc::is_write_tool(
+                &params.name,
+                self.tools
+                    .get(params.name.as_ref())
+                    .and_then(|t| t.definition.annotations.as_ref()),
+            ) {
+                "write"
+            } else {
+                "read"
+            };
+            match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, path) {
+                navra_auth::permissions::PermissionResult::Allowed => {}
+                result => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tool_calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::info!(
+                        tool = %params.name,
+                        path = %path_str,
+                        result = ?result,
+                        "Path ACL denied at gateway"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Access denied: path '{}' blocked by ACL policy",
+                        path_str
+                    ));
                 }
             }
+        }
 
         // IFC: resolve variable references in arguments
         let session_store = self.value_stores.get_or_create(&ctx.session_id);
@@ -942,9 +943,10 @@ impl McpServer {
 
         // Legacy path: apply safety filters directly when no hooks are configured
         if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
-            && pipeline.has_filters() {
-                return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
-            }
+            && pipeline.has_filters()
+        {
+            return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
+        }
 
         result
     }
@@ -1611,16 +1613,17 @@ impl McpServer {
         // Capability token tool globs: if the agent has caps with tool
         // patterns, the resource URI must match at least one.
         if let Some(ref caps) = agent.capabilities
-            && !caps.tools.is_empty() {
-                let uri_matches = caps.tools.iter().any(|pattern| {
-                    glob::Pattern::new(pattern)
-                        .map(|p| p.matches(uri))
-                        .unwrap_or(false)
-                });
-                if !uri_matches {
-                    return false;
-                }
+            && !caps.tools.is_empty()
+        {
+            let uri_matches = caps.tools.iter().any(|pattern| {
+                glob::Pattern::new(pattern)
+                    .map(|p| p.matches(uri))
+                    .unwrap_or(false)
+            });
+            if !uri_matches {
+                return false;
             }
+        }
 
         // IFC read clearance (Simple Security Property): check agent's
         // read clearance against resource confidentiality.

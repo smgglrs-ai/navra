@@ -11,7 +11,7 @@
 //! - `registry_describe` — get details about a specific entry
 
 use navra_core::protocol::{CallToolResult, ToolDefinition};
-use navra_protocol::compat::{tool_input_schema, CallToolResultExt};
+use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -297,9 +297,10 @@ async fn search_registry(
     let cache_key = format!("search:{}:{}", entry.name, query);
 
     if let Some(cached) = state.cache_get(&cache_key)
-        && let Some(arr) = cached.as_array() {
-            return Ok(arr.clone());
-        }
+        && let Some(arr) = cached.as_array()
+    {
+        return Ok(arr.clone());
+    }
 
     let results = match entry.registry_type.as_str() {
         "mcp" => search_mcp_registry(entry, query, state).await?,
@@ -581,19 +582,23 @@ mod tests {
     #[test]
     fn search_requires_query() {
         let schema = serde_json::to_value(&*registry_search_def().input_schema).unwrap();
-        assert!(schema["required"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("query")));
+        assert!(
+            schema["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("query"))
+        );
     }
 
     #[test]
     fn describe_requires_name() {
         let schema = serde_json::to_value(&*registry_describe_def().input_schema).unwrap();
-        assert!(schema["required"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("name")));
+        assert!(
+            schema["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("name"))
+        );
     }
 
     #[test]

@@ -8,9 +8,9 @@
 //! delegate to another agent runtime as a "model backend."
 
 use crate::{
-    chat::{ChatMessage, ChatResponse, ChatRole, FinishReason},
     CreateResponseRequest, GenerateRequest, GenerateResponse, Locality, ModelBackend, ModelError,
     ModelResponse,
+    chat::{ChatMessage, ChatResponse, ChatRole, FinishReason},
 };
 use std::time::Duration;
 use tokio::process::Command;
@@ -161,12 +161,11 @@ impl CliBackend {
         // Write prompt to stdin if needed.
         // Ignore broken pipe — the subprocess may exit before reading all input
         // (e.g. `echo` outputs its args and exits without reading stdin).
-        if use_stdin
-            && let Some(mut stdin) = child.stdin.take() {
-                use tokio::io::AsyncWriteExt;
-                let _ = stdin.write_all(prompt.as_bytes()).await;
-                drop(stdin);
-            }
+        if use_stdin && let Some(mut stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let _ = stdin.write_all(prompt.as_bytes()).await;
+            drop(stdin);
+        }
 
         // Wait with timeout
         let output = tokio::time::timeout(self.timeout, child.wait_with_output())

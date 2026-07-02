@@ -453,19 +453,20 @@ fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
             continue;
         }
         if let Ok(content) = std::fs::read_to_string(&path)
-            && let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content) {
-                let key = format!(
-                    "{}_{}",
-                    meta.base_persona,
-                    meta.description.replace(' ', "_").to_lowercase()
-                );
-                catalog.push(SpecializationMeta {
-                    key,
-                    base_persona: meta.base_persona,
-                    description: meta.description,
-                    path: path.clone(),
-                });
-            }
+            && let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content)
+        {
+            let key = format!(
+                "{}_{}",
+                meta.base_persona,
+                meta.description.replace(' ', "_").to_lowercase()
+            );
+            catalog.push(SpecializationMeta {
+                key,
+                base_persona: meta.base_persona,
+                description: meta.description,
+                path: path.clone(),
+            });
+        }
     }
     catalog
 }

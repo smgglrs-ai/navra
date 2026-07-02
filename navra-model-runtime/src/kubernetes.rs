@@ -10,8 +10,8 @@
 //! proper watch/retry semantics.
 
 use crate::{
-    engine::Engine, Endpoint, HardwareTarget, Isolation, ModelRuntime, RuntimeBackend,
-    RuntimeError, ServeConfig,
+    Endpoint, HardwareTarget, Isolation, ModelRuntime, RuntimeBackend, RuntimeError, ServeConfig,
+    engine::Engine,
 };
 use std::future::Future;
 use std::pin::Pin;
@@ -348,9 +348,11 @@ mod tests {
     fn sandbox_labels_cpu() {
         let config = test_config();
         let labels = KubernetesRuntime::sandbox_labels(&config);
-        assert!(labels
-            .iter()
-            .any(|(k, v)| k == "navra.io/hardware" && v == "cpu"));
+        assert!(
+            labels
+                .iter()
+                .any(|(k, v)| k == "navra.io/hardware" && v == "cpu")
+        );
     }
 
     #[test]
@@ -358,9 +360,11 @@ mod tests {
         let mut config = test_config();
         config.target = HardwareTarget::Nvidia;
         let labels = KubernetesRuntime::sandbox_labels(&config);
-        assert!(labels
-            .iter()
-            .any(|(k, v)| k == "navra.io/hardware" && v == "nvidia"));
+        assert!(
+            labels
+                .iter()
+                .any(|(k, v)| k == "navra.io/hardware" && v == "nvidia")
+        );
     }
 
     #[test]
@@ -385,12 +389,14 @@ mod tests {
         assert_eq!(manifest["spec"]["templateRef"]["name"], "inference-default");
 
         let env = manifest["spec"]["env"].as_array().unwrap();
-        assert!(env
-            .iter()
-            .any(|e| e["name"] == "PORT" && e["value"] == "8080"));
-        assert!(env
-            .iter()
-            .any(|e| e["name"] == "CONTEXT_SIZE" && e["value"] == "4096"));
+        assert!(
+            env.iter()
+                .any(|e| e["name"] == "PORT" && e["value"] == "8080")
+        );
+        assert!(
+            env.iter()
+                .any(|e| e["name"] == "CONTEXT_SIZE" && e["value"] == "4096")
+        );
     }
 
     #[test]

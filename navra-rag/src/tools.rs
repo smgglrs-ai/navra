@@ -7,15 +7,15 @@
 //! - `rag_similar` — find documents similar to a given document
 //! - `rag_status` — show index statistics
 
-use crate::chunk::{chunk_text, predict_chunk_value, ChunkConfig};
+use crate::chunk::{ChunkConfig, chunk_text, predict_chunk_value};
 use crate::rerank::{NoopReranker, Reranker};
 use crate::store::{CascadeConfig, ChunkStore};
 use navra_macros::tool;
+use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
-use navra_mcp::Module;
 use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -206,7 +206,10 @@ async fn handle_index(
     let content = match std::fs::read_to_string(&resolved) {
         Ok(c) => c,
         Err(e) => {
-            return CallToolResult::error_msg(format!("Failed to read {}: {e}", resolved.display()))
+            return CallToolResult::error_msg(format!(
+                "Failed to read {}: {e}",
+                resolved.display()
+            ));
         }
     };
 
@@ -250,7 +253,7 @@ async fn handle_index(
                 return CallToolResult::error_msg(format!(
                     "Embedding failed for chunk {}: {e}",
                     chunk.index
-                ))
+                ));
             }
         }
     }

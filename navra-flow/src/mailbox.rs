@@ -137,24 +137,25 @@ impl MailboxRegistry {
     ) -> Result<(), FlowError> {
         // Rate limit check
         if self.rate_limit > 0
-            && let Some(sender_mailbox) = self.mailboxes.get(sender_id) {
-                let count = sender_mailbox
-                    .send_count
-                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                if count >= self.rate_limit {
-                    tracing::warn!(
-                        sender = sender_id,
-                        count,
-                        limit = self.rate_limit,
-                        "Agent rate limited — quarantine triggered"
-                    );
-                    return Err(FlowError::Other(anyhow::anyhow!(
-                        "agent '{}' exceeded message rate limit ({} messages)",
-                        sender_id,
-                        self.rate_limit,
-                    )));
-                }
+            && let Some(sender_mailbox) = self.mailboxes.get(sender_id)
+        {
+            let count = sender_mailbox
+                .send_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if count >= self.rate_limit {
+                tracing::warn!(
+                    sender = sender_id,
+                    count,
+                    limit = self.rate_limit,
+                    "Agent rate limited — quarantine triggered"
+                );
+                return Err(FlowError::Other(anyhow::anyhow!(
+                    "agent '{}' exceeded message rate limit ({} messages)",
+                    sender_id,
+                    self.rate_limit,
+                )));
             }
+        }
 
         let target = self
             .mailboxes

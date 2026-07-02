@@ -10,7 +10,7 @@ mod mandate;
 pub mod pta;
 pub mod trace;
 
-pub use dominator::{extract_dominators, validate_against_dominators, DominatorTree};
-pub use mandate::{validate_mandate, ValidationResult};
+pub use dominator::{DominatorTree, extract_dominators, validate_against_dominators};
+pub use mandate::{ValidationResult, validate_mandate};
 pub use pta::PrefixTreeAcceptor;
 pub use trace::{ExecutionTrace, TraceEvent};

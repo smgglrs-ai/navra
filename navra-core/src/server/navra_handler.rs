@@ -42,9 +42,10 @@ impl NavraHandler {
             return id.clone();
         }
         if let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>()
-            && let Ok(id) = server.authenticator().authenticate(&parts.headers) {
-                return id;
-            }
+            && let Ok(id) = server.authenticator().authenticate(&parts.headers)
+        {
+            return id;
+        }
         let name = ctx
             .peer
             .peer_info()

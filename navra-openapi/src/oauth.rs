@@ -57,9 +57,10 @@ impl OAuthTokenManager {
         {
             let guard = self.token.read().await;
             if let Some(ref ts) = *guard
-                && !ts.is_expired() {
-                    return Ok(ts.access_token.clone());
-                }
+                && !ts.is_expired()
+            {
+                return Ok(ts.access_token.clone());
+            }
         }
         self.refresh_or_acquire().await
     }

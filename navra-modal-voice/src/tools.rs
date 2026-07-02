@@ -10,11 +10,11 @@
 
 use crate::audio;
 use navra_macros::tool;
+use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
-use navra_mcp::Module;
 use navra_protocol::compat::CallToolResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

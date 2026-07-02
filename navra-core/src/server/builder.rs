@@ -8,13 +8,13 @@ use crate::session::SessionStore;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
+use super::McpServer;
 use super::types::{
     RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool,
 };
-use super::McpServer;
 
 /// Builder for constructing an McpServer.
 pub struct McpServerBuilder {
@@ -136,12 +136,12 @@ impl McpServerBuilder {
         mut self,
         definition: crate::protocol::ToolDefinition,
         handler: impl Fn(
-                serde_json::Value,
-                crate::auth::CallContext,
-            ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
-            + Send
-            + Sync
-            + 'static,
+            serde_json::Value,
+            crate::auth::CallContext,
+        ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         let name = definition.name.to_string();
         self.tools.insert(

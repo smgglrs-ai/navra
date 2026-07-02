@@ -229,9 +229,10 @@ fn sample_nvidia_procfs() -> Vec<GpuMemoryUsage> {
                     used_mb = num.trim().parse().unwrap_or(0);
                 }
             } else if let Some(val) = line.strip_prefix("Total :")
-                && let Some(num) = val.trim().strip_suffix(" MB") {
-                    total_mb = num.trim().parse().unwrap_or(0);
-                }
+                && let Some(num) = val.trim().strip_suffix(" MB")
+            {
+                total_mb = num.trim().parse().unwrap_or(0);
+            }
         }
         if total_mb > 0 {
             results.push(GpuMemoryUsage {
@@ -246,7 +247,10 @@ fn sample_nvidia_procfs() -> Vec<GpuMemoryUsage> {
 
 fn sample_nvidia_smi() -> Vec<GpuMemoryUsage> {
     let Ok(output) = std::process::Command::new("nvidia-smi")
-        .args(["--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"])
+        .args([
+            "--query-gpu=memory.used,memory.total",
+            "--format=csv,noheader,nounits",
+        ])
         .output()
     else {
         return Vec::new();

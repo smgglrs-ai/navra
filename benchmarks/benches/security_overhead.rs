@@ -1,6 +1,6 @@
 //! Benchmarks measuring the latency overhead of navra security features.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use std::path::Path;
 
 // --- IFC ---
@@ -88,8 +88,8 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
 // --- Capability tokens ---
 
 fn bench_capability_tokens(c: &mut Criterion) {
-    use navra_auth::auth::capability::{build_payload, decode_token, encode_token, CapabilitySet};
-    use navra_auth::identity::{load_or_create_file_identity, CapSigner};
+    use navra_auth::auth::capability::{CapabilitySet, build_payload, decode_token, encode_token};
+    use navra_auth::identity::{CapSigner, load_or_create_file_identity};
 
     let tmp = tempfile::tempdir().unwrap();
     let signer = load_or_create_file_identity(&tmp.path().join("bench.key")).unwrap();
@@ -140,7 +140,7 @@ fn bench_blake3_auth(c: &mut Criterion) {
 // --- Safety pipeline ---
 
 fn bench_safety_pipeline(c: &mut Criterion) {
-    use navra_safety_hooks::safety::{build_pipeline, FilterContext};
+    use navra_safety_hooks::safety::{FilterContext, build_pipeline};
 
     let mut group = c.benchmark_group("safety_pipeline");
 

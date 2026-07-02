@@ -62,20 +62,21 @@ impl Hook for SessionDistillationHook {
             let count = rt.block_on(pipeline.run(&session_id))?;
 
             if let Some(ref tree_path) = temporal_path
-                && let Ok(tree) = TemporalTree::open(tree_path) {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    let _ = tree.insert_fact(
-                        TreeType::Session,
-                        &session_id,
-                        &format!(
-                            "{count} facts distilled from {tool_count} tool calls (agent: {agent_name})"
-                        ),
-                        now,
-                    );
-                }
+                && let Ok(tree) = TemporalTree::open(tree_path)
+            {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                let _ = tree.insert_fact(
+                    TreeType::Session,
+                    &session_id,
+                    &format!(
+                        "{count} facts distilled from {tool_count} tool calls (agent: {agent_name})"
+                    ),
+                    now,
+                );
+            }
 
             Ok::<usize, navra_memory::MemoryError>(count)
         })
