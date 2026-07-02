@@ -19,29 +19,28 @@
 #
 # For the full image with ONNX Runtime, see Dockerfile.agent-full.
 
-FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
+FROM rust:1.96-bookworm AS builder
 
-RUN dnf install -y gcc make rust cargo glibc-static && \
-    dnf clean all
+RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-unknown-linux-musl
 
 WORKDIR /src
-
 COPY . .
 
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 RUN cargo build \
     --profile container \
     --bin navra-agent \
-    --target x86_64-unknown-linux-gnu \
+    --target x86_64-unknown-linux-musl \
     --no-default-features \
     --features container
 
 FROM scratch
 
-COPY --from=builder /etc/pki/tls/certs/ca-bundle.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=builder \
-    /src/target/x86_64-unknown-linux-gnu/container/navra-agent \
+    /src/target/x86_64-unknown-linux-musl/container/navra-agent \
     /usr/local/bin/navra-agent
 
 USER 65534

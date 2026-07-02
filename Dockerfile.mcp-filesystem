@@ -7,24 +7,24 @@
 # Build:   podman build -f Dockerfile.mcp-filesystem -t mcp-filesystem:latest .
 # Run:     podman run --rm -v /workspace:/workspace:ro mcp-filesystem:latest /workspace
 
-FROM registry.access.redhat.com/ubi10/ubi:latest AS builder
-
-RUN dnf install -y gcc make rust cargo glibc-static git-core && \
-    dnf clean all
+FROM rust:1.96-bookworm AS builder
 
 WORKDIR /build
 RUN git clone --depth 1 --branch v0.4.2 \
     https://github.com/rust-mcp-stack/rust-mcp-filesystem.git .
 
+RUN rustup target add x86_64-unknown-linux-musl
+RUN apt-get update && apt-get install -y musl-tools && rm -rf /var/lib/apt/lists/*
+
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 ENV CARGO_PROFILE_RELEASE_LTO=true \
     CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_PANIC=abort
-RUN cargo build --release --target x86_64-unknown-linux-gnu
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
 FROM scratch
 
-COPY --from=builder /build/target/x86_64-unknown-linux-gnu/release/rust-mcp-filesystem \
+COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/rust-mcp-filesystem \
     /usr/local/bin/rust-mcp-filesystem
 
 USER 65534

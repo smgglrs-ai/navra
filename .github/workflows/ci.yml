@@ -13,19 +13,16 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    container: registry.access.redhat.com/ubi10/ubi:latest
+    container: rust:1.96-bookworm
 
     steps:
-      - name: Install build dependencies
-        run: |
-          dnf install -y gcc make rust cargo glibc-static \
-            alsa-lib-devel pkg-config git-core && \
-          dnf clean all
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y libasound2-dev pkg-config
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install rustfmt and clippy
+      - name: Install components
         run: rustup component add rustfmt clippy
 
       - name: Cache cargo registry and target
@@ -35,9 +32,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-ubi-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-ubi-cargo-
+            ${{ runner.os }}-cargo-
 
       - name: Check formatting
         run: cargo fmt -- --check
@@ -54,14 +51,11 @@ jobs:
   build:
     name: Build (release)
     runs-on: ubuntu-latest
-    container: registry.access.redhat.com/ubi10/ubi:latest
+    container: rust:1.96-bookworm
 
     steps:
-      - name: Install build dependencies
-        run: |
-          dnf install -y gcc make rust cargo glibc-static \
-            alsa-lib-devel pkg-config git-core && \
-          dnf clean all
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y libasound2-dev pkg-config
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,9 +67,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-ubi-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-ubi-cargo-release-
+            ${{ runner.os }}-cargo-release-
 
       - name: Build release
         run: cargo build --release
