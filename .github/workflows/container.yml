@@ -86,15 +86,21 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
+      - name: Pull image for verification
+        if: matrix.verify && github.event_name != 'pull_request'
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}"
+          docker pull "${IMAGE}:${{ steps.meta.outputs.version }}"
+          echo "VERIFY_TAG=${IMAGE}:${{ steps.meta.outputs.version }}" >> "$GITHUB_ENV"
+
+      - name: Set PR verify tag
+        if: matrix.verify && github.event_name == 'pull_request'
+        run: echo "VERIFY_TAG=${{ fromJSON(steps.meta.outputs.json).tags[0] }}" >> "$GITHUB_ENV"
+
       - name: Verify image size
         if: matrix.verify
         run: |
-          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image }}"
-          TAG="${{ github.event_name == 'pull_request' && format('sha-{0}', github.sha) || 'latest' }}"
-          SIZE=$(docker image inspect "${IMAGE}:${TAG}" \
-            --format '{{ .Size }}' 2>/dev/null || \
-            docker image inspect "${{ matrix.image }}:${{ github.sha }}" \
-            --format '{{ .Size }}')
+          SIZE=$(docker image inspect "${VERIFY_TAG}" --format '{{ .Size }}')
           SIZE_MB=$((SIZE / 1024 / 1024))
           echo "Image size: ${SIZE_MB}MB"
           if [ "$SIZE" -gt 20971520 ]; then
@@ -105,8 +111,7 @@ jobs:
       - name: Verify no shell in image
         if: matrix.verify
         run: |
-          TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '${{ matrix.image }}' | head -1)
-          if docker run --rm --entrypoint /bin/sh "${TAG}" -c "echo pwned" 2>/dev/null; then
+          if docker run --rm --entrypoint /bin/sh "${VERIFY_TAG}" -c "echo pwned" 2>/dev/null; then
             echo "::error::Shell found in image!"
             exit 1
           fi
@@ -115,8 +120,7 @@ jobs:
       - name: Verify static binary
         if: matrix.verify
         run: |
-          TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '${{ matrix.image }}' | head -1)
-          docker create --name verify "${TAG}"
+          docker create --name verify "${VERIFY_TAG}"
           docker cp verify:/usr/local/bin/navra-agent /tmp/navra-agent
           docker rm verify
           file /tmp/navra-agent
@@ -130,8 +134,7 @@ jobs:
       - name: Smoke test
         if: matrix.verify
         run: |
-          TAG=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '${{ matrix.image }}' | head -1)
-          OUTPUT=$(docker run --rm "${TAG}" 2>&1 || true)
+          OUTPUT=$(docker run --rm "${VERIFY_TAG}" 2>&1 || true)
           if echo "$OUTPUT" | grep -q "NAVRA_ENDPOINT"; then
             echo "Smoke test passed — agent reports missing env var"
           else
@@ -140,9 +143,10 @@ jobs:
           fi
 
       - name: Trivy vulnerability scan
+        if: matrix.verify
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.meta.outputs.tags && fromJSON(steps.meta.outputs.json).tags[0] || format('{0}:{1}', matrix.image, github.sha) }}
+          image-ref: ${{ env.VERIFY_TAG }}
           format: table
           exit-code: 1
           severity: CRITICAL,HIGH
