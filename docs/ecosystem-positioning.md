@@ -333,4 +333,89 @@ mvar), NeuroTaint (arXiv:2604.23374).
   runtime security layer (what can it access, is the content safe)
 - Non-English semantic search fails 33% of tests — test our local
   embeddings for multilingual quality
+
+### OpenAI MCP Adoption (July 2026 analysis)
+
+- OpenAI MCP support spans: Responses API, Agents SDK, ChatGPT
+  (via Apps SDK with Figma, Spotify partners), Codex, Deep Research,
+  and Realtime API. NOT supported in Chat Completions or Assistants API.
+- **Secure MCP Tunnel** (GA May 27, 2026): outbound-only HTTPS
+  long-polling (github.com/openai/tunnel-client, open-source).
+  Connects private MCP servers to OpenAI products without public
+  endpoints. Supports mTLS, OAuth discovery, custom CAs.
+- **Harpoon**: embedded MCP server in tunnel-client for non-MCP
+  REST APIs. Labeled, allowlisted HTTP targets — not a general proxy.
+- **Critical**: OpenAI explicitly states "the tunnel secures the
+  network path, but it does nothing about a malicious or manipulated
+  tool call." Transport-only, NOT a gateway.
+- **Impact on navra**: Massively validates MCP gateway demand. Every
+  OpenAI MCP integration is a potential navra customer — they need
+  policy enforcement, IFC, audit logging. OpenAI solves connectivity,
+  navra solves security. Complementary, not competitive (today).
+- **Watch**: If OpenAI adds policy/governance to the tunnel, it
+  becomes a direct gateway competitor.
+
+### OpenClaw Security Status (July 2026 update)
+
+- OpenClaw security situation has WORSENED since May 2026 analysis:
+  543 CVEs (up from ~512), 17,500+ exposed instances (up from 135k
+  was the previously reported number — deep research verified 17.5k).
+- Reinforces navra's security-first positioning.
+
+### Harbor Framework (July 2026 analysis)
+
+- Harbor (github.com/harbor-framework/harbor) is an agent EVALUATION
+  framework, NOT a gateway competitor. 2.8k stars, 93% Python.
+- Terminal-Bench (v1-v3) benchmarks LLM/agent performance on complex
+  terminal tasks. Includes terminal-bench-science for scientific
+  workflows. 141 open issues, 21 releases, active development.
+- Complementary to navra: could benchmark agents connecting through
+  navra, but occupies a completely different category.
+
+### Claude Tag / OpenTag (July 2026 analysis)
+
+- **Claude Tag** (Anthropic, June 23 2026): Slack-native AI teammate
+  on Opus 4.8. Scoped channel permissions, ambient monitoring,
+  autonomous scheduling. Agent Proxy injects credentials at network
+  boundary (deny-default network posture). MCP tool CONSUMER, not
+  gateway infrastructure.
+- **OpenTag** (CopilotKit, MIT, 482 stars, 22 commits): Open-source
+  Claude Tag alternative built on AG-UI protocol. Very early stage.
+  Also an MCP consumer, not a gateway.
+- Both are ORTHOGONAL to navra — they connect through MCP gateways,
+  they don't compete with them.
+
+### IETF Agent Identity Standards (July 2026 analysis)
+
+- **AIMS** (draft-klrc-aiagent-auth-02): Conceptual model from
+  OpenAI, Auth0, AWS, Zscaler, Ping Identity. Mandates WIMSE
+  identifiers (MAY be SPIFFE IDs), OAuth 2.0 Token Exchange (RFC
+  8693). ZERO mention of DIDs. Individual submission, no WG.
+- **WIMSE AI Agent Identity** (draft-ni-wimse-ai-agent-identity-02):
+  Dual-identity credentials binding agent to owner. Three issuance
+  models. Huawei authors. Security section is "TODO".
+- **DNS-AID** (draft-mozleywilliams-dnsop-dnsaid-02): Agent discovery
+  via SVCB records. Explicitly delegates trust to external policy
+  systems — perfect navra integration point.
+- **ANS** (LF, draft-narajala-courtney-ansv2): Referenced by DNS-AID
+  for cross-domain search. Go reference implementation exists but
+  architecture details unverified.
+- **ARD** (v0.9, May 28 2026): Pre-invocation discovery spec from
+  Microsoft, Google, HF, NVIDIA+. ai-catalog.json manifests +
+  federated registry search. Protocol-agnostic, Apache 2.0.
+- **CRITICAL for navra**: DID:key is on a different identity plane
+  than the IETF standards track. Need WIMSE/SPIFFE alongside DID:key
+  (see NAVRA-172). DNS-AID + ARD are discovery-only and explicitly
+  delegate trust decisions — navra is the natural "policy system."
+
+### Self-Improving Gateway (July 2026 — unique differentiator)
+
+- **SelfCompact** (arxiv 2606.23525): Gateway-enforced compression
+  timing using flow state. No other Claw has this capability.
+- **Self-Harness** (arxiv 2606.09498): Out-of-band flow improvement
+  via blackbox execution traces. Gateway observability enables
+  weakness mining → proposal → regression validation without agent
+  cooperation. No other Claw has the observability depth for this.
+- These represent a new differentiator category: self-improving
+  gateway security and orchestration.
 - Consider RegistryModule to proxy external registries (Phase 5f)

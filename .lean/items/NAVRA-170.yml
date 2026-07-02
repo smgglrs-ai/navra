@@ -1,0 +1,46 @@
+id: NAVRA-170
+title: "SelfCompact rubric as flow-driven compression policy"
+status: planned
+priority: high
+effort: 3-5d
+depends_on: []
+feeds: ["NAVRA-092"]
+source: tech-watch-2026-07-01
+description: |
+  Implement SelfCompact's 4-condition compression rubric as a
+  gateway-enforced policy in navra-cognitive, triggered by navra-flow
+  execution state rather than agent scaffolding.
+
+  SelfCompact (arxiv 2606.23525, verified 3-0) shows agents cannot
+  reliably detect their own context degradation ("meta-cognitive gap").
+  The rubric fires on:
+  1. Sub-task resolution (flow DAG node completes)
+  2. Trajectory convergence (progress metrics plateau)
+  And suppresses during:
+  3. Mid-derivation (active reasoning chain)
+  4. Stuck state (no progress, needs intervention not compression)
+
+  navra advantage: flow engine knows execution state, so compression
+  timing is gateway-enforced — agent cannot bypass or mistime it.
+  This is strictly better than the paper's approach (agent scaffolding).
+
+  Implementation:
+  - Add compression policy to navra-cognitive/src/budget.rs
+  - Wire flow state events from navra-flow/src/event_log.rs
+  - Trigger weaver.rs compression when rubric conditions met
+  - Policy configurable per-agent in security manifest
+
+  Reference: arxiv.org/abs/2606.23525 (SelfCompact, June 2026)
+  Benchmark: +18.1 points math, 30-70% token savings (verified)
+acceptance:
+  - Compression rubric fires on flow DAG node completion
+  - Compression suppressed during active derivation
+  - Policy configurable per-agent
+  - Tests showing compression timing matches flow state
+scope:
+  - navra-cognitive/src/budget.rs
+  - navra-cognitive/src/weaver.rs
+  - navra-flow/src/event_log.rs
+  - navra-flow/src/engine.rs
+verification:
+  quick: cargo test -p navra-cognitive -- budget

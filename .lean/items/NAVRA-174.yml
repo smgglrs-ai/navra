@@ -1,0 +1,38 @@
+id: NAVRA-174
+title: "Implement ARD v0.9 ai-catalog.json for MCP server registry"
+status: planned
+priority: high
+effort: 3-5d
+depends_on: []
+feeds: []
+source: tech-watch-2026-07-01
+description: |
+  Implement Agentic Resource Discovery (ARD v0.9) as the discovery
+  layer for navra's MCP server registry.
+
+  ARD (verified, backed by Microsoft, Google, HF, NVIDIA, Salesforce,
+  Cisco, Databricks, GitHub, Snowflake) defines:
+  - Static manifests: ai-catalog.json at /.well-known/ai-catalog.json
+  - Dynamic registry: POST /search API for capability-based search
+  - Media types: application/mcp-server-card+json,
+    application/a2a-agent-card+json
+  - Pre-invocation discovery that hands off to native protocols
+
+  navra can serve as both:
+  1. ARD registry consumer (discover MCP servers for agents)
+  2. ARD registry provider (expose navra-managed servers via catalog)
+
+  Complementary to DNS-AID (NAVRA-173): DNS-AID handles DNS-level
+  discovery, ARD handles capability-level discovery.
+
+  Reference: agenticresourcediscovery.org/spec/ (v0.9, May 28, 2026)
+  Reference: github.com/ards-project/ard-spec
+acceptance:
+  - navra serves /.well-known/ai-catalog.json for managed MCP servers
+  - navra can query external ARD registries for server discovery
+  - Discovered servers subject to existing security policy
+scope:
+  - navra-mcp/src/
+  - navra-server/src/
+verification:
+  quick: cargo test -p navra-mcp

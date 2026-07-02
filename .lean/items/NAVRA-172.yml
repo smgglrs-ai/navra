@@ -1,0 +1,46 @@
+id: NAVRA-172
+title: "Add WIMSE/SPIFFE identity support alongside DID:key"
+status: planned
+priority: high
+effort: 5-8d
+depends_on: []
+feeds: ["NAVRA-147"]
+source: tech-watch-2026-07-01
+description: |
+  Add native WIMSE/SPIFFE identifier support to navra-auth alongside
+  the existing DID:key system.
+
+  Deep research (verified 3-0) found that BOTH IETF agent identity
+  drafts mandate WIMSE/SPIFFE identifiers with ZERO mention of DIDs:
+
+  - AIMS (draft-klrc-aiagent-auth-02, authors: OpenAI, Auth0, AWS,
+    Zscaler, Ping Identity): "An agent MUST be assigned exactly one
+    WIMSE identifier, which MAY be a SPIFFE ID"
+  - WIMSE AI Agent Identity (draft-ni-wimse-ai-agent-identity-02):
+    dual-identity credentials binding agent to owner, no DID reference
+  - Uber production: SPIRE SVIDs as trust anchor, thousands of agents
+
+  navra's DID:key is on a fundamentally different identity plane.
+  Options:
+  A. Support both: WIMSE/SPIFFE for enterprise interop, DID:key for
+     self-sovereign/local agents
+  B. Bridge: translate between identity planes at the gateway
+  C. Migrate: deprecate DID:key in favor of WIMSE
+
+  Recommendation: Option A — dual identity support. The gateway is
+  the natural translation point between identity systems.
+
+  Reference: datatracker.ietf.org/doc/draft-klrc-aiagent-auth/
+  Reference: datatracker.ietf.org/doc/draft-ni-wimse-ai-agent-identity/
+  Reference: uber.com/us/en/blog/solving-the-agent-identity-crisis/
+acceptance:
+  - WIMSE identifiers accepted alongside DID:key
+  - SPIFFE SVID verification functional
+  - Identity translation at gateway boundary
+  - Existing DID:key tests still pass
+scope:
+  - navra-auth/src/
+  - navra-security/src/
+  - navra-server/src/
+verification:
+  quick: cargo test -p navra-auth

@@ -23,6 +23,12 @@ description: |
   Decision: adopt as post-hook, wait for ONNX export, or reject.
 
   Reference: huggingface.co/latent-context | github.com/LeonLixyz/LCLM
+
+  Update 2026-07-01: SelfCompact (arxiv 2606.23525, verified 3-0)
+  shows that WHEN to compress matters as much as HOW. Models cannot
+  reliably detect own context degradation ("meta-cognitive gap").
+  See NAVRA-170 for flow-driven compression rubric that should
+  govern this mechanism's firing policy.
 acceptance:
 - Benchmark comparing LCLM vs truncation on context quality
 - Architecture decision documented

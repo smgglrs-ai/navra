@@ -43,3 +43,24 @@ notes:
     detail: |
       Source: https://modelcontextprotocol.io/extensions/auth/enterprise-managed-authorization
       SEP-990 proposal. Draft spec in ext-auth repo.
+  - date: "2026-07-01"
+    detail: |
+      Tech watch deep research (verified 3-0) found strong industry
+      validation of the actor-chain delegation pattern:
+
+      1. Uber production (thousands of agents): SPIRE SVIDs as trust
+         anchor, STS issuing single-hop JWTs (P99 <40ms), act_chain
+         JWT claims with ordered {sub, agent_id, iat} entries.
+         Source: uber.com/us/en/blog/solving-the-agent-identity-crisis/
+
+      2. AIMS draft (draft-klrc-aiagent-auth-02, June 2026): Authors
+         from OpenAI, Auth0, AWS, Zscaler, Ping Identity. Mandates
+         WIMSE identifiers + RFC 8693 Token Exchange for delegation.
+         Source: datatracker.ietf.org/doc/draft-klrc-aiagent-auth/
+
+      3. CRITICAL: Both IETF drafts have ZERO mention of DIDs.
+         Standards track is WIMSE/SPIFFE, not W3C DIDs.
+         See NAVRA-172 for dual-identity support.
+
+      4. Actor chains complement IFC: chains track WHO delegated,
+         IFC tracks WHAT data flowed. See NAVRA-175.
