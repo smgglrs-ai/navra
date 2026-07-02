@@ -20,6 +20,7 @@ use navra_protocol::CallToolResult;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
+use vstd::prelude::*;
 
 // ---------------------------------------------------------------------------
 // Cosine drift detection
@@ -1166,6 +1167,19 @@ mod tests {
         assert!(tracker.window.len() <= 4);
     }
 }
+
+verus! {
+
+spec fn spec_bounded_push(current_len: nat, max_size: nat) -> nat {
+    if current_len >= max_size { max_size } else { current_len + 1 }
+}
+
+proof fn window_never_exceeds_max(current_len: nat, max_size: nat)
+    requires max_size >= 1,
+    ensures spec_bounded_push(current_len, max_size) <= max_size,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

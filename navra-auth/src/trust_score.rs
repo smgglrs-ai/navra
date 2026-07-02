@@ -6,6 +6,7 @@
 
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Instant;
+use vstd::prelude::*;
 
 /// Trust score for a session.
 pub struct TrustScore {
@@ -208,6 +209,56 @@ mod tests {
         assert_eq!(ts.current_score(), 0);
     }
 }
+
+verus! {
+
+// Trust transition: add (clamped to max) or subtract (clamped to 0)
+spec fn spec_trust_transition(score: int, max_score: int, delta: int, is_penalty: bool) -> int {
+    if is_penalty {
+        if score - delta < 0 { 0 } else { score - delta }
+    } else {
+        if score + delta > max_score { max_score } else { score + delta }
+    }
+}
+
+// State classification: Suspended < ReadOnly < Normal
+spec fn spec_classify_state(score: int, suspend: int, read_only: int) -> nat {
+    if score < suspend { 0 }        // Suspended
+    else if score < read_only { 1 } // ReadOnly
+    else { 2 }                       // Normal
+}
+
+proof fn score_bounded_after_success(score: int, max_score: int, delta: int)
+    requires score >= 0, score <= 1000, max_score >= 0, max_score <= 1000, delta >= 0, delta <= 100,
+    ensures ({
+        let new = spec_trust_transition(score, max_score, delta, false);
+        new >= 0 && new <= max_score
+    }),
+{}
+
+proof fn score_bounded_after_penalty(score: int, delta: int)
+    requires score >= 0, score <= 1000, delta >= 0, delta <= 200,
+    ensures ({
+        let new = spec_trust_transition(score, 1000, delta, true);
+        new >= 0 && new <= 1000
+    }),
+{}
+
+proof fn state_thresholds_monotonic(s1: int, s2: int, suspend: int, read_only: int)
+    requires
+        s1 >= 0, s2 >= 0, s2 >= s1,
+        suspend >= 0, read_only > suspend,
+    ensures
+        spec_classify_state(s2, suspend, read_only) >= spec_classify_state(s1, suspend, read_only),
+{}
+
+proof fn decay_multiplication_bounded(elapsed_minutes: nat, decay_per_min: nat)
+    by(nonlinear_arith)
+    requires elapsed_minutes <= 525600, decay_per_min <= 100,
+    ensures elapsed_minutes * decay_per_min <= 52_560_000,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

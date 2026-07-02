@@ -11,6 +11,7 @@
 use crate::safety::{FilterContext, FilterPipeline};
 use rusqlite::{params, Connection};
 use std::sync::{Arc, Mutex};
+use vstd::prelude::*;
 
 /// A single blackbox entry — one tool call through the gateway.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -863,6 +864,129 @@ mod tests {
         assert!(entries[1].obo_sub.is_none());
     }
 }
+
+verus! {
+
+pub struct VerusChainFields {
+    pub seq: nat,
+    pub prev_hash: nat,
+    pub agent: nat,
+    pub tool: nat,
+    pub args: nat,
+    pub result_val: nat,
+    pub outcome: nat,
+}
+
+spec fn chain_preimage_spec(f: VerusChainFields) -> Seq<nat> {
+    seq![f.seq, f.prev_hash, f.agent, f.tool, f.args, f.result_val, f.outcome]
+}
+
+uninterp spec fn chain_hash(input: Seq<nat>) -> nat;
+
+#[verifier::external_body]
+proof fn chain_hash_injective(a: Seq<nat>, b: Seq<nat>)
+    requires a != b,
+    ensures chain_hash(a) != chain_hash(b),
+{}
+
+proof fn seq_monotonicity(seq_before: nat, seq_after: nat)
+    requires seq_after == seq_before + 1,
+    ensures seq_after > seq_before,
+{}
+
+proof fn preimage_determinism(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) == chain_preimage_spec(b),
+{}
+
+proof fn field_independence_seq(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq != b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[0] != chain_preimage_spec(b)[0]); }
+
+proof fn field_independence_prev_hash(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash != b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[1] != chain_preimage_spec(b)[1]); }
+
+proof fn field_independence_agent(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent != b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[2] != chain_preimage_spec(b)[2]); }
+
+proof fn field_independence_tool(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool != b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[3] != chain_preimage_spec(b)[3]); }
+
+proof fn field_independence_args(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args != b.args, a.result_val == b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[4] != chain_preimage_spec(b)[4]); }
+
+proof fn field_independence_result(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val != b.result_val,
+        a.outcome == b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[5] != chain_preimage_spec(b)[5]); }
+
+proof fn field_independence_outcome(a: VerusChainFields, b: VerusChainFields)
+    requires
+        a.seq == b.seq, a.prev_hash == b.prev_hash, a.agent == b.agent,
+        a.tool == b.tool, a.args == b.args, a.result_val == b.result_val,
+        a.outcome != b.outcome,
+    ensures chain_preimage_spec(a) != chain_preimage_spec(b),
+{ assert(chain_preimage_spec(a)[6] != chain_preimage_spec(b)[6]); }
+
+// Truncation proofs (mirrors truncate() above)
+spec fn spec_truncate_len(input_len: nat, max: nat) -> nat {
+    if input_len <= max { input_len } else { max }
+}
+
+proof fn truncate_never_exceeds_max(input_len: nat, max: nat)
+    ensures spec_truncate_len(input_len, max) <= max,
+{}
+
+proof fn truncate_within_budget_is_identity(input_len: nat, max: nat)
+    requires input_len <= max,
+    ensures spec_truncate_len(input_len, max) == input_len,
+{}
+
+proof fn chain_link_tamper_detection(
+    original: VerusChainFields,
+    tampered: VerusChainFields,
+    stored_prev_hash: nat,
+)
+    requires
+        stored_prev_hash == chain_hash(chain_preimage_spec(original)),
+        chain_preimage_spec(original) != chain_preimage_spec(tampered),
+    ensures
+        chain_hash(chain_preimage_spec(tampered)) != stored_prev_hash,
+{
+    chain_hash_injective(chain_preimage_spec(original), chain_preimage_spec(tampered));
+}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

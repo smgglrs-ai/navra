@@ -5,6 +5,8 @@
 //! using glob patterns and apply a policy (allow, deny, or require approval).
 
 /// Policy to apply when a tool rule matches.
+use vstd::prelude::*;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolPolicy {
     /// Tool is allowed without restriction.
@@ -448,3 +450,41 @@ mod tests {
         assert_eq!(perms.check("github_issue_list"), ToolPolicy::Deny);
     }
 }
+
+verus! {
+
+// Tool policy priority: Deny=2 (highest), Approve=1, Allow=0
+// Deny-wins: if any matched rule is Deny, result is Deny.
+// Then Allow beats Approve; default if no match.
+
+spec fn policy_priority(p: nat) -> nat {
+    if p == 2 { 2 }      // Deny
+    else if p == 0 { 1 }  // Allow
+    else { 0 }            // Approve
+}
+
+spec fn spec_tool_check(has_deny: bool, has_allow: bool, has_approve: bool, default: nat) -> nat {
+    if has_deny { 2 }           // Deny
+    else if has_allow { 0 }      // Allow
+    else if has_approve { 1 }    // Approve
+    else { default }
+}
+
+proof fn tool_deny_always_wins(has_allow: bool, has_approve: bool, default: nat)
+    ensures spec_tool_check(true, has_allow, has_approve, default) == 2,
+{}
+
+proof fn tool_allow_beats_approve(default: nat)
+    ensures spec_tool_check(false, true, true, default) == 0,
+{}
+
+proof fn tool_default_when_no_match(default: nat)
+    ensures spec_tool_check(false, false, false, default) == default,
+{}
+
+proof fn tool_check_total(has_deny: bool, has_allow: bool, has_approve: bool, default: nat)
+    requires default <= 2,
+    ensures spec_tool_check(has_deny, has_allow, has_approve, default) <= 2,
+{}
+
+} // verus!

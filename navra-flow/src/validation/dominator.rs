@@ -10,6 +10,7 @@
 
 use super::trace::ExecutionTrace;
 use std::collections::{HashMap, HashSet};
+use vstd::prelude::*;
 
 /// A dominator tree computed from a flow graph.
 #[derive(Debug)]
@@ -468,6 +469,22 @@ mod tests {
         assert_eq!(tree.dominators.get("d"), Some(&"a".to_string()));
     }
 }
+
+verus! {
+
+// Dom(n) = {n} ∪ ∩{Dom(p)}. Bitmask representation using u8.
+spec fn spec_dom_intersect_step(node_mask: u8, pred1_dom: u8, pred2_dom: u8, has_pred2: bool) -> u8 {
+    let intersection: u8 = if has_pred2 { (pred1_dom & pred2_dom) as u8 } else { pred1_dom };
+    (intersection | node_mask) as u8
+}
+
+proof fn dominator_self_always_in_set(node_mask: u8, pred1_dom: u8, pred2_dom: u8, has_pred2: bool)
+    by(bit_vector)
+    requires node_mask > 0u8,
+    ensures spec_dom_intersect_step(node_mask, pred1_dom, pred2_dom, has_pred2) & node_mask != 0u8,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

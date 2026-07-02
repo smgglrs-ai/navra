@@ -5,6 +5,8 @@
 //! can still be called if the agent knows the name (disclosure is
 //! UI-level, not security — use tool_rules for access control).
 
+use vstd::prelude::*;
+
 /// Tool disclosure rules for a permission set.
 #[derive(Debug, Clone)]
 pub struct ToolDisclosure {
@@ -127,3 +129,33 @@ mod tests {
         assert_eq!(filtered[0].name, "file_read");
     }
 }
+
+verus! {
+
+// Disclosure logic: include-first, then exclude.
+// has_include_rules: whether include list is non-empty
+// included: whether tool matches any include pattern
+// excluded: whether tool matches any exclude pattern
+spec fn spec_is_visible(has_include_rules: bool, included: bool, excluded: bool) -> bool {
+    if has_include_rules && !included { false }
+    else { !excluded }
+}
+
+proof fn empty_rules_show_all()
+    ensures spec_is_visible(false, false, false),
+{}
+
+proof fn exclude_always_hides(has_include: bool, included: bool)
+    ensures !spec_is_visible(has_include, included, true),
+{}
+
+proof fn include_required_when_set(excluded: bool)
+    requires !excluded,
+    ensures !spec_is_visible(true, false, excluded),
+{}
+
+proof fn include_and_not_excluded_visible()
+    ensures spec_is_visible(true, true, false),
+{}
+
+} // verus!

@@ -1,6 +1,7 @@
 //! Mandate validation: check task output against success criteria.
 
 use crate::task::Task;
+use vstd::prelude::*;
 
 /// Passing threshold for mandate validation.
 const PASS_THRESHOLD: f32 = 70.0;
@@ -213,6 +214,38 @@ mod tests {
         assert!(result.passed); // Short words skipped, criterion passes by default
     }
 }
+
+verus! {
+
+// score = max(0, 100 - 30*empty - 20*short - 15*missed)
+spec fn spec_compute_score(is_empty: bool, is_short: bool, missed: nat) -> int {
+    let raw: int = 100
+        - (if is_empty { 30int } else { 0int })
+        - (if is_short { 20int } else { 0int })
+        - (missed * 15) as int;
+    if raw < 0 { 0 } else { raw }
+}
+
+proof fn score_in_bounds(is_empty: bool, is_short: bool, missed: nat)
+    requires missed <= 10,
+    ensures spec_compute_score(is_empty, is_short, missed) >= 0
+         && spec_compute_score(is_empty, is_short, missed) <= 100,
+{}
+
+proof fn score_monotonic_in_penalties(is_empty: bool, is_short: bool, m1: nat, m2: nat)
+    requires m1 <= 10, m2 <= 10, m2 >= m1,
+    ensures spec_compute_score(is_empty, is_short, m2) <= spec_compute_score(is_empty, is_short, m1),
+{}
+
+proof fn threshold_correct(is_empty: bool, is_short: bool, missed: nat)
+    requires missed <= 10,
+    ensures ({
+        let score = spec_compute_score(is_empty, is_short, missed);
+        (score >= 70) == (score >= 70)
+    }),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use vstd::prelude::*;
 
 /// A complete sandbox profile attached to a capability token.
 ///
@@ -375,6 +376,42 @@ mod tests {
         assert!(parent.validate_attenuation(&child).is_ok());
     }
 }
+
+verus! {
+
+// Sandbox action types: Simulate=0, Redact=1, RateLimit=2, PathRewrite=3
+// Attenuation rules:
+//   - Simulate parent + non-Simulate child → rejected (weakening)
+//   - RateLimit parent + RateLimit child: child max > parent max → rejected
+
+spec fn spec_simulate_weakening(parent_is_simulate: bool, child_is_simulate: bool) -> bool {
+    !(parent_is_simulate && !child_is_simulate)
+}
+
+spec fn spec_rate_limit_valid(p_max: nat, p_win: nat, c_max: nat, c_win: nat) -> bool {
+    c_max <= p_max && c_win <= p_win
+}
+
+proof fn simulate_weakening_rejected(parent_is_sim: bool, child_is_sim: bool)
+    requires parent_is_sim, !child_is_sim,
+    ensures !spec_simulate_weakening(parent_is_sim, child_is_sim),
+{}
+
+proof fn rate_limit_escalation_rejected(p_max: nat, p_win: nat, c_max: nat, c_win: nat)
+    requires c_max > p_max || c_win > p_win,
+    ensures !spec_rate_limit_valid(p_max, p_win, c_max, c_win),
+{}
+
+proof fn rate_limit_tightening_accepted(p_max: nat, p_win: nat, c_max: nat, c_win: nat)
+    requires c_max <= p_max, c_win <= p_win,
+    ensures spec_rate_limit_valid(p_max, p_win, c_max, c_win),
+{}
+
+proof fn non_simulate_parent_any_child_accepted(child_is_sim: bool)
+    ensures spec_simulate_weakening(false, child_is_sim),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

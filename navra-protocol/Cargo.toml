@@ -17,10 +17,14 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 rmcp = { workspace = true }
+vstd = { workspace = true }
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "multipart"] }
 tokio = { workspace = true, features = ["test-util", "macros"] }
+
+[package.metadata.verus]
+verify = true
 
 [lints]
 workspace = true

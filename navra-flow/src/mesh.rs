@@ -14,6 +14,7 @@ use navra_protocol::a2a::{AgentCard, Message, MessageKind, MessageRole, Part};
 use navra_protocol::a2a_client::A2aClient;
 use navra_protocol::label::{Confidentiality, DataLabel};
 use std::collections::HashMap;
+use vstd::prelude::*;
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::mpsc;
@@ -611,6 +612,34 @@ mod tests {
         assert!(!router.has_teammate("nonexistent"));
     }
 }
+
+verus! {
+
+spec fn mesh_conf_ord(c: Confidentiality) -> nat {
+    match c {
+        Confidentiality::Public => 0,
+        Confidentiality::Sensitive => 1,
+        Confidentiality::Pii => 2,
+        Confidentiality::Secret => 3,
+    }
+}
+
+spec fn mesh_can_write_to(label: DataLabel, target: Confidentiality) -> bool {
+    mesh_conf_ord(label.confidentiality) <= mesh_conf_ord(target)
+}
+
+proof fn default_clearance_is_maximally_restrictive()
+    ensures !mesh_can_write_to(
+        DataLabel { integrity: navra_protocol::label::Integrity::Trusted, confidentiality: Confidentiality::Sensitive },
+        Confidentiality::Public,
+    ),
+{}
+
+proof fn ifc_check_consistent_with_can_write_to(label: DataLabel, clearance: Confidentiality)
+    ensures mesh_can_write_to(label, clearance) <==> mesh_conf_ord(label.confidentiality) <= mesh_conf_ord(clearance),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

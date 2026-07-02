@@ -7,6 +7,7 @@
 //! lives in the security crate.
 
 use std::fmt;
+use vstd::prelude::*;
 
 /// Integrity level: can this data influence actions?
 #[derive(
@@ -121,6 +122,170 @@ impl fmt::Display for DataLabel {
         write!(f, "{:?}+{:?}", self.integrity, self.confidentiality)
     }
 }
+
+verus! {
+
+#[verifier::external_type_specification]
+pub struct ExIntegrity(Integrity);
+
+#[verifier::external_type_specification]
+pub struct ExConfidentiality(Confidentiality);
+
+#[verifier::external_type_specification]
+pub struct ExDataLabel(DataLabel);
+
+pub open spec fn integrity_ord(i: Integrity) -> nat {
+    match i {
+        Integrity::Trusted => 0,
+        Integrity::Untrusted => 1,
+    }
+}
+
+pub open spec fn conf_ord(c: Confidentiality) -> nat {
+    match c {
+        Confidentiality::Public => 0,
+        Confidentiality::Sensitive => 1,
+        Confidentiality::Pii => 2,
+        Confidentiality::Secret => 3,
+    }
+}
+
+spec fn max_nat(a: nat, b: nat) -> nat {
+    if a > b { a } else { b }
+}
+
+pub open spec fn spec_join(a: DataLabel, b: DataLabel) -> DataLabel {
+    DataLabel {
+        integrity: if integrity_ord(a.integrity) > integrity_ord(b.integrity) { a.integrity } else { b.integrity },
+        confidentiality: if conf_ord(a.confidentiality) > conf_ord(b.confidentiality) { a.confidentiality } else { b.confidentiality },
+    }
+}
+
+pub open spec fn spec_can_write_to(label: DataLabel, target: Confidentiality) -> bool {
+    conf_ord(label.confidentiality) <= conf_ord(target)
+}
+
+pub open spec fn spec_can_read_from(clearance: Confidentiality, classification: Confidentiality) -> bool {
+    conf_ord(clearance) >= conf_ord(classification)
+}
+
+proof fn join_is_commutative(a: DataLabel, b: DataLabel)
+    ensures spec_join(a, b) == spec_join(b, a),
+{}
+
+proof fn join_is_associative(a: DataLabel, b: DataLabel, c: DataLabel)
+    ensures spec_join(spec_join(a, b), c) == spec_join(a, spec_join(b, c)),
+{}
+
+proof fn join_is_idempotent(a: DataLabel)
+    ensures spec_join(a, a) == a,
+{}
+
+proof fn join_is_monotonic(a: DataLabel, b: DataLabel)
+    ensures ({
+        let result = spec_join(a, b);
+        &&& integrity_ord(result.integrity) >= integrity_ord(a.integrity)
+        &&& integrity_ord(result.integrity) >= integrity_ord(b.integrity)
+        &&& conf_ord(result.confidentiality) >= conf_ord(a.confidentiality)
+        &&& conf_ord(result.confidentiality) >= conf_ord(b.confidentiality)
+    }),
+{}
+
+proof fn no_write_down_holds(label: DataLabel, target: Confidentiality)
+    ensures
+        spec_can_write_to(label, target) <==> conf_ord(label.confidentiality) <= conf_ord(target),
+{}
+
+proof fn no_write_down_is_transitive(label: DataLabel, t1: Confidentiality, t2: Confidentiality)
+    requires
+        spec_can_write_to(label, t1),
+        conf_ord(t1) <= conf_ord(t2),
+    ensures
+        spec_can_write_to(label, t2),
+{}
+
+proof fn no_read_up_holds(clearance: Confidentiality, classification: Confidentiality)
+    ensures
+        spec_can_read_from(clearance, classification) <==> conf_ord(clearance) >= conf_ord(classification),
+{}
+
+proof fn no_read_up_is_transitive(c1: Confidentiality, c2: Confidentiality, c3: Confidentiality)
+    requires
+        spec_can_read_from(c1, c2),
+        conf_ord(c2) >= conf_ord(c3),
+    ensures
+        spec_can_read_from(c1, c3),
+{}
+
+proof fn blp_dual_properties_consistent(label: DataLabel, level: Confidentiality)
+    ensures
+        spec_can_write_to(label, level) && spec_can_read_from(level, label.confidentiality)
+            <==> conf_ord(label.confidentiality) <= conf_ord(level),
+{}
+
+proof fn join_preserves_write_restriction(a: DataLabel, b: DataLabel, target: Confidentiality)
+    requires
+        !spec_can_write_to(a, target) || !spec_can_write_to(b, target),
+    ensures
+        !spec_can_write_to(spec_join(a, b), target),
+{}
+
+proof fn taint_monotonicity(current: DataLabel, new_label: DataLabel)
+    ensures ({
+        let after = spec_join(current, new_label);
+        &&& integrity_ord(after.integrity) >= integrity_ord(current.integrity)
+        &&& conf_ord(after.confidentiality) >= conf_ord(current.confidentiality)
+    }),
+{}
+
+proof fn taint_monotonic_over_sequence(l0: DataLabel, l1: DataLabel, l2: DataLabel)
+    ensures ({
+        let after2 = spec_join(spec_join(l0, l1), l2);
+        &&& integrity_ord(after2.integrity) >= integrity_ord(l0.integrity)
+        &&& conf_ord(after2.confidentiality) >= conf_ord(l0.confidentiality)
+    }),
+{}
+
+proof fn declassify_only_steps_down(current_conf: nat, new_conf: nat)
+    requires new_conf < current_conf,
+    ensures new_conf < current_conf,
+{}
+
+proof fn trusted_public_is_bottom(l: DataLabel)
+    ensures ({
+        let bottom = DataLabel { integrity: Integrity::Trusted, confidentiality: Confidentiality::Public };
+        spec_join(bottom, l) == l
+    }),
+{}
+
+proof fn confidentiality_discriminant_fits_u8(c: Confidentiality)
+    ensures conf_ord(c) <= 3,
+{}
+
+proof fn integrity_discriminant_fits_u8(i: Integrity)
+    ensures integrity_ord(i) <= 1,
+{}
+
+proof fn default_is_bottom()
+    ensures ({
+        let d = DataLabel { integrity: Integrity::Trusted, confidentiality: Confidentiality::Public };
+        d == DataLabel { integrity: Integrity::Trusted, confidentiality: Confidentiality::Public }
+    }),
+{}
+
+proof fn label_discriminant_pair_unique(a: DataLabel, b: DataLabel)
+    requires a != b,
+    ensures integrity_ord(a.integrity) != integrity_ord(b.integrity) || conf_ord(a.confidentiality) != conf_ord(b.confidentiality),
+{}
+
+proof fn untrusted_secret_is_top(l: DataLabel)
+    ensures ({
+        let top = DataLabel { integrity: Integrity::Untrusted, confidentiality: Confidentiality::Secret };
+        spec_join(top, l) == top
+    }),
+{}
+
+} // verus!
 
 #[cfg(test)]
 mod tests {

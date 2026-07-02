@@ -9,6 +9,7 @@ use crate::manifest::{verify_manifest_option, ManifestKeyStore, ManifestSignatur
 use navra_protocol::ToolDefinition;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use vstd::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScanVerdict {
@@ -625,6 +626,41 @@ mod tests {
         assert!(matches!(results[0].verdict, ScanVerdict::Malicious { .. }));
     }
 }
+
+verus! {
+
+// Severity: Low=0, Medium=1, High=2, Critical=3
+// Verdict: Safe if no High/Critical, Suspicious if High but no Critical, Malicious if Critical
+
+pub open spec fn severity_rank(s: nat) -> nat { s }
+
+pub open spec fn spec_aggregate_verdict(max_severity: nat) -> nat {
+    if max_severity >= 3 { 2 } // Critical → Malicious
+    else if max_severity >= 2 { 1 } // High → Suspicious
+    else { 0 } // Safe
+}
+
+proof fn critical_implies_malicious(s1: nat, s2: nat)
+    requires s1 == 3 || s2 == 3,
+    ensures spec_aggregate_verdict(if s1 > s2 { s1 } else { s2 }) == 2,
+{}
+
+proof fn high_without_critical_implies_suspicious(s1: nat, s2: nat)
+    requires
+        s1 <= 3, s2 <= 3,
+        s1 != 3, s2 != 3,
+        s1 == 2 || s2 == 2,
+    ensures spec_aggregate_verdict(if s1 > s2 { s1 } else { s2 }) == 1,
+{}
+
+proof fn no_high_no_critical_implies_safe(s1: nat, s2: nat)
+    requires
+        s1 <= 3, s2 <= 3,
+        s1 < 2, s2 < 2,
+    ensures spec_aggregate_verdict(if s1 > s2 { s1 } else { s2 }) == 0,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

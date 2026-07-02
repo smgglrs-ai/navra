@@ -4,6 +4,7 @@
 //! via `/metrics` endpoint. No external metrics SDK needed.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use vstd::prelude::*;
 
 /// Gateway metrics registry.
 pub struct Metrics {
@@ -542,6 +543,22 @@ mod tests {
         assert_eq!(m.tool_calls_total.load(Ordering::Relaxed), 1000);
     }
 }
+
+verus! {
+
+spec fn spec_counter_add(current: nat, delta: nat) -> nat {
+    current + delta
+}
+
+proof fn counter_monotonic(current: nat, delta: nat)
+    ensures spec_counter_add(current, delta) >= current,
+{}
+
+proof fn counter_zero_delta_unchanged(current: nat)
+    ensures spec_counter_add(current, 0) == current,
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

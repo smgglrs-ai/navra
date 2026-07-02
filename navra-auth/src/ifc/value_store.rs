@@ -11,6 +11,7 @@ use navra_protocol::Content;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
+use vstd::prelude::*;
 
 /// A labeled value stored in the per-session variable store.
 #[derive(Debug, Clone)]
@@ -342,6 +343,37 @@ fn content_to_text(content: &[Content]) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
+
+verus! {
+
+// Value store capacity: after evicting expired and one LRU, inserting keeps len bounded.
+
+proof fn evict_count_correct(before: nat, expired: nat)
+    requires expired <= before,
+    ensures (before - expired) as nat + expired == before,
+{}
+
+// After evicting expired entries, the remainder is bounded
+proof fn evict_reduces_count(before: nat, expired: nat)
+    requires expired <= before,
+    ensures ({
+        let after: nat = (before - expired) as nat;
+        after <= before
+    }),
+{}
+
+// The LRU eviction + insert keeps count at most max_entries when
+// we start at or below max_entries after TTL eviction
+proof fn lru_then_insert_bounded(after_evict: nat, max_entries: nat)
+    requires max_entries >= 1,
+    ensures ({
+        let after_lru: nat = if after_evict >= max_entries { (after_evict - 1) as nat } else { after_evict };
+        let after_insert: nat = after_lru + 1;
+        after_evict < max_entries ==> after_insert <= max_entries
+    }),
+{}
+
+} // verus!
 
 #[cfg(test)]
 mod tests {

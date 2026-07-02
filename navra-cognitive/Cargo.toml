@@ -18,6 +18,10 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 thiserror = { workspace = true }
 tracing = { workspace = true }
+vstd = { workspace = true }
+
+[package.metadata.verus]
+verify = true
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use vstd::prelude::*;
 
 /// Path ACL rules for a permission set.
 #[derive(Debug, Clone)]
@@ -821,6 +822,99 @@ mod tests {
         assert_eq!(result, PermissionResult::DeniedOperation);
     }
 }
+
+verus! {
+
+#[verifier::external_type_specification]
+pub struct ExPermissionResult(PermissionResult);
+
+pub open spec fn spec_deny_wins_eval(
+    deny_matched: bool,
+    allow_matched: bool,
+    needs_approval: bool,
+) -> PermissionResult {
+    if deny_matched {
+        PermissionResult::DeniedPath
+    } else if !allow_matched {
+        PermissionResult::DeniedPath
+    } else if needs_approval {
+        PermissionResult::NeedsApproval
+    } else {
+        PermissionResult::Allowed
+    }
+}
+
+proof fn deny_always_wins(allow_matched: bool, needs_approval: bool)
+    ensures
+        spec_deny_wins_eval(true, allow_matched, needs_approval) == PermissionResult::DeniedPath,
+{}
+
+proof fn no_allow_means_denied(needs_approval: bool)
+    ensures
+        spec_deny_wins_eval(false, false, needs_approval) == PermissionResult::DeniedPath,
+{}
+
+proof fn allow_without_deny_succeeds()
+    ensures
+        spec_deny_wins_eval(false, true, false) == PermissionResult::Allowed,
+{}
+
+proof fn deny_wins_exhaustive()
+    ensures
+        spec_deny_wins_eval(false, false, false) == PermissionResult::DeniedPath,
+        spec_deny_wins_eval(false, false, true)  == PermissionResult::DeniedPath,
+        spec_deny_wins_eval(false, true,  false) == PermissionResult::Allowed,
+        spec_deny_wins_eval(false, true,  true)  == PermissionResult::NeedsApproval,
+        spec_deny_wins_eval(true,  false, false) == PermissionResult::DeniedPath,
+        spec_deny_wins_eval(true,  false, true)  == PermissionResult::DeniedPath,
+        spec_deny_wins_eval(true,  true,  false) == PermissionResult::DeniedPath,
+        spec_deny_wins_eval(true,  true,  true)  == PermissionResult::DeniedPath,
+{}
+
+spec fn deny_count_through_ring(deny_per_ring: Seq<nat>, ring: nat) -> nat
+    decreases ring,
+{
+    if ring == 0 {
+        deny_per_ring[0 as int]
+    } else {
+        deny_count_through_ring(deny_per_ring, (ring - 1) as nat) + deny_per_ring[ring as int]
+    }
+}
+
+proof fn deny_accumulation_monotonic(deny_per_ring: Seq<nat>, ring: nat)
+    requires
+        ring >= 1,
+        deny_per_ring.len() > ring as int,
+    ensures
+        deny_count_through_ring(deny_per_ring, ring) >=
+            deny_count_through_ring(deny_per_ring, (ring - 1) as nat),
+{}
+
+spec fn ops_through_ring(ops_per_ring: Seq<Set<int>>, ring: nat) -> Set<int>
+    decreases ring,
+{
+    if ring == 0 {
+        ops_per_ring[0 as int]
+    } else {
+        ops_through_ring(ops_per_ring, (ring - 1) as nat)
+            .intersect(ops_per_ring[ring as int])
+    }
+}
+
+proof fn higher_ring_never_grants_more(
+    ops_per_ring: Seq<Set<int>>,
+    ring: nat,
+    op: int,
+)
+    requires
+        ring >= 1,
+        ops_per_ring.len() > ring as int,
+        ops_through_ring(ops_per_ring, ring).contains(op),
+    ensures
+        ops_through_ring(ops_per_ring, (ring - 1) as nat).contains(op),
+{}
+
+} // verus!
 
 #[cfg(kani)]
 mod kani_proofs {

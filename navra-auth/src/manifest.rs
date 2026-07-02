@@ -8,6 +8,7 @@ use crate::identity::CapSigner;
 use navra_protocol::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use vstd::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolManifest {
@@ -272,3 +273,55 @@ pub fn verify_manifest_option(
         TofuResult::KeyChanged => Some(false),
     }
 }
+
+verus! {
+
+// TOFU (Trust On First Use) key pinning model:
+// has_pinned_key: whether server has a previously pinned key
+// key_matches: whether current key matches pinned key
+// Result: Trusted=0, FirstUse=1, KeyChanged=2
+
+spec fn spec_tofu_check(has_pinned_key: bool, key_matches: bool) -> nat {
+    if !has_pinned_key { 1 }       // FirstUse
+    else if key_matches { 0 }       // Trusted
+    else { 2 }                      // KeyChanged
+}
+
+proof fn first_use_when_no_pin()
+    ensures spec_tofu_check(false, false) == 1,
+{}
+
+proof fn trusted_when_key_matches()
+    ensures spec_tofu_check(true, true) == 0,
+{}
+
+proof fn key_changed_when_mismatch()
+    ensures spec_tofu_check(true, false) == 2,
+{}
+
+// verify_manifest_option fail-closed model:
+// sig_valid: signature verification passed
+// tofu_result: TOFU check result
+// Result: true (trusted), false (rejected)
+
+spec fn spec_verify_manifest(sig_valid: bool, tofu_result: nat) -> bool {
+    sig_valid && tofu_result <= 1 // Trusted(0) or FirstUse(1) pass; KeyChanged(2) rejects
+}
+
+proof fn invalid_sig_always_rejects(tofu_result: nat)
+    ensures !spec_verify_manifest(false, tofu_result),
+{}
+
+proof fn key_changed_always_rejects(sig_valid: bool)
+    ensures !spec_verify_manifest(sig_valid, 2),
+{}
+
+proof fn valid_sig_trusted_passes()
+    ensures spec_verify_manifest(true, 0),
+{}
+
+proof fn valid_sig_first_use_passes()
+    ensures spec_verify_manifest(true, 1),
+{}
+
+} // verus!
