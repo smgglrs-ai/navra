@@ -1,9 +1,11 @@
 target/
 .git/
 .claude/
+.lean/
 *.log
-benchmarks/
 docs/
+site/
 examples/
 assets/
 cognitive_core/
+formal/
