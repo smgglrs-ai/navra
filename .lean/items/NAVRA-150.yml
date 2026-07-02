@@ -1,6 +1,6 @@
 id: NAVRA-150
 title: "Contribute rate limiting middleware to rmcp (issue #388)"
-status: backlog
+status: planned
 priority: medium
 effort: M
 tags: [upstream, rmcp, community]

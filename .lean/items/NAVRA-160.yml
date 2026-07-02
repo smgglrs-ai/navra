@@ -1,6 +1,6 @@
 id: NAVRA-160
 title: "Network policy discovery and enforcement for navra wrap --sandbox"
-status: planned
+status: done
 priority: medium
 effort: 3-5d
 tags: [cli, security, sandbox, wrap]

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 16 active items
+# 20 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -24,6 +24,45 @@ items:
     effort: 5-10d
     depends_on: ['NAVRA-161']
 
+  - id: "NAVRA-170"
+    title: "SelfCompact rubric as flow-driven compression policy"
+    status: planned
+    priority: high
+    effort: 3-5d
+    feeds: ['NAVRA-092']
+
+  - id: "NAVRA-171"
+    title: "Self-Harness out-of-band flow improvement via blackbox traces"
+    status: planned
+    priority: high
+    effort: 5-8d
+
+  - id: "NAVRA-172"
+    title: "Add WIMSE/SPIFFE identity support alongside DID:key"
+    status: planned
+    priority: high
+    effort: 5-8d
+    feeds: ['NAVRA-147']
+
+  - id: "NAVRA-173"
+    title: "Implement DNS-AID integration for agent discovery"
+    status: planned
+    priority: high
+    effort: 3-5d
+
+  - id: "NAVRA-174"
+    title: "Implement ARD v0.9 ai-catalog.json for MCP server registry"
+    status: planned
+    priority: high
+    effort: 3-5d
+
+  - id: "NAVRA-150"
+    title: "Contribute rate limiting middleware to rmcp (issue #388)"
+    status: planned
+    priority: medium
+    effort: M
+    depends_on: ['NAVRA-149']
+
   - id: "NAVRA-154"
     title: "macOS HITL notifications"
     status: planned
@@ -37,12 +76,13 @@ items:
     effort: 3-5d
     depends_on: ['NAVRA-151']
 
-  - id: "NAVRA-160"
-    title: "Network policy discovery and enforcement for navra wrap --sandbox"
+  - id: "NAVRA-175"
+    title: "Implement Uber-style actor-chain JWT delegation tracking"
     status: planned
     priority: medium
     effort: 3-5d
-    depends_on: ['NAVRA-155']
+    depends_on: ['NAVRA-172']
+    feeds: ['NAVRA-147']
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
@@ -74,19 +114,6 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
-
-  - id: "NAVRA-169"
-    title: "IFC bypass: inline injection skips taint propagation for ≤3 deps"
-    status: backlog
-    priority: high
-    effort: 2-3d
-
-  - id: "NAVRA-150"
-    title: "Contribute rate limiting middleware to rmcp (issue #388)"
-    status: backlog
-    priority: medium
-    effort: M
-    depends_on: ['NAVRA-149']
 
   - id: "NAVRA-056"
     title: "Embeddable rendra-ag-ui widget"

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 153 completed items
+# 155 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -963,6 +963,13 @@ items:
     priority: medium
     effort: 1-3d
 
+  - id: "NAVRA-160"
+    title: "Network policy discovery and enforcement for navra wrap --sandbox"
+    status: done
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-155']
+
   - id: "NAVRA-161"
     title: "Architecture: split model server from gateway"
     status: done
@@ -1011,4 +1018,10 @@ items:
     priority: medium
     effort: 3-5d
     depends_on: ['NAVRA-163', 'NAVRA-164']
+
+  - id: "NAVRA-169"
+    title: "IFC bypass: inline injection skips taint propagation for ≤3 deps"
+    status: done
+    priority: high
+    effort: 2-3d
 
