@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.3.0] - 2026-07-02
+## [0.3.0] - 2026-07-08
 
 ### Added
 
@@ -40,6 +40,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -52,6 +53,7 @@ All notable changes to navra are documented here.
 - Switch all builds to rust:1.96-bookworm base image
 - Add protoc to CI, drop musl target from Dockerfiles
 - Container verify steps and agent-full glibc mismatch
+- Clippy collapsible_if, CI glibc mismatch, container static linking
 
 ### Maintenance
 
