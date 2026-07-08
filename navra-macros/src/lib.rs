@@ -187,18 +187,20 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
 /// Check whether a type path ends with `CallContext`.
 fn is_call_context_type(ty: &Type) -> bool {
     if let Type::Path(tp) = ty
-        && let Some(seg) = tp.path.segments.last() {
-            return seg.ident == "CallContext";
-        }
+        && let Some(seg) = tp.path.segments.last()
+    {
+        return seg.ident == "CallContext";
+    }
     false
 }
 
 /// Check whether a type is `Option<T>`.
 fn is_option_type(ty: &Type) -> bool {
     if let Type::Path(tp) = ty
-        && let Some(seg) = tp.path.segments.last() {
-            return seg.ident == "Option";
-        }
+        && let Some(seg) = tp.path.segments.last()
+    {
+        return seg.ident == "Option";
+    }
     false
 }
 
@@ -206,39 +208,41 @@ fn is_option_type(ty: &Type) -> bool {
 fn type_to_json_schema(ty: &Type) -> TokenStream2 {
     // For Option<T>, unwrap the inner type
     if let Type::Path(tp) = ty
-        && let Some(seg) = tp.path.segments.last() {
-            let ident_str = seg.ident.to_string();
+        && let Some(seg) = tp.path.segments.last()
+    {
+        let ident_str = seg.ident.to_string();
 
-            match ident_str.as_str() {
-                "String" | "str" => {
-                    return quote! { "string" };
-                }
-                "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
-                | "i128" | "isize" => {
-                    return quote! { "integer" };
-                }
-                "f32" | "f64" => {
-                    return quote! { "number" };
-                }
-                "bool" => {
-                    return quote! { "boolean" };
-                }
-                "Option" => {
-                    // Unwrap inner type
-                    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
-                        && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
-                            return type_to_json_schema(inner);
-                        }
-                }
-                "Vec" => {
-                    return quote! { "array" };
-                }
-                "HashMap" | "BTreeMap" => {
-                    return quote! { "object" };
-                }
-                _ => {}
+        match ident_str.as_str() {
+            "String" | "str" => {
+                return quote! { "string" };
             }
+            "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64"
+            | "i128" | "isize" => {
+                return quote! { "integer" };
+            }
+            "f32" | "f64" => {
+                return quote! { "number" };
+            }
+            "bool" => {
+                return quote! { "boolean" };
+            }
+            "Option" => {
+                // Unwrap inner type
+                if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(inner)) = ab.args.first()
+                {
+                    return type_to_json_schema(inner);
+                }
+            }
+            "Vec" => {
+                return quote! { "array" };
+            }
+            "HashMap" | "BTreeMap" => {
+                return quote! { "object" };
+            }
+            _ => {}
         }
+    }
     // Fallback to string
     quote! { "string" }
 }
@@ -256,21 +260,22 @@ fn build_property_schema(
     // For Vec<T>, build array schema with items
     if is_vec
         && let Type::Path(tp) = ty
-            && let Some(seg) = tp.path.segments.last()
-                && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
-                    && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
-                        let inner_type = type_to_json_schema(inner);
-                        let desc_field = description.as_ref().map(|d| {
-                            quote! { schema.insert("description".to_string(), serde_json::json!(#d)); }
-                        });
-                        return quote! {{
-                            let mut schema = serde_json::Map::new();
-                            schema.insert("type".to_string(), serde_json::Value::String("array".to_string()));
-                            schema.insert("items".to_string(), serde_json::json!({"type": #inner_type}));
-                            #desc_field
-                            serde_json::Value::Object(schema)
-                        }};
-                    }
+        && let Some(seg) = tp.path.segments.last()
+        && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = ab.args.first()
+    {
+        let inner_type = type_to_json_schema(inner);
+        let desc_field = description.as_ref().map(|d| {
+            quote! { schema.insert("description".to_string(), serde_json::json!(#d)); }
+        });
+        return quote! {{
+            let mut schema = serde_json::Map::new();
+            schema.insert("type".to_string(), serde_json::Value::String("array".to_string()));
+            schema.insert("items".to_string(), serde_json::json!({"type": #inner_type}));
+            #desc_field
+            serde_json::Value::Object(schema)
+        }};
+    }
 
     // For Option<T>, unwrap to inner type schema
     let effective_ty = if is_option {
@@ -502,11 +507,12 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
 fn unwrap_option_inner(ty: &Type) -> Type {
     if let Type::Path(tp) = ty
         && let Some(seg) = tp.path.segments.last()
-            && seg.ident == "Option"
-                && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
-                    && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
-                        return inner.clone();
-                    }
+        && seg.ident == "Option"
+        && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+        && let Some(syn::GenericArgument::Type(inner)) = ab.args.first()
+    {
+        return inner.clone();
+    }
     ty.clone()
 }
 
