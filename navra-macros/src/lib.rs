@@ -186,29 +186,27 @@ fn extract_args(func: &ItemFn) -> syn::Result<Vec<ArgInfo>> {
 
 /// Check whether a type path ends with `CallContext`.
 fn is_call_context_type(ty: &Type) -> bool {
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
+    if let Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last() {
             return seg.ident == "CallContext";
         }
-    }
     false
 }
 
 /// Check whether a type is `Option<T>`.
 fn is_option_type(ty: &Type) -> bool {
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
+    if let Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last() {
             return seg.ident == "Option";
         }
-    }
     false
 }
 
 /// Map a Rust type to a JSON Schema `{"type": ...}` value (as tokens).
 fn type_to_json_schema(ty: &Type) -> TokenStream2 {
     // For Option<T>, unwrap the inner type
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
+    if let Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last() {
             let ident_str = seg.ident.to_string();
 
             match ident_str.as_str() {
@@ -227,11 +225,10 @@ fn type_to_json_schema(ty: &Type) -> TokenStream2 {
                 }
                 "Option" => {
                     // Unwrap inner type
-                    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
+                    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
                             return type_to_json_schema(inner);
                         }
-                    }
                 }
                 "Vec" => {
                     return quote! { "array" };
@@ -242,7 +239,6 @@ fn type_to_json_schema(ty: &Type) -> TokenStream2 {
                 _ => {}
             }
         }
-    }
     // Fallback to string
     quote! { "string" }
 }
@@ -258,11 +254,11 @@ fn build_property_schema(
     let is_option = is_option_type(ty);
 
     // For Vec<T>, build array schema with items
-    if is_vec {
-        if let Type::Path(tp) = ty {
-            if let Some(seg) = tp.path.segments.last() {
-                if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-                    if let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
+    if is_vec
+        && let Type::Path(tp) = ty
+            && let Some(seg) = tp.path.segments.last()
+                && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
                         let inner_type = type_to_json_schema(inner);
                         let desc_field = description.as_ref().map(|d| {
                             quote! { schema.insert("description".to_string(), serde_json::json!(#d)); }
@@ -275,10 +271,6 @@ fn build_property_schema(
                             serde_json::Value::Object(schema)
                         }};
                     }
-                }
-            }
-        }
-    }
 
     // For Option<T>, unwrap to inner type schema
     let effective_ty = if is_option {
@@ -508,17 +500,13 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
 
 /// Unwrap Option<T> to get T. Returns the original type if not Option.
 fn unwrap_option_inner(ty: &Type) -> Type {
-    if let Type::Path(tp) = ty {
-        if let Some(seg) = tp.path.segments.last() {
-            if seg.ident == "Option" {
-                if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
-                    if let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
+    if let Type::Path(tp) = ty
+        && let Some(seg) = tp.path.segments.last()
+            && seg.ident == "Option"
+                && let syn::PathArguments::AngleBracketed(ab) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(inner)) = ab.args.first() {
                         return inner.clone();
                     }
-                }
-            }
-        }
-    }
     ty.clone()
 }
 
