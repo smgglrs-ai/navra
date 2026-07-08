@@ -42,6 +42,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -56,6 +57,7 @@ All notable changes to navra are documented here.
 - Container verify steps and agent-full glibc mismatch
 - Clippy collapsible_if, CI glibc mismatch, container static linking
 - Move rustup target add into cargo build step
+- Fmt after clippy autofix, static-pie binary detection
 
 ### Maintenance
 
