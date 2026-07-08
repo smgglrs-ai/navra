@@ -23,14 +23,14 @@ FROM rust:1.96-bookworm AS builder
 
 RUN apt-get update && \
     apt-get install -y musl-tools && \
-    rm -rf /var/lib/apt/lists/* && \
-    rustup target add x86_64-unknown-linux-musl
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY . .
 
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
-RUN cargo build \
+RUN rustup target add x86_64-unknown-linux-musl && \
+    cargo build \
     --profile container \
     --bin navra-agent \
     --target x86_64-unknown-linux-musl \
