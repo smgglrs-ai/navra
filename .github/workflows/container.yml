@@ -124,10 +124,11 @@ jobs:
           docker cp verify:/usr/local/bin/navra-agent /tmp/navra-agent
           docker rm verify
           file /tmp/navra-agent
-          if ldd /tmp/navra-agent 2>&1 | grep -q "not a dynamic"; then
+          FILE_OUT=$(file /tmp/navra-agent)
+          if echo "$FILE_OUT" | grep -qE "static|statically linked"; then
             echo "Binary is statically linked"
           else
-            echo "::error::Binary is dynamically linked"
+            echo "::error::Binary is dynamically linked: $FILE_OUT"
             exit 1
           fi
 
