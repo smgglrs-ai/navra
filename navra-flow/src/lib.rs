@@ -21,6 +21,7 @@
 
 mod backedge;
 mod blackboard;
+pub mod bpmn;
 mod builder;
 pub mod causal_graph;
 pub mod checkpoint;
@@ -45,6 +46,7 @@ pub mod yaml_loader;
 
 pub use backedge::{BackEdgeTracker, ConditionalEdge, EdgeCondition};
 pub use blackboard::{Blackboard, BlackboardEntry};
+pub use bpmn::{BpmnError, BpmnNode, BpmnProcess, load_bpmn_file};
 pub use builder::FlowBuilder;
 pub use checkpoint::{CheckpointState, DagCheckpoint};
 pub use dag::DependencyGraph;

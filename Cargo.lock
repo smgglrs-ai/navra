@@ -3358,6 +3358,7 @@ dependencies = [
  "navra-responses",
  "navra-safety-hooks",
  "rmcp",
+ "roxmltree",
  "rusqlite",
  "serde",
  "serde_json",

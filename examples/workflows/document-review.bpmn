@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example BPMN workflow: document review with human approval.
+
+  Flow: start → draft → review (human) → gateway
+    → [approved] publish → end
+    → [rejected] draft (back-edge, retry)
+
+  This workflow is loaded by navra and compiled into a DAG.
+  ServiceTask nodes become agent invocations; the UserTask
+  becomes an approval barrier that pauses execution.
+-->
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             id="doc_review"
+             name="document-review"
+             targetNamespace="https://navra.dev/bpmn/document-review">
+
+  <process id="doc_review_process" name="Document Review">
+
+    <startEvent id="start" name="Start"/>
+
+    <serviceTask id="draft" name="Draft document">
+      <extensionElements>
+        <taskDefinition type="writer"/>
+      </extensionElements>
+    </serviceTask>
+
+    <userTask id="review" name="Human review"/>
+
+    <exclusiveGateway id="decision" name="Approved?" default="f_reject"/>
+
+    <serviceTask id="publish" name="Publish document">
+      <extensionElements>
+        <taskDefinition type="publisher"/>
+      </extensionElements>
+    </serviceTask>
+
+    <serviceTask id="revise" name="Revise document">
+      <extensionElements>
+        <taskDefinition type="writer"/>
+      </extensionElements>
+    </serviceTask>
+
+    <endEvent id="end" name="End"/>
+
+    <sequenceFlow id="f1" sourceRef="start" targetRef="draft"/>
+    <sequenceFlow id="f2" sourceRef="draft" targetRef="review"/>
+    <sequenceFlow id="f3" sourceRef="review" targetRef="decision"/>
+    <sequenceFlow id="f_approve" sourceRef="decision" targetRef="publish">
+      <conditionExpression>approved == true</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="f_reject" sourceRef="decision" targetRef="revise"/>
+    <sequenceFlow id="f5" sourceRef="publish" targetRef="end"/>
+    <sequenceFlow id="f6" sourceRef="revise" targetRef="review"/>
+
+  </process>
+</definitions>

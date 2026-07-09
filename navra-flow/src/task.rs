@@ -42,6 +42,10 @@ pub struct Task {
     /// Temperature override for this task's model calls.
     #[serde(default)]
     pub temperature: Option<f32>,
+    /// When true, the executor pauses before this task and waits
+    /// for external approval. Used by BPMN userTask nodes.
+    #[serde(default)]
+    pub approval_required: bool,
 }
 
 fn default_max_retries() -> u32 {
@@ -63,6 +67,7 @@ impl From<TaskDefinition> for Task {
             back_edges: def.back_edges,
             verification: def.verification,
             temperature: def.temperature,
+            approval_required: def.approval_required,
         }
     }
 }

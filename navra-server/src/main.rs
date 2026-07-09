@@ -4638,28 +4638,49 @@ async fn serve_inner(
                         for entry in entries.flatten() {
                             let p = entry.path();
                             let ext = p.extension().and_then(|e| e.to_str());
-                            if !matches!(ext, Some("yml" | "yaml")) {
+                            if !matches!(ext, Some("yml" | "yaml" | "bpmn")) {
                                 continue;
                             }
-                            if let Ok(content) = std::fs::read_to_string(&p)
-                                && let Ok(flow) = serde_yaml::from_str::<
+                            if let Ok(content) = std::fs::read_to_string(&p) {
+                                if ext == Some("bpmn") {
+                                    if let Ok(dag) =
+                                        navra_flow::load_bpmn_file(p.to_str().unwrap_or_default())
+                                    {
+                                        summaries.push(navra_core::acp::types::FlowSummary {
+                                            name: dag.name.clone(),
+                                            description: dag
+                                                .description
+                                                .clone()
+                                                .unwrap_or_else(|| dag.name.clone()),
+                                            nodes: dag
+                                                .tasks
+                                                .iter()
+                                                .map(|t| navra_core::acp::types::FlowNodeSummary {
+                                                    id: t.id.clone(),
+                                                    description: t.mandate.clone(),
+                                                })
+                                                .collect(),
+                                        });
+                                    }
+                                } else if let Ok(flow) = serde_yaml::from_str::<
                                     navra_flow::yaml_loader::FlowFile,
                                 >(&content)
-                            {
-                                summaries.push(navra_core::acp::types::FlowSummary {
-                                    name: flow.name.clone(),
-                                    description: flow
-                                        .description
-                                        .unwrap_or_else(|| flow.name.clone()),
-                                    nodes: flow
-                                        .tasks
-                                        .iter()
-                                        .map(|t| navra_core::acp::types::FlowNodeSummary {
-                                            id: t.id.clone(),
-                                            description: t.mandate.clone(),
-                                        })
-                                        .collect(),
-                                });
+                                {
+                                    summaries.push(navra_core::acp::types::FlowSummary {
+                                        name: flow.name.clone(),
+                                        description: flow
+                                            .description
+                                            .unwrap_or_else(|| flow.name.clone()),
+                                        nodes: flow
+                                            .tasks
+                                            .iter()
+                                            .map(|t| navra_core::acp::types::FlowNodeSummary {
+                                                id: t.id.clone(),
+                                                description: t.mandate.clone(),
+                                            })
+                                            .collect(),
+                                    });
+                                }
                             }
                         }
                     }

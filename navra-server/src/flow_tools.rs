@@ -1735,6 +1735,7 @@ pub async fn handle_flow_escalate(
                 tools: None,
                 operations: None,
                 temperature: None,
+                approval_required: false,
             });
         }
         navra_flow::DagConfig {

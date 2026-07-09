@@ -182,6 +182,7 @@ mod tests {
             back_edges: Vec::new(),
             verification: None,
             temperature: None,
+            approval_required: false,
         }
     }
 
