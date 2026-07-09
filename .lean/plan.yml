@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 22 active items
+# 21 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -83,14 +83,6 @@ items:
     effort: 3-5d
     depends_on: ['NAVRA-172']
     feeds: ['NAVRA-147']
-
-  - id: "NAVRA-177"
-    title: "BPMN workflow import for agent orchestration"
-    status: planned
-    priority: medium
-    effort: 8-13d
-    depends_on: ['NAVRA-176']
-    feeds: ['NAVRA-178']
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"

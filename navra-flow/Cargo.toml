@@ -25,6 +25,7 @@ anyhow = { workspace = true }
 toml = "0.8"
 serde_yaml = "0.9"
 rusqlite = { workspace = true }
+roxmltree = "0.21"
 vstd = { workspace = true }
 
 [package.metadata.verus]

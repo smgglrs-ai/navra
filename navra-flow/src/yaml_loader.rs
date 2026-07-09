@@ -31,6 +31,7 @@ pub enum YamlLoadError {
 pub enum LoadedFlow {
     Dag(DagConfig),
     Handoff(FlowConfig),
+    Bpmn(DagConfig),
 }
 
 /// Top-level YAML flow envelope.
@@ -72,7 +73,7 @@ pub fn load_flow_yaml(
     params: &HashMap<String, String>,
 ) -> Result<DagConfig, YamlLoadError> {
     match load_flow(yaml_str, params)? {
-        LoadedFlow::Dag(dag) => Ok(dag),
+        LoadedFlow::Dag(dag) | LoadedFlow::Bpmn(dag) => Ok(dag),
         LoadedFlow::Handoff(_) => Err(YamlLoadError::UnknownKind(
             "handoff (use load_flow for handoff support)".to_string(),
         )),

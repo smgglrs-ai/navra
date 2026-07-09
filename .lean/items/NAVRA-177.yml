@@ -1,6 +1,6 @@
 id: NAVRA-177
 title: "BPMN workflow import for agent orchestration"
-status: planned
+status: done
 priority: medium
 effort: 8-13d
 depends_on: ["NAVRA-176"]
