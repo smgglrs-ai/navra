@@ -1,6 +1,6 @@
 id: NAVRA-178
 title: "Live BPMN visualization of running workflows"
-status: planned
+status: done
 priority: low
 effort: 5-8d
 depends_on: ["NAVRA-177"]

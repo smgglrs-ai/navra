@@ -457,6 +457,118 @@ pub fn load_bpmn_file(path: &str) -> Result<DagConfig, BpmnError> {
     compile(&process)
 }
 
+// ── Generator: DagConfig → BPMN XML ──
+
+/// Generate BPMN 2.0 XML from a DagConfig and optional node status map.
+///
+/// Produces valid BPMN that can be rendered by bpmn.io or any BPMN viewer.
+/// Status values in `statuses` (pending/running/done/failed) are embedded
+/// as extension elements so renderers can color nodes.
+pub fn generate_bpmn(dag: &DagConfig, statuses: &HashMap<String, String>) -> String {
+    let mut xml = String::from(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:navra="https://navra.dev/bpmn/extensions"
+             id="generated"
+             name="navra-generated"
+             targetNamespace="https://navra.dev/bpmn/generated">
+  <process id="process" name=""#,
+    );
+    xml_escape_into(&mut xml, &dag.name);
+    xml.push_str("\">\n");
+
+    // Start event
+    xml.push_str("    <startEvent id=\"__start\"/>\n");
+
+    // Tasks
+    for task in &dag.tasks {
+        if task.approval_required {
+            xml.push_str("    <userTask id=\"");
+        } else {
+            xml.push_str("    <serviceTask id=\"");
+        }
+        xml_escape_into(&mut xml, &task.id);
+        xml.push_str("\" name=\"");
+        xml_escape_into(&mut xml, &task.mandate);
+        xml.push_str("\">\n");
+
+        // Status extension
+        if let Some(status) = statuses.get(&task.id) {
+            xml.push_str("      <extensionElements>\n");
+            xml.push_str("        <navra:status>");
+            xml_escape_into(&mut xml, status);
+            xml.push_str("</navra:status>\n");
+            xml.push_str("      </extensionElements>\n");
+        }
+
+        if task.approval_required {
+            xml.push_str("    </userTask>\n");
+        } else {
+            xml.push_str("    </serviceTask>\n");
+        }
+    }
+
+    // End event
+    xml.push_str("    <endEvent id=\"__end\"/>\n");
+
+    // Sequence flows
+    let mut flow_id = 0u32;
+
+    // Roots (no dependencies) get an edge from start event
+    for task in &dag.tasks {
+        if task.depends_on.is_empty() {
+            flow_id += 1;
+            xml.push_str(&format!(
+                "    <sequenceFlow id=\"f{flow_id}\" sourceRef=\"__start\" targetRef=\"{}\"/>\n",
+                task.id
+            ));
+        }
+    }
+
+    // Dependency edges
+    for task in &dag.tasks {
+        for dep in &task.depends_on {
+            flow_id += 1;
+            xml.push_str(&format!(
+                "    <sequenceFlow id=\"f{flow_id}\" sourceRef=\"{dep}\" targetRef=\"{}\"/>\n",
+                task.id
+            ));
+        }
+    }
+
+    // Terminal tasks (not depended on by anyone) get an edge to end event
+    let depended_on: HashSet<&str> = dag
+        .tasks
+        .iter()
+        .flat_map(|t| t.depends_on.iter().map(|s| s.as_str()))
+        .collect();
+    for task in &dag.tasks {
+        if !depended_on.contains(task.id.as_str()) {
+            flow_id += 1;
+            xml.push_str(&format!(
+                "    <sequenceFlow id=\"f{flow_id}\" sourceRef=\"{}\" targetRef=\"__end\"/>\n",
+                task.id
+            ));
+        }
+    }
+
+    xml.push_str("  </process>\n</definitions>\n");
+    xml
+}
+
+fn xml_escape_into(buf: &mut String, s: &str) {
+    for c in s.chars() {
+        match c {
+            '&' => buf.push_str("&amp;"),
+            '<' => buf.push_str("&lt;"),
+            '>' => buf.push_str("&gt;"),
+            '"' => buf.push_str("&quot;"),
+            '\'' => buf.push_str("&apos;"),
+            _ => buf.push(c),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -669,5 +781,44 @@ mod tests {
             let dag = load_bpmn_file(path).unwrap();
             assert!(!dag.tasks.is_empty());
         }
+    }
+
+    #[test]
+    fn generate_bpmn_round_trip() {
+        let process = parse(PARALLEL_BPMN).unwrap();
+        let dag = compile(&process).unwrap();
+
+        let mut statuses = HashMap::new();
+        statuses.insert("prepare".to_string(), "done".to_string());
+        statuses.insert("analyze_a".to_string(), "running".to_string());
+        statuses.insert("analyze_b".to_string(), "pending".to_string());
+        statuses.insert("merge".to_string(), "pending".to_string());
+
+        let xml = generate_bpmn(&dag, &statuses);
+
+        // Verify it's valid BPMN that can be re-parsed
+        let reparsed = parse(&xml).unwrap();
+        assert_eq!(reparsed.nodes.len(), 6); // 4 tasks + start + end
+
+        // Verify status extension is present
+        assert!(xml.contains("navra:status"));
+        assert!(xml.contains("done"));
+        assert!(xml.contains("running"));
+    }
+
+    #[test]
+    fn generate_bpmn_user_task() {
+        let process = parse(USER_TASK_BPMN).unwrap();
+        let dag = compile(&process).unwrap();
+        let xml = generate_bpmn(&dag, &HashMap::new());
+
+        assert!(xml.contains("<userTask"));
+        assert!(xml.contains("<serviceTask"));
+
+        let reparsed = parse(&xml).unwrap();
+        assert!(matches!(
+            reparsed.nodes.get("review"),
+            Some(BpmnNode::UserTask { .. })
+        ));
     }
 }

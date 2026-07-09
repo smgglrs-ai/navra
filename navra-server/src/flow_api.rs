@@ -80,6 +80,73 @@ async fn handle_flow_graph_dot(
     }
 }
 
+/// `GET /flows/{id}/graph/bpmn` — returns BPMN 2.0 XML for the flow.
+///
+/// Generates BPMN XML from the flow's DAG structure with status
+/// extensions on each node. Consumable by bpmn.io or any BPMN viewer.
+async fn handle_flow_graph_bpmn(
+    State(state): State<FlowApiState>,
+    Path(flow_id): Path<String>,
+) -> impl IntoResponse {
+    let flows = state
+        .registry
+        .flows
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let Some(run) = flows.get(&flow_id) else {
+        return (StatusCode::NOT_FOUND, format!("Unknown flow: {flow_id}")).into_response();
+    };
+
+    let dag = navra_flow::DagConfig {
+        name: run.name.clone(),
+        description: None,
+        parameters: std::collections::HashMap::new(),
+        tasks: run
+            .node_statuses
+            .iter()
+            .map(|n| navra_flow::TaskDefinition {
+                id: n.id.clone(),
+                specialist: n.specialist.clone(),
+                model: None,
+                mandate: n.id.clone(),
+                depends_on: run
+                    .edges
+                    .iter()
+                    .filter(|e| e.target == n.id)
+                    .map(|e| e.source.clone())
+                    .collect(),
+                expected_output: None,
+                success_criteria: vec![],
+                back_edges: vec![],
+                generates_tasks: false,
+                verification: None,
+                tools: None,
+                operations: None,
+                temperature: None,
+                approval_required: false,
+            })
+            .collect(),
+        blackboard_capacity: None,
+    };
+
+    let statuses: std::collections::HashMap<String, String> = run
+        .node_statuses
+        .iter()
+        .map(|n| (n.id.clone(), n.status.clone()))
+        .collect();
+
+    let xml = navra_flow::bpmn::generate_bpmn(&dag, &statuses);
+
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/xml; charset=utf-8",
+        )],
+        xml,
+    )
+        .into_response()
+}
+
 /// `GET /flows/{id}/events` — SSE stream of FlowEvent.
 ///
 /// Supports `Last-Event-ID` header for reconnection: sends all events
@@ -169,6 +236,10 @@ pub(crate) fn flow_api_router(
             axum::routing::get(handle_flow_graph_dot),
         )
         .route("/flows/{id}/events", axum::routing::get(handle_flow_events))
+        .route(
+            "/flows/{id}/graph/bpmn",
+            axum::routing::get(handle_flow_graph_bpmn),
+        )
         .with_state(state)
 }
 
