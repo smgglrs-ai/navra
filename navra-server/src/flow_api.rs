@@ -21,6 +21,11 @@ pub(crate) struct FlowApiState {
     pub event_log: Option<Arc<navra_flow::event_log::EventLog>>,
 }
 
+/// `GET /flows` — returns a list of all flow runs.
+async fn handle_list_flows(State(state): State<FlowApiState>) -> impl IntoResponse {
+    axum::Json(state.registry.list_runs())
+}
+
 /// `GET /flows/{id}/graph` — returns the flow graph as JSON.
 async fn handle_flow_graph(
     State(state): State<FlowApiState>,
@@ -230,6 +235,7 @@ pub(crate) fn flow_api_router(
     };
 
     axum::Router::new()
+        .route("/api/flow-runs", axum::routing::get(handle_list_flows))
         .route("/flows/{id}/graph", axum::routing::get(handle_flow_graph))
         .route(
             "/flows/{id}/graph/dot",

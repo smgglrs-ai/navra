@@ -11,10 +11,11 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:9315', ws: true },
       '/sys': 'http://localhost:9315',
       '/mcp': 'http://localhost:9315',
+      '/flows': 'http://localhost:9315',
     },
   },
   build: {
-    outDir: '../smgglrs-server/ui-dist',
+    outDir: '../navra-server/ui-dist',
     emptyOutDir: true,
   },
 })

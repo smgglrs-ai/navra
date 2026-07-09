@@ -33,6 +33,34 @@ export interface FlowInfo {
   tasks: number;
 }
 
+export interface FlowRunSummary {
+  flow_id: string;
+  name: string;
+  status: string;
+  elapsed_secs: number;
+  node_count: number;
+}
+
+export interface FlowGraph {
+  flow_id: string;
+  name: string;
+  status: string;
+  nodes: FlowGraphNode[];
+  edges: FlowGraphEdge[];
+}
+
+export interface FlowGraphNode {
+  id: string;
+  label: string;
+  status: string;
+  duration_ms?: number;
+}
+
+export interface FlowGraphEdge {
+  source: string;
+  target: string;
+}
+
 export interface ProcessSnapshot {
   name: string;
   permissions: string;
