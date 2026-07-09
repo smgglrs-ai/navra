@@ -25,6 +25,7 @@ pub struct Metrics {
     pub budget_truncations: AtomicU64,
     pub routing_decisions: AtomicU64,
     pub cedar_denials: AtomicU64,
+    pub dmn_denials: AtomicU64,
     pub resource_subscriptions: AtomicU64,
     pub websocket_connections: AtomicU64,
     pub tool_scan_total: AtomicU64,
@@ -75,6 +76,7 @@ impl Metrics {
             budget_truncations: AtomicU64::new(0),
             routing_decisions: AtomicU64::new(0),
             cedar_denials: AtomicU64::new(0),
+            dmn_denials: AtomicU64::new(0),
             resource_subscriptions: AtomicU64::new(0),
             websocket_connections: AtomicU64::new(0),
             tool_scan_total: AtomicU64::new(0),
@@ -232,6 +234,12 @@ impl Metrics {
             "navra_cedar_denials_total",
             "Cedar policy denials",
             self.cedar_denials.load(Ordering::Relaxed),
+        );
+        prom_counter(
+            &mut out,
+            "navra_dmn_denials_total",
+            "DMN decision table denials",
+            self.dmn_denials.load(Ordering::Relaxed),
         );
         prom_gauge(
             &mut out,
@@ -484,6 +492,7 @@ mod tests {
         assert!(output.contains("navra_tool_calls_total"));
         assert!(output.contains("navra_ifc_write_denials_total"));
         assert!(output.contains("navra_cedar_denials_total"));
+        assert!(output.contains("navra_dmn_denials_total"));
         assert!(output.contains("navra_websocket_connections"));
         assert!(output.contains("navra_tool_scan_total"));
         assert!(output.contains("navra_tool_scan_blocked_total"));

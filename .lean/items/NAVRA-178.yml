@@ -1,0 +1,40 @@
+id: NAVRA-178
+title: "Live BPMN visualization of running workflows"
+status: planned
+priority: low
+effort: 5-8d
+depends_on: ["NAVRA-177"]
+feeds: []
+source: BPMN_AI_Workflow_Architecture.pdf
+description: |
+  Render running workflow state as a BPMN diagram for compliance
+  stakeholders. Even workflows not authored in BPMN can be
+  visualized as BPMN — tokens on active nodes, completed paths
+  highlighted, audit trail per node.
+
+  This is the "compliance officer can see what the AI is doing"
+  story. Provides the shared visual language between technical
+  teams and business/compliance stakeholders that BPMN was
+  designed for.
+
+  Implementation options:
+  - Server-sent events endpoint streaming workflow state changes
+  - BPMN XML generation from navra-flow DAG state (reverse mapping)
+  - Frontend renders via bpmn.io or similar JS library
+  - Alternatively, static SVG export for audit reports
+
+  Integration with navra's existing audit trail: each BPMN node
+  click drills into the IFC decision log, policy evaluations,
+  and agent reasoning trace for that step.
+acceptance:
+  - Running workflows renderable as BPMN diagrams
+  - Active tokens visible on current nodes
+  - Completed paths visually distinguished
+  - Node click links to audit trail / IFC log
+  - Works for both BPMN-imported and code-defined workflows
+scope:
+  - navra-server/src/api/
+  - navra-flow/src/
+  - docs/content/docs/guides/
+verification:
+  quick: cargo test -p navra-flow

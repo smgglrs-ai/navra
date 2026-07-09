@@ -1,0 +1,47 @@
+id: NAVRA-176
+title: "DMN decision tables as policy rules (dsntk integration)"
+status: done
+priority: high
+effort: 5-8d
+depends_on: []
+feeds: ["NAVRA-177", "NAVRA-178"]
+source: BPMN_AI_Workflow_Architecture.pdf
+description: |
+  Add a DMN-backed policy evaluator alongside existing TOML rules,
+  targeting regulated enterprises with BPM practices (banks, insurers,
+  healthcare) as an adoption bridge.
+
+  Integrate the dsntk crate (pure-Rust DMN standard implementation)
+  to evaluate multi-dimensional decision tables using FEEL expressions.
+  Compliance officers and business analysts author guardrails in any
+  standard DMN editor (Camunda Modeler, Trisotech, spreadsheet export)
+  and drop .dmn files into navra's config directory.
+
+  Use cases:
+  - Input sanitization: pre-cognitive filtering via DMN tables
+    (e.g., blacklisted topics, jurisdictional constraints skip agent)
+  - Output validation: agent output treated as proposal, evaluated
+    against DMN decision tables before delivery
+  - IFC policy: "if label=PII and destination=external, deny"
+    expressed as a DMN table instead of TOML
+
+  This directly extends navra's existing IFC and permission model
+  with a format business experts already know. No competitor in the
+  MCP gateway space offers DMN-based guardrails.
+
+  Architecture: DMN tables evaluate synchronously in the policy
+  pipeline, same position as current TOML rules. The dsntk FEEL
+  compiler handles the expression evaluation.
+acceptance:
+  - dsntk integrated as optional dependency
+  - .dmn files loaded from config directory alongside TOML policies
+  - DMN decision tables evaluated in policy pipeline (pre and post agent)
+  - At least one e2e test with a real DMN file blocking a request
+  - Documentation in docs/content/docs/configuration/ and guides
+scope:
+  - navra-security/src/policy/
+  - navra-server/src/config/
+  - docs/content/docs/configuration/
+  - docs/content/docs/guides/
+verification:
+  quick: cargo test -p navra-security

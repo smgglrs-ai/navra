@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 155 completed items
+# 156 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1024,4 +1024,11 @@ items:
     status: done
     priority: high
     effort: 2-3d
+
+  - id: "NAVRA-176"
+    title: "DMN decision tables as policy rules (dsntk integration)"
+    status: done
+    priority: high
+    effort: 5-8d
+    feeds: ['NAVRA-177', 'NAVRA-178']
 

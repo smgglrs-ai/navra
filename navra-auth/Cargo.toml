@@ -36,6 +36,9 @@ ureq = { version = "3", features = ["json"] }
 futures-util = "0.3"
 zbus = { version = "5", default-features = false, features = ["tokio"], optional = true }
 cedar-policy = { version = "4", optional = true }
+dsntk-model = "0.3"
+dsntk-model-evaluator = "0.3"
+dsntk-feel = "0.3"
 sha2 = "0.10"
 subtle = "2"
 zeroize = "1"

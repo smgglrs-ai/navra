@@ -43,6 +43,7 @@ pub struct McpServerBuilder {
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
@@ -81,6 +82,7 @@ impl McpServerBuilder {
             broadcaster: None,
             #[cfg(feature = "cedar")]
             cedar_engine: None,
+            dmn_engine: None,
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
@@ -410,6 +412,12 @@ impl McpServerBuilder {
     #[cfg(feature = "cedar")]
     pub fn cedar_engine(mut self, engine: navra_auth::permissions::CedarEngine) -> Self {
         self.cedar_engine = Some(engine);
+        self
+    }
+
+    /// Set the DMN decision table engine for business-rule guardrails.
+    pub fn dmn_engine(mut self, engine: navra_auth::permissions::DmnEngine) -> Self {
+        self.dmn_engine = Some(engine);
         self
     }
 
@@ -901,6 +909,7 @@ impl McpServerBuilder {
             broadcaster: self.broadcaster,
             #[cfg(feature = "cedar")]
             cedar_engine: self.cedar_engine,
+            dmn_engine: self.dmn_engine,
             tool_disclosure: self.tool_disclosure,
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(

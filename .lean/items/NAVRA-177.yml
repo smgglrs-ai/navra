@@ -1,0 +1,48 @@
+id: NAVRA-177
+title: "BPMN workflow import for agent orchestration"
+status: planned
+priority: medium
+effort: 8-13d
+depends_on: ["NAVRA-176"]
+feeds: ["NAVRA-178"]
+source: BPMN_AI_Workflow_Architecture.pdf
+description: |
+  Import BPMN 2.0 XML as workflow definitions for navra's agent
+  orchestration layer. Business analysts design processes in
+  standard BPM tools; navra executes them with IFC enforcement.
+
+  Macro/Micro architecture pattern:
+  - Macro layer (BPMN): process lifecycle, routing, auditing
+  - Micro layer (navra agent): reasoning loop inside serviceTask
+
+  BPMN element mapping to navra primitives:
+  - <serviceTask> → agent invocation (MCP tool call or LLM prompt)
+  - <userTask> → human-in-the-loop barrier
+  - <sequenceFlow> → DAG directed edge
+  - <exclusiveGateway> → conditional routing
+  - <parallelGateway> → fork/join (maps to navra-flow parallel)
+
+  Use bpm-engine or Ebi_BPMN crates for parsing. Runtime
+  interpretation preferred over AOT transpilation to keep the
+  BPMN diagram as the live source of truth (prevents drift).
+
+  Cyclic BPMN topologies (correction loops) compiled into opaque
+  sub-graph nodes within navra-flow's DAG runtime.
+
+  Key integration: BPMN process variables mapped to navra's
+  IFC-labeled context — every variable carries taint labels
+  through the workflow.
+acceptance:
+  - BPMN 2.0 XML files parsed and mapped to navra-flow DAG
+  - serviceTask triggers navra agent with MCP tool access
+  - userTask halts execution and persists state for human review
+  - Exclusive and parallel gateways route correctly
+  - IFC labels propagate through BPMN process variables
+  - Cyclic sub-processes handled without DAG runtime errors
+  - At least one end-to-end workflow test with a real .bpmn file
+scope:
+  - navra-flow/src/
+  - navra-server/src/config/
+  - docs/content/docs/guides/
+verification:
+  quick: cargo test -p navra-flow
