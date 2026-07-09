@@ -311,6 +311,27 @@ impl FlowRegistry {
         }))
     }
 
+    /// List all flow runs with summary info.
+    pub fn list_runs(&self) -> Vec<serde_json::Value> {
+        let flows = self.flows.lock().unwrap_or_else(|e| e.into_inner());
+        flows
+            .values()
+            .map(|run| {
+                serde_json::json!({
+                    "flow_id": run.flow_id,
+                    "name": run.name,
+                    "status": match &run.status {
+                        FlowRunStatus::Running => "running",
+                        FlowRunStatus::Completed => "completed",
+                        FlowRunStatus::Failed(_) => "failed",
+                    },
+                    "elapsed_secs": run.started_at.elapsed().as_secs(),
+                    "node_count": run.node_statuses.len(),
+                })
+            })
+            .collect()
+    }
+
     /// Get result of a completed flow, optionally for a specific node.
     pub fn get_result(&self, flow_id: &str, node_id: Option<&str>) -> Option<serde_json::Value> {
         let flows = self.flows.lock().unwrap_or_else(|e| e.into_inner());
