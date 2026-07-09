@@ -114,6 +114,52 @@ Any BPMN 2.0 editor works:
 Export as `.bpmn` (BPMN 2.0 XML) and place in navra's flows
 directory.
 
+## Live visualization
+
+Running workflows can be visualized in real time via the flow graph
+API. navra provides three output formats:
+
+### JSON graph (React Flow)
+
+```
+GET /flows/{id}/graph
+```
+
+Returns nodes with status (pending/running/done/failed) and dependency
+edges. Consumed by the built-in React Flow UI.
+
+### BPMN XML
+
+```
+GET /flows/{id}/graph/bpmn
+```
+
+Returns BPMN 2.0 XML with navra-specific status extensions on each
+node. Open in any BPMN viewer (bpmn.io, Camunda Modeler) to see the
+workflow with highlighted active and completed paths.
+
+Works for all workflows, including those not originally authored in
+BPMN — navra generates BPMN XML from the DAG structure.
+
+### Graphviz DOT
+
+```
+GET /flows/{id}/graph/dot
+```
+
+Returns a DOT-format graph with status-colored nodes. Render with
+`dot -Tsvg` for static audit reports.
+
+### SSE event stream
+
+```
+GET /flows/{id}/events
+```
+
+Server-sent events stream of `FlowEvent` (node started, completed,
+failed, skipped, back-edge activated, flow completed). Supports
+`Last-Event-ID` header for reconnection with backfill.
+
 ## Combining with DMN guardrails
 
 BPMN workflows and DMN guardrails work together. The BPMN process

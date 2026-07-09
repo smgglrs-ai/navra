@@ -4718,11 +4718,33 @@ async fn serve_inner(
             // /v1/chat/completions is mounted by ui.rs — agents route model calls
             // through the gateway for safety filters, blackbox audit, and persona injection.
 
+            // --- Flow event log (live visualization) ---
+            let flow_event_log = {
+                let event_log_path = dirs::data_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("navra")
+                    .join("flow_events.db");
+                if let Some(parent) = event_log_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                match navra_flow::event_log::EventLog::open(&event_log_path) {
+                    Ok(log) => {
+                        tracing::info!(path = %event_log_path.display(), "Flow event log opened");
+                        Some(Arc::new(log))
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to open flow event log — SSE disabled");
+                        None
+                    }
+                }
+            };
+
             // --- Flow graph API ---
-            let flow_api = flow_api::flow_api_router(Arc::clone(&flow_registry), None);
+            let flow_api =
+                flow_api::flow_api_router(Arc::clone(&flow_registry), flow_event_log.clone());
             let router = router.merge(flow_api);
             tracing::info!(
-                "Flow graph API at /flows/{{id}}/graph, /flows/{{id}}/graph/dot, /flows/{{id}}/events"
+                "Flow graph API at /flows/{{id}}/graph, /graph/dot, /graph/bpmn, /events"
             );
 
             // --- Web UI: shared state + API routes ---

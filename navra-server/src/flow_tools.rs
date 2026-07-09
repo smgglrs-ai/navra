@@ -47,6 +47,15 @@ pub struct FlowRun {
     pub parent_flow_id: Option<String>,
     /// Nesting depth (0 for top-level flows).
     pub depth: u32,
+    /// Dependency edges (from depends_on in DagConfig).
+    pub edges: Vec<FlowEdge>,
+}
+
+/// A dependency edge between flow nodes.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FlowEdge {
+    pub source: String,
+    pub target: String,
 }
 
 /// Registry of active and completed flows.
@@ -81,6 +90,7 @@ impl FlowRegistry {
             team_id: None,
             parent_flow_id: None,
             depth: 0,
+            edges: Vec::new(),
         };
 
         self.flows
@@ -112,6 +122,7 @@ impl FlowRegistry {
             team_id: None,
             parent_flow_id: Some(parent_flow_id.to_string()),
             depth,
+            edges: Vec::new(),
         };
 
         self.flows
@@ -131,6 +142,27 @@ impl FlowRegistry {
             .get_mut(flow_id)
         {
             run.node_statuses = nodes;
+        }
+    }
+
+    /// Set dependency edges for a flow from a DagConfig.
+    pub fn set_edges_from_dag(&self, flow_id: &str, tasks: &[navra_flow::TaskDefinition]) {
+        let edges: Vec<FlowEdge> = tasks
+            .iter()
+            .flat_map(|t| {
+                t.depends_on.iter().map(|dep| FlowEdge {
+                    source: dep.clone(),
+                    target: t.id.clone(),
+                })
+            })
+            .collect();
+        if let Some(run) = self
+            .flows
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(flow_id)
+        {
+            run.edges = edges;
         }
     }
 
@@ -255,9 +287,17 @@ impl FlowRegistry {
             })
             .collect();
 
-        // Edges are not stored directly in FlowRun, so we produce an
-        // empty edges list. Callers that need dependency edges should
-        // parse the flow YAML or supply them from the DagConfig.
+        let edges: Vec<serde_json::Value> = run
+            .edges
+            .iter()
+            .map(|e| {
+                serde_json::json!({
+                    "source": e.source,
+                    "target": e.target,
+                })
+            })
+            .collect();
+
         Some(serde_json::json!({
             "flow_id": run.flow_id,
             "name": run.name,
@@ -267,7 +307,7 @@ impl FlowRegistry {
                 FlowRunStatus::Failed(_) => "failed",
             },
             "nodes": nodes,
-            "edges": [],
+            "edges": edges,
         }))
     }
 

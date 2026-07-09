@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 157 completed items
+# 158 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1039,4 +1039,11 @@ items:
     effort: 8-13d
     depends_on: ['NAVRA-176']
     feeds: ['NAVRA-178']
+
+  - id: "NAVRA-178"
+    title: "Live BPMN visualization of running workflows"
+    status: done
+    priority: low
+    effort: 5-8d
+    depends_on: ['NAVRA-177']
 

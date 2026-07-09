@@ -79,6 +79,7 @@ pub struct DagExecutor {
     /// Prevents agent worm propagation patterns. 0 = unlimited.
     max_hops: usize,
     checkpoint: Option<(Arc<DagCheckpoint>, String)>,
+    event_log: Option<(Arc<crate::event_log::EventLog>, String)>,
     /// Per-tool failure counts and last-failure timestamps for circuit breaking.
     failure_counts: HashMap<String, (usize, std::time::Instant)>,
     /// Number of consecutive failures before a circuit opens.
@@ -105,6 +106,7 @@ impl DagExecutor {
             insight_callback: None,
             insight_retriever: None,
             checkpoint: None,
+            event_log: None,
             failure_counts: HashMap::new(),
             circuit_breaker_threshold: 5,
             circuit_breaker_cooldown: std::time::Duration::from_secs(60),
@@ -198,6 +200,15 @@ impl DagExecutor {
         self
     }
 
+    /// Enable event logging for live workflow visualization.
+    ///
+    /// Flow events (node started, completed, failed, etc.) are appended
+    /// to the event log and can be streamed via SSE for real-time UI.
+    pub fn with_event_log(mut self, log: Arc<crate::event_log::EventLog>, flow_id: String) -> Self {
+        self.event_log = Some((log, flow_id));
+        self
+    }
+
     /// Check whether the circuit is open (tripped) for a given tool.
     ///
     /// Returns `true` when the failure count is at or above the threshold
@@ -225,6 +236,14 @@ impl DagExecutor {
     /// Record a success for a tool, resetting its failure count.
     pub fn record_success(&mut self, tool: &str) {
         self.failure_counts.remove(tool);
+    }
+
+    fn emit_event(&self, event: crate::event_log::FlowEvent) {
+        if let Some((ref log, ref flow_id)) = self.event_log {
+            if let Err(e) = log.append(flow_id, &event, None, None) {
+                tracing::warn!(error = %e, "Failed to append flow event");
+            }
+        }
     }
 
     /// Execute a DAG of tasks.
@@ -322,6 +341,10 @@ impl DagExecutor {
                     specialist = %task.specialist,
                     "Executing DAG task"
                 );
+                self.emit_event(crate::event_log::FlowEvent::NodeStarted {
+                    task_id: task.id.clone(),
+                    specialist: task.specialist.clone(),
+                });
 
                 let mut attempts: Vec<Attempt> = Vec::new();
                 let max_retries = task.max_retries;
@@ -432,6 +455,13 @@ impl DagExecutor {
                                             iteration = count,
                                             "Back-edge activated"
                                         );
+                                        self.emit_event(
+                                            crate::event_log::FlowEvent::BackEdgeActivated {
+                                                from: edge.from.clone(),
+                                                to: edge.to.clone(),
+                                                iteration: count as u32,
+                                            },
+                                        );
                                         // Remove target and its dependents from completed
                                         completed.remove(&edge.to);
                                         results.remove(&edge.to);
@@ -482,6 +512,16 @@ impl DagExecutor {
                                     );
                                 }
 
+                                self.emit_event(crate::event_log::FlowEvent::NodeCompleted {
+                                    task_id: task.id.clone(),
+                                    output_preview: if task_result.output.len() > 200 {
+                                        format!("{}...", &task_result.output[..197])
+                                    } else {
+                                        task_result.output.clone()
+                                    },
+                                    prompt_tokens: task_result.prompt_tokens,
+                                    completion_tokens: task_result.completion_tokens,
+                                });
                                 results.insert(task.id.clone(), task_result);
                                 completed.insert(task.id.clone());
                                 hop_count += 1;
@@ -591,6 +631,10 @@ impl DagExecutor {
                         });
                     }
 
+                    self.emit_event(crate::event_log::FlowEvent::NodeFailed {
+                        task_id: task.id.clone(),
+                        error: last_error.clone(),
+                    });
                     results.insert(
                         task.id.clone(),
                         TaskResult {
@@ -609,6 +653,10 @@ impl DagExecutor {
                     for skip_id in &to_skip {
                         if !completed.contains(skip_id) {
                             skipped.insert(skip_id.clone());
+                            self.emit_event(crate::event_log::FlowEvent::NodeSkipped {
+                                task_id: skip_id.clone(),
+                                reason: format!("Dependency '{}' failed", task.id),
+                            });
                             results.insert(
                                 skip_id.clone(),
                                 TaskResult {
@@ -636,6 +684,11 @@ impl DagExecutor {
         {
             tracing::warn!(flow_id = %flow_id, error = %e, "Failed to delete checkpoint");
         }
+
+        self.emit_event(crate::event_log::FlowEvent::FlowCompleted {
+            total_prompt_tokens: total_prompt,
+            total_completion_tokens: total_completion,
+        });
 
         Ok(DagResult {
             task_results: results,
