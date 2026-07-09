@@ -417,6 +417,7 @@ async fn main() -> anyhow::Result<()> {
             workflow,
             file: _file,
             config: _run_config,
+            no_embedded,
             dry_run,
         } => {
             // If prompt looks like instance/workflow, treat as workflow run
@@ -460,6 +461,7 @@ async fn main() -> anyhow::Result<()> {
                     token.as_deref(),
                     max_iterations,
                     &upstream_prompts,
+                    no_embedded,
                 )
                 .await?;
             }
@@ -4409,6 +4411,31 @@ async fn serve_inner(
     let usage_tracker = std::sync::Arc::new(navra_core::ToolUsageTracker::new(5));
     builder = builder.tool_filter(navra_core::UsagePruningFilter::new(usage_tracker.clone()));
 
+    // DMN decision table guardrails (business-rule policy engine)
+    for (name, perm) in &cfg.permissions {
+        if let (Some(dmn_path), Some(dmn_decision)) = (&perm.dmn_policies, &perm.dmn_decision) {
+            match navra_core::permissions::DmnEngine::from_file(dmn_path, dmn_decision) {
+                Ok(engine) => {
+                    tracing::info!(
+                        permission_set = %name,
+                        path = %dmn_path,
+                        decision = %dmn_decision,
+                        "DMN decision table loaded"
+                    );
+                    builder = builder.dmn_engine(engine);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        permission_set = %name,
+                        path = %dmn_path,
+                        error = %e,
+                        "Failed to load DMN decision table"
+                    );
+                }
+            }
+        }
+    }
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
 
@@ -5027,6 +5054,7 @@ async fn run_agent(
     token: Option<&str>,
     max_iterations: usize,
     upstream_prompts: &[String],
+    #[allow(unused_variables)] no_embedded: bool,
 ) -> anyhow::Result<()> {
     // Auto-detect model from Ollama if not specified
     let model_name = if let Some(m) = model_name {
@@ -5170,6 +5198,13 @@ async fn run_agent(
         };
     }
 
+    // Embedded runtime state — kept alive for the duration of the agent run
+    #[allow(unused_mut)]
+    let mut embedded_endpoint: Option<(
+        Box<dyn navra_model_runtime::ModelRuntime>,
+        navra_model_runtime::Endpoint,
+    )> = None;
+
     let mut builder = match provider {
         ModelProvider::VertexAI {
             url,
@@ -5196,15 +5231,56 @@ async fn run_agent(
             configure_builder!(base_builder.model(backend))
         }
         ModelProvider::Ollama => {
-            let ollama_url = std::env::var("OLLAMA_HOST")
-                .unwrap_or_else(|_| "http://localhost:11434".to_string());
-            let backend = navra_model::OpenAiBackend::new(
-                format!("{ollama_url}/v1"),
-                &model_name,
-                None,
-                navra_model::Locality::Local,
-            );
-            configure_builder!(base_builder.model(backend))
+            #[cfg(feature = "embedded")]
+            if !no_embedded {
+                let (m, t) = if let Some(pos) = model_name.find(':') {
+                    (&model_name[..pos], &model_name[pos + 1..])
+                } else {
+                    (model_name.as_str(), "latest")
+                };
+                if let Some(gguf_path) = navra_model_hub::try_local_ollama(m, t) {
+                    let runtime = navra_model_runtime::embedded::EmbeddedRuntime::new();
+                    let gpus = navra_model_runtime::gpu::detect_gpus();
+                    let target = navra_model_runtime::HardwareTarget::from_gpus(&gpus);
+                    let cfg = navra_model_runtime::ServeConfig {
+                        model_path: gguf_path,
+                        context_size: 8192,
+                        gpus,
+                        target,
+                        ..Default::default()
+                    };
+                    match runtime.serve(&cfg).await {
+                        Ok(ep) => {
+                            eprintln!("Provider: embedded (llama.cpp in-process)");
+                            embedded_endpoint = Some((Box::new(runtime), ep));
+                        }
+                        Err(e) => {
+                            eprintln!("Embedded runtime failed ({e}), falling back to Ollama API");
+                        }
+                    }
+                }
+            }
+
+            if let Some((_, ref ep)) = embedded_endpoint {
+                let backend = navra_model::OpenAiBackend::new(
+                    format!("{}/v1", ep.url),
+                    &model_name,
+                    None,
+                    navra_model::Locality::Local,
+                );
+                configure_builder!(base_builder.model(backend))
+            } else {
+                let ollama_url = std::env::var("OLLAMA_HOST")
+                    .unwrap_or_else(|_| "http://localhost:11434".to_string());
+                eprintln!("Provider: Ollama ({ollama_url})");
+                let backend = navra_model::OpenAiBackend::new(
+                    format!("{ollama_url}/v1"),
+                    &model_name,
+                    None,
+                    navra_model::Locality::Local,
+                );
+                configure_builder!(base_builder.model(backend))
+            }
         }
     };
 
@@ -5369,6 +5445,10 @@ async fn run_agent(
             eprintln!("Error: {e}");
             std::process::exit(1);
         }
+    }
+
+    if let Some((runtime, ep)) = embedded_endpoint {
+        let _ = runtime.stop(&ep).await;
     }
 
     Ok(())

@@ -3,6 +3,7 @@ mod approval;
 #[cfg(feature = "cedar")]
 pub mod cedar;
 pub mod disclosure;
+pub mod dmn;
 pub mod domain_rules;
 pub mod resource_class;
 pub mod risk_tier;
@@ -14,6 +15,7 @@ pub use approval::{ApprovalRequest, ApprovalStatus, ApprovalStore};
 #[cfg(feature = "cedar")]
 pub use cedar::{CedarDecision, CedarEngine};
 pub use disclosure::ToolDisclosure;
+pub use dmn::{DmnDecision, DmnEngine};
 pub use domain_rules::{DomainPolicy, DomainRules};
 pub use resource_class::{Domain, Operation, ResourceClass};
 pub use risk_tier::{RiskLevelThreshold, RiskTier, RiskTierConfig};

@@ -131,6 +131,14 @@ pub struct PermissionSet {
     /// Context window cap passed to the model for agents in this set.
     #[serde(default)]
     pub max_context: Option<u32>,
+    /// Path to a DMN decision table file for business-rule guardrails.
+    /// The decision table is evaluated as an additional policy gate.
+    /// Requires the `dmn` feature.
+    #[serde(default)]
+    pub dmn_policies: Option<String>,
+    /// Name of the DMN decision to evaluate (must match a `<decision name="...">` in the DMN file).
+    #[serde(default)]
+    pub dmn_decision: Option<String>,
 }
 
 /// A domain rule entry in config.
@@ -226,6 +234,8 @@ impl Default for PermissionSet {
             upstream: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            dmn_policies: None,
+            dmn_decision: None,
         }
     }
 }

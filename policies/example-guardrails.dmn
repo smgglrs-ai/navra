@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example DMN decision table for navra policy guardrails.
+
+  This table demonstrates how business analysts can author tool access
+  rules using standard DMN notation. Edit with Camunda Modeler,
+  Trisotech, or any DMN 1.3+ editor.
+
+  Decision inputs:
+    tool_name       - the MCP tool being called (e.g. "file_read", "exec_run")
+    agent_name      - the agent making the call
+    permission_set  - the agent's assigned permission set name
+    phase           - "input" (pre-call) or "output" (post-call validation)
+    tool_output     - tool output text (only present when phase = "output")
+
+  Decision output:
+    action          - "allow" or "deny"
+    reason          - human-readable explanation (shown in audit log)
+
+  Hit policy FIRST: rules are evaluated top-down, first match wins.
+  The last rule is a catch-all default (allow).
+
+  The table is evaluated twice per tool call:
+  1. Pre-call (phase="input"): can block the call before execution
+  2. Post-call (phase="output"): can block the result before delivery,
+     treating agent output as a proposal subject to validation
+
+  Config:
+    [permissions.default]
+    dmn_policies = "policies/example-guardrails.dmn"
+    dmn_decision = "Tool Access"
+-->
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             id="navra_guardrails"
+             name="navra-guardrails"
+             namespace="https://navra.dev/dmn/guardrails">
+
+  <inputData id="input_tool_name" name="tool_name">
+    <variable name="tool_name" typeRef="string"/>
+  </inputData>
+
+  <inputData id="input_agent_name" name="agent_name">
+    <variable name="agent_name" typeRef="string"/>
+  </inputData>
+
+  <inputData id="input_permission_set" name="permission_set">
+    <variable name="permission_set" typeRef="string"/>
+  </inputData>
+
+  <inputData id="input_phase" name="phase">
+    <variable name="phase" typeRef="string"/>
+  </inputData>
+
+  <inputData id="input_tool_output" name="tool_output">
+    <variable name="tool_output" typeRef="string"/>
+  </inputData>
+
+  <decision id="decision_tool_access" name="Tool Access">
+    <variable name="Tool Access"/>
+    <informationRequirement>
+      <requiredInput href="#input_tool_name"/>
+    </informationRequirement>
+    <informationRequirement>
+      <requiredInput href="#input_agent_name"/>
+    </informationRequirement>
+    <informationRequirement>
+      <requiredInput href="#input_permission_set"/>
+    </informationRequirement>
+    <informationRequirement>
+      <requiredInput href="#input_phase"/>
+    </informationRequirement>
+    <informationRequirement>
+      <requiredInput href="#input_tool_output"/>
+    </informationRequirement>
+    <decisionTable id="dt_tool_access" hitPolicy="FIRST">
+      <input id="in_tool">
+        <inputExpression typeRef="string"><text>tool_name</text></inputExpression>
+      </input>
+      <input id="in_agent">
+        <inputExpression typeRef="string"><text>agent_name</text></inputExpression>
+      </input>
+      <input id="in_perm">
+        <inputExpression typeRef="string"><text>permission_set</text></inputExpression>
+      </input>
+      <input id="in_phase">
+        <inputExpression typeRef="string"><text>phase</text></inputExpression>
+      </input>
+      <output id="out_action" name="action" typeRef="string"/>
+      <output id="out_reason" name="reason" typeRef="string"/>
+
+      <!-- Block shell execution for all agents (pre-call) -->
+      <rule id="rule_block_exec">
+        <inputEntry><text>"exec_run"</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>"input"</text></inputEntry>
+        <outputEntry><text>"deny"</text></outputEntry>
+        <outputEntry><text>"Shell execution blocked by policy"</text></outputEntry>
+      </rule>
+
+      <!-- Block git push for readonly permission set (pre-call) -->
+      <rule id="rule_block_push_readonly">
+        <inputEntry><text>"git_push"</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>"readonly"</text></inputEntry>
+        <inputEntry><text>"input"</text></inputEntry>
+        <outputEntry><text>"deny"</text></outputEntry>
+        <outputEntry><text>"Readonly agents cannot push"</text></outputEntry>
+      </rule>
+
+      <!-- Default: allow -->
+      <rule id="rule_default_allow">
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <inputEntry><text>-</text></inputEntry>
+        <outputEntry><text>"allow"</text></outputEntry>
+        <outputEntry><text>"-"</text></outputEntry>
+      </rule>
+
+    </decisionTable>
+  </decision>
+</definitions>

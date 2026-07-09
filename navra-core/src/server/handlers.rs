@@ -552,6 +552,46 @@ impl McpServer {
             }
         }
 
+        // DMN decision table check (business-rule guardrails)
+        if let Some(ref dmn) = self.dmn_engine {
+            let mut dmn_context = std::collections::HashMap::from([
+                ("agent_name".to_string(), ctx.agent.name.clone()),
+                ("tool_name".to_string(), params.name.to_string()),
+                ("permission_set".to_string(), ctx.agent.permissions.clone()),
+                ("session_id".to_string(), ctx.session_id.clone()),
+                ("phase".to_string(), "input".to_string()),
+            ]);
+            if let Some(resource) = arguments
+                .get("path")
+                .or_else(|| arguments.get("repo"))
+                .or_else(|| arguments.get("uri"))
+                .and_then(|v| v.as_str())
+            {
+                dmn_context.insert("resource".to_string(), resource.to_string());
+            }
+            match dmn.evaluate(&dmn_context) {
+                crate::permissions::DmnDecision::Allow => {}
+                crate::permissions::DmnDecision::Deny(reason) => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics.dmn_denials.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        tool = %params.name,
+                        dmn_reason = %reason,
+                        "DMN policy denied"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ));
+                }
+            }
+        }
+
         // Gateway-level path ACL check: extract path from tool arguments
         // and validate against the agent's allow/deny patterns. This ensures
         // upstream MCP tools respect navra's path ACLs.
@@ -934,18 +974,62 @@ impl McpServer {
         }
 
         // Run post-hooks (includes safety filtering if wired as a hook)
-        if self.hooks.has_hooks() {
-            return self
-                .hooks
+        let result = if self.hooks.has_hooks() {
+            self.hooks
                 .run_post(&params.name, &arguments, result, &ctx)
-                .await;
-        }
-
-        // Legacy path: apply safety filters directly when no hooks are configured
-        if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
+                .await
+        } else if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
             && pipeline.has_filters()
         {
-            return self.apply_safety_filter(pipeline, result, &ctx, &params.name);
+            // Legacy path: apply safety filters directly when no hooks are configured
+            self.apply_safety_filter(pipeline, result, &ctx, &params.name)
+        } else {
+            result
+        };
+
+        // DMN output validation (post-call): treat agent output as a proposal
+        if let Some(ref dmn) = self.dmn_engine {
+            let output_text: String = result
+                .content
+                .iter()
+                .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
+                .collect::<Vec<_>>()
+                .join("");
+            let output_trunc = if output_text.len() > 2048 {
+                &output_text[..2048]
+            } else {
+                &output_text
+            };
+            let mut dmn_context = std::collections::HashMap::from([
+                ("agent_name".to_string(), ctx.agent.name.clone()),
+                ("tool_name".to_string(), params.name.to_string()),
+                ("permission_set".to_string(), ctx.agent.permissions.clone()),
+                ("phase".to_string(), "output".to_string()),
+                ("tool_output".to_string(), output_trunc.to_string()),
+            ]);
+            if let Some(resource) = arguments
+                .get("path")
+                .or_else(|| arguments.get("repo"))
+                .or_else(|| arguments.get("uri"))
+                .and_then(|v| v.as_str())
+            {
+                dmn_context.insert("resource".to_string(), resource.to_string());
+            }
+            match dmn.evaluate(&dmn_context) {
+                crate::permissions::DmnDecision::Allow => {}
+                crate::permissions::DmnDecision::Deny(reason) => {
+                    self.metrics.dmn_denials.fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        tool = %params.name,
+                        dmn_reason = %reason,
+                        "DMN output validation denied"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Output blocked by policy: {}",
+                        reason
+                    ));
+                }
+            }
         }
 
         result

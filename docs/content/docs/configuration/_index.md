@@ -216,6 +216,23 @@ egress_allowed_domains = ["api.github.com", "*.googleapis.com"]
 egress_blocked_domains = ["evil.example.com"]
 ```
 
+### DMN decision tables
+
+Business-rule guardrails authored as standard DMN decision tables.
+
+```toml
+[permissions.regulated]
+dmn_policies = "policies/example-guardrails.dmn"
+dmn_decision = "Tool Access"
+```
+
+The decision table is evaluated as an additional policy gate after
+TOML rules and Cedar policies. Business analysts can author rules
+using any DMN 1.3+ editor (Camunda Modeler, Trisotech, etc.).
+
+See the [DMN guardrails guide]({{< relref "/docs/guides/dmn-guardrails" >}})
+for details on authoring decision tables.
+
 ### Compliance tags
 
 ```toml
