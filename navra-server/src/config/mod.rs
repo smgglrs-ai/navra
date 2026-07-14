@@ -258,6 +258,7 @@ impl Config {
             .or(Some(365))
     }
 
+    #[cfg(feature = "onnx")]
     pub fn pii_model_dir(&self) -> std::path::PathBuf {
         self.server
             .pii_model_path
@@ -274,6 +275,7 @@ impl Config {
             .unwrap_or_else(|| default_pii_model_dir("pii-ner"))
     }
 
+    #[cfg(feature = "onnx")]
     pub fn pii_multilingual_model_dir(&self) -> std::path::PathBuf {
         self.server
             .pii_multilingual_model_path

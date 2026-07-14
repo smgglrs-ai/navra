@@ -10,6 +10,7 @@
 
 use crate::store::ChunkResult;
 use std::path::Path;
+#[cfg(feature = "onnx")]
 use std::sync::Mutex;
 
 /// Trait for reranking search results after initial vector retrieval.
