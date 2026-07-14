@@ -48,6 +48,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -64,6 +65,7 @@ All notable changes to navra are documented here.
 - Move rustup target add into cargo build step
 - Fmt after clippy autofix, static-pie binary detection
 - Resolve all clippy warnings for Rust 1.96
+- Disable ONNX in CI test/clippy/doc steps
 
 ### Maintenance
 
