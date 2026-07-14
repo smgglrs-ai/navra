@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.3.0] - 2026-07-08
+## [0.3.0] - 2026-07-14
 
 ### Added
 
@@ -18,6 +18,10 @@ All notable changes to navra are documented here.
 - Add Vertex AI support to /v1/chat/completions proxy
 - Add Verus proofs across 10 crates and extend TLA+ session isolation
 - Containerized CI and ghcr.io image publishing
+- Add DMN decision table guardrails (NAVRA-176)
+- Add BPMN workflow import for agent orchestration (NAVRA-177)
+- Add live BPMN visualization of running workflows (NAVRA-178)
+- Add BPMN viewer to navra-ui with bpmn-js
 
 ### Documentation
 
@@ -43,6 +47,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -58,6 +63,7 @@ All notable changes to navra are documented here.
 - Clippy collapsible_if, CI glibc mismatch, container static linking
 - Move rustup target add into cargo build step
 - Fmt after clippy autofix, static-pie binary detection
+- Resolve all clippy warnings for Rust 1.96
 
 ### Maintenance
 
