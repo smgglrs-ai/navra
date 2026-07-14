@@ -4,7 +4,7 @@
 //! `DagConfig` for execution by `DagExecutor`. Business analysts author
 //! workflows in standard BPMN editors; navra executes them with IFC.
 
-use crate::definition::{BackEdgeDefinition, DagConfig, TaskDefinition};
+use crate::definition::{DagConfig, TaskDefinition};
 use roxmltree::Document;
 use std::collections::{HashMap, HashSet};
 
@@ -93,7 +93,7 @@ impl BpmnNode {
         }
     }
 
-    fn outgoing(&self) -> &[String] {
+    pub fn outgoing(&self) -> &[String] {
         match self {
             Self::StartEvent { outgoing, .. }
             | Self::EndEvent { outgoing, .. }
@@ -201,12 +201,12 @@ pub fn parse(xml: &str) -> Result<BpmnProcess, BpmnError> {
 
     // Mark default flows on exclusive gateways
     for child in process.children().filter(|n| n.is_element()) {
-        if child.tag_name().name() == "exclusiveGateway" {
-            if let Some(default_id) = child.attribute("default") {
-                for flow in &mut flows {
-                    if flow.id == default_id {
-                        flow.is_default = true;
-                    }
+        if child.tag_name().name() == "exclusiveGateway"
+            && let Some(default_id) = child.attribute("default")
+        {
+            for flow in &mut flows {
+                if flow.id == default_id {
+                    flow.is_default = true;
                 }
             }
         }
@@ -270,10 +270,10 @@ fn parse_service_task(node: &roxmltree::Node) -> Result<BpmnNode, BpmnError> {
         .filter(|n| n.tag_name().name() == "extensionElements")
     {
         for e in ext.children().filter(|n| n.is_element()) {
-            if e.tag_name().name() == "taskDefinition" {
-                if let Some(ty) = e.attribute("type") {
-                    task_type = ty.to_string();
-                }
+            if e.tag_name().name() == "taskDefinition"
+                && let Some(ty) = e.attribute("type")
+            {
+                task_type = ty.to_string();
             }
         }
     }

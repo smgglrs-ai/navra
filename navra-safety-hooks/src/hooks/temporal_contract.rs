@@ -720,7 +720,6 @@ mod tests {
 
 verus! {
 
-use navra_protocol::label::{Confidentiality, Integrity};
 
 spec fn tc_conf_ord(c: Confidentiality) -> nat {
     match c {

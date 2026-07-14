@@ -44,6 +44,28 @@ When omitted, a random port is auto-selected.
 models, the embedded runtime loads each model on demand. If memory is
 constrained, the least-recently-used model is evicted to free RAM/VRAM.
 
+### navra run
+
+`navra run -m <model>` also supports embedded mode. When the model name
+matches a GGUF blob in Ollama's local store (`~/.ollama/models/` or
+`$OLLAMA_MODELS`), navra loads it in-process via llama.cpp — no running
+Ollama server or `[models.*]` config section required. GPU offloading
+is automatic.
+
+```bash
+# Pull the model with Ollama once
+ollama pull gemma4:26b
+
+# Run with embedded mode (Ollama server not needed)
+navra run -m gemma4:26b "Summarise the latest reports"
+
+# Force Ollama API instead
+navra run -m gemma4:26b --no-embedded "Summarise the latest reports"
+```
+
+If the blob is not found locally or navra was built without the
+`embedded` feature, it falls back to the Ollama HTTP API.
+
 ### Standalone
 
 Run the model server as a separate process:

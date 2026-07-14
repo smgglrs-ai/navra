@@ -4,9 +4,9 @@ examples/*/target/
 *.db-journal
 *.db-wal
 *.sock
-smgglrs-ui/node_modules/
-smgglrs-server/ui-dist/
-smgglrs-server/src/ui_assets_gen.rs
+navra-ui/node_modules/
+navra-ui/tsconfig.tsbuildinfo
+navra-server/ui-dist/
 
 # Claude Code
 .claude/worktrees/

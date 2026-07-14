@@ -827,6 +827,7 @@ mod tests {
 verus! {
 
 #[verifier::external_type_specification]
+#[allow(dead_code)]
 pub struct ExPermissionResult(PermissionResult);
 
 pub open spec fn spec_deny_wins_eval(

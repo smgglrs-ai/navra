@@ -239,10 +239,10 @@ impl DagExecutor {
     }
 
     fn emit_event(&self, event: crate::event_log::FlowEvent) {
-        if let Some((ref log, ref flow_id)) = self.event_log {
-            if let Err(e) = log.append(flow_id, &event, None, None) {
-                tracing::warn!(error = %e, "Failed to append flow event");
-            }
+        if let Some((ref log, ref flow_id)) = self.event_log
+            && let Err(e) = log.append(flow_id, &event, None, None)
+        {
+            tracing::warn!(error = %e, "Failed to append flow event");
         }
     }
 
@@ -459,7 +459,7 @@ impl DagExecutor {
                                             crate::event_log::FlowEvent::BackEdgeActivated {
                                                 from: edge.from.clone(),
                                                 to: edge.to.clone(),
-                                                iteration: count as u32,
+                                                iteration: count,
                                             },
                                         );
                                         // Remove target and its dependents from completed

@@ -166,7 +166,8 @@ navra run <prompt> --file <path>
 
 | Option | Description |
 |--------|-------------|
-| `-m, --model` | Model to use (default: auto-detect from Ollama) |
+| `-m, --model` | Model to use (default: auto-detect from Ollama). When the model's GGUF blob exists in Ollama's local store and the `embedded` feature is compiled in, loads the model in-process via llama.cpp — no Ollama server needed. Falls back to Ollama API otherwise. |
+| `--no-embedded` | Force Ollama API even when a local GGUF blob exists |
 | `-p, --persona` | Persona to use (default: `leader`) |
 | `-e, --endpoint` | navra endpoint URL (default: `http://127.0.0.1:9315/mcp`) |
 | `-t, --token` | Auth token (reads `MCPD_TOKEN` env if not set) |
