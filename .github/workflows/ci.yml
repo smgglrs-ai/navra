@@ -40,13 +40,13 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --no-default-features -- -D warnings
 
-      - name: Test
-        run: cargo test --workspace --exclude navra-server
+      - name: Test (no ONNX — ORT binary requires host glibc match)
+        run: cargo test --workspace --exclude navra-server --no-default-features
 
       - name: Docs
-        run: cargo doc --no-deps
+        run: cargo doc --no-deps --no-default-features
 
   build:
     name: Build (release)
