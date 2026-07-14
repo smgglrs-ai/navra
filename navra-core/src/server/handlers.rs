@@ -361,7 +361,7 @@ impl McpServer {
         let _concurrency_permit = if let Some(max) = ctx.agent.max_concurrent {
             match self.acquire_concurrency_permit(&ctx.agent.name, max) {
                 Ok(permit) => Some(permit),
-                Err(()) => {
+                Err(_) => {
                     return CallToolResult::error_msg(format!(
                         "Concurrency limit ({max}) reached for agent '{}'",
                         ctx.agent.name

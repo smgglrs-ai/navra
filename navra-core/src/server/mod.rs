@@ -122,13 +122,13 @@ impl McpServer {
         &self,
         agent_name: &str,
         max_concurrent: u32,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, ()> {
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, tokio::sync::TryAcquireError> {
         let sem = self
             .concurrency_semaphores
             .entry(agent_name.to_string())
             .or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(max_concurrent as usize)))
             .clone();
-        sem.try_acquire_owned().map_err(|_| ())
+        sem.try_acquire_owned()
     }
 
     /// Broadcast a notification to all active SSE sessions.

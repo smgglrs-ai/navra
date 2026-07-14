@@ -548,16 +548,15 @@ impl NerFilter {
             // Extract the text window using char offsets
             let window_start = char_start.min(text.len());
             let window_end = char_end.min(text.len());
-            if window_start < window_end {
-                if let Ok(mut spans) = self.detect_entities_window(&text[window_start..window_end])
-                {
-                    // Adjust offsets back to full text coordinates
-                    for span in &mut spans {
-                        span.start += window_start;
-                        span.end += window_start;
-                    }
-                    all_spans.extend(spans);
+            if window_start < window_end
+                && let Ok(mut spans) = self.detect_entities_window(&text[window_start..window_end])
+            {
+                // Adjust offsets back to full text coordinates
+                for span in &mut spans {
+                    span.start += window_start;
+                    span.end += window_start;
                 }
+                all_spans.extend(spans);
             }
 
             if end >= full_ids.len() {

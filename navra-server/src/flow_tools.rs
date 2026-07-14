@@ -145,27 +145,6 @@ impl FlowRegistry {
         }
     }
 
-    /// Set dependency edges for a flow from a DagConfig.
-    pub fn set_edges_from_dag(&self, flow_id: &str, tasks: &[navra_flow::TaskDefinition]) {
-        let edges: Vec<FlowEdge> = tasks
-            .iter()
-            .flat_map(|t| {
-                t.depends_on.iter().map(|dep| FlowEdge {
-                    source: dep.clone(),
-                    target: t.id.clone(),
-                })
-            })
-            .collect();
-        if let Some(run) = self
-            .flows
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get_mut(flow_id)
-        {
-            run.edges = edges;
-        }
-    }
-
     /// Associate a team with a flow.
     pub fn set_team_id(&self, flow_id: &str, team_id: &str) {
         if let Some(run) = self
@@ -1130,7 +1109,6 @@ async fn spawn_and_track_tasks(
             compression_start_ratio: ctx.budget_cfg.compression_start_ratio,
             compaction_keep_recent: ctx.budget_cfg.compaction_keep_recent,
             compaction_trigger_ratio: ctx.budget_cfg.compaction_trigger_ratio,
-            initial_label: None,
         };
         // Cap per-task iterations: share the budget across tasks,
         // with a minimum of 10 to allow meaningful work.

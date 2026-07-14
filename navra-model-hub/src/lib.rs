@@ -23,6 +23,7 @@ mod uri;
 pub use cache::ModelCache;
 pub use card::{AgenticMeta, ModelCard, RuntimeMeta, VendorMeta};
 pub use error::HubError;
+pub use transport::ollama::try_local_ollama;
 pub use transport::{ModelTransport, PullProgress};
 pub use uri::{ModelUri, Registry};
 

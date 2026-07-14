@@ -515,7 +515,7 @@ pub(crate) fn attach_ui_routes(
                             && let Some(max) = a.max_concurrent {
                                 match srv.acquire_concurrency_permit(&a.name, max) {
                                     Ok(permit) => Some(permit),
-                                    Err(()) => {
+                                    Err(_) => {
                                         return axum::Json(serde_json::json!({
                                             "error": {"message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name), "type": "rate_limit_error"}
                                         })).into_response();
@@ -630,14 +630,13 @@ pub(crate) fn attach_ui_routes(
                                         return None;
                                     }
                                     // Map tool calls in assistant messages
-                                    if role == "assistant" {
-                                        if let Some(tool_calls) = msg["tool_calls"].as_array() {
+                                    if role == "assistant"
+                                        && let Some(tool_calls) = msg["tool_calls"].as_array() {
                                             let mut content = Vec::new();
-                                            if let Some(text) = msg["content"].as_str() {
-                                                if !text.is_empty() {
+                                            if let Some(text) = msg["content"].as_str()
+                                                && !text.is_empty() {
                                                     content.push(serde_json::json!({"type": "text", "text": text}));
                                                 }
-                                            }
                                             for tc in tool_calls {
                                                 let args: serde_json::Value = tc["function"]["arguments"]
                                                     .as_str()
@@ -652,7 +651,6 @@ pub(crate) fn attach_ui_routes(
                                             }
                                             return Some(serde_json::json!({"role": "assistant", "content": content}));
                                         }
-                                    }
                                     // Map tool result messages
                                     if role == "tool" {
                                         return Some(serde_json::json!({
@@ -686,13 +684,13 @@ pub(crate) fn attach_ui_routes(
                             if let Some(tools) = proxy_body["tools"].as_array() {
                                 let anthropic_tools: Vec<serde_json::Value> = tools
                                     .iter()
-                                    .filter_map(|t| {
+                                    .map(|t| {
                                         let func = &t["function"];
-                                        Some(serde_json::json!({
+                                        serde_json::json!({
                                             "name": func["name"],
                                             "description": func.get("description").cloned().unwrap_or(serde_json::json!("")),
                                             "input_schema": func.get("parameters").cloned().unwrap_or(serde_json::json!({"type": "object"})),
-                                        }))
+                                        })
                                     })
                                     .collect();
                                 body["tools"] = serde_json::json!(anthropic_tools);
@@ -934,7 +932,7 @@ pub(crate) fn attach_ui_routes(
                                 && let Some(max) = a.max_concurrent {
                                     match srv.acquire_concurrency_permit(&a.name, max) {
                                         Ok(permit) => Some(permit),
-                                        Err(()) => {
+                                        Err(_) => {
                                             return axum::Json(serde_json::json!({
                                                 "type": "error",
                                                 "error": {"type": "rate_limit_error", "message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name)}
@@ -977,8 +975,8 @@ pub(crate) fn attach_ui_routes(
                                         // Array of content blocks — filter text blocks only
                                         if let Some(blocks) = msg["content"].as_array_mut() {
                                             for block in blocks.iter_mut() {
-                                                if block["type"].as_str() == Some("text") {
-                                                    if let Some(text) = block["text"].as_str().map(String::from) {
+                                                if block["type"].as_str() == Some("text")
+                                                    && let Some(text) = block["text"].as_str().map(String::from) {
                                                         match pipeline.process_inbound(&text, &filter_ctx).await {
                                                             Ok(filtered) => {
                                                                 block["text"] = serde_json::Value::String(filtered);
@@ -991,7 +989,6 @@ pub(crate) fn attach_ui_routes(
                                                             }
                                                         }
                                                     }
-                                                }
                                             }
                                         }
                                     }
@@ -1014,8 +1011,8 @@ pub(crate) fn attach_ui_routes(
                                 } else if proxy_body.get("system").and_then(|v| v.as_array()).is_some() {
                                     let blocks = proxy_body["system"].as_array_mut().unwrap();
                                     for block in blocks.iter_mut() {
-                                        if block["type"].as_str() == Some("text") {
-                                            if let Some(text) = block["text"].as_str().map(String::from) {
+                                        if block["type"].as_str() == Some("text")
+                                            && let Some(text) = block["text"].as_str().map(String::from) {
                                                 match pipeline.process_inbound(&text, &filter_ctx).await {
                                                     Ok(filtered) => {
                                                         block["text"] = serde_json::Value::String(filtered);
@@ -1028,7 +1025,6 @@ pub(crate) fn attach_ui_routes(
                                                     }
                                                 }
                                             }
-                                        }
                                     }
                                 }
                             }
@@ -1216,8 +1212,8 @@ pub(crate) fn attach_ui_routes(
                                 };
                                 if let Some(blocks) = resp_json["content"].as_array_mut() {
                                     for block in blocks.iter_mut() {
-                                        if block["type"].as_str() == Some("text") {
-                                            if let Some(text) = block["text"].as_str().map(String::from) {
+                                        if block["type"].as_str() == Some("text")
+                                            && let Some(text) = block["text"].as_str().map(String::from) {
                                                 match pipeline.process_outbound(&text, &filter_ctx).await {
                                                     Ok(filtered) => {
                                                         block["text"] = serde_json::Value::String(filtered);
@@ -1229,7 +1225,6 @@ pub(crate) fn attach_ui_routes(
                                                     }
                                                 }
                                             }
-                                        }
                                     }
                                 }
                             }

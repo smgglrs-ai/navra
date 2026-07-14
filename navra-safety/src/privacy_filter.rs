@@ -59,27 +59,27 @@ fn group_bioes_tags(tokens: &[BioesToken]) -> Vec<Span> {
 
         match parsed {
             None => {
-                if let Some(cat) = current_cat.take() {
-                    if current_end > current_start {
-                        spans.push(Span {
-                            start: current_start,
-                            end: current_end,
-                            category: cat,
-                            confidence: current_conf,
-                        });
-                    }
+                if let Some(cat) = current_cat.take()
+                    && current_end > current_start
+                {
+                    spans.push(Span {
+                        start: current_start,
+                        end: current_end,
+                        category: cat,
+                        confidence: current_conf,
+                    });
                 }
             }
             Some(("S", entity)) => {
-                if let Some(cat) = current_cat.take() {
-                    if current_end > current_start {
-                        spans.push(Span {
-                            start: current_start,
-                            end: current_end,
-                            category: cat,
-                            confidence: current_conf,
-                        });
-                    }
+                if let Some(cat) = current_cat.take()
+                    && current_end > current_start
+                {
+                    spans.push(Span {
+                        start: current_start,
+                        end: current_end,
+                        category: cat,
+                        confidence: current_conf,
+                    });
                 }
                 if let Some((s, e)) = offsets {
                     spans.push(Span {
@@ -91,15 +91,15 @@ fn group_bioes_tags(tokens: &[BioesToken]) -> Vec<Span> {
                 }
             }
             Some(("B", entity)) => {
-                if let Some(cat) = current_cat.take() {
-                    if current_end > current_start {
-                        spans.push(Span {
-                            start: current_start,
-                            end: current_end,
-                            category: cat,
-                            confidence: current_conf,
-                        });
-                    }
+                if let Some(cat) = current_cat.take()
+                    && current_end > current_start
+                {
+                    spans.push(Span {
+                        start: current_start,
+                        end: current_end,
+                        category: cat,
+                        confidence: current_conf,
+                    });
                 }
                 if let Some((s, e)) = offsets {
                     current_cat = Some(entity.to_string());
@@ -117,15 +117,15 @@ fn group_bioes_tags(tokens: &[BioesToken]) -> Vec<Span> {
                         current_conf = *confidence;
                     }
                 } else {
-                    if let Some(cat) = current_cat.take() {
-                        if current_end > current_start {
-                            spans.push(Span {
-                                start: current_start,
-                                end: current_end,
-                                category: cat,
-                                confidence: current_conf,
-                            });
-                        }
+                    if let Some(cat) = current_cat.take()
+                        && current_end > current_start
+                    {
+                        spans.push(Span {
+                            start: current_start,
+                            end: current_end,
+                            category: cat,
+                            confidence: current_conf,
+                        });
                     }
                     if let Some((s, e)) = offsets {
                         current_cat = Some(entity.to_string());
@@ -147,30 +147,30 @@ fn group_bioes_tags(tokens: &[BioesToken]) -> Vec<Span> {
                         category: cat,
                         confidence: current_conf.max(*confidence),
                     });
-                } else if let Some(cat) = current_cat.take() {
-                    if current_end > current_start {
-                        spans.push(Span {
-                            start: current_start,
-                            end: current_end,
-                            category: cat,
-                            confidence: current_conf,
-                        });
-                    }
+                } else if let Some(cat) = current_cat.take()
+                    && current_end > current_start
+                {
+                    spans.push(Span {
+                        start: current_start,
+                        end: current_end,
+                        category: cat,
+                        confidence: current_conf,
+                    });
                 }
             }
             _ => {}
         }
     }
 
-    if let Some(cat) = current_cat {
-        if current_end > current_start {
-            spans.push(Span {
-                start: current_start,
-                end: current_end,
-                category: cat,
-                confidence: current_conf,
-            });
-        }
+    if let Some(cat) = current_cat
+        && current_end > current_start
+    {
+        spans.push(Span {
+            start: current_start,
+            end: current_end,
+            category: cat,
+            confidence: current_conf,
+        });
     }
 
     spans
@@ -276,14 +276,14 @@ impl PrivacyFilterModel {
 
             let window_start = char_start.min(text.len());
             let window_end = char_end.min(text.len());
-            if window_start < window_end {
-                if let Ok(mut spans) = self.detect_spans_window(&text[window_start..window_end]) {
-                    for span in &mut spans {
-                        span.start += window_start;
-                        span.end += window_start;
-                    }
-                    all_spans.extend(spans);
+            if window_start < window_end
+                && let Ok(mut spans) = self.detect_spans_window(&text[window_start..window_end])
+            {
+                for span in &mut spans {
+                    span.start += window_start;
+                    span.end += window_start;
                 }
+                all_spans.extend(spans);
             }
 
             if end >= full_ids.len() {

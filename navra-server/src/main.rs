@@ -453,16 +453,16 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             } else {
-                run_agent(
-                    &prompt,
-                    model.as_deref(),
-                    &persona,
-                    &endpoint,
-                    token.as_deref(),
+                run_agent(RunAgentParams {
+                    prompt: &prompt,
+                    model_name: model.as_deref(),
+                    persona_name: &persona,
+                    endpoint: &endpoint,
+                    token: token.as_deref(),
                     max_iterations,
-                    &upstream_prompts,
+                    upstream_prompts: &upstream_prompts,
                     no_embedded,
-                )
+                })
                 .await?;
             }
         }
@@ -3352,7 +3352,6 @@ async fn serve_inner(
             compression_start_ratio: cfg.budget.compression_start_ratio,
             compaction_keep_recent: cfg.budget.compaction_keep_recent,
             compaction_trigger_ratio: cfg.budget.compaction_trigger_ratio,
-            initial_label: None,
         });
         builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
             let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -5089,16 +5088,29 @@ macro_rules! authed_transport {
     }};
 }
 
-async fn run_agent(
-    prompt: &str,
-    model_name: Option<&str>,
-    persona_name: &str,
-    endpoint: &str,
-    token: Option<&str>,
+struct RunAgentParams<'a> {
+    prompt: &'a str,
+    model_name: Option<&'a str>,
+    persona_name: &'a str,
+    endpoint: &'a str,
+    token: Option<&'a str>,
     max_iterations: usize,
-    upstream_prompts: &[String],
-    #[allow(unused_variables)] no_embedded: bool,
-) -> anyhow::Result<()> {
+    upstream_prompts: &'a [String],
+    #[allow(dead_code)]
+    no_embedded: bool,
+}
+
+async fn run_agent(params: RunAgentParams<'_>) -> anyhow::Result<()> {
+    let RunAgentParams {
+        prompt,
+        model_name,
+        persona_name,
+        endpoint,
+        token,
+        max_iterations,
+        upstream_prompts,
+        ..
+    } = params;
     // Auto-detect model from Ollama if not specified
     let model_name = if let Some(m) = model_name {
         m.to_string()

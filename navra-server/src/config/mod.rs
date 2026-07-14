@@ -161,15 +161,15 @@ impl Config {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("config");
-            if stem != "config" {
-                if let Some(runtime_dir) = dirs::runtime_dir() {
-                    config.server.socket = Some(
-                        runtime_dir
-                            .join(format!("navra/navra-{stem}.sock"))
-                            .to_string_lossy()
-                            .into_owned(),
-                    );
-                }
+            if stem != "config"
+                && let Some(runtime_dir) = dirs::runtime_dir()
+            {
+                config.server.socket = Some(
+                    runtime_dir
+                        .join(format!("navra/navra-{stem}.sock"))
+                        .to_string_lossy()
+                        .into_owned(),
+                );
             }
         }
 

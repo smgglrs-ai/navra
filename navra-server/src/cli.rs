@@ -155,6 +155,9 @@ pub(crate) enum Commands {
         /// Path to agent instance config (overrides default resolution)
         #[arg(long)]
         config: Option<String>,
+        /// Force Ollama API even when local GGUF blob exists
+        #[arg(long)]
+        no_embedded: bool,
         /// Preview the constructed prompt without executing
         #[arg(long)]
         dry_run: bool,

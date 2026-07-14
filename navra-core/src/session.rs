@@ -402,7 +402,6 @@ mod tests {
 
 verus! {
 
-use navra_protocol::label::{Integrity, Confidentiality};
 
 spec fn sess_conf_ord(c: Confidentiality) -> nat {
     match c {

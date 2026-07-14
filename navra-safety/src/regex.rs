@@ -340,15 +340,15 @@ impl ContentFilter for PiiFilter {
         for pattern in &self.patterns {
             for m in pattern.regex.find_iter(content) {
                 let matched = m.as_str();
-                if let Some(validate) = pattern.validator {
-                    if !validate(matched) {
-                        continue;
-                    }
+                if let Some(validate) = pattern.validator
+                    && !validate(matched)
+                {
+                    continue;
                 }
-                if let Some(validate_ctx) = pattern.context_validator {
-                    if !validate_ctx(content, m.start(), m.end()) {
-                        continue;
-                    }
+                if let Some(validate_ctx) = pattern.context_validator
+                    && !validate_ctx(content, m.start(), m.end())
+                {
+                    continue;
                 }
                 // Deduplicate: if a more specific pattern already matched
                 // this exact span, skip the broader one. E.g., SIRET (14
