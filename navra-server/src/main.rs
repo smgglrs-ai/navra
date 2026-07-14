@@ -3306,7 +3306,10 @@ async fn serve_inner(
                 )
             });
             if has_pii_profile {
+                #[cfg(feature = "onnx")]
                 let mut pipeline = navra_core::safety::build_pipeline("standard");
+                #[cfg(not(feature = "onnx"))]
+                let pipeline = navra_core::safety::build_pipeline("standard");
                 #[cfg(feature = "onnx")]
                 if let Some(ref ner) = pii_ner_filter {
                     pipeline.add_ner_filter_shared(Arc::clone(ner));

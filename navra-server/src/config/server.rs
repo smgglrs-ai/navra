@@ -24,10 +24,12 @@ pub struct ServerConfig {
     /// Path to PII NER model directory (English).
     /// Default: ~/.local/share/navra/models/pii-ner/
     #[serde(default)]
+    #[cfg_attr(not(feature = "onnx"), allow(dead_code))]
     pub pii_model_path: Option<String>,
     /// Path to multilingual PII NER model directory.
     /// Default: ~/.local/share/navra/models/pii-ner-multilingual/
     #[serde(default)]
+    #[cfg_attr(not(feature = "onnx"), allow(dead_code))]
     pub pii_multilingual_model_path: Option<String>,
     /// Use containerized agent execution.
     /// `true` = always, `false` = never, absent = auto-detect Podman.
