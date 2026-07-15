@@ -13,17 +13,14 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    container: rust:1.96-bookworm
+    container: registry.fedoraproject.org/fedora:44
 
     steps:
-      - name: Install system dependencies
-        run: apt-get update && apt-get install -y libasound2-dev pkg-config protobuf-compiler
+      - name: Install build dependencies
+        run: dnf install -y gcc gcc-c++ make rust cargo clippy rustfmt alsa-lib-devel pkg-config protobuf-compiler git-core
 
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install components
-        run: rustup component add rustfmt clippy
 
       - name: Cache cargo registry and target
         uses: actions/cache@v4
@@ -32,41 +29,18 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-fedora44-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-fedora44-cargo-
 
       - name: Check formatting
         run: cargo fmt -- --check
 
-      - name: Clippy (ONNX-free crates)
-        run: >-
-          cargo clippy --workspace
-          --exclude navra-server
-          --exclude navra-model
-          --exclude navra-safety
-          --exclude navra-safety-hooks
-          --exclude navra-rag
-          -- -D warnings
+      - name: Clippy
+        run: cargo clippy -- -D warnings
 
-      - name: Clippy (ONNX crates without onnx feature)
-        run: >-
-          cargo clippy
-          -p navra-model
-          -p navra-safety
-          -p navra-safety-hooks
-          -p navra-rag
-          --no-default-features
-          -- -D warnings
-
-      - name: Test (excluding ORT-dependent crates — ORT binary requires host glibc match)
-        run: >-
-          cargo test --workspace
-          --exclude navra-server
-          --exclude navra-model
-          --exclude navra-safety
-          --exclude navra-safety-hooks
-          --exclude navra-rag
+      - name: Test
+        run: cargo test --workspace --exclude navra-server
 
       - name: Docs
         run: cargo doc --no-deps
@@ -74,11 +48,11 @@ jobs:
   build:
     name: Build (release)
     runs-on: ubuntu-latest
-    container: rust:1.96-bookworm
+    container: registry.fedoraproject.org/fedora:44
 
     steps:
-      - name: Install system dependencies
-        run: apt-get update && apt-get install -y libasound2-dev pkg-config protobuf-compiler
+      - name: Install build dependencies
+        run: dnf install -y gcc gcc-c++ make rust cargo alsa-lib-devel pkg-config protobuf-compiler git-core
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,9 +64,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-fedora44-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-release-
+            ${{ runner.os }}-fedora44-cargo-release-
 
-      - name: Build release (no ONNX — ORT binary requires host glibc match)
-        run: cargo build --release --no-default-features
+      - name: Build release
+        run: cargo build --release
