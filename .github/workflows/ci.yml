@@ -39,14 +39,37 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
 
-      - name: Clippy
-        run: cargo clippy --no-default-features -- -D warnings
+      - name: Clippy (ONNX-free crates)
+        run: >-
+          cargo clippy --workspace
+          --exclude navra-server
+          --exclude navra-model
+          --exclude navra-safety
+          --exclude navra-safety-hooks
+          --exclude navra-rag
+          -- -D warnings
 
-      - name: Test (no ONNX — ORT binary requires host glibc match)
-        run: cargo test --workspace --exclude navra-server --no-default-features
+      - name: Clippy (ONNX crates without onnx feature)
+        run: >-
+          cargo clippy
+          -p navra-model
+          -p navra-safety
+          -p navra-safety-hooks
+          -p navra-rag
+          --no-default-features
+          -- -D warnings
+
+      - name: Test (excluding ORT-dependent crates — ORT binary requires host glibc match)
+        run: >-
+          cargo test --workspace
+          --exclude navra-server
+          --exclude navra-model
+          --exclude navra-safety
+          --exclude navra-safety-hooks
+          --exclude navra-rag
 
       - name: Docs
-        run: cargo doc --no-deps --no-default-features
+        run: cargo doc --no-deps
 
   build:
     name: Build (release)
