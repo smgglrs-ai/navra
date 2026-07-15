@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.3.0] - 2026-07-14
+## [0.3.0] - 2026-07-15
 
 ### Added
 
@@ -50,6 +50,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -68,6 +69,7 @@ All notable changes to navra are documented here.
 - Resolve all clippy warnings for Rust 1.96
 - Disable ONNX in CI test/clippy/doc steps
 - Gate ONNX-only imports and methods behind feature flag
+- Split CI clippy/test to exclude ORT-dependent crates properly
 
 ### Maintenance
 
