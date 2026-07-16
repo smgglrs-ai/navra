@@ -64,6 +64,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -97,6 +98,7 @@ All notable changes to navra are documented here.
 - Eliminate double /docs/docs/ path in Zola deploy
 - Copy Zola output before Astro so marketing index wins at root
 - Widen docs content area, fix Zola/Astro merge order
+- Override Bootstrap col-* on docs content column
 
 ### Maintenance
 
