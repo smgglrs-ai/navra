@@ -1546,7 +1546,7 @@ mod tests {
     fn ner_multilingual_french_text() {
         // Requires: navra pii download --multilingual
         let model_dir = default_pii_ner_multilingual_model_dir();
-        let Some(filter) = NerFilter::load_from_dir(&model_dir) else {
+        let Ok(filter) = NerFilter::load_from_dir(&model_dir) else {
             eprintln!(
                 "skipping: multilingual NER model not installed at {}",
                 model_dir.display()
