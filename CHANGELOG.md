@@ -56,6 +56,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -80,6 +81,7 @@ All notable changes to navra are documented here.
 - Rustfmt multiline format!() in chunk test
 - Skip NER multilingual test when model not installed
 - Use let Ok() for Result return type in NER test skip
+- Download and cache PII NER model in CI
 
 ### Maintenance
 
