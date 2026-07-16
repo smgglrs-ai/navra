@@ -262,10 +262,11 @@ body.dark {
 // Widen content area — theme default sidebar is too wide
 @media (min-width: 992px) {
   .docs-sidebar {
-    flex: 0 0 20% !important;
-    max-width: 20% !important;
+    flex: 0 0 220px !important;
+    max-width: 220px !important;
   }
-  .docs-content {
+  // Override Bootstrap col-* on the content column
+  .content .row > :not(.docs-sidebar) {
     flex: 1 1 0% !important;
     max-width: 100% !important;
   }
