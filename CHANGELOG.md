@@ -58,6 +58,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -84,6 +85,7 @@ All notable changes to navra are documented here.
 - Use let Ok() for Result return type in NER test skip
 - Download and cache PII NER model in CI
 - Release builds in Fedora 44 container, docs site base URL
+- Docs internal links and release build deps
 
 ### Maintenance
 
