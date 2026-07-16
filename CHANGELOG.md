@@ -60,6 +60,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -88,6 +89,7 @@ All notable changes to navra are documented here.
 - Release builds in Fedora 44 container, docs site base URL
 - Docs internal links and release build deps
 - All broken links — docs, site logos, papers, base paths
+- Add trailing slash to Astro base path
 
 ### Maintenance
 
