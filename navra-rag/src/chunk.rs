@@ -772,7 +772,12 @@ mod tests {
 
     #[test]
     fn chunks_have_sequential_indices() {
-        let text = format!("{}\n\n{}\n\n{}", "A ".repeat(500), "B ".repeat(500), "C ".repeat(500));
+        let text = format!(
+            "{}\n\n{}\n\n{}",
+            "A ".repeat(500),
+            "B ".repeat(500),
+            "C ".repeat(500)
+        );
         let config = ChunkConfig {
             target_size: 300,
             overlap: 0,
