@@ -1546,8 +1546,13 @@ mod tests {
     fn ner_multilingual_french_text() {
         // Requires: navra pii download --multilingual
         let model_dir = default_pii_ner_multilingual_model_dir();
-        let filter =
-            NerFilter::load_from_dir(&model_dir).expect("multilingual NER model not installed");
+        let Some(filter) = NerFilter::load_from_dir(&model_dir) else {
+            eprintln!(
+                "skipping: multilingual NER model not installed at {}",
+                model_dir.display()
+            );
+            return;
+        };
         let text = "M. Dupont habite au 15 rue de Rivoli à Paris";
         let spans = filter.detect_entities(text).unwrap();
         // Should detect at least one PER (Dupont) and one LOC (Paris)
