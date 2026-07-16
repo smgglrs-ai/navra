@@ -39,7 +39,65 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
-  build:
+  build-linux:
+    name: Build ${{ matrix.archive_suffix }}
+    needs: create-release
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            archive_suffix: linux-x86_64
+            embedded_feature: embedded-cuda
+          - target: aarch64-unknown-linux-gnu
+            archive_suffix: linux-aarch64
+            use_cross: true
+            embedded_feature: embedded
+    steps:
+      - name: Install build dependencies
+        run: dnf install -y gcc gcc-c++ make rust cargo alsa-lib-devel pkg-config protobuf-compiler git-core podman
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binaries
+        run: |
+          BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
+          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra --features ${{ matrix.embedded_feature }}
+          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra-agent
+
+      - name: Package
+        run: |
+          VERSION="${{ github.ref_name }}"
+          TARGET_DIR="target/${{ matrix.target }}/release"
+          for bin in navra navra-agent; do
+            mkdir -p "dist-${bin}"
+            cp "${TARGET_DIR}/${bin}" "dist-${bin}/"
+            cp LICENSE README.md "dist-${bin}/"
+            ARCHIVE="${bin}-${VERSION}-${{ matrix.archive_suffix }}.tar.gz"
+            tar czf "${ARCHIVE}" -C "dist-${bin}" .
+            sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          done
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            navra-*.tar.gz
+            navra-*.tar.gz.sha256
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "navra-*.tar.gz"
+
+  build-macos:
     name: Build ${{ matrix.archive_suffix }}
     needs: create-release
     runs-on: ${{ matrix.runner }}
@@ -47,15 +105,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            archive_suffix: linux-x86_64
-            embedded_feature: embedded-cuda
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
-            archive_suffix: linux-aarch64
-            use_cross: true
-            embedded_feature: embedded
           - target: x86_64-apple-darwin
             runner: macos-13
             archive_suffix: darwin-x86_64
@@ -73,15 +122,13 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross
-        if: matrix.use_cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Install macOS build dependencies
+        run: brew install protobuf
 
       - name: Build binaries
         run: |
-          BUILD_CMD="${{ matrix.use_cross && 'cross' || 'cargo' }}"
-          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra --features ${{ matrix.embedded_feature }}
-          $BUILD_CMD build --release --target ${{ matrix.target }} --bin navra-agent
+          cargo build --release --target ${{ matrix.target }} --bin navra --features ${{ matrix.embedded_feature }}
+          cargo build --release --target ${{ matrix.target }} --bin navra-agent
 
       - name: Package
         run: |
