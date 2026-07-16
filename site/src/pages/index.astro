@@ -2,49 +2,118 @@
 import Base from '../layouts/Base.astro';
 import Nav from '../components/Nav.astro';
 import Footer from '../components/Footer.astro';
+import StatPills from '../components/StatPills.astro';
+import FeatureCard from '../components/FeatureCard.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+
+const stats = [
+  { value: '22', label: 'crates' },
+  { value: '2400+', label: 'tests' },
+  { value: '138', label: 'Kani proofs' },
+  { value: '39/39', label: 'MCP spec' },
+];
+
+const quickstart = `$ git clone https://github.com/smgglrs-ai/navra
+$ cd navra
+$ export ORT_LIB_PATH=/usr/lib64
+$ export ORT_PREFER_DYNAMIC_LINK=1
+$ cargo build && cargo run -- serve
+
+# Generate an agent token
+$ cargo run -- token generate --name claude`;
 ---
 
-<Base title="Smgglrs AI — Infrastructure for trustworthy AI agents">
-  <Nav />
+<Base title="navra — Secure MCP gateway for AI agents" description="One daemon. Every tool call authenticated, filtered, and audited. 22-crate Rust workspace with 138 formal proofs.">
+  <Nav active="navra" />
 
+  <!-- Hero -->
   <section class="hero section--dark">
     <div class="container">
-      <p class="label">Open Source</p>
-      <h1 class="hero__title">Infrastructure for<br/>trustworthy AI agents</h1>
-      <p class="hero__sub">Security and orchestration tools for the MCP ecosystem.<br/>Built in Rust. Proven with formal verification.</p>
+      <h1 class="hero__title">navra</h1>
+      <p class="hero__subtitle">Secure MCP gateway<br/>for AI agents</p>
+      <p class="hero__desc">One daemon. Every tool call authenticated,<br/>filtered, and audited. Zero trust by default.</p>
       <div class="hero__cta">
-        <a href={`${import.meta.env.BASE_URL}navra/`} class="btn btn--coral">Explore Navra &rarr;</a>
-        <a href="https://github.com/smgglrs-ai/navra" target="_blank" class="btn btn--ghost">GitHub</a>
+        <a href="#get-started" class="btn btn--coral">Get Started &rarr;</a>
+        <a href="https://github.com/smgglrs-ai/navra" target="_blank" class="btn btn--ghost">View on GitHub</a>
+      </div>
+      <div class="hero__stats">
+        <StatPills stats={stats} />
       </div>
     </div>
   </section>
 
-  <section class="projects section--light">
+  <!-- Architecture -->
+  <section class="section section--light" id="architecture">
     <div class="container">
-      <div class="grid-3">
-        <a href={`${import.meta.env.BASE_URL}navra/`} class="pcard">
-          <h3 class="pcard__title">navra</h3>
-          <p class="pcard__desc">Secure MCP gateway for AI agents. 22 crates, 2400+ tests, deny-wins ACLs, IFC, in-process ML safety.</p>
-          <span class="pcard__link">Learn more &rarr;</span>
-        </a>
-        <a href={`${import.meta.env.BASE_URL}docs/papers/`} class="pcard">
-          <h3 class="pcard__title">Research</h3>
-          <p class="pcard__desc">6 papers on gateway security, persona orchestration, audit trails, and model cards. 138 Kani proofs.</p>
-          <span class="pcard__link">Read papers &rarr;</span>
-        </a>
-        <div class="pcard pcard--muted">
-          <h3 class="pcard__title">More coming</h3>
-          <p class="pcard__desc">Additional tools and libraries for the trustworthy agent stack. Stay tuned.</p>
+      <p class="label">How it works</p>
+      <h2 class="heading">One gateway between your agent and the world</h2>
+      <p class="subtext">navra sits between AI agents and local resources. It aggregates built-in tool modules and upstream MCP servers behind a unified security layer.</p>
+      <div class="arch">
+        <div class="arch__node arch__node--agent">AI Agent</div>
+        <div class="arch__arrow">&rarr;</div>
+        <div class="arch__node arch__node--navra">
+          <strong>navra</strong>
+          <span>Auth &middot; ACLs &middot; Safety &middot; Hooks &middot; Audit</span>
+        </div>
+        <div class="arch__arrow">&rarr;</div>
+        <div class="arch__targets">
+          <div class="arch__node arch__node--target">Built-in Modules</div>
+          <div class="arch__node arch__node--target arch__node--dim">Upstream MCP Servers</div>
         </div>
       </div>
+      <p class="arch__caption">file &middot; git &middot; exec &middot; RAG &middot; voice &middot; vision &middot; GitHub &middot; GitLab</p>
     </div>
   </section>
 
-  <section class="quote section--dark">
+  <!-- Security -->
+  <section class="section section--dark" id="security">
     <div class="container">
-      <blockquote class="quote__text">
-        &ldquo;The code is ahead of the evidence.<br/>Time to prove it.&rdquo;
-      </blockquote>
+      <p class="label">Security</p>
+      <h2 class="heading">Proven, not promised</h2>
+      <p class="subtext" style="color: var(--muted);">138 Kani proofs. 6 TLA+ specs. Bell-LaPadula verified.<br/>OWASP ASI 10/10. This is not a checklist &mdash; it is a proof.</p>
+      <div class="grid-4 sec-grid">
+        <FeatureCard variant="dark" title="Information Flow Control" description="IFC labels track data sensitivity across tool calls. Bell-LaPadula no-read-up verified with Kani." />
+        <FeatureCard variant="dark" title="Deny-Wins ACLs" description="Deny rules always beat allow rules. Path canonicalization before every ACL check prevents traversal." />
+        <FeatureCard variant="dark" title="Content Safety" description="Regex + ML + NER pipeline. PII redaction, pseudonymization, and GDPR compliance tools built in." />
+        <FeatureCard variant="dark" title="Audit Trail" description="Hash-chained SQLite log. Every tool call recorded. Always on, no opt-in required." />
+      </div>
+      <p class="sec-badges">OWASP ASI: 10/10 controls &middot; EU AI Act Art 12+14 ready &middot; Cedar policy engine</p>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section section--light" id="features">
+    <div class="container">
+      <p class="label">Capabilities</p>
+      <h2 class="heading">Everything an agent needs,<br/>nothing it shouldn't have</h2>
+      <div class="grid-3 feat-grid">
+        <FeatureCard variant="light" title="Gateway Architecture" description="Security at the infrastructure layer, not the application. Orchestration belongs in the agent." />
+        <FeatureCard variant="light" title="In-Process ONNX Models" description="Safety classifiers and embeddings run in-process on CPU. No GPU required, no external dependencies." />
+        <FeatureCard variant="light" title="Multi-Agent Flows" description="DAG execution, handoff routing, mesh communication. Mandate validation and hop limits." />
+        <FeatureCard variant="light" title="Model Hub" description="Pull and cache models from OCI, HuggingFace, and Ollama registries with content-addressed storage." />
+        <FeatureCard variant="light" title="Hybrid RAG" description="FTS5 + sqlite-vec vector search with RRF fusion. Cross-encoder reranking and confidence gating." />
+        <FeatureCard variant="light" title="Persona System" description="YAML-defined personas, directives, and heuristics woven into system prompts at runtime." />
+        <FeatureCard variant="light" title="Voice + Vision" description="ASR, TTS, and screen understanding via ONNX models. CPU and GPU tiers." />
+        <FeatureCard variant="light" title="Sandboxed Agents" description="Agents run in Podman containers with a shared GPU model server. Falls back to in-process." />
+        <FeatureCard variant="light" title="Forge Integrations" description="GitHub and GitLab tools: PRs, issues, comments, MR review. Via gh and glab CLI." />
+      </div>
+    </div>
+  </section>
+
+  <!-- Get Started -->
+  <section class="section section--dark" id="get-started">
+    <div class="container">
+      <p class="label">Get Started</p>
+      <h2 class="heading">Up and running in 60 seconds</h2>
+      <div class="qs-layout">
+        <div class="qs-code">
+          <CodeBlock code={quickstart} />
+        </div>
+        <div class="qs-side">
+          <a href={`${import.meta.env.BASE_URL}docs/`} class="btn btn--coral">Full Documentation &rarr;</a>
+          <p class="qs-req">Requires: Rust 1.75+, ONNX Runtime,<br/>Linux (systemd + D-Bus)</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -52,71 +121,120 @@ import Footer from '../components/Footer.astro';
 </Base>
 
 <style>
-  .hero { padding: 120px 0 100px; }
+  .hero { padding: 100px 0 80px; }
   .hero__title {
-    font-size: 3rem;
+    font-size: 4.5rem;
     font-weight: 700;
-    line-height: 1.15;
-    margin-bottom: 20px;
-  }
-  .hero__sub {
-    font-size: 1.125rem;
-    color: var(--slate);
-    line-height: 1.7;
-    margin-bottom: 40px;
-    max-width: 520px;
-  }
-  .hero__cta { display: flex; gap: 12px; flex-wrap: wrap; }
-
-  .pcard {
-    display: block;
-    padding: 32px;
-    border-radius: 8px;
-    border: 1px solid var(--border-light);
-    background: var(--white);
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .pcard:hover {
-    border-color: var(--coral);
-    box-shadow: 0 4px 24px rgba(248, 91, 84, 0.08);
-  }
-  .pcard--muted {
-    opacity: 0.5;
-    cursor: default;
-  }
-  .pcard__title {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: var(--navy);
-    margin-bottom: 8px;
-  }
-  .pcard__desc {
-    font-size: 0.875rem;
-    color: var(--slate);
-    line-height: 1.6;
+    line-height: 1;
     margin-bottom: 16px;
   }
-  .pcard__link {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--coral);
-  }
-
-  .quote { padding: 80px 0; text-align: center; }
-  .quote__text {
-    font-size: 1.5rem;
+  .hero__subtitle {
+    font-size: 2rem;
     font-weight: 500;
     color: var(--slate);
-    font-style: italic;
+    line-height: 1.3;
+    margin-bottom: 16px;
+  }
+  .hero__desc {
+    font-size: 1.0625rem;
+    color: var(--muted);
+    line-height: 1.7;
+    margin-bottom: 32px;
+  }
+  .hero__cta {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 48px;
+    flex-wrap: wrap;
+  }
+  .hero__stats { margin-top: 0; }
+
+  .arch {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 40px 0 16px;
+    flex-wrap: wrap;
+  }
+  .arch__node {
+    padding: 16px 24px;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .arch__node--agent {
+    background: var(--navy);
+    color: var(--white);
+  }
+  .arch__node--navra {
+    background: var(--coral);
+    color: var(--white);
+    padding: 20px 32px;
+    text-align: center;
+  }
+  .arch__node--navra strong {
+    display: block;
+    font-size: 1.25rem;
+    margin-bottom: 4px;
+  }
+  .arch__node--navra span {
+    font-size: 0.75rem;
+    color: var(--coral-faint);
+  }
+  .arch__node--target {
+    background: var(--navy);
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+  .arch__node--dim {
+    color: var(--slate);
+    border: 1px solid var(--border);
+    background: transparent;
+  }
+  .arch__arrow {
+    font-size: 1.5rem;
+    color: var(--navy);
+    font-weight: 300;
+  }
+  .arch__caption {
+    font-size: 0.75rem;
+    color: var(--slate);
+  }
+
+  .sec-grid { margin-top: 32px; }
+  .sec-badges {
+    margin-top: 24px;
+    font-size: 0.8125rem;
+    color: var(--dim);
+  }
+
+  .feat-grid { margin-top: 32px; }
+
+  .qs-layout {
+    display: flex;
+    gap: 40px;
+    align-items: flex-start;
+    margin-top: 32px;
+  }
+  .qs-code { flex: 1; min-width: 0; }
+  .qs-side {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .qs-req {
+    font-size: 0.8125rem;
+    color: var(--dim);
     line-height: 1.6;
-    border: none;
-    max-width: 600px;
-    margin: 0 auto;
   }
 
   @media (max-width: 768px) {
-    .hero { padding: 80px 0 60px; }
-    .hero__title { font-size: 2rem; }
-    .quote__text { font-size: 1.125rem; }
+    .hero { padding: 60px 0; }
+    .hero__title { font-size: 3rem; }
+    .hero__subtitle { font-size: 1.5rem; }
+    .arch { flex-direction: column; align-items: stretch; }
+    .arch__arrow { text-align: center; transform: rotate(90deg); }
+    .qs-layout { flex-direction: column; }
   }
 </style>
