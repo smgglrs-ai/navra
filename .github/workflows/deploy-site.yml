@@ -46,14 +46,15 @@ jobs:
       # Build Zola docs
       - name: Build documentation
         working-directory: docs
-        run: zola build --base-url "https://smgglrs-ai.github.io/navra/docs"
+        run: zola build --base-url "https://smgglrs-ai.github.io/navra"
 
       # Merge: marketing site at / , docs at /docs/
+      # Zola content lives under content/docs/ so output is public/docs/*
       - name: Merge outputs
         run: |
           mkdir -p _site
           cp -r site/dist/* _site/
-          cp -r docs/public _site/docs
+          cp -r docs/public/* _site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
