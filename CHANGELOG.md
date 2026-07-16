@@ -63,6 +63,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -94,6 +95,8 @@ All notable changes to navra are documented here.
 - Add trailing slash to Astro base path
 - Make navra project page the site landing page
 - Eliminate double /docs/docs/ path in Zola deploy
+- Copy Zola output before Astro so marketing index wins at root
+- Widen docs content area, fix Zola/Astro merge order
 
 ### Maintenance
 
