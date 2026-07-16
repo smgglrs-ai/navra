@@ -265,10 +265,10 @@ body.dark {
     flex: 0 0 220px !important;
     max-width: 220px !important;
   }
-  // Override Bootstrap col-* on the content column
-  .content .row > :not(.docs-sidebar) {
+  .col-lg-7, .col-xl-8, .col-lg-11, .col-xl-9,
+  .col-lg-10, .col-xl-8, .col-md-12.col-lg-10 {
     flex: 1 1 0% !important;
-    max-width: 100% !important;
+    max-width: calc(100% - 240px) !important;
   }
 }
 
