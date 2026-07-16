@@ -640,7 +640,7 @@ runtime = "auto"
 context_size = 8192
 ```
 
-See [Model server](/docs/guides/model-server/) for the full field
+See [Model server](@/docs/guides/model-server.md) for the full field
 reference, runtime options, and speculative decoding configuration.
 
 ## Model Server
@@ -653,7 +653,7 @@ model_server = "http://127.0.0.1:9316"
 ```
 
 Start the server with `navra model serve`. See the
-[Model server guide](/docs/guides/model-server/) for deployment details.
+[Model server guide](@/docs/guides/model-server.md) for deployment details.
 
 ## Budget
 

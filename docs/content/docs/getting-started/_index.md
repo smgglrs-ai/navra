@@ -102,8 +102,8 @@ navra status  # shows tool count and registered agents
 
 ## Next steps
 
-- [Integrations](/docs/integrations/) — detailed guides for Claude Code, Goose, OpenAI clients, LangGraph
-- [Guides](/docs/guides/) — multi-agent flows, personas, RAG, memory, model server, agent bundles
-- [Configuration](/docs/configuration/) — full config.toml reference
-- [CLI Reference](/docs/cli/) — all commands and flags
-- [Architecture](/docs/architecture/) — microkernel design, crate layering, security model
+- [Integrations](@/docs/integrations/_index.md) — detailed guides for Claude Code, Goose, OpenAI clients, LangGraph
+- [Guides](@/docs/guides/_index.md) — multi-agent flows, personas, RAG, memory, model server, agent bundles
+- [Configuration](@/docs/configuration/_index.md) — full config.toml reference
+- [CLI Reference](@/docs/cli/_index.md) — all commands and flags
+- [Architecture](@/docs/architecture/_index.md) — microkernel design, crate layering, security model
