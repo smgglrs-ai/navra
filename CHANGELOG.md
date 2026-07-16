@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.3.0] - 2026-07-15
+## [0.3.0] - 2026-07-16
 
 ### Added
 
@@ -53,6 +53,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
@@ -74,6 +75,7 @@ All notable changes to navra are documented here.
 - Split CI clippy/test to exclude ORT-dependent crates properly
 - Use Fedora 44 container for CI (matches dev environment)
 - String + &String concatenation error in edition 2024
+- Rustfmt multiline format!() in chunk test
 
 ### Maintenance
 
