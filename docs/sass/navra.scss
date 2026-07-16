@@ -259,6 +259,18 @@ body.dark {
   .section-cta { background: darken($navra-dark-bg, 3%); }
 }
 
+// Widen content area — theme default sidebar is too wide
+@media (min-width: 992px) {
+  .docs-sidebar {
+    flex: 0 0 20% !important;
+    max-width: 20% !important;
+  }
+  .docs-content {
+    flex: 1 1 0% !important;
+    max-width: 100% !important;
+  }
+}
+
 // Responsive
 @media (max-width: 991px) {
   .docs-sidebar { border-right: none; border-bottom: 1px solid $navra-light; padding-bottom: 1rem; margin-bottom: 2rem; }
