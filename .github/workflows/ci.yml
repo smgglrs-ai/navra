@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  PII_NER_REPO: protectai/bert-base-NER-onnx
+  PII_NER_DIR: /github/home/.local/share/navra/models/pii-ner
 
 jobs:
   check:
@@ -32,6 +34,24 @@ jobs:
           key: ${{ runner.os }}-fedora44-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-fedora44-cargo-
+
+      - name: Cache PII NER model
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PII_NER_DIR }}
+          key: pii-ner-model-${{ env.PII_NER_REPO }}
+
+      - name: Download PII NER model
+        run: |
+          mkdir -p "$PII_NER_DIR"
+          for file in model.onnx tokenizer.json; do
+            if [ ! -f "$PII_NER_DIR/$file" ]; then
+              echo "Downloading $file ..."
+              curl -sL "https://huggingface.co/$PII_NER_REPO/resolve/main/$file" -o "$PII_NER_DIR/$file"
+            else
+              echo "$file already cached"
+            fi
+          done
 
       - name: Check formatting
         run: cargo fmt -- --check
