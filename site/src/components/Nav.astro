@@ -7,14 +7,14 @@ const { active } = Astro.props;
 
 <nav class="nav">
   <div class="container nav__inner">
-    <a href="/" class="nav__brand">
-      <img src="/logo-icon.png" alt="" class="nav__icon" />
+    <a href={`${import.meta.env.BASE_URL}`} class="nav__brand">
+      <img src={`${import.meta.env.BASE_URL}logo-icon.png`} alt="" class="nav__icon" />
       <span class="nav__name">navra</span>
     </a>
     <div class="nav__links">
-      <a href="/navra/" class:list={[{ active: active === 'navra' }]}>Navra</a>
-      <a href="/docs/">Docs</a>
-      <a href="/docs/papers/security-gateway.html">Research</a>
+      <a href={`${import.meta.env.BASE_URL}`} class:list={[{ active: active === 'navra' }]}>Navra</a>
+      <a href={`${import.meta.env.BASE_URL}docs/`}>Docs</a>
+      <a href={`${import.meta.env.BASE_URL}docs/papers/security-gateway/`}>Research</a>
       <a href="https://github.com/smgglrs-ai/navra" target="_blank">GitHub</a>
     </div>
   </div>

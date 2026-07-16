@@ -13,7 +13,7 @@ import Footer from '../components/Footer.astro';
       <h1 class="hero__title">Infrastructure for<br/>trustworthy AI agents</h1>
       <p class="hero__sub">Security and orchestration tools for the MCP ecosystem.<br/>Built in Rust. Proven with formal verification.</p>
       <div class="hero__cta">
-        <a href="/navra/" class="btn btn--coral">Explore Navra &rarr;</a>
+        <a href={`${import.meta.env.BASE_URL}navra/`} class="btn btn--coral">Explore Navra &rarr;</a>
         <a href="https://github.com/smgglrs-ai/navra" target="_blank" class="btn btn--ghost">GitHub</a>
       </div>
     </div>
@@ -22,12 +22,12 @@ import Footer from '../components/Footer.astro';
   <section class="projects section--light">
     <div class="container">
       <div class="grid-3">
-        <a href="/navra/" class="pcard">
+        <a href={`${import.meta.env.BASE_URL}navra/`} class="pcard">
           <h3 class="pcard__title">navra</h3>
           <p class="pcard__desc">Secure MCP gateway for AI agents. 22 crates, 2400+ tests, deny-wins ACLs, IFC, in-process ML safety.</p>
           <span class="pcard__link">Learn more &rarr;</span>
         </a>
-        <a href="https://github.com/smgglrs-ai/navra/tree/main/docs/papers" target="_blank" class="pcard">
+        <a href={`${import.meta.env.BASE_URL}docs/papers/`} class="pcard">
           <h3 class="pcard__title">Research</h3>
           <p class="pcard__desc">6 papers on gateway security, persona orchestration, audit trails, and model cards. 138 Kani proofs.</p>
           <span class="pcard__link">Read papers &rarr;</span>
