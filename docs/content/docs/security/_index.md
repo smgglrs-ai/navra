@@ -167,7 +167,7 @@ audit data.
 The blackbox addresses recording requirements in the EU AI Act
 (Article 14, human oversight), SOC2 CC6.1 (audit trails), and
 ISO 42001 (AI decision records). See the
-[workshop paper](/docs/papers/audit-blackbox/) for a full
+[workshop paper](@/docs/papers/audit-blackbox.md) for a full
 compliance mapping.
 
 ## Safety Hooks Pipeline

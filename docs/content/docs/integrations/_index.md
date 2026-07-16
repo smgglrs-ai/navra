@@ -24,5 +24,5 @@ Pick your client:
 | Custom MCP client | MCP Streamable HTTP | [navra + custom client](custom-mcp/) |
 
 All guides assume navra is installed and `navra init` has been run.
-See [Getting Started](/docs/getting-started/) if you have not set up
+See [Getting Started](@/docs/getting-started/_index.md) if you have not set up
 navra yet.
