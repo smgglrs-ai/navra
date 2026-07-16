@@ -53,8 +53,8 @@ jobs:
       - name: Merge outputs
         run: |
           mkdir -p _site
-          cp -r site/dist/* _site/
           cp -r docs/public/* _site/
+          cp -r site/dist/* _site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
