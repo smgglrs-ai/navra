@@ -1,16 +1,10 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 20 active items
+# 19 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-151"
-    title: "Binary distribution (GitHub releases + cargo-binstall)"
-    status: planned
-    priority: high
-    effort: 1-3d
-
   - id: "NAVRA-152"
     title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
     status: planned

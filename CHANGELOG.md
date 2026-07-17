@@ -39,33 +39,6 @@ All notable changes to navra are documented here.
 - Rewrite model proxy section with step-by-step setup
 - Add learn chapter on the model proxy security layer
 - Show both global and regional Vertex AI endpoints
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
-- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
