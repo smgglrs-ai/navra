@@ -103,6 +103,11 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ModelAction,
     },
+    /// Run adversarial security evaluations
+    Eval {
+        #[command(subcommand)]
+        action: EvalAction,
+    },
     /// Query the gateway audit blackbox
     Audit {
         /// Number of entries to show (default 20)
@@ -392,6 +397,52 @@ pub(crate) enum PolicyAction {
 }
 
 #[derive(Subcommand)]
+pub(crate) enum EvalAction {
+    /// Run AgentDojo IFC defense benchmark (requires agentdojo Python package)
+    AgentDojo {
+        /// Max user tasks to evaluate
+        #[arg(long, default_value = "5")]
+        tasks: usize,
+        /// AgentDojo task suite
+        #[arg(long, default_value = "workspace")]
+        suite: String,
+        /// LLM model to use (e.g., claude-sonnet-4-6@default, qwen3:8b)
+        #[arg(short, long, default_value = "claude-sonnet-4-6@default")]
+        model: String,
+        /// Defense to test: none, ifc, or both
+        #[arg(long, default_value = "both")]
+        defense: String,
+        /// Attack type
+        #[arg(long, default_value = "important_instructions")]
+        attack: String,
+        /// Output JSON file path
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Python interpreter to use
+        #[arg(long, default_value = "python3")]
+        python: String,
+    },
+    /// Run MCPTox tool poisoning detection benchmark
+    McpTox {
+        /// Path to MCPTox dataset directory (default: /tmp/mcptox)
+        #[arg(long, default_value = "/tmp/mcptox")]
+        dataset: String,
+        /// Output JSON file path
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// Generate a markdown comparison report from eval result files
+    Report {
+        /// Result JSON files to compare
+        #[arg(required = true)]
+        files: Vec<String>,
+        /// Output markdown file (prints to stdout if omitted)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 pub(crate) enum TokenAction {
     /// Generate a new agent token
     Generate {
@@ -531,6 +582,59 @@ mod tests {
                 assert!(multilingual);
             }
             _ => panic!("Expected Pii Download command"),
+        }
+    }
+
+    #[test]
+    fn cli_eval_agentdojo_default() {
+        let cli = Cli::try_parse_from(["navra", "eval", "agent-dojo"]).unwrap();
+        match cli.command {
+            Commands::Eval {
+                action:
+                    EvalAction::AgentDojo {
+                        tasks,
+                        suite,
+                        model,
+                        defense,
+                        ..
+                    },
+            } => {
+                assert_eq!(tasks, 5);
+                assert_eq!(suite, "workspace");
+                assert_eq!(model, "claude-sonnet-4-6@default");
+                assert_eq!(defense, "both");
+            }
+            _ => panic!("Expected Eval AgentDojo command"),
+        }
+    }
+
+    #[test]
+    fn cli_eval_mcptox_default() {
+        let cli = Cli::try_parse_from(["navra", "eval", "mcp-tox"]).unwrap();
+        match cli.command {
+            Commands::Eval {
+                action: EvalAction::McpTox { dataset, output },
+            } => {
+                assert_eq!(dataset, "/tmp/mcptox");
+                assert!(output.is_none());
+            }
+            _ => panic!("Expected Eval McpTox command"),
+        }
+    }
+
+    #[test]
+    fn cli_eval_report() {
+        let cli =
+            Cli::try_parse_from(["navra", "eval", "report", "a.json", "b.json", "-o", "out.md"])
+                .unwrap();
+        match cli.command {
+            Commands::Eval {
+                action: EvalAction::Report { files, output },
+            } => {
+                assert_eq!(files, vec!["a.json", "b.json"]);
+                assert_eq!(output.as_deref(), Some("out.md"));
+            }
+            _ => panic!("Expected Eval Report command"),
         }
     }
 }
