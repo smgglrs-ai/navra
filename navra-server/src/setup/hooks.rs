@@ -5,7 +5,7 @@
 //! tool usage pruning, and DMN guardrails.
 
 use crate::config;
-use crate::wiring::safety::{SafetyFilterState, build_safety_pipeline};
+use crate::setup::safety::{SafetyFilterState, build_safety_pipeline};
 use std::sync::Arc;
 
 /// Wire all hooks onto the server builder.

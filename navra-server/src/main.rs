@@ -40,7 +40,7 @@ mod ui;
 mod ui_agent;
 mod ui_events;
 pub(crate) mod util;
-pub(crate) mod wiring;
+pub(crate) mod setup;
 pub(crate) mod workspace;
 
 use clap::Parser;
@@ -1018,7 +1018,7 @@ async fn serve_inner(
     }
 
     // Register authenticator chain
-    builder = wiring::auth::wire_auth(builder, &cfg, &root_signer, dev_mode)?;
+    builder = setup::auth::wire_auth(builder, &cfg, &root_signer, dev_mode)?;
 
     // --- Load models into registry ---
     // The model registry is owned by navra-model-server and manages
@@ -1126,7 +1126,7 @@ async fn serve_inner(
 
     // Build shared safety filter state for reuse by both builder-level
     // profiles and the SafetyHook in the hook pipeline.
-    let safety_state = wiring::safety::SafetyFilterState {
+    let safety_state = setup::safety::SafetyFilterState {
         custom_pii_filter: custom_pii_filter.clone(),
         #[cfg(feature = "onnx")]
         pii_ner_filter: pii_ner_filter.clone(),
@@ -1136,7 +1136,7 @@ async fn serve_inner(
     };
 
     // Register safety profiles and per-tool permissions per permission set
-    builder = wiring::safety::wire_safety_profiles(builder, &cfg, &safety_state);
+    builder = setup::safety::wire_safety_profiles(builder, &cfg, &safety_state);
 
     // Build shared approval infrastructure
     let approvals = Arc::new(navra_core::permissions::ApprovalStore::with_grant_ttl(
@@ -1511,7 +1511,7 @@ async fn serve_inner(
 
     // --- Upstream MCP servers ---
     builder =
-        wiring::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge).await;
+        setup::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge).await;
 
     // --- gRPC out-of-process modules ---
     let mut _grpc_manager = if !cfg.grpc_modules.is_empty() {
@@ -2995,7 +2995,7 @@ async fn serve_inner(
 
     // Wire hooks: budget, safety, statistical guardrail, temporal contracts,
     // memory extraction, causal provenance, monitoring, tool pruning, DMN.
-    builder = wiring::hooks::wire_hooks(builder, &cfg, &safety_state, &knowledge_store);
+    builder = setup::hooks::wire_hooks(builder, &cfg, &safety_state, &knowledge_store);
 
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
@@ -3033,8 +3033,8 @@ async fn serve_inner(
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
         }
         TransportMode::Http { no_tray } => {
-            wiring::transport::run_http_transport(
-                wiring::transport::TransportState {
+            setup::transport::run_http_transport(
+                setup::transport::TransportState {
                     server,
                     broadcaster,
                     cfg: cfg.clone(),
