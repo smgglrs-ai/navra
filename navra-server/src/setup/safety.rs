@@ -5,9 +5,27 @@
 //! profiles and for the `SafetyHook` in the hook pipeline.
 
 use crate::config;
-use crate::SharedCustomPiiFilter;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
+///
+/// Allows sharing a single custom PII filter across multiple pipelines.
+pub(crate) struct SharedCustomPiiFilter(pub(crate) Arc<navra_core::safety::CustomPiiFilter>);
+
+impl navra_core::safety::ContentFilter for SharedCustomPiiFilter {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn scan(
+        &self,
+        content: &str,
+        ctx: &navra_core::safety::FilterContext,
+    ) -> Vec<navra_core::safety::Finding> {
+        self.0.scan(content, ctx)
+    }
+}
 
 /// Shared filter state created during model/filter loading, passed
 /// to [`build_safety_pipeline`] so both call sites use the same
