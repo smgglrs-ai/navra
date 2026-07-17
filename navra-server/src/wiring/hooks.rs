@@ -11,7 +11,6 @@ use std::sync::Arc;
 /// Wire all hooks onto the server builder.
 ///
 /// Returns the builder and the usage tracker (needed externally).
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn wire_hooks(
     mut builder: navra_core::McpServerBuilder,
     cfg: &config::Config,
