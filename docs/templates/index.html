@@ -47,45 +47,17 @@
 
 {# ── Feature grid ── #}
 <section id="features" class="section-features" aria-label="Key features">
-  <div class="container">
-    <div class="row justify-content-center">
-      {% if section.extra.list %}
-        {% for val in section.extra.list %}
-        <div class="col-lg-5">
-          <article class="feature-card">
-            <h2>{{ val.title }}</h2>
-            <p>{{ val.content | safe }}</p>
-          </article>
-        </div>
-        {% endfor %}
-      {% endif %}
-    </div>
+  <div class="features-grid">
+    {% if section.extra.list %}
+      {% for val in section.extra.list %}
+      <article class="feature-card">
+        <h2>{{ val.title }}</h2>
+        <p>{{ val.content | safe }}</p>
+      </article>
+      {% endfor %}
+    {% endif %}
   </div>
 </section>
-
-{# ── Deep-dive showcase sections ── #}
-{% if section.extra.showcase %}
-  {% for showcase in section.extra.showcase %}
-  <section class="section-showcase {% if loop.index is odd %}showcase-light{% else %}showcase-dark{% endif %}" aria-labelledby="showcase-{{ loop.index }}">
-    <div class="container">
-      <div class="showcase-header">
-        <span class="showcase-eyebrow">{{ showcase.subtitle }}</span>
-        <h2 id="showcase-{{ loop.index }}" class="showcase-title">{{ showcase.title }}</h2>
-        <p class="showcase-description">{{ showcase.description }}</p>
-      </div>
-      <div class="showcase-grid">
-        {% for item in showcase.items %}
-        <article class="showcase-card">
-          <div class="showcase-card-number" aria-hidden="true">{{ loop.index }}</div>
-          <h3>{{ item.title }}</h3>
-          <p>{{ item.text | safe }}</p>
-        </article>
-        {% endfor %}
-      </div>
-    </div>
-  </section>
-  {% endfor %}
-{% endif %}
 
 {# ── Final CTA ── #}
 <section class="section-cta" aria-label="Call to action">
