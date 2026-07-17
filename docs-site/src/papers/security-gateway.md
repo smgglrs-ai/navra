@@ -1,1 +1,0 @@
-../../../docs/papers/security-gateway.md

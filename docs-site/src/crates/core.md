@@ -1,1 +1,0 @@
-../../../navra-core/README.md
