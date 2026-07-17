@@ -1847,6 +1847,7 @@ async fn serve_inner(
 
     // Register flow orchestration tools
     let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
+    let team_registry_ref: Arc<team_tools::TeamRegistry>;
     {
         // flow_start — registered later, after team_registry is created
 
@@ -2438,6 +2439,7 @@ async fn serve_inner(
             _trigger_registry = Some(registry);
             trigger_webhook_router = Some(webhook_router);
         }
+        team_registry_ref = team_registry;
     }
 
     // --- Knowledge memory tools ---
@@ -2986,6 +2988,8 @@ async fn serve_inner(
 
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
+
+    team_registry_ref.set_tool_operations(server.tool_operations().clone());
 
     // Config watcher for hot reload (K8s ConfigMap pattern)
     let _config_watcher = if cfg.server.config_watch {

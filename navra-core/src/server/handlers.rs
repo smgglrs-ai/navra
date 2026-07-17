@@ -1645,6 +1645,11 @@ impl McpServer {
         names
     }
 
+    /// Returns the operation classification map for all registered tools.
+    pub fn tool_operations(&self) -> &std::collections::HashMap<String, navra_mcp::ToolOperation> {
+        &self.tool_operations
+    }
+
     /// Returns the shared pause flag. Use this to wire pause/resume
     /// from external sources (e.g., system tray).
     pub fn pause_flag(&self) -> Arc<std::sync::atomic::AtomicBool> {
