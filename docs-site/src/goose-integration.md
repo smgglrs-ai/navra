@@ -1,1 +1,0 @@
-../../docs/goose-integration.md

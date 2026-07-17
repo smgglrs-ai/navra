@@ -1,1 +1,0 @@
-../../../navra-model/README.md
