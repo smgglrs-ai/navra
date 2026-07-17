@@ -1,6 +1,11 @@
 id: NAVRA-152
 title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
-status: planned
+status: in_progress
+progress: |
+  CLI subcommands implemented (agent-dojo, mcp-tox, report).
+  15 tests passing. AgentDojo connects to running instance via HTTP/JSON-RPC.
+  MCPTox uses real Rust ToolScanner. Report generates markdown comparison tables.
+  Remaining: docs site documentation (step 6).
 priority: high
 effort: 5-10d
 tags: [evaluation, security, cli]

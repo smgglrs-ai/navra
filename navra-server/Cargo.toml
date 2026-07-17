@@ -31,6 +31,7 @@ pkg-url = "{ repo }/releases/download/v{ version }/navra-v{ version }-darwin-aar
 
 [dependencies]
 navra-core = { path = "../navra-core", default-features = false }
+navra-auth = { path = "../navra-auth" }
 rmcp = { workspace = true }
 navra-safety-hooks = { path = "../navra-safety-hooks", default-features = false }
 navra-cognitive = { path = "../navra-cognitive" }

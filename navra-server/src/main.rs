@@ -11,11 +11,13 @@ mod agent_bundle;
 mod build_tools;
 mod cli;
 mod cmd_agent;
+mod cmd_eval;
 mod cmd_misc;
 mod cmd_model;
 mod cmd_pii;
 mod cmd_run;
 mod cmd_wrap;
+mod eval;
 mod config;
 mod config_watcher;
 mod demo;
@@ -274,6 +276,9 @@ async fn main() -> anyhow::Result<()> {
                 cmd_pii::pii_status();
             }
         },
+        Commands::Eval { action } => {
+            cmd_eval::run(action)?;
+        }
         Commands::Config { action } => match action {
             ConfigAction::ImportMcp {
                 path,
