@@ -158,6 +158,8 @@ pub struct DistilledEntry {
     pub confidence: f64,
     pub source_session: String,
     pub content_key: String,
+    #[serde(default)]
+    pub importance: f64,
 }
 
 impl DistilledEntry {
@@ -170,7 +172,23 @@ impl DistilledEntry {
         format!("{:x}", hasher.finalize())
     }
 
-    /// Create a new distilled entry, computing the content_key automatically.
+    /// Heuristic importance based on memory type and confidence.
+    ///
+    /// Higher-value memory types (insights, instructions) get higher base
+    /// importance so they decay slower. Confidence scales the result.
+    pub fn importance_heuristic(kind: &MemoryType, confidence: f64) -> f64 {
+        let base = match kind {
+            MemoryType::Insight => 0.8,
+            MemoryType::Instruction => 0.7,
+            MemoryType::User | MemoryType::Project => 0.6,
+            MemoryType::Fact => 0.5,
+            MemoryType::Event => 0.3,
+        };
+        base * confidence.clamp(0.0, 1.0)
+    }
+
+    /// Create a new distilled entry, computing the content_key and
+    /// importance automatically.
     pub fn new(
         kind: MemoryType,
         title: String,
@@ -180,6 +198,7 @@ impl DistilledEntry {
         source_session: String,
     ) -> Self {
         let content_key = Self::compute_key(&kind, &title);
+        let importance = Self::importance_heuristic(&kind, confidence);
         Self {
             kind,
             title,
@@ -188,6 +207,7 @@ impl DistilledEntry {
             confidence,
             source_session,
             content_key,
+            importance,
         }
     }
 }
