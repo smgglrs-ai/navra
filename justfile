@@ -82,6 +82,14 @@ assert-check:
 kill-leaked:
     pkill -f 'target/debug/navra' 2>/dev/null || echo "no leaked processes"
 
+# Build rustdoc API reference
+rustdoc:
+    cargo doc --workspace --no-deps
+
+# Build and open rustdoc API reference in browser
+rustdoc-open:
+    cargo doc --workspace --no-deps --open
+
 # Build docs site (Zola + llms.txt)
 docs:
     cd docs && zola build
