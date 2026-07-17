@@ -55,24 +55,6 @@ use std::sync::Arc;
 
 use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
 
-/// Wrapper around `Arc<CustomPiiFilter>` that implements `ContentFilter`.
-///
-/// Allows sharing a single custom PII filter across multiple pipelines.
-struct SharedCustomPiiFilter(Arc<navra_core::safety::CustomPiiFilter>);
-
-impl navra_core::safety::ContentFilter for SharedCustomPiiFilter {
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-
-    fn scan(
-        &self,
-        content: &str,
-        ctx: &navra_core::safety::FilterContext,
-    ) -> Vec<navra_core::safety::Finding> {
-        self.0.scan(content, ctx)
-    }
-}
 
 fn init_tracing() -> anyhow::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
