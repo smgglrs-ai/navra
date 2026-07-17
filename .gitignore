@@ -35,3 +35,5 @@ ONBOARDING.md
 *.bin
 !build.rs
 docs/public/
+docs-site/book/
+rust_out
