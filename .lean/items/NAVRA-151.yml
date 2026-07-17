@@ -1,6 +1,7 @@
 id: NAVRA-151
 title: "Binary distribution (GitHub releases + cargo-binstall)"
-status: planned
+status: done
+progress: 100
 priority: high
 effort: 1-3d
 tags: [distribution, onboarding]

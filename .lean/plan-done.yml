@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 158 completed items
+# 159 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -944,6 +944,13 @@ items:
     status: done
     priority: high
     effort: XL
+
+  - id: "NAVRA-151"
+    title: "Binary distribution (GitHub releases + cargo-binstall)"
+    status: done
+    priority: high
+    effort: 1-3d
+    progress: 100
 
   - id: "NAVRA-153"
     title: "Integration guides (Claude Code, Goose, OpenAI clients)"
