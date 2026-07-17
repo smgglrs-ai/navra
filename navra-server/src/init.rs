@@ -144,7 +144,7 @@ pub async fn run_init(
     // Install systemd service if requested
     if answers.install_service {
         eprintln!();
-        crate::install_systemd_units()?;
+        crate::cmd_misc::install_systemd_units()?;
     }
 
     // Print connection instructions

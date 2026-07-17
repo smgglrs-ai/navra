@@ -1180,7 +1180,7 @@ pub async fn handle_flow_start(
         }
         let mut found = None;
         for dir in &ctx.flow_dirs {
-            let expanded = crate::expand_tilde(dir);
+            let expanded = crate::util::expand_tilde(dir);
             let path = std::path::Path::new(&expanded);
             for ext in &["yaml", "yml"] {
                 let file = path.join(format!("{name}.{ext}"));

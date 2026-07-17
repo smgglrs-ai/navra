@@ -10,6 +10,9 @@ mod acp_agent;
 mod agent_bundle;
 mod build_tools;
 mod cli;
+mod cmd_misc;
+mod cmd_run;
+mod cmd_wrap;
 mod config;
 mod config_watcher;
 mod demo;
@@ -33,6 +36,7 @@ mod triggers;
 mod ui;
 mod ui_agent;
 mod ui_events;
+pub(crate) mod util;
 pub(crate) mod workspace;
 
 use clap::Parser;
@@ -185,17 +189,17 @@ async fn main() -> anyhow::Result<()> {
         Commands::Approve { id } => {
             let cfg = config::Config::load(None)?;
             let addr = cfg.server.listen_addr();
-            approve_or_deny(&addr, &id, true).await?;
+            cmd_misc::approve_or_deny(&addr, &id, true).await?;
         }
         Commands::Deny { id } => {
             let cfg = config::Config::load(None)?;
             let addr = cfg.server.listen_addr();
-            approve_or_deny(&addr, &id, false).await?;
+            cmd_misc::approve_or_deny(&addr, &id, false).await?;
         }
         Commands::Status => {
             let cfg = config::Config::load(None)?;
             let addr = cfg.server.listen_addr();
-            query_status(&addr).await?;
+            cmd_misc::query_status(&addr).await?;
         }
         Commands::Schema => {
             let schema = schemars::schema_for!(config::Config);
@@ -206,10 +210,10 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         Commands::Install => {
-            install_systemd_units()?;
+            cmd_misc::install_systemd_units()?;
         }
         Commands::Uninstall => {
-            uninstall_systemd_units()?;
+            cmd_misc::uninstall_systemd_units()?;
         }
         Commands::Agent { action } => match action {
             AgentAction::Install {
@@ -281,7 +285,7 @@ async fn main() -> anyhow::Result<()> {
                         Vec::new()
                     };
                     if let Some(p) = &path {
-                        import_mcp_file(p, redact)?;
+                        cmd_misc::import_mcp_file(p, redact)?;
                     }
                     if files.is_empty() && path.is_none() {
                         eprintln!("Usage: navra config import-mcp <path>");
@@ -289,10 +293,10 @@ async fn main() -> anyhow::Result<()> {
                         std::process::exit(1);
                     }
                     for file in &files {
-                        import_mcp_file(&file.to_string_lossy(), redact)?;
+                        cmd_misc::import_mcp_file(&file.to_string_lossy(), redact)?;
                     }
                 } else if let Some(p) = &path {
-                    import_mcp_file(p, redact)?;
+                    cmd_misc::import_mcp_file(p, redact)?;
                 }
             }
             ConfigAction::ListLibraries { config: cfg_path } => {
@@ -453,7 +457,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             } else {
-                run_agent(RunAgentParams {
+                cmd_run::run_agent(cmd_run::RunAgentParams {
                     prompt: &prompt,
                     model_name: model.as_deref(),
                     persona_name: &persona,
@@ -473,7 +477,7 @@ async fn main() -> anyhow::Result<()> {
             tool,
             verify,
         } => {
-            audit_command(limit, detail, agent, tool, verify)?;
+            cmd_misc::audit_command(limit, detail, agent, tool, verify)?;
         }
         Commands::Policy { action } => match action {
             cli::PolicyAction::Suggest {
@@ -483,7 +487,7 @@ async fn main() -> anyhow::Result<()> {
                 agent,
                 min_count,
             } => {
-                policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
+                cmd_misc::policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
             }
         },
         Commands::Wrap {
@@ -497,7 +501,7 @@ async fn main() -> anyhow::Result<()> {
             allow_domains,
             command,
         } => {
-            wrap_command(
+            cmd_wrap::wrap_command(
                 command,
                 bind,
                 safety,
@@ -541,404 +545,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn wrap_command(
-    command: Vec<String>,
-    bind: String,
-    safety: String,
-    name: Option<String>,
-    no_tray: bool,
-    discover: bool,
-    allow_all: bool,
-    sandbox: Option<String>,
-    allow_domains: Vec<String>,
-) -> anyhow::Result<()> {
-    if command.is_empty() {
-        anyhow::bail!("No command specified. Usage: navra wrap -- <command> [args...]");
-    }
-
-    let upstream_name = name.unwrap_or_else(|| {
-        std::path::Path::new(&command[0])
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("upstream")
-            .to_string()
-    });
-
-    if discover {
-        return wrap_discover(&upstream_name, &command).await;
-    }
-
-    let effective_safety = if allow_all { "none" } else { &safety };
-
-    let token = config::generate_token();
-    let token_hash = TokenAuthenticator::hash_token(&token);
-
-    let command_str = command
-        .iter()
-        .map(|s| format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    let sandbox_section = match sandbox.as_deref() {
-        Some("openshell") => {
-            format!(
-                "\n[server]\ntcp = \"{bind}\"\ncontainerized = true\nopenshell_gateway = \"http://127.0.0.1:50051\"\n"
-            )
-        }
-        Some("podman") => {
-            format!("\n[server]\ntcp = \"{bind}\"\ncontainerized = true\n")
-        }
-        Some(other) => {
-            anyhow::bail!("Unknown sandbox type '{other}'. Use 'openshell' or 'podman'.");
-        }
-        None => {
-            format!("[server]\ntcp = \"{bind}\"\n")
-        }
-    };
-
-    // Discover network requirements when sandbox is active
-    let mut egress_domains: Vec<String> = allow_domains;
-    let egress_active = sandbox.is_some() && !allow_all;
-
-    if egress_active
-        && let Some(known) = network_discovery::known_server_domains(&upstream_name, &command)
-    {
-        for d in known {
-            if !egress_domains.contains(&d) {
-                egress_domains.push(d);
-            }
-        }
-    }
-
-    let egress_section = if egress_active {
-        let domain_list = egress_domains
-            .iter()
-            .map(|d| format!("\"{d}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("egress_deny_all_external = true\negress_allowed_domains = [{domain_list}]\n")
-    } else {
-        String::new()
-    };
-
-    let network_section = if egress_active && !egress_domains.is_empty() {
-        let domain_list = egress_domains
-            .iter()
-            .map(|d| format!("\"{d}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!(
-            "\n[upstream.network]\nallowed_domains = [{domain_list}]\ndeny_all_external = true\n"
-        )
-    } else if egress_active {
-        "\n[upstream.network]\ndeny_all_external = true\n".to_string()
-    } else {
-        String::new()
-    };
-
-    let toml_str = format!(
-        r#"{sandbox_section}
-[[agents]]
-name = "wrap-client"
-token_hash = "{token_hash}"
-permissions = "wrap"
-
-[permissions.wrap]
-safety = "{effective_safety}"
-ring = 2
-allow = ["*"]
-deny = []
-operations = ["read", "write"]
-{egress_section}
-[[upstream]]
-name = "{upstream_name}"
-transport = "stdio"
-command = [{command_str}]
-{network_section}"#
-    );
-
-    let cfg: config::Config = toml::from_str(&toml_str)?;
-
-    let sandbox_label = sandbox.as_deref().unwrap_or("none (direct)");
-
-    eprintln!("navra wrap: starting secured proxy for '{upstream_name}'");
-    eprintln!();
-    eprintln!("  Upstream:  {}", command.join(" "));
-    eprintln!("  Gateway:   http://{bind}/mcp");
-    eprintln!("  Safety:    {effective_safety}");
-    eprintln!("  Sandbox:   {sandbox_label}");
-    if egress_active {
-        if egress_domains.is_empty() {
-            eprintln!("  Egress:    deny-all (no domains allowed)");
-        } else {
-            eprintln!("  Egress:    {} domain(s) allowed", egress_domains.len());
-            for d in &egress_domains {
-                eprintln!("             - {d}");
-            }
-        }
-    }
-    eprintln!("  Token:     {token}");
-    if allow_all {
-        eprintln!();
-        eprintln!("  WARNING: --allow-all disables safety filters and egress filtering");
-    }
-    eprintln!();
-    eprintln!("Use with any MCP client:");
-    eprintln!("  export MCPD_TOKEN={token}");
-    eprintln!("  # endpoint: http://{bind}/mcp");
-    eprintln!();
-    eprintln!("Press Ctrl-C to stop.");
-
-    serve(cfg, no_tray, false).await
-}
-
-async fn wrap_discover(name: &str, command: &[String]) -> anyhow::Result<()> {
-    eprintln!("navra wrap --discover: connecting to '{name}'...");
-    eprintln!("  Command: {}", command.join(" "));
-    eprintln!();
-
-    let mut cmd = tokio::process::Command::new(&command[0]);
-    for arg in &command[1..] {
-        cmd.arg(arg);
-    }
-
-    let transport = rmcp::transport::TokioChildProcess::new(cmd)
-        .map_err(|e| anyhow::anyhow!("Failed to spawn upstream: {e}"))?;
-
-    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
-        .await
-        .map_err(|e| anyhow::anyhow!("MCP handshake failed: {e}"))?;
-
-    let peer = client.peer().clone();
-
-    let tools = peer
-        .list_all_tools()
-        .await
-        .map_err(|e| anyhow::anyhow!("tools/list failed: {e}"))?;
-    let prompts = peer.list_all_prompts().await.unwrap_or_default();
-    let resources = peer.list_all_resources().await.unwrap_or_default();
-
-    println!("Upstream: {name}");
-    println!("Command: {}", command.join(" "));
-    println!();
-
-    // --- Tools ---
-    println!("Tools ({}):", tools.len());
-    let mut read_tools = Vec::new();
-    let mut write_tools = Vec::new();
-    let mut unknown_tools = Vec::new();
-
-    for tool in &tools {
-        let desc = tool
-            .description
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .take(60)
-            .collect::<String>();
-
-        let is_read = tool
-            .annotations
-            .as_ref()
-            .and_then(|a| a.read_only_hint)
-            .unwrap_or(false);
-        let is_destructive = tool
-            .annotations
-            .as_ref()
-            .and_then(|a| a.destructive_hint)
-            .unwrap_or(false);
-
-        let classification = if is_read {
-            "read"
-        } else if is_destructive {
-            "write (destructive)"
-        } else if navra_core::ifc::is_write_tool(&tool.name, tool.annotations.as_ref()) {
-            "write"
-        } else {
-            "read"
-        };
-
-        println!("  {:<30} [{classification}]  {desc}", tool.name);
-
-        match classification {
-            "read" => read_tools.push(tool.name.clone()),
-            _ => {
-                if classification.contains("write") || classification.contains("destructive") {
-                    write_tools.push(tool.name.clone());
-                } else {
-                    unknown_tools.push(tool.name.clone());
-                }
-            }
-        }
-    }
-
-    // --- Prompts ---
-    if !prompts.is_empty() {
-        println!();
-        println!("Prompts ({}):", prompts.len());
-        for prompt in &prompts {
-            let desc = prompt
-                .description
-                .as_deref()
-                .unwrap_or("")
-                .chars()
-                .take(60)
-                .collect::<String>();
-            println!("  {:<30} {desc}", prompt.name);
-        }
-    }
-
-    // --- Resources ---
-    if !resources.is_empty() {
-        println!();
-        println!("Resources ({}):", resources.len());
-        for resource in &resources {
-            let desc = resource
-                .description
-                .as_deref()
-                .unwrap_or("")
-                .chars()
-                .take(60)
-                .collect::<String>();
-            println!("  {:<30} {desc}", resource.name);
-        }
-    }
-
-    // --- Network requirements ---
-    let net_reqs = network_discovery::discover_all(name, command, &tools);
-    println!();
-    println!("Network requirements:");
-    if net_reqs.is_empty() {
-        println!("  No external endpoints detected (likely offline-only).");
-    } else {
-        for d in &net_reqs.known {
-            println!("  {d:<40} (known server registry)");
-        }
-        for d in &net_reqs.from_descriptions {
-            if !net_reqs.known.contains(d) {
-                println!("  {d:<40} (extracted from tool description)");
-            }
-        }
-        if !net_reqs.url_accepting_tools.is_empty() {
-            println!();
-            println!("  Tools that accept URLs (may need arbitrary egress):");
-            for t in &net_reqs.url_accepting_tools {
-                println!("    - {t}");
-            }
-        }
-    }
-
-    // --- Policy suggestion ---
-    println!();
-    println!("--- Suggested policy ---");
-    println!();
-    println!("[[upstream]]");
-    println!("name = \"{name}\"");
-    println!("transport = \"stdio\"");
-    println!(
-        "command = [{}]",
-        command
-            .iter()
-            .map(|s| format!("\"{}\"", s.replace('"', "\\\"")))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    if !write_tools.is_empty() {
-        println!();
-        println!("[upstream.tool_overrides]");
-        for t in &write_tools {
-            println!("{t} = \"write\"");
-        }
-    }
-
-    let all_domains = net_reqs.all_domains();
-    if !all_domains.is_empty() || net_reqs.url_accepting_tools.is_empty() {
-        println!();
-        println!("[upstream.network]");
-        if all_domains.is_empty() {
-            println!("# No external endpoints needed — full network isolation recommended.");
-            println!("deny_all_external = true");
-        } else {
-            let domain_list = all_domains
-                .iter()
-                .map(|d| format!("\"{d}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
-            println!("allowed_domains = [{domain_list}]");
-            println!("deny_all_external = true");
-        }
-    } else {
-        println!();
-        println!("# [upstream.network]");
-        println!("# WARNING: this server accepts URLs as input — cannot determine");
-        println!("# a fixed domain allowlist. Review tool usage and add domains manually.");
-        println!("# allowed_domains = [\"api.example.com\"]");
-        println!("# deny_all_external = true");
-    }
-
-    println!();
-    println!("[permissions.{name}]");
-    println!("safety = \"standard\"");
-    println!("ring = 2");
-    if write_tools.is_empty() {
-        println!("allow = [\"*\"]");
-        println!("operations = [\"read\"]");
-    } else {
-        let read_patterns: Vec<String> = read_tools.iter().map(|t| format!("\"{t}\"")).collect();
-        let write_patterns: Vec<String> = write_tools.iter().map(|t| format!("\"{t}\"")).collect();
-        println!(
-            "allow = [{}]",
-            read_tools
-                .iter()
-                .chain(write_tools.iter())
-                .chain(unknown_tools.iter())
-                .map(|t| format!("\"{t}\""))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        if !read_patterns.is_empty() {
-            println!("# Read-only tools: {}", read_patterns.join(", "));
-        }
-        if !write_patterns.is_empty() {
-            println!(
-                "# Write tools (review carefully): {}",
-                write_patterns.join(", ")
-            );
-        }
-        println!("operations = [\"read\", \"write\"]");
-        println!("approve = [{}]", write_patterns.join(", "));
-    }
-    if !all_domains.is_empty() {
-        let domain_list = all_domains
-            .iter()
-            .map(|d| format!("\"{d}\""))
-            .collect::<Vec<_>>()
-            .join(", ");
-        println!("egress_deny_all_external = true");
-        println!("egress_allowed_domains = [{domain_list}]");
-    }
-
-    // Shut down the client
-    drop(peer);
-    drop(client);
-
-    Ok(())
-}
-
-fn import_mcp_file(path: &str, redact: bool) -> anyhow::Result<()> {
-    let content = std::fs::read_to_string(path)?;
-    let (format, servers) = config::import::detect_and_parse(&content)?;
-    eprintln!(
-        "# {} — detected {} format, {} server(s)",
-        path,
-        format,
-        servers.len()
-    );
-    print!("{}", config::import::to_toml(&servers, redact));
     Ok(())
 }
 
@@ -1038,7 +644,7 @@ async fn start_model_server_container(
                 break;
             }
         } else if let Some(ref path_str) = model_cfg.model_path {
-            let expanded = expand_tilde(path_str);
+            let expanded = util::expand_tilde(path_str);
             let p = std::path::PathBuf::from(&expanded);
             if p.exists() {
                 model_path = Some(p);
@@ -1162,12 +768,12 @@ async fn model_serve(
     }
 
     let vram_budget = budget
-        .map(|b| parse_size_bytes(&b))
+        .map(|b| util::parse_size_bytes(&b))
         .transpose()?
         .unwrap_or(0);
 
     let server_config = navra_model_server::ModelServerConfig {
-        models: convert_model_configs(&cfg.models),
+        models: util::convert_model_configs(&cfg.models),
         bind: bind.clone(),
         vram_budget,
         desktop_reservation: 2 * 1024 * 1024 * 1024,
@@ -1177,21 +783,7 @@ async fn model_serve(
     server.serve(&bind).await
 }
 
-fn parse_size_bytes(s: &str) -> anyhow::Result<u64> {
-    let s = s.trim();
-    if let Some(gb) = s.strip_suffix("GB").or_else(|| s.strip_suffix("gb")) {
-        let n: u64 = gb.trim().parse()?;
-        Ok(n * 1024 * 1024 * 1024)
-    } else if let Some(mb) = s.strip_suffix("MB").or_else(|| s.strip_suffix("mb")) {
-        let n: u64 = mb.trim().parse()?;
-        Ok(n * 1024 * 1024)
-    } else {
-        s.parse::<u64>()
-            .map_err(|_| anyhow::anyhow!("invalid size: {s} (use e.g. 24GB, 16GB, 512MB)"))
-    }
-}
-
-async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
+pub(crate) async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
     serve_inner(cfg, TransportMode::Http { no_tray }, dev_mode).await
 }
 
@@ -1616,7 +1208,7 @@ async fn serve_inner(
     // The model registry is owned by navra-model-server and manages
     // model lifecycle (loading, unloading, runtime process tracking).
     // The gateway extracts the model backends for direct use.
-    let model_entries = convert_model_configs(&cfg.models);
+    let model_entries = util::convert_model_configs(&cfg.models);
     let model_registry = navra_model_server::ModelRegistry::from_config(&model_entries)
         .await
         .context("failed to build model registry")?;
@@ -2202,7 +1794,7 @@ async fn serve_inner(
     // Loaded once here so upstream persona: prompts can be registered
     // before the forge is shared with other subsystems.
     let mut forge = if let Some(ref cc_path) = cfg.cognitive_core {
-        let expanded = expand_tilde(cc_path);
+        let expanded = util::expand_tilde(cc_path);
         match navra_cognitive::ForgeService::load(std::path::Path::new(&expanded)) {
             Ok(f) => f,
             Err(e) => {
@@ -2356,8 +1948,8 @@ async fn serve_inner(
 
         // OpenAPI bridge — parse spec directly, skip MCP transport
         if let Some(ref spec_source) = upstream_cfg.openapi {
-            let auth = resolve_openapi_auth(&upstream_cfg.auth);
-            let spec_source = resolve_env_vars(spec_source);
+            let auth = util::resolve_openapi_auth(&upstream_cfg.auth);
+            let spec_source = util::resolve_env_vars(spec_source);
             let timeout = upstream_cfg
                 .request_timeout_secs
                 .map(std::time::Duration::from_secs);
@@ -3331,7 +2923,7 @@ async fn serve_inner(
             navra_addr: cfg.server.listen_addr(),
             signer: Arc::clone(&root_signer),
             forge: cfg.cognitive_core.as_ref().and_then(|p| {
-                let expanded = expand_tilde(p);
+                let expanded = util::expand_tilde(p);
                 navra_cognitive::ForgeService::load(std::path::Path::new(&expanded))
                     .map(Arc::new)
                     .ok()
@@ -3339,7 +2931,7 @@ async fn serve_inner(
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
             audit_log: Some(Arc::clone(&audit_log)),
-            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| expand_tilde(p)),
+            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| util::expand_tilde(p)),
             model_server_url: model_server_url.clone(),
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
@@ -3398,7 +2990,7 @@ async fn serve_inner(
 
         // personas_list
         let persona_data: Vec<serde_json::Value> = if let Some(ref cc_path) = cfg.cognitive_core {
-            let expanded = expand_tilde(cc_path);
+            let expanded = util::expand_tilde(cc_path);
             match navra_cognitive::ForgeService::load(std::path::Path::new(&expanded)) {
                 Ok(forge) => forge
                     .persona_names()
@@ -3459,7 +3051,7 @@ async fn serve_inner(
 
         // Initialize checkpoint store if enabled
         let checkpoint = if cfg.budget.checkpoint {
-            let db_path = expand_tilde(&cfg.budget.checkpoint_db);
+            let db_path = util::expand_tilde(&cfg.budget.checkpoint_db);
             match navra_flow::DagCheckpoint::open(std::path::Path::new(&db_path)) {
                 Ok(cp) => {
                     tracing::info!(path = %db_path, "Flow checkpoint store opened");
@@ -3490,7 +3082,7 @@ async fn serve_inner(
             navra_addr: cfg.server.listen_addr(),
             signer: Arc::clone(&root_signer),
             forge: cfg.cognitive_core.as_ref().and_then(|p| {
-                let expanded = expand_tilde(p);
+                let expanded = util::expand_tilde(p);
                 navra_cognitive::ForgeService::load(std::path::Path::new(&expanded))
                     .ok()
                     .map(Arc::new)
@@ -3506,7 +3098,7 @@ async fn serve_inner(
             root_payload: Some(root_payload.clone()),
             pii_filter: reasoning_pii_filter.clone(),
             audit_log: Some(Arc::clone(&audit_log)),
-            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| expand_tilde(p)),
+            cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| util::expand_tilde(p)),
             model_server_url: model_server_url.clone(),
             gpu_semaphore: Arc::clone(&gpu_semaphore),
             containerized,
@@ -4872,1066 +4464,6 @@ async fn serve_inner(
     }
 
     Ok(())
-}
-
-/// Send an approve or deny request to the running server via JSON-RPC.
-async fn approve_or_deny(addr: &str, request_id: &str, approve: bool) -> anyhow::Result<()> {
-    let tool_name = if approve { "file_approve" } else { "file_deny" };
-    let action = if approve { "Approved" } else { "Denied" };
-
-    let client = reqwest::Client::new();
-    let url = format!("http://{addr}/mcp");
-
-    let body = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "id": 1,
-        "params": {
-            "name": tool_name,
-            "arguments": {
-                "request_id": request_id
-            }
-        }
-    });
-
-    let resp = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Server returned {status}: {text}");
-    }
-
-    let result: serde_json::Value = resp.json().await?;
-    if let Some(error) = result.get("error") {
-        let msg = error
-            .get("message")
-            .and_then(|m| m.as_str())
-            .unwrap_or("unknown");
-        anyhow::bail!("Server error: {msg}");
-    }
-
-    println!("{action} request {request_id}");
-    Ok(())
-}
-
-/// Query the running server for status via the initialize endpoint.
-async fn query_status(addr: &str) -> anyhow::Result<()> {
-    let client = reqwest::Client::new();
-    let url = format!("http://{addr}/mcp");
-
-    let body = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "initialize",
-        "id": 1,
-        "params": {
-            "protocolVersion": "2025-03-26",
-            "capabilities": {},
-            "clientInfo": {
-                "name": "navra-cli",
-                "version": env!("CARGO_PKG_VERSION")
-            }
-        }
-    });
-
-    let resp = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await;
-
-    match resp {
-        Ok(r) if r.status().is_success() => {
-            let result: serde_json::Value = r.json().await?;
-            if let Some(info) = result.get("result") {
-                let name = info
-                    .get("serverInfo")
-                    .and_then(|s| s.get("name"))
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("unknown");
-                let version = info
-                    .get("serverInfo")
-                    .and_then(|s| s.get("version"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let has_tools = info
-                    .get("capabilities")
-                    .and_then(|c| c.get("tools"))
-                    .is_some();
-                let has_prompts = info
-                    .get("capabilities")
-                    .and_then(|c| c.get("prompts"))
-                    .is_some();
-                let has_resources = info
-                    .get("capabilities")
-                    .and_then(|c| c.get("resources"))
-                    .is_some();
-
-                println!("Server: {name} v{version}");
-                println!("Status: running");
-                println!("Address: {addr}");
-                println!(
-                    "Capabilities: {}",
-                    [
-                        has_tools.then_some("tools"),
-                        has_prompts.then_some("prompts"),
-                        has_resources.then_some("resources"),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-                );
-            }
-        }
-        Ok(r) => {
-            println!("Server at {addr} returned {}", r.status());
-        }
-        Err(_) => {
-            println!("Server at {addr} is not reachable.");
-            println!("Is navra running? Start it with: navra serve");
-        }
-    }
-    Ok(())
-}
-
-/// Install systemd user units for navra.
-pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
-    let unit_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
-        .join("systemd/user");
-    std::fs::create_dir_all(&unit_dir)?;
-
-    let service_content = include_str!("../systemd/navra.service");
-    let socket_content = include_str!("../systemd/navra.socket");
-
-    let service_path = unit_dir.join("navra.service");
-    let socket_path = unit_dir.join("navra.socket");
-
-    std::fs::write(&service_path, service_content)?;
-    println!("Installed {}", service_path.display());
-
-    std::fs::write(&socket_path, socket_content)?;
-    println!("Installed {}", socket_path.display());
-
-    // Reload systemd and enable
-    let reload = std::process::Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status();
-    if let Ok(status) = reload
-        && status.success()
-    {
-        println!("Reloaded systemd user daemon");
-    }
-
-    let enable = std::process::Command::new("systemctl")
-        .args(["--user", "enable", "navra.service", "navra.socket"])
-        .status();
-    if let Ok(status) = enable
-        && status.success()
-    {
-        println!("Enabled navra.service and navra.socket");
-    }
-
-    println!("\nTo start now:  systemctl --user start navra.service");
-    println!("To check logs: journalctl --user -u navra.service -f");
-    Ok(())
-}
-
-/// Uninstall systemd user units for navra.
-fn uninstall_systemd_units() -> anyhow::Result<()> {
-    // Stop and disable first
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "stop", "navra.service", "navra.socket"])
-        .status();
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "disable", "navra.service", "navra.socket"])
-        .status();
-
-    let unit_dir = dirs::config_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
-        .join("systemd/user");
-
-    let service_path = unit_dir.join("navra.service");
-    let socket_path = unit_dir.join("navra.socket");
-
-    if service_path.exists() {
-        std::fs::remove_file(&service_path)?;
-        println!("Removed {}", service_path.display());
-    }
-    if socket_path.exists() {
-        std::fs::remove_file(&socket_path)?;
-        println!("Removed {}", socket_path.display());
-    }
-
-    let _ = std::process::Command::new("systemctl")
-        .args(["--user", "daemon-reload"])
-        .status();
-
-    println!("navra systemd units uninstalled");
-    Ok(())
-}
-
-macro_rules! authed_transport {
-    ($endpoint:expr, $token:expr) => {{
-        let mut config =
-            rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
-                $endpoint,
-            );
-        if let Some(t) = $token {
-            config = config.auth_header(t);
-        }
-        rmcp::transport::StreamableHttpClientTransport::from_config(config)
-    }};
-}
-
-struct RunAgentParams<'a> {
-    prompt: &'a str,
-    model_name: Option<&'a str>,
-    persona_name: &'a str,
-    endpoint: &'a str,
-    token: Option<&'a str>,
-    max_iterations: usize,
-    upstream_prompts: &'a [String],
-    #[allow(dead_code)]
-    no_embedded: bool,
-}
-
-async fn run_agent(params: RunAgentParams<'_>) -> anyhow::Result<()> {
-    let RunAgentParams {
-        prompt,
-        model_name,
-        persona_name,
-        endpoint,
-        token,
-        max_iterations,
-        upstream_prompts,
-        ..
-    } = params;
-    // Auto-detect model from Ollama if not specified
-    let model_name = if let Some(m) = model_name {
-        m.to_string()
-    } else {
-        // Pick first available Ollama model
-        let resp = reqwest::Client::new()
-            .get("http://localhost:11434/api/tags")
-            .send()
-            .await
-            .ok()
-            .and_then(|r| futures_util::FutureExt::now_or_never(r.json::<serde_json::Value>()));
-        match resp {
-            Some(Ok(tags)) => tags["models"]
-                .as_array()
-                .and_then(|m| m.first())
-                .and_then(|m| m["name"].as_str())
-                .unwrap_or("gemma4:26b")
-                .to_string(),
-            _ => "gemma4:26b".to_string(),
-        }
-    };
-
-    eprintln!("Model:    {model_name}");
-    eprintln!("Persona:  {persona_name}");
-    eprintln!("Endpoint: {endpoint}");
-    eprintln!();
-
-    // Detect model provider from name
-    enum ModelProvider {
-        Ollama,
-        VertexAI {
-            url: String,
-            token: Option<String>,
-            region: String,
-        },
-        AnthropicDirect {
-            key: String,
-        },
-    }
-
-    let provider = if model_name.starts_with("claude") {
-        let project = std::env::var("ANTHROPIC_VERTEX_PROJECT_ID")
-            .or_else(|_| std::env::var("GOOGLE_CLOUD_PROJECT"))
-            .unwrap_or_default();
-        let region = std::env::var("CLOUD_ML_REGION")
-            .or_else(|_| std::env::var("GOOGLE_CLOUD_REGION"))
-            .unwrap_or_else(|_| "us-east5".to_string());
-
-        if !project.is_empty() {
-            let host = if region == "global" {
-                "aiplatform.googleapis.com".to_string()
-            } else {
-                format!("{region}-aiplatform.googleapis.com")
-            };
-            let url = format!(
-                "https://{host}/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{model_name}:rawPredict"
-            );
-            let token = std::process::Command::new("gcloud")
-                .args(["auth", "print-access-token"])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|s| s.trim().to_string());
-            ModelProvider::VertexAI { url, token, region }
-        } else if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
-            ModelProvider::AnthropicDirect { key }
-        } else {
-            anyhow::bail!(
-                "Claude model requested but no ANTHROPIC_VERTEX_PROJECT_ID or ANTHROPIC_API_KEY set"
-            );
-        }
-    } else {
-        ModelProvider::Ollama
-    };
-
-    // Load persona if cognitive_core exists
-    let mut forge = navra_cognitive::ForgeService::load(std::path::Path::new("cognitive_core"))
-        .ok()
-        .or_else(|| {
-            // Try common locations
-            for p in ["../cognitive_core", "/etc/navra/cognitive_core"] {
-                if let Ok(f) = navra_cognitive::ForgeService::load(std::path::Path::new(p)) {
-                    return Some(f);
-                }
-            }
-            None
-        });
-
-    // Discover upstream personas from the running navra server
-    if let Some(ref mut f) = forge {
-        let discover_peer = {
-            let transport = authed_transport!(endpoint, token);
-            rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
-                .await
-                .ok()
-                .map(|c| {
-                    let peer = c.peer().clone();
-                    tokio::spawn(async move {
-                        let _ = c.waiting().await;
-                    });
-                    peer
-                })
-        };
-        if let Some(peer) = discover_peer {
-            let client = navra_agent::McpClient::new(peer);
-            if let Ok(prompts) = client.list_prompts().await {
-                for p in &prompts {
-                    if let Some(persona_name) = p.name.strip_prefix("persona:") {
-                        let desc = p.description.as_deref().unwrap_or("");
-                        if f.register_upstream_persona(persona_name, "upstream", &p.name, desc) {
-                            eprintln!("Discovered upstream persona: {persona_name}");
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Build agent with provider-specific backend
-    let base_builder = navra_agent::Agent::builder().endpoint(endpoint).await?;
-
-    let non_progress = vec![
-        "team_status".to_string(),
-        "team_result".to_string(),
-        "team_bb_read".to_string(),
-        "team_bb_notifications".to_string(),
-        "models_list".to_string(),
-        "personas_list".to_string(),
-        "flow_status".to_string(),
-        "flow_result".to_string(),
-    ];
-
-    macro_rules! configure_builder {
-        ($b:expr) => {
-            $b.max_iterations(max_iterations)
-                .temperature(0.0)
-                .max_tokens(8192)
-                .force_tool_iterations(5)
-                .non_progress_tools(non_progress.clone())
-        };
-    }
-
-    // Embedded runtime state — kept alive for the duration of the agent run
-    #[allow(unused_mut)]
-    let mut embedded_endpoint: Option<(
-        Box<dyn navra_model_runtime::ModelRuntime>,
-        navra_model_runtime::Endpoint,
-    )> = None;
-
-    let mut builder = match provider {
-        ModelProvider::VertexAI {
-            url,
-            token,
-            ref region,
-        } => {
-            eprintln!("Provider: Vertex AI ({region})");
-            let backend = navra_model::AnthropicBackend::new(
-                url,
-                &model_name,
-                token,
-                navra_model::Locality::Remote,
-            );
-            configure_builder!(base_builder.model(backend))
-        }
-        ModelProvider::AnthropicDirect { key } => {
-            eprintln!("Provider: Anthropic API");
-            let backend = navra_model::AnthropicBackend::new(
-                "https://api.anthropic.com",
-                &model_name,
-                Some(key),
-                navra_model::Locality::Remote,
-            );
-            configure_builder!(base_builder.model(backend))
-        }
-        ModelProvider::Ollama => {
-            #[cfg(feature = "embedded")]
-            if !no_embedded {
-                let (m, t) = if let Some(pos) = model_name.find(':') {
-                    (&model_name[..pos], &model_name[pos + 1..])
-                } else {
-                    (model_name.as_str(), "latest")
-                };
-                if let Some(gguf_path) = navra_model_hub::try_local_ollama(m, t) {
-                    let runtime = navra_model_runtime::embedded::EmbeddedRuntime::new();
-                    let gpus = navra_model_runtime::gpu::detect_gpus();
-                    let target = navra_model_runtime::HardwareTarget::from_gpus(&gpus);
-                    let cfg = navra_model_runtime::ServeConfig {
-                        model_path: gguf_path,
-                        context_size: 8192,
-                        gpus,
-                        target,
-                        ..Default::default()
-                    };
-                    match runtime.serve(&cfg).await {
-                        Ok(ep) => {
-                            eprintln!("Provider: embedded (llama.cpp in-process)");
-                            embedded_endpoint = Some((Box::new(runtime), ep));
-                        }
-                        Err(e) => {
-                            eprintln!("Embedded runtime failed ({e}), falling back to Ollama API");
-                        }
-                    }
-                }
-            }
-
-            if let Some((_, ref ep)) = embedded_endpoint {
-                let backend = navra_model::OpenAiBackend::new(
-                    format!("{}/v1", ep.url),
-                    &model_name,
-                    None,
-                    navra_model::Locality::Local,
-                );
-                configure_builder!(base_builder.model(backend))
-            } else {
-                let ollama_url = std::env::var("OLLAMA_HOST")
-                    .unwrap_or_else(|_| "http://localhost:11434".to_string());
-                eprintln!("Provider: Ollama ({ollama_url})");
-                let backend = navra_model::OpenAiBackend::new(
-                    format!("{ollama_url}/v1"),
-                    &model_name,
-                    None,
-                    navra_model::Locality::Local,
-                );
-                configure_builder!(base_builder.model(backend))
-            }
-        }
-    };
-
-    // Apply auth token
-    let auth_token = token
-        .map(String::from)
-        .or_else(|| std::env::var("MCPD_TOKEN").ok());
-    if let Some(ref t) = auth_token {
-        builder = builder.auth_token(t.clone());
-    }
-
-    // Parse --upstream-prompt flags into McpPromptRef entries
-    let cli_prompt_refs: Vec<navra_cognitive::McpPromptRef> = upstream_prompts
-        .iter()
-        .filter_map(|s| {
-            let (upstream, prompt_name) = s.split_once(':')?;
-            Some(navra_cognitive::McpPromptRef {
-                upstream: upstream.to_string(),
-                prompt: prompt_name.to_string(),
-                inject_position: navra_cognitive::InjectPosition::AfterExamples,
-                arguments: None,
-            })
-        })
-        .collect();
-
-    if !cli_prompt_refs.is_empty() {
-        eprintln!("Upstream prompts: {}", cli_prompt_refs.len());
-    }
-
-    // Apply persona
-    if let Some(ref forge) = forge {
-        if let Some(persona) = forge.get_persona(persona_name) {
-            // Check if this is an MCP-sourced persona
-            let has_source = persona.source.is_some();
-
-            // Collect persona-defined mcp_prompts and CLI-provided ones
-            let all_refs: Vec<navra_cognitive::McpPromptRef> = persona
-                .mcp_prompts
-                .iter()
-                .cloned()
-                .chain(cli_prompt_refs.iter().cloned())
-                .collect();
-
-            if has_source || !all_refs.is_empty() {
-                // Need an MCP connection to resolve source and/or prompts
-                let resolver_peer = {
-                    let transport = authed_transport!(endpoint, token);
-                    let c =
-                        rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
-                    let peer = c.peer().clone();
-                    tokio::spawn(async move {
-                        let _ = c.waiting().await;
-                    });
-                    peer
-                };
-                let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
-
-                if has_source {
-                    // MCP-sourced persona: resolve source + mcp_prompts together
-                    builder = builder
-                        .persona_from_mcp(forge, persona_name, &mut resolver_client, prompt)
-                        .await?;
-
-                    // Also resolve any CLI-provided upstream prompts
-                    if !cli_prompt_refs.is_empty() {
-                        let extra_resolved = navra_agent::resolve::resolve_mcp_prompts(
-                            &mut resolver_client,
-                            &cli_prompt_refs,
-                            prompt,
-                        )
-                        .await?;
-
-                        if !extra_resolved.is_empty() {
-                            eprintln!("Resolved {} CLI upstream prompt(s)", extra_resolved.len());
-                        }
-                    }
-
-                    eprintln!("Loaded MCP-sourced persona: {persona_name}");
-                } else {
-                    // Local persona with upstream prompts to resolve
-                    let resolved = navra_agent::resolve::resolve_mcp_prompts(
-                        &mut resolver_client,
-                        &all_refs,
-                        prompt,
-                    )
-                    .await?;
-
-                    if !resolved.is_empty() {
-                        eprintln!("Resolved {} upstream prompt(s)", resolved.len());
-                    }
-
-                    builder = builder.persona_with_prompts(forge, persona_name, &resolved)?;
-                }
-            } else {
-                builder = builder.persona(forge, persona_name)?;
-            }
-
-            eprintln!("Loaded persona: {persona_name}");
-        }
-    } else if !cli_prompt_refs.is_empty() {
-        // No persona loaded but CLI prompts were specified — resolve and append
-        let resolver_peer = {
-            let transport = authed_transport!(endpoint, token);
-            let c = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
-            let peer = c.peer().clone();
-            tokio::spawn(async move {
-                let _ = c.waiting().await;
-            });
-            peer
-        };
-        let mut resolver_client = navra_agent::McpClient::new(resolver_peer);
-
-        let resolved = navra_agent::resolve::resolve_mcp_prompts(
-            &mut resolver_client,
-            &cli_prompt_refs,
-            prompt,
-        )
-        .await?;
-
-        if !resolved.is_empty() {
-            let extra = resolved
-                .iter()
-                .map(|rp| format!("## Upstream Prompt: {}\n\n{}", rp.label, rp.content))
-                .collect::<Vec<_>>()
-                .join("\n\n");
-
-            builder = builder.system_prompt(extra);
-            eprintln!(
-                "Resolved {} upstream prompt(s) (no persona)",
-                resolved.len()
-            );
-        }
-    }
-
-    let mut agent = builder.build().await?;
-
-    // List tools
-    let tools = agent.client().list_tools().await?;
-    eprintln!("{} tools available", tools.len());
-    eprintln!();
-
-    // Run
-    let start = std::time::Instant::now();
-    match agent.run(prompt).await {
-        Ok(result) => {
-            // Print report to stdout (pipeable)
-            println!("{}", result.response);
-
-            // Print stats to stderr
-            eprintln!();
-            eprintln!("---");
-            eprintln!("Iterations: {}", result.iterations);
-            eprintln!(
-                "Tokens:     {} in + {} out",
-                result.input_tokens, result.output_tokens
-            );
-            eprintln!("Time:       {:.1}s", start.elapsed().as_secs_f64());
-            eprintln!("Taint:      {:?}", result.taint);
-            eprintln!("Blackbox:   navra audit");
-        }
-        Err(e) => {
-            eprintln!("Error: {e}");
-            std::process::exit(1);
-        }
-    }
-
-    if let Some((runtime, ep)) = embedded_endpoint {
-        let _ = runtime.stop(&ep).await;
-    }
-
-    Ok(())
-}
-
-pub(crate) fn expand_tilde(path: &str) -> String {
-    let mut result = path.to_string();
-    if result.starts_with("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        result = format!("{}{}", home.display(), &result[1..]);
-    }
-    // Expand $VAR and ${VAR} patterns
-    let mut out = String::with_capacity(result.len());
-    let mut chars = result.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '$' {
-            let braced = chars.peek() == Some(&'{');
-            if braced {
-                chars.next();
-            }
-            let var_name: String = chars
-                .by_ref()
-                .take_while(|&ch| {
-                    if braced {
-                        ch != '}'
-                    } else {
-                        ch.is_alphanumeric() || ch == '_'
-                    }
-                })
-                .collect();
-            if let Ok(val) = std::env::var(&var_name) {
-                out.push_str(&val);
-            } else {
-                out.push('$');
-                if braced {
-                    out.push('{');
-                }
-                out.push_str(&var_name);
-                if braced {
-                    out.push('}');
-                }
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-fn convert_model_configs(
-    models: &std::collections::HashMap<String, config::ModelConfig>,
-) -> std::collections::HashMap<String, navra_model_server::config::ModelEntry> {
-    models
-        .iter()
-        .map(|(name, mc)| {
-            (
-                name.clone(),
-                navra_model_server::config::ModelEntry {
-                    model_path: mc.model_path.clone(),
-                    source: mc.source.clone(),
-                    tokenizer_path: mc.tokenizer_path.clone(),
-                    task: mc.task.clone(),
-                    device: mc.device.clone(),
-                    dimensions: mc.dimensions,
-                    labels: mc.labels.clone(),
-                    threshold: mc.threshold,
-                    format: mc.format.clone(),
-                    execution_mode: mc.execution_mode,
-                    runtime: mc.runtime.clone(),
-                    port: mc.port,
-                    context_size: mc.context_size,
-                    parallel: mc.parallel,
-                    model_name: mc.model_name.clone(),
-                    cache_type: mc.cache_type,
-                    speculative: mc.speculative.as_ref().map(|s| {
-                        navra_model_server::config::SpeculativeEntry {
-                            draft_model: s.draft_model.clone(),
-                            draft_tokens: s.draft_tokens,
-                            draft_min_p: s.draft_min_p,
-                        }
-                    }),
-                    base_url: mc.base_url.clone(),
-                    api_key: mc.api_key.clone(),
-                    locality: mc.locality.clone(),
-                },
-            )
-        })
-        .collect()
-}
-
-fn audit_command(
-    limit: usize,
-    detail: bool,
-    agent: Option<String>,
-    tool: Option<String>,
-    verify: bool,
-) -> anyhow::Result<()> {
-    let bb_path = dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("navra/blackbox.db");
-    if !bb_path.exists() {
-        anyhow::bail!(
-            "No blackbox found at {}. Start the server first.",
-            bb_path.display()
-        );
-    }
-    let bb = navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    if verify {
-        let (valid, broken) = bb.verify_chain();
-        match broken {
-            None => println!("Blackbox integrity: OK ({valid} entries, chain valid)"),
-            Some(seq) => println!(
-                "Blackbox integrity: BROKEN at seq {seq} ({valid} valid entries before break)"
-            ),
-        }
-        return Ok(());
-    }
-
-    println!("Blackbox: {} ({} entries)\n", bb_path.display(), bb.count());
-
-    let entries = bb.recent(limit);
-    let filtered: Vec<_> = entries
-        .iter()
-        .rev()
-        .filter(|e| agent.as_ref().is_none_or(|a| e.agent_name == *a))
-        .filter(|e| tool.as_ref().is_none_or(|t| e.tool_name == *t))
-        .collect();
-
-    if detail {
-        for e in &filtered {
-            println!(
-                "seq={} agent={} tool={} outcome={} duration={}us",
-                e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us
-            );
-            let args_short = if e.tool_args.len() > 120 {
-                &e.tool_args[..120]
-            } else {
-                &e.tool_args
-            };
-            let result_short = if e.tool_result.len() > 120 {
-                &e.tool_result[..120]
-            } else {
-                &e.tool_result
-            };
-            println!("  args:   {}", args_short);
-            println!("  result: {}", result_short);
-            println!("  ifc:    {}", e.ifc_label);
-            println!();
-        }
-    } else {
-        println!(
-            "{:<6} {:<12} {:<12} {:<20} {:<8} IFC",
-            "SEQ", "AGENT", "OUTCOME", "TOOL", "US"
-        );
-        println!("{}", "-".repeat(80));
-        for e in &filtered {
-            let ifc_short = e
-                .ifc_label
-                .replace("DataLabel { integrity: ", "")
-                .replace(", confidentiality: ", "/")
-                .replace(" }", "");
-            println!(
-                "{:<6} {:<12} {:<12} {:<20} {:<8} {}",
-                e.seq, e.agent_name, e.outcome, e.tool_name, e.duration_us, ifc_short
-            );
-        }
-    }
-
-    println!("\n{} entries shown", filtered.len());
-    Ok(())
-}
-
-fn policy_suggest(
-    hours: u64,
-    format: &str,
-    db_path: Option<&str>,
-    agent_filter: Option<&str>,
-    min_count: usize,
-) -> anyhow::Result<()> {
-    let bb_path = db_path.map(std::path::PathBuf::from).unwrap_or_else(|| {
-        dirs::data_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("navra/blackbox.db")
-    });
-    if !bb_path.exists() {
-        anyhow::bail!(
-            "No blackbox found at {}. Start the server first.",
-            bb_path.display()
-        );
-    }
-    let bb = navra_core::blackbox::Blackbox::open(&bb_path).map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    let cutoff_ms = {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("system clock before UNIX epoch")
-            .as_millis() as i64;
-        now - (hours as i64 * 3600 * 1000)
-    };
-
-    let entries = bb.recent(10000);
-    let denials: Vec<_> = entries
-        .iter()
-        .filter(|e| e.outcome.starts_with("denied"))
-        .filter(|e| e.timestamp_ms >= cutoff_ms)
-        .filter(|e| agent_filter.is_none_or(|a| e.agent_name == a))
-        .collect();
-
-    if denials.is_empty() {
-        println!("No denials found in the last {hours} hours.");
-        return Ok(());
-    }
-
-    // Group by (permissions, tool_name, outcome)
-    let mut groups: std::collections::HashMap<
-        (String, String, String),
-        Vec<&navra_core::blackbox::BlackboxEntry>,
-    > = std::collections::HashMap::new();
-    for e in &denials {
-        let key = (
-            e.agent_permissions.clone(),
-            e.tool_name.clone(),
-            e.outcome.clone(),
-        );
-        groups.entry(key).or_default().push(e);
-    }
-
-    // Sort by count descending
-    let mut sorted: Vec<_> = groups.iter().collect();
-    sorted.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
-
-    println!(
-        "# navra policy suggest — {} denials in last {}h, {} groups\n",
-        denials.len(),
-        hours,
-        sorted.len()
-    );
-
-    let show_cedar = format == "cedar" || format == "both";
-    let show_toml = format == "toml" || format == "both";
-
-    for ((permissions, tool_name, outcome), entries) in &sorted {
-        if entries.len() < min_count {
-            continue;
-        }
-
-        let agents: Vec<_> = entries
-            .iter()
-            .map(|e| e.agent_name.as_str())
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .collect();
-
-        let is_dangerous = tool_name.contains("exec")
-            || tool_name.contains("push")
-            || tool_name.contains("delete");
-
-        println!(
-            "# {} denials: {} → {} ({})",
-            entries.len(),
-            agents.join(", "),
-            tool_name,
-            outcome
-        );
-        if is_dangerous {
-            println!("# ⚠️  WARNING: this is a dangerous operation — review carefully");
-        }
-
-        match outcome.as_str() {
-            "denied_acl" => {
-                if show_cedar {
-                    println!(
-                        "permit(\n    principal == Agent::\"{}\",\n    action == Action::\"{}\",\n    resource\n);\n",
-                        agents.first().unwrap_or(&"*"),
-                        tool_name
-                    );
-                }
-                if show_toml {
-                    println!(
-                        "# [permissions.{}]\n# operations = [..., \"{}\"]\n",
-                        permissions,
-                        tool_name.split('_').next_back().unwrap_or(tool_name)
-                    );
-                }
-            }
-            "denied_ifc" => {
-                // Extract common path patterns from args
-                let paths: Vec<_> = entries
-                    .iter()
-                    .filter_map(|e| {
-                        serde_json::from_str::<serde_json::Value>(&e.tool_args)
-                            .ok()
-                            .and_then(|v| v.get("path").and_then(|p| p.as_str().map(String::from)))
-                    })
-                    .collect();
-
-                let common_prefix = if !paths.is_empty() {
-                    common_path_prefix(&paths)
-                } else {
-                    String::new()
-                };
-
-                if show_cedar {
-                    println!("# IFC write denial — consider adding trusted path");
-                    if !common_prefix.is_empty() {
-                        println!(
-                            "# or use Cedar context:\n\
-                             permit(\n    principal == Agent::\"{}\",\n    \
-                             action == Action::\"{}\",\n    resource\n) \
-                             when {{ context.trust_state == \"normal\" && \
-                             context.approval_granted == \"true\" }};\n",
-                            agents.first().unwrap_or(&"*"),
-                            tool_name
-                        );
-                    }
-                }
-                if show_toml {
-                    if !common_prefix.is_empty() {
-                        println!(
-                            "# [permissions.{}]\n# trusted_paths = [\"{}/**\"]\n",
-                            permissions, common_prefix
-                        );
-                    } else {
-                        println!(
-                            "# [permissions.{}]\n# tainted_write_policy = \"approve\"  # was: \"deny\"\n",
-                            permissions
-                        );
-                    }
-                }
-            }
-            "denied_rate" => {
-                if show_toml {
-                    println!(
-                        "# [permissions.{}]\n# rate_limit = {{ max_calls = {}, window_secs = 60 }}\n",
-                        permissions,
-                        entries.len() * 2
-                    );
-                }
-            }
-            _ => {
-                println!("# No automatic suggestion for outcome: {outcome}\n");
-            }
-        }
-    }
-
-    let skipped = sorted.iter().filter(|(_, v)| v.len() < min_count).count();
-    if skipped > 0 {
-        println!(
-            "# {skipped} groups with <{min_count} denials omitted (use --min-count 1 to see all)"
-        );
-    }
-
-    Ok(())
-}
-
-fn common_path_prefix(paths: &[String]) -> String {
-    if paths.is_empty() {
-        return String::new();
-    }
-    let first = &paths[0];
-    let mut prefix_len = first.len();
-    for path in &paths[1..] {
-        prefix_len = first
-            .chars()
-            .zip(path.chars())
-            .take(prefix_len)
-            .take_while(|(a, b)| a == b)
-            .count();
-    }
-    // Trim to last '/'
-    let prefix = &first[..prefix_len];
-    match prefix.rfind('/') {
-        Some(pos) => prefix[..pos].to_string(),
-        None => String::new(),
-    }
-}
-
-fn resolve_openapi_auth(
-    auth_cfg: &Option<config::OpenApiAuthConfig>,
-) -> navra_openapi::auth::AuthConfig {
-    let Some(auth) = auth_cfg else {
-        return navra_openapi::auth::AuthConfig::default();
-    };
-
-    let bearer = auth.bearer.as_deref().map(resolve_env_vars);
-
-    let api_key = match (&auth.api_key_name, &auth.api_key_value) {
-        (Some(name), Some(value)) => {
-            let location = match auth.api_key_location.as_deref() {
-                Some("query") => navra_openapi::auth::ApiKeyLocation::Query,
-                _ => navra_openapi::auth::ApiKeyLocation::Header,
-            };
-            Some(navra_openapi::auth::ApiKeyAuth {
-                name: name.clone(),
-                value: resolve_env_vars(value),
-                location,
-            })
-        }
-        _ => None,
-    };
-
-    let basic = match (&auth.basic_username, &auth.basic_password) {
-        (Some(user), Some(pass)) => Some(navra_openapi::auth::BasicAuth {
-            username: user.clone(),
-            password: resolve_env_vars(pass),
-        }),
-        _ => None,
-    };
-
-    navra_openapi::auth::AuthConfig {
-        bearer,
-        api_key,
-        basic,
-        oauth: None,
-    }
-}
-
-fn resolve_env_vars(s: &str) -> String {
-    if let Some(var) = s.strip_prefix("${").and_then(|s| s.strip_suffix('}')) {
-        std::env::var(var).unwrap_or_else(|_| s.to_string())
-    } else {
-        s.to_string()
-    }
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::response::IntoResponse;
 
 use crate::config;
-use crate::expand_tilde;
+use crate::util::expand_tilde;
 use crate::ui_events::UiBroadcaster;
 
 #[path = "ui_assets_gen.rs"]
