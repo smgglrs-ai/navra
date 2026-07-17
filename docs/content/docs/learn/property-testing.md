@@ -1,6 +1,6 @@
 +++
 title = "23. Property Testing and the Testing Pyramid"
-description = "Where formal proofs end, tests begin. navra combines 715+ Kani proofs, 6 TLA+ specs, and 2,800+ tests into a verification pyramid. Each layer covers what the others cannot."
+description = "Where formal proofs end, tests begin. navra combines 143 Kani proofs, 6 TLA+ specs, and 2,800+ tests into a verification pyramid. Each layer covers what the others cannot."
 weight = 230
 template = "docs/page.html"
 
@@ -19,7 +19,7 @@ navra's verification strategy is a pyramid with three layers:
 
 ```
           /\
-         /  \     715+ Kani proofs
+         /  \     143 Kani proofs
         /    \    (per-function, exhaustive)
        /------\
       /        \   6 TLA+ specifications

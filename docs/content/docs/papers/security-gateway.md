@@ -11,34 +11,7 @@ toc = true
 
 **Authors**: Fabien Dupont et al.
 
-**Target venue**: USENIX Security / IEEE S&P workshop track (ArtSec 2026 realistic)
-
-### Review notes (2026-05-07, updated 2026-06-19)
-
-- **DECIDED — Standalone, priority 2 for submission** (see
-  `restructuring-decisions.md`). Flagship workshop paper.
-- **DONE — Microkernel framing**: Security microkernel with 715+ Kani
-  proofs, process table, IPC, memory management, scheduler, MAC.
-- **DONE — Narrow to 3 contributions**: (1) gateway-enforced IFC, (2)
-  capability delegation with attenuation, (3) hash-chained audit.
-- **DONE — FIDES differentiation**: §10, gateway vs planner enforcement.
-- **DONE — MCP gateway landscape**: §10 acknowledges 10+ gateways.
-- **DONE — Compliance reframing**: "compliance infrastructure" in
-  §7.4, EU AI Act Art 12+14 language corrected.
-- **DONE — Formal verification**: 715+ Kani proofs + 6 TLA+ specs
-  added (formal/ directory + PROOF_MAP.md). 5 Bell-LaPadula
-  invariant property tests (INV-1 through INV-5) in ifc/mod.rs.
-- **DONE — No-read-up**: Bell-LaPadula Simple Security Property
-  implemented and verified.
-- **DONE — Full adversarial eval (19 tests)**: E1 full-stack 10/10,
-  E2 AgentDojo 100% across 5 models, E3a MCPTox 82.3% detection,
-  E3b adaptive planner-trust 5/5, E3c Shadow Escape + Pale Fire
-  blocked, E3d encoding evasion honest failure + IFC defense-in-depth.
-- **PROPOSED — Semantic leakage detection**: §9.5 future work. Embedding
-  similarity against tainted ValueStore entries. Novel L3 contribution.
-- **DONE — Tool classification**: `is_write_tool()` now uses MCP
-  `ToolAnnotations` (readOnlyHint, destructiveHint) when available,
-  falling back to name heuristic only for unannotated tools.
+**Target venue**: USENIX Security / IEEE S&P workshop track
 
 ---
 
@@ -54,7 +27,7 @@ resources. navra enforces a layered authentication chain (OAuth
 2.0 with Ed25519 JWTs, capability tokens with delegation, BLAKE3
 legacy tokens), deny-wins path ACLs with ring inheritance,
 Bell-LaPadula information flow control with per-value taint
-tracking, a content safety pipeline (13 secret patterns, 20 PII
+tracking, a content safety pipeline (13 secret patterns, 22 PII
 categories with regex + NER + ML, pseudonymization with IFC label
 elevation), containerized agent execution (Podman, OpenShell
 microVMs), typed action risk classification, and a SHA-256
@@ -113,7 +86,7 @@ Prior work has applied the OS abstraction to agent systems
 (AIOS [18]) but without enforcement boundaries: AIOS agents
 share the kernel process address space with no IFC on
 communication channels. navra enforces security properties
-on its IPC channels (23 Kani-verified proofs, 6 TLC-verified
+on its IPC channels (143 Kani-verified proofs, 6 TLC-verified
 specifications) and satisfies Anderson's reference monitor
 conditions [2]: complete mediation (single chokepoint),
 tamperproof from the agent side (protocol boundary), and
@@ -140,8 +113,8 @@ verifiable (formally verified lattice and taint properties).
    Article 12 logging and SOC2 CC6.1 audit trail requirements
    (Section 7).
 
-The gateway also provides a content safety pipeline (12 secret
-patterns, 18 PII categories with IFC label elevation), layered
+The gateway also provides a content safety pipeline (13 secret
+patterns, 22 PII categories with IFC label elevation), layered
 authentication (OAuth 2.0, capability tokens, BLAKE3 legacy),
 containerized agent execution (Podman, OpenShell), and typed
 action risk classification — described in Sections 3, 6, and
@@ -489,7 +462,7 @@ spans (longest match wins).
 
 ### 6.2 Secret Detection
 
-12 patterns detect leaked credentials:
+13 patterns detect leaked credentials:
 
 | Category | Pattern | Example |
 |---|---|---|
@@ -506,7 +479,7 @@ spans (longest match wins).
 | Password assignment | `password\|passwd\|pwd\s*[=:]` | Inline passwords |
 | AWS secret key | 40-char base64 near "aws" context | Secret keys |
 
-### 6.3 PII Detection (18 Categories)
+### 6.3 PII Detection (22 Categories)
 
 PII detection combines regex patterns with validation functions
 to reduce false positives:
@@ -779,7 +752,7 @@ Criterion microbenchmarks (`benchmarks/benches/security_overhead.rs`):
 | Capability token decode+verify | ~13 us | Ed25519 verify + CBOR decode + expiry check |
 | Permission check (allowed) | ~1.7 us | 2 allow + 3 deny globs |
 | Permission check (denied) | ~0.8 us | Early exit on deny match |
-| Safety pipeline (clean) | ~18 us | 15 regex patterns (13 secret + 10 PII) |
+| Safety pipeline (clean) | ~18 us | 24 regex patterns (13 secret + 11 PII) |
 | Safety pipeline (with finding) | ~20 us | Regex match + redaction |
 | Safety pipeline (pseudonymize) | ~22 us | Regex match + pseudonym lookup |
 | NER filter (BERT-base) | ~5-15 ms | Token classification, 512-token window |
@@ -968,7 +941,7 @@ reasoning.
   verified exhaustively via Kani bounded model checking and
   TLA+ model checking (see `formal/PROOF_MAP.md`). FIDES's
   formal non-interference proofs set the bar that gateway-level
-  IFC should aspire to — navra provides 715+ Kani proofs and
+  IFC should aspire to — navra provides 143 Kani proofs and
   6 TLC-verified specifications as a first step.
 - **CaMeL** [14]: Google DeepMind capability metadata on every
   value (arXiv:2503.18813, March 2025). Provable security on
@@ -1147,15 +1120,15 @@ Prompt Injection Attacks and Defenses for LLM Agents." NeurIPS
 
 | Metric | Value |
 |---|---|
-| Workspace crates | 22 |
+| Workspace crates | 23 |
 | Rust source files | 290 |
 | Total LoC (Rust) | ~126,000 |
 | Test count | 2,800+ |
-| Kani proofs | 138 |
+| Kani proofs | 143 |
 | TLA+ specifications | 6 |
 | Benchmark suite | 7 groups, ~30 individual benchmarks |
 | Secret detection patterns | 13 |
-| PII detection categories | 20 (12 regex + 8 NER) |
+| PII detection categories | 22 (11 regex + 11 NER) |
 | PII validators | 8 (Luhn, SSA, NIR, IBAN, SIRET, IP, phone context, span dedup) |
 | PII benchmark F1 | 0.889 (regex), 1.000 (regex + NER) |
 | Safety profiles | 8 (standard, pseudonymize, secrets-only, block, guardian, guardian-deep, multi-label, none) |
