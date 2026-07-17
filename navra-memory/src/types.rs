@@ -289,4 +289,114 @@ mod tests {
         let key2 = DistilledEntry::compute_key(&MemoryType::Event, "hello");
         assert_ne!(key1, key2);
     }
+
+    #[test]
+    fn importance_heuristic_bounded() {
+        for kind in [
+            MemoryType::Fact,
+            MemoryType::Event,
+            MemoryType::Instruction,
+            MemoryType::Insight,
+            MemoryType::User,
+            MemoryType::Project,
+        ] {
+            for conf in [0.0, 0.5, 1.0, 1.5, -0.1] {
+                let imp = DistilledEntry::importance_heuristic(&kind, conf);
+                assert!(imp >= 0.0 && imp <= 1.0, "{kind:?} conf={conf} → {imp}");
+            }
+        }
+    }
+
+    #[test]
+    fn importance_heuristic_monotonic_in_confidence() {
+        for kind in [
+            MemoryType::Fact,
+            MemoryType::Event,
+            MemoryType::Instruction,
+            MemoryType::Insight,
+            MemoryType::User,
+            MemoryType::Project,
+        ] {
+            let low = DistilledEntry::importance_heuristic(&kind, 0.3);
+            let high = DistilledEntry::importance_heuristic(&kind, 0.9);
+            assert!(high >= low, "{kind:?}: conf=0.9 ({high}) < conf=0.3 ({low})");
+        }
+    }
+
+    #[test]
+    fn importance_heuristic_type_ordering() {
+        let conf = 1.0;
+        let insight = DistilledEntry::importance_heuristic(&MemoryType::Insight, conf);
+        let instruction = DistilledEntry::importance_heuristic(&MemoryType::Instruction, conf);
+        let fact = DistilledEntry::importance_heuristic(&MemoryType::Fact, conf);
+        let event = DistilledEntry::importance_heuristic(&MemoryType::Event, conf);
+        assert!(insight > instruction, "insight > instruction");
+        assert!(instruction > fact, "instruction > fact");
+        assert!(fact > event, "fact > event");
+    }
+
+    #[test]
+    fn new_auto_assigns_importance() {
+        let entry = DistilledEntry::new(
+            MemoryType::Insight,
+            "test".to_string(),
+            "content".to_string(),
+            vec![],
+            0.9,
+            "s1".to_string(),
+        );
+        assert!(entry.importance > 0.0, "importance should be auto-assigned");
+        assert!(
+            (entry.importance - 0.8 * 0.9).abs() < f64::EPSILON,
+            "Insight at 0.9 confidence should be 0.72, got {}",
+            entry.importance
+        );
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn importance_heuristic_always_bounded() {
+        let kind_idx: u8 = kani::any();
+        kani::assume(kind_idx < 6);
+        let kind = match kind_idx {
+            0 => MemoryType::Fact,
+            1 => MemoryType::Event,
+            2 => MemoryType::Instruction,
+            3 => MemoryType::Insight,
+            4 => MemoryType::User,
+            _ => MemoryType::Project,
+        };
+        let confidence: u16 = kani::any();
+        kani::assume(confidence <= 1000);
+        let conf = confidence as f64 / 1000.0;
+        let result = DistilledEntry::importance_heuristic(&kind, conf);
+        assert!(result >= 0.0, "importance must be non-negative");
+        assert!(result <= 1.0, "importance must not exceed 1.0");
+    }
+
+    #[kani::proof]
+    fn importance_heuristic_monotonic_confidence() {
+        let kind_idx: u8 = kani::any();
+        kani::assume(kind_idx < 6);
+        let kind = match kind_idx {
+            0 => MemoryType::Fact,
+            1 => MemoryType::Event,
+            2 => MemoryType::Instruction,
+            3 => MemoryType::Insight,
+            4 => MemoryType::User,
+            _ => MemoryType::Project,
+        };
+        let c1: u16 = kani::any();
+        let c2: u16 = kani::any();
+        kani::assume(c1 <= 1000);
+        kani::assume(c2 <= 1000);
+        kani::assume(c2 >= c1);
+        let r1 = DistilledEntry::importance_heuristic(&kind, c1 as f64 / 1000.0);
+        let r2 = DistilledEntry::importance_heuristic(&kind, c2 as f64 / 1000.0);
+        assert!(r2 >= r1, "higher confidence must yield >= importance");
+    }
 }
