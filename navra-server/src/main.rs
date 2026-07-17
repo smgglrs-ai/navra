@@ -10,7 +10,10 @@ mod acp_agent;
 mod agent_bundle;
 mod build_tools;
 mod cli;
+mod cmd_agent;
 mod cmd_misc;
+mod cmd_model;
+mod cmd_pii;
 mod cmd_run;
 mod cmd_wrap;
 mod config;
@@ -222,26 +225,26 @@ async fn main() -> anyhow::Result<()> {
                 max_permissions,
             } => {
                 let cfg = config::Config::load(None)?;
-                cli::agent_install(&oci_ref, allow_unsigned, max_permissions.as_deref(), &cfg)
+                cmd_agent::agent_install(&oci_ref, allow_unsigned, max_permissions.as_deref(), &cfg)
                     .await?;
             }
             AgentAction::Inspect { oci_ref } => {
-                cli::agent_inspect(&oci_ref).await?;
+                cmd_agent::agent_inspect(&oci_ref).await?;
             }
             AgentAction::Init { bundle, name } => {
-                cli::agent_init(&bundle, name.as_deref())?;
+                cmd_agent::agent_init(&bundle, name.as_deref())?;
             }
             AgentAction::Upgrade {
                 bundle,
                 allow_unsigned: _,
             } => {
-                cli::agent_upgrade(&bundle)?;
+                cmd_agent::agent_upgrade(&bundle)?;
             }
             AgentAction::List => {
-                cli::agent_list()?;
+                cmd_agent::agent_list()?;
             }
             AgentAction::Remove { name } => {
-                cli::agent_remove(&name)?;
+                cmd_agent::agent_remove(&name)?;
             }
         },
         Commands::Model { action } => match action {
@@ -254,21 +257,21 @@ async fn main() -> anyhow::Result<()> {
                 model_serve(config_path, bind, auto, budget).await?;
             }
             ModelAction::Pull { name } => {
-                cli::model_pull(&name).await?;
+                cmd_model::model_pull(&name).await?;
             }
             ModelAction::List => {
-                cli::model_list()?;
+                cmd_model::model_list()?;
             }
             ModelAction::Available => {
-                cli::model_available();
+                cmd_model::model_available();
             }
         },
         Commands::Pii { action } => match action {
             PiiAction::Download { multilingual } => {
-                cli::pii_download(multilingual).await?;
+                cmd_pii::pii_download(multilingual).await?;
             }
             PiiAction::Status => {
-                cli::pii_status();
+                cmd_pii::pii_status();
             }
         },
         Commands::Config { action } => match action {
