@@ -153,7 +153,7 @@ impl TriggerRegistry {
                     flow_name,
                     debounce_ms,
                 } => {
-                    let watch_path = crate::expand_tilde(path);
+                    let watch_path = crate::util::expand_tilde(path);
                     let flow_name_owned = flow_name.clone();
                     let pattern_owned = pattern.clone();
                     let debounce = std::time::Duration::from_millis(debounce_ms.unwrap_or(500));
