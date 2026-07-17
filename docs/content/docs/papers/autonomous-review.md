@@ -13,21 +13,6 @@ toc = true
 
 **Target venue**: ISSTA / ASE workshop, or SCORED
 
-### Review notes (2026-05-07, updated 2026-06-19)
-
-- **DECIDED — Standalone, priority 1 for submission** (see
-  `restructuring-decisions.md`). Most actionable path to publication.
-- **TODO — c-CRAB benchmark**: Run on arXiv:2603.23448, 5+ external
-  OSS projects across 3+ languages.
-- **TODO — Baselines**: Compare against CodeAgent (EMNLP 2024) and
-  Code Broker (arXiv:2604.23088).
-- **DECIDED — Drop contributions 3 and 4**: JSON parsing resilience
-  and flow resumability are engineering (keep in Sections 4-6 as
-  implementation details, not as claimed contributions).
-- **TODO — Domain-agnostic proof**: 3+ domains/languages, 3+ runs,
-  confidence intervals.
-- **Venue**: ISSTA / ASE workshop, or SCORED.
-
 ---
 
 ## Abstract

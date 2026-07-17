@@ -9,7 +9,7 @@ repo_license = "Apache-2.0 · Rust · 23 crates · ~150K LoC"
 
 [[extra.list]]
 title = "Capability-Based Security"
-content = "Ed25519-signed capability tokens with delegation chains. Agents receive attenuated permissions — never more than their parent. Verified by 715+ Kani proofs."
+content = "Ed25519-signed capability tokens with delegation chains. Agents receive attenuated permissions — never more than their parent. Verified by 143 Kani proofs."
 
 [[extra.list]]
 title = "Information Flow Control"

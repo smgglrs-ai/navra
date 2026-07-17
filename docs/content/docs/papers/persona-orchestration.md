@@ -9,20 +9,6 @@ toc = true
 +++
 
 
-### Review notes (2026-05-07, updated 2026-06-19)
-
-- **DECIDED — Standalone** (see `restructuring-decisions.md`).
-  Genotype/phenotype separation and model-card-driven selection are
-  distinct from the security paper's enforcement focus.
-- **TODO — External evaluation**: 3-5 external OSS projects, 2+
-  languages. Ablation: persona selection vs naive prompts.
-- **DONE — Missing related work**: MorphAgent, c-CRAB, FadeMem,
-  Mem0, FIDES all cited in Section 2 and References [18]-[22].
-- **TODO — Memory decay**: Upgrade to importance-modulated or
-  explicitly position flat decay as simplicity tradeoff.
-- **TODO — HyDE channel**: Fix or remove from claims.
-- **Venue**: AAAI 2027 or AAMAS 2027 workshop.
-
 ## Abstract (~200 words)
 
 Multi-agent AI systems typically treat agents as interchangeable
@@ -63,7 +49,7 @@ than agent configuration.
 **Why personas matter.** Humans working in teams have professional
 identities — a security auditor thinks differently from a technical
 writer. Personas encode this identity as structured YAML: a core
-mandate, domain heuristics (36 modules, 100+ facets), output schemas,
+mandate, domain heuristics (37 modules, 100+ facets), output schemas,
 tool restrictions, and per-phase model preferences. The persona is
 the agent's genotype; the Weaver's prompt assembly is the phenotype.
 
@@ -168,7 +154,7 @@ The Forge loads three artifact types from disk:
 - **Personas** (43 files): core mandate, heuristic references,
   output schemas, tool restrictions, per-phase model preferences
   (planning_model, execution_model), per-phase context limits
-- **Heuristics** (36 modules): reusable reasoning patterns with
+- **Heuristics** (37 modules): reusable reasoning patterns with
   named facets across 8 categories (Architecture, Engineering,
   Analysis, Quality, Security, Leadership, Communication, Identity)
 - **Directives** (7 files): immutable operational protocols

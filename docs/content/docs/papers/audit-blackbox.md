@@ -9,8 +9,6 @@ toc = true
 +++
 
 
-**Workshop paper outline -- draft**
-
 ## 1. Title and Abstract
 
 **Title**: Always-On Audit for AI Agent Gateways: A Hash-Chained Blackbox Approach

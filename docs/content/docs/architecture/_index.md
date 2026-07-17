@@ -100,7 +100,7 @@ security profiles across machines.
 
 ## Formal Verification
 
-- **715+ Kani proofs** — Property-level verification of capability
+- **143 Kani proofs** — Property-level verification of capability
   attenuation, IFC lattice monotonicity, token roundtrip correctness
 - **6 TLA+ specifications** — Protocol-level model checking
 - **2,800+ tests** — Unit, integration, security evaluation
