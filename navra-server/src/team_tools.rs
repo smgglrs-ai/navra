@@ -215,7 +215,21 @@ pub struct TeamRegistry {
     total_agents: AtomicU32,
     /// Available models for teammates.
     pub model_cards: Vec<ModelCard>,
+    /// Operation classification per tool, injected after server build.
+    tool_operations: Mutex<HashMap<String, navra_mcp::ToolOperation>>,
 }
+
+/// Infrastructure tools always included in teammate allowlists.
+const INFRA_TOOLS: &[&str] = &[
+    "team_bb_publish",
+    "team_bb_read",
+    "team_bb_notifications",
+    "models_list",
+    "personas_list",
+    "flow_escalate",
+    "flow_status",
+    "flow_result",
+];
 
 impl TeamRegistry {
     pub fn new() -> Self {
@@ -225,6 +239,40 @@ impl TeamRegistry {
     pub fn with_models(mut self, cards: Vec<ModelCard>) -> Self {
         self.model_cards = cards;
         self
+    }
+
+    pub fn set_tool_operations(
+        &self,
+        ops: HashMap<String, navra_mcp::ToolOperation>,
+    ) {
+        *self.tool_operations.lock().unwrap_or_else(|e| e.into_inner()) = ops;
+    }
+
+    pub fn default_tools_for_operations(&self, operations: &[String]) -> Vec<String> {
+        let ops = self.tool_operations.lock().unwrap_or_else(|e| e.into_inner());
+        if ops.is_empty() {
+            return DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
+        }
+        let wants_write = operations.iter().any(|o| {
+            matches!(o.as_str(), "write" | "edit" | "delete")
+        });
+        let mut tools: Vec<String> = ops
+            .iter()
+            .filter(|(_, op)| match op {
+                navra_mcp::ToolOperation::Read => true,
+                navra_mcp::ToolOperation::Write => wants_write,
+                navra_mcp::ToolOperation::Deny => false,
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        for infra in INFRA_TOOLS {
+            let s = infra.to_string();
+            if !tools.contains(&s) {
+                tools.push(s);
+            }
+        }
+        tools.sort();
+        tools
     }
 
     pub fn create_team(
@@ -1106,7 +1154,7 @@ pub async fn handle_team_add(
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
         })
-        .unwrap_or_else(|| DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect());
+        .unwrap_or_else(|| reg.default_tools_for_operations(&operations));
 
     match reg.add_teammate(
         team_id,
@@ -1423,12 +1471,9 @@ fn spawn_containerized_agent(
                         )
                     })
                     .unwrap_or_else(|| {
-                        (
-                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-                            DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-                            None,
-                            "auto".to_string(),
-                        )
+                        let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
+                        (fallback_ops, fallback_tools, None, "auto".to_string())
                     })
             };
 
@@ -1797,12 +1842,9 @@ fn spawn_openshell_agent(
                         )
                     })
                     .unwrap_or_else(|| {
-                        (
-                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-                            DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-                            None,
-                            "auto".to_string(),
-                        )
+                        let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
+                        (fallback_ops, fallback_tools, None, "auto".to_string())
                     })
             };
 
@@ -2204,10 +2246,11 @@ pub fn spawn_teammate_agent(
                 teams.get(&team_id)
                     .and_then(|t| t.teammates.get(&teammate_id))
                     .map(|tm| (tm.operations.clone(), tm.tools.clone()))
-                    .unwrap_or_else(|| (
-                        DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect(),
-                        DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-                    ))
+                    .unwrap_or_else(|| {
+                        let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
+                        (fallback_ops, fallback_tools)
+                    })
             };
             let tm_tools_desc = tm_tools.join(", ");
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);

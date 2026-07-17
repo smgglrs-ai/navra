@@ -978,10 +978,7 @@ async fn spawn_and_track_tasks(
                 .collect()
         });
         let tools = task.tools.clone().unwrap_or_else(|| {
-            crate::team_tools::DEFAULT_TOOLS
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
+            ctx.team_registry.default_tools_for_operations(&ops)
         });
 
         if let Err(e) = ctx.team_registry.add_teammate(
