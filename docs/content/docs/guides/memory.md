@@ -68,6 +68,11 @@ turns.
 This follows the FadeMem pattern -- old but important memories survive
 while trivial recent ones fade.
 
+Importance is auto-assigned when entries are created via the
+distillation pipeline, based on memory type and confidence:
+insights (0.8), instructions (0.7), user/project (0.6), facts (0.5),
+events (0.3), scaled by confidence.
+
 ## Knowledge store
 
 The knowledge store holds categorized entries with full-text search.

@@ -261,7 +261,7 @@ impl KnowledgeStore {
                     (id, memory_type, title, content, tags_json, created_at,
                      content_key, version, confidence, source_session,
                      importance, access_count, last_accessed)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, 0.0, 0, 0)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, 0, 0)",
                 params![
                     id,
                     entry.kind.as_str(),
@@ -272,6 +272,7 @@ impl KnowledgeStore {
                     entry.content_key,
                     entry.confidence,
                     entry.source_session,
+                    entry.importance,
                 ],
             )?;
         }
@@ -563,7 +564,7 @@ impl KnowledgeStore {
                     (id, memory_type, title, content, tags_json, created_at,
                      content_key, version, confidence, source_session,
                      importance, access_count, last_accessed, strategy_generation)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, 0.0, 0, 0, 1)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9, ?10, 0, 0, 1)",
                 params![
                     id,
                     entry.kind.as_str(),
@@ -574,6 +575,7 @@ impl KnowledgeStore {
                     entry.content_key,
                     entry.confidence,
                     entry.source_session,
+                    entry.importance,
                 ],
             )?;
             Ok(1)

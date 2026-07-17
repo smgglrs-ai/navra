@@ -121,16 +121,17 @@ personas are explicit YAML artifacts with version-controlled genotypes
 — enabling human audit and rollback that implicit evolution cannot.
 
 **c-CRAB** [19] provides a code review agent benchmark for evaluating
-multi-agent review systems. We use c-CRAB as an evaluation target
-(see review notes) rather than defining a new benchmark.
+multi-agent review systems. We plan to use c-CRAB as an evaluation
+target rather than defining a new benchmark.
 
 **Memory systems.** FadeMem [20] introduces differential memory decay
-where importance modulates forgetting rates — our flat exponential
-decay (Section 6.1) is simpler but behind this state of the art.
-Mem0 [21] combines graph, vector, and KV stores in a hybrid memory
-architecture. Our working memory uses a single SQLite store with
-decay scoring, trading architectural sophistication for deployment
-simplicity.
+where importance modulates forgetting rates. Our decay function
+(Section 6.1) implements the same core mechanism — importance-modulated
+rate — but omits FadeMem's hierarchical summarization, which coalesces
+old entries into compressed representations. Mem0 [21] combines graph,
+vector, and KV stores in a hybrid memory architecture. Our working
+memory uses a single SQLite store with decay scoring, trading
+architectural sophistication for deployment simplicity.
 
 **FIDES** [22] enforces information-flow control (IFC) for AI agents
 at the planner level. Our gateway enforces IFC at the infrastructure
@@ -421,25 +422,40 @@ but may miss files the LLM considers unimportant. Round metrics
 
 ### 6.1 Working Memory with Decay
 
-Conversation turns are persisted in SQLite with per-turn
-`importance` and `access_count` metadata. The decay function
-computes an effective score using exponential decay:
+Conversation turns and knowledge entries are persisted in SQLite
+with per-entry `importance` and `access_count` metadata. The decay
+function computes an effective score using exponential decay with
+importance-modulated rate, following the FadeMem pattern [20]:
 
 ```
-effective_score = importance × e^(-rate × age_hours)
+effective_rate  = base_rate / (1 + importance)
+effective_score = importance × e^(-effective_rate × age_hours)
                 + min(access_count × 0.1, 0.3)
 ```
 
-At the default rate (0.001), a turn with importance=0.5 at
-30 days old scores ~0.24 — still retrievable but deprioritized.
-`get_turns_by_score()` retrieves the top-k turns by score, then
-re-sorts chronologically for coherent context assembly.
+Higher importance slows the decay rate: an entry with
+importance=0.9 decays roughly 5× slower than one with
+importance=0.1. Importance is auto-assigned at distillation time
+via a type-based heuristic: insights (0.8) and instructions (0.7)
+receive higher base importance than facts (0.5) or events (0.3),
+scaled by confidence. At the default base rate (0.001), a fact
+with confidence=1.0 at 30 days old scores ~0.31 — still
+retrievable but deprioritized. `get_turns_by_score()` retrieves
+the top-k entries by score, then re-sorts chronologically for
+coherent context assembly.
 
-`cleanup_decayed()` archives turns below a threshold score to a
-`memory_archive` table, preventing unbounded growth while
-preserving data for audit. Conversation forking (`fork_id`,
+`cleanup_decayed()` archives knowledge entries below a threshold
+score to a `memory_archive` table, preventing unbounded growth
+while preserving data for audit. Conversation forking (`fork_id`,
 `parent_fork`) supports branching explorations without
 contaminating the main thread.
+
+Unlike FadeMem's full approach, we do not implement hierarchical
+summarization — old entries are archived as-is rather than
+coalesced into compressed representations. This is a simplicity
+tradeoff: the type-based heuristic avoids the need for an
+additional LLM call to assess importance, at the cost of less
+adaptive importance assignment.
 
 ### 6.2 Hermes Trace Export
 
