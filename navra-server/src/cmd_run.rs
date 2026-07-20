@@ -1,5 +1,8 @@
 //! `navra run` subcommand — single-shot agent execution.
 
+#[cfg(feature = "embedded")]
+use navra_model_runtime::ModelRuntime;
+
 /// Create a configured MCP transport with optional auth header.
 macro_rules! authed_transport {
     ($endpoint:expr, $token:expr) => {{
@@ -35,7 +38,8 @@ pub(crate) async fn run_agent(params: RunAgentParams<'_>) -> anyhow::Result<()> 
         token,
         max_iterations,
         upstream_prompts,
-        ..
+        #[cfg_attr(not(feature = "embedded"), allow(unused))]
+        no_embedded,
     } = params;
     // Auto-detect model from Ollama if not specified
     let model_name = if let Some(m) = model_name {
