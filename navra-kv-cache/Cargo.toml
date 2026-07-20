@@ -1,0 +1,13 @@
+[package]
+name = "navra-kv-cache"
+version = "0.3.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "TurboQuant KV cache compression: PolarQuant + QJL in pure Rust"
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
