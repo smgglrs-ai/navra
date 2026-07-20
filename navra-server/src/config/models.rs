@@ -61,9 +61,13 @@ pub struct ModelConfig {
     /// Model name for the OpenAI-compatible API. Defaults to the config key.
     #[serde(default)]
     pub model_name: Option<String>,
-    /// KV cache quantization type for runtime-served models.
+    /// KV cache quantization (symmetric shorthand, e.g. `cache_type = "q8_0"`).
     #[serde(default)]
     pub cache_type: Option<navra_model_runtime::KvCacheType>,
+    /// KV cache with independent key/value types (e.g. `kv_cache = { keys = "q8_0", values = "turbo3" }`).
+    /// Takes precedence over `cache_type` when both are set.
+    #[serde(default)]
+    pub kv_cache: Option<navra_model_runtime::KvCacheConfig>,
     /// Speculative decoding configuration.
     #[serde(default)]
     pub speculative: Option<SpeculativeModelConfig>,

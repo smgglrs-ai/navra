@@ -132,12 +132,12 @@ impl Engine {
             args.extend_from_slice(&["--n-gpu-layers".to_string(), "999".to_string()]);
         }
 
-        if let Some(cache_type) = &config.cache_type {
+        if let Some(ref kv) = config.cache_type {
             args.extend_from_slice(&[
                 "--cache-type-k".to_string(),
-                cache_type.as_llama_arg().to_string(),
+                kv.keys.as_llama_arg().to_string(),
                 "--cache-type-v".to_string(),
-                cache_type.as_llama_arg().to_string(),
+                kv.values.as_llama_arg().to_string(),
             ]);
         }
 
@@ -181,12 +181,12 @@ impl Engine {
                     args.extend_from_slice(&["--n-gpu-layers".to_string(), "999".to_string()]);
                 }
 
-                if let Some(cache_type) = &config.cache_type {
+                if let Some(ref kv) = config.cache_type {
                     args.extend_from_slice(&[
                         "--cache-type-k".to_string(),
-                        cache_type.as_llama_arg().to_string(),
+                        kv.keys.as_llama_arg().to_string(),
                         "--cache-type-v".to_string(),
-                        cache_type.as_llama_arg().to_string(),
+                        kv.values.as_llama_arg().to_string(),
                     ]);
                 }
 
@@ -230,10 +230,18 @@ impl Engine {
                     ]);
                 }
 
-                if let Some(cache_type) = &config.cache_type {
-                    let dtype = match cache_type {
-                        crate::KvCacheType::F16 => "auto",
-                        crate::KvCacheType::Q8_0 | crate::KvCacheType::Q4_0 => "fp8",
+                if let Some(ref kv) = config.cache_type {
+                    if kv.requires_turbo() {
+                        tracing::warn!(
+                            "TurboQuant KV cache ({kv}) not yet supported by vLLM, falling back to fp8"
+                        );
+                    }
+                    let dtype = if kv.keys == crate::KvCacheType::F16
+                        && kv.values == crate::KvCacheType::F16
+                    {
+                        "auto"
+                    } else {
+                        "fp8"
                     };
                     args.extend_from_slice(&["--kv-cache-dtype".to_string(), dtype.to_string()]);
                 }
@@ -274,10 +282,18 @@ impl Engine {
             args.extend_from_slice(&["--tensor-parallel-size".to_string(), gpu_count.to_string()]);
         }
 
-        if let Some(cache_type) = &config.cache_type {
-            let dtype = match cache_type {
-                crate::KvCacheType::F16 => "auto",
-                crate::KvCacheType::Q8_0 | crate::KvCacheType::Q4_0 => "fp8",
+        if let Some(ref kv) = config.cache_type {
+            if kv.requires_turbo() {
+                tracing::warn!(
+                    "TurboQuant KV cache ({kv}) not yet supported by vLLM, falling back to fp8"
+                );
+            }
+            let dtype = if kv.keys == crate::KvCacheType::F16
+                && kv.values == crate::KvCacheType::F16
+            {
+                "auto"
+            } else {
+                "fp8"
             };
             args.extend_from_slice(&["--kv-cache-dtype".to_string(), dtype.to_string()]);
         }
@@ -305,7 +321,7 @@ impl std::fmt::Display for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GpuDevice, GpuKind, HardwareTarget, KvCacheType, SpeculativeConfig};
+    use crate::{GpuDevice, GpuKind, HardwareTarget, KvCacheConfig, KvCacheType, SpeculativeConfig};
     use std::path::PathBuf;
 
     // ── llama.cpp args ──────────────────────────────────────────────────
@@ -346,13 +362,27 @@ mod tests {
     fn llamacpp_build_args_cache_type() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test.gguf"),
-            cache_type: Some(KvCacheType::Q8_0),
+            cache_type: Some(KvCacheConfig::symmetric(KvCacheType::Q8_0)),
             ..Default::default()
         };
         let args = Engine::LlamaCpp.build_serve_args(&config, 8080);
         assert!(args.contains(&"--cache-type-k".to_string()));
         assert!(args.contains(&"--cache-type-v".to_string()));
         assert!(args.contains(&"q8_0".to_string()));
+    }
+
+    #[test]
+    fn llamacpp_build_args_asymmetric_kv_cache() {
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/test.gguf"),
+            cache_type: Some(KvCacheConfig::SAFE),
+            ..Default::default()
+        };
+        let args = Engine::LlamaCpp.build_serve_args(&config, 8080);
+        let k_idx = args.iter().position(|a| a == "--cache-type-k").unwrap();
+        let v_idx = args.iter().position(|a| a == "--cache-type-v").unwrap();
+        assert_eq!(args[k_idx + 1], "q8_0");
+        assert_eq!(args[v_idx + 1], "turbo3");
     }
 
     #[test]
@@ -453,12 +483,24 @@ mod tests {
     fn vllm_build_args_kv_cache() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test"),
-            cache_type: Some(KvCacheType::Q8_0),
+            cache_type: Some(KvCacheConfig::symmetric(KvCacheType::Q8_0)),
             ..Default::default()
         };
         let args = Engine::Vllm.build_serve_args(&config, 8000);
         assert!(args.contains(&"--kv-cache-dtype".to_string()));
         assert!(args.contains(&"fp8".to_string()));
+    }
+
+    #[test]
+    fn vllm_build_args_f16_kv_cache() {
+        let config = ServeConfig {
+            model_path: PathBuf::from("/models/test"),
+            cache_type: Some(KvCacheConfig::symmetric(KvCacheType::F16)),
+            ..Default::default()
+        };
+        let args = Engine::Vllm.build_serve_args(&config, 8000);
+        assert!(args.contains(&"--kv-cache-dtype".to_string()));
+        assert!(args.contains(&"auto".to_string()));
     }
 
     #[test]

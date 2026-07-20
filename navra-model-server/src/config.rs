@@ -90,9 +90,13 @@ pub struct ModelEntry {
     /// Model name for OpenAI-compatible API.
     #[serde(default)]
     pub model_name: Option<String>,
-    /// KV cache quantization.
+    /// KV cache quantization (symmetric shorthand, e.g. `cache_type = "q8_0"`).
     #[serde(default)]
     pub cache_type: Option<navra_model_runtime::KvCacheType>,
+    /// KV cache with independent key/value types (e.g. `kv_cache = { keys = "q8_0", values = "turbo3" }`).
+    /// Takes precedence over `cache_type` when both are set.
+    #[serde(default)]
+    pub kv_cache: Option<navra_model_runtime::KvCacheConfig>,
     /// Speculative decoding config.
     #[serde(default)]
     pub speculative: Option<SpeculativeEntry>,
@@ -115,6 +119,14 @@ pub struct SpeculativeEntry {
     pub draft_tokens: u32,
     #[serde(default)]
     pub draft_min_p: f32,
+}
+
+impl ModelEntry {
+    /// Resolve the KV cache config from either `kv_cache` (preferred)
+    /// or `cache_type` (symmetric shorthand).
+    pub fn resolved_kv_cache(&self) -> Option<navra_model_runtime::KvCacheConfig> {
+        self.kv_cache.or(self.cache_type.map(navra_model_runtime::KvCacheConfig::symmetric))
+    }
 }
 
 fn default_task() -> String {

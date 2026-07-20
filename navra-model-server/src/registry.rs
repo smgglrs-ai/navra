@@ -240,7 +240,7 @@ impl ModelRegistry {
             format,
             context_size: entry.context_size.unwrap_or(4096),
             parallel: entry.parallel.unwrap_or(1),
-            cache_type: entry.cache_type,
+            cache_type: entry.resolved_kv_cache(),
             speculative,
             ..Default::default()
         };

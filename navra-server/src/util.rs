@@ -126,6 +126,7 @@ pub(crate) fn convert_model_configs(
                     parallel: mc.parallel,
                     model_name: mc.model_name.clone(),
                     cache_type: mc.cache_type,
+                    kv_cache: mc.kv_cache,
                     speculative: mc.speculative.as_ref().map(|s| {
                         navra_model_server::config::SpeculativeEntry {
                             draft_model: s.draft_model.clone(),

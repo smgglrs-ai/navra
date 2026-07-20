@@ -1446,6 +1446,7 @@ mod tests {
                 parallel: None,
                 model_name: None,
                 cache_type: None,
+                kv_cache: None,
                 speculative: None,
                 base_url: None,
                 api_key: None,
