@@ -111,6 +111,7 @@ async fn main() -> anyhow::Result<()> {
             install_service,
             dry_run,
             output,
+            profile,
         } => {
             init::run_init(
                 quiet,
@@ -124,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
                 install_service,
                 dry_run,
                 output,
+                profile,
             )
             .await?;
         }

@@ -78,7 +78,13 @@ pub async fn run_init(
     install_service: bool,
     dry_run: bool,
     output: Option<String>,
+    profile: Option<String>,
 ) -> Result<()> {
+    // If --profile is set, use hardware-based config generation
+    if let Some(ref profile_str) = profile {
+        return run_init_with_profile(profile_str, dry_run, output).await;
+    }
+
     let answers = if quiet {
         quiet_flow(
             agent_name,
@@ -151,6 +157,64 @@ pub async fn run_init(
     let socket = "~/.run/navra/navra.sock";
     let instructions = connection_instructions(&answers.agent_type, &token, socket);
     eprintln!("{instructions}");
+
+    Ok(())
+}
+
+/// Generate config from a hardware profile.
+async fn run_init_with_profile(
+    profile_str: &str,
+    dry_run: bool,
+    output: Option<String>,
+) -> Result<()> {
+    use navra_model_server::hardware;
+
+    let profile = if profile_str == "auto" {
+        let summary = hardware::detect(2 * 1024 * 1024 * 1024);
+        hardware::print_summary(&summary);
+        let detected = hardware::classify(&summary);
+        eprintln!("Detected hardware profile: {detected}");
+        detected
+    } else {
+        profile_str
+            .parse::<hardware::HardwareProfile>()
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+    };
+
+    let config_toml = hardware::generate_config(&profile);
+
+    if dry_run {
+        println!("{config_toml}");
+        eprintln!("\n# Profile: {profile}");
+        eprintln!("# Replace REPLACE_WITH_HASH_FROM_TOKEN_GENERATE with: navra token generate --name <name> --permissions dev");
+        return Ok(());
+    }
+
+    let config_path = match output {
+        Some(ref p) => std::path::PathBuf::from(p),
+        None => crate::config::Config::default_config_path(),
+    };
+
+    if config_path.exists() {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let backup_path = config_path.with_extension(format!("toml.bak.{timestamp}"));
+        std::fs::copy(&config_path, &backup_path)?;
+        eprintln!("Backed up existing config to {}", backup_path.display());
+    }
+
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&config_path, &config_toml)?;
+    eprintln!("Wrote {} config to {}", profile, config_path.display());
+    eprintln!();
+    eprintln!("Next steps:");
+    eprintln!("  1. Generate a token:  navra token generate --name claude --permissions dev");
+    eprintln!("  2. Replace REPLACE_WITH_HASH_FROM_TOKEN_GENERATE in the config");
+    eprintln!("  3. Start navra:       navra serve");
 
     Ok(())
 }

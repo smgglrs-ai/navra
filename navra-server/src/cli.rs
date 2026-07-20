@@ -69,6 +69,11 @@ pub(crate) enum Commands {
         /// Config output path
         #[arg(short, long)]
         output: Option<String>,
+        /// Hardware profile: auto, desktop, laptop, headless.
+        /// Generates a config optimized for the detected (or specified) hardware.
+        /// Overrides model/safety/project flags with profile-tuned defaults.
+        #[arg(long)]
+        profile: Option<String>,
     },
     /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
     Stdio {
