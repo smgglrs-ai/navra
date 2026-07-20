@@ -1,0 +1,145 @@
+# navra configuration — laptop profile (Intel Core Ultra / NPU)
+#
+# For Intel Core Ultra processors with NPU + iGPU, no discrete GPU.
+# Generate with: navra init --profile laptop
+#
+# Routing rationale:
+#   NPU  — classifiers, embeddings, TTS, ASR (highest efficiency, lowest power)
+#   CPU  — tiny models <5MB (NPU compilation overhead exceeds inference time)
+#   iGPU — autoregressive LLM generation (NPU can't do dynamic sequence lengths)
+#
+# Total CPU-tier RAM: ~2GB (excluding Whisper).
+# With Whisper: ~4GB.
+
+[server]
+socket = "~/.run/navra/navra.sock"
+mcp_version = "2026-07-28"
+
+# ── Modules ────────────────────────────────────────────────────
+
+[modules.file]
+enabled = true
+db = "~/.local/share/navra/index.db"
+
+[modules.git]
+enabled = true
+
+[modules.github]
+enabled = true
+
+[modules.rag]
+enabled = true
+db = "~/.local/share/navra/rag.db"
+query_cache_ttl_secs = 300
+
+[modules.voice]
+enabled = false
+# asr_model = "asr"       # Whisper on NPU via OpenVINO GenAI
+# tts_model = "tts"       # Kokoro on NPU
+
+[modules.memory]
+pii_filter = "standard"
+
+# ── Models ─────────────────────────────────────────────────────
+# In-process ONNX models. OpenVINO AUTO selects: NPU > iGPU > CPU.
+# Force a specific device with: "openvino:NPU", "openvino:GPU", "cpu".
+
+# Safety classifier — 38M params, ideal NPU workload (static shape, INT8)
+[models.safety]
+model_path = "~/.local/share/navra/models/granite-guardian-hap-38m-int8.onnx"
+tokenizer_path = "~/.local/share/navra/models/granite-guardian-hap-38m/tokenizer.json"
+task = "classification"
+labels = ["safe", "unsafe"]
+threshold = 0.5
+device = "openvino:AUTO"
+
+# Embeddings — 149M params, encoder-only, benefits from NPU
+[models.embeddings]
+model_path = "~/.local/share/navra/models/granite-embedding-r2-int8.onnx"
+tokenizer_path = "~/.local/share/navra/models/granite-embedding-r2/tokenizer.json"
+task = "embedding"
+dimensions = 768
+device = "openvino:AUTO"
+
+# Voice activity detection — ~260K params, <1ms on CPU
+[models.vad]
+model_path = "~/.local/share/navra/models/silero-vad.onnx"
+task = "classification"
+labels = ["silence", "speech"]
+device = "cpu"
+
+# TTS — Kokoro 82M, non-autoregressive, good for NPU
+# [models.tts]
+# model_path = "~/.local/share/navra/models/kokoro-82m-fp16.onnx"
+# task = "generate"
+# execution_mode = "in_process"
+# device = "openvino:AUTO"
+
+# ASR — Whisper Large V3 Turbo on NPU via OpenVINO GenAI
+# Requires: pip install openvino-genai
+# Model: FluidInference/whisper-large-v3-turbo-int4-ov-npu
+# [models.asr]
+# model_path = "~/.local/share/navra/models/whisper-large-v3-turbo-int4-ov"
+# task = "generate"
+# execution_mode = "in_process"
+# device = "openvino:NPU"
+
+# ── iGPU reasoning (optional) ─────────────────────────────────
+# Gemma 4 E4B (4.5B params, Q4) on Intel Arc iGPU (~5GB shared VRAM).
+# Requires Ollama with SYCL backend: ollama pull gemma4:e4b
+#
+# TurboQuant KV cache extends context from ~64K to ~128K on iGPU:
+#   keys = "q8_0"   — full precision for attention accuracy
+#   values = "turbo3" — 3-bit compression, zero quality loss
+#
+# [models.reasoning]
+# source = "ollama://gemma4:e4b"
+# task = "chat"
+# runtime = "ollama"
+# locality = "local"
+# context_size = 4096
+# kv_cache = { keys = "q8_0", values = "turbo3" }
+
+# ── Agents ─────────────────────────────────────────────────────
+
+[[agents]]
+name = "claude"
+token_hash = "REPLACE_WITH_HASH_FROM_TOKEN_GENERATE"
+permissions = "dev"
+
+# ── Permissions ────────────────────────────────────────────────
+
+[permissions.dev]
+ring = 1
+allow = ["file_*", "git_*", "github_*", "rag_*", "memory_*"]
+deny = ["exec_run"]
+safety = "standard"
+default_tool_policy = "allow"
+can_delegate = true
+
+[[permissions.dev.tool_rules]]
+tool = "exec_*"
+policy = "approve"
+
+[[permissions.dev.tool_rules]]
+tool = "git_push"
+policy = "approve"
+
+[permissions.readonly]
+ring = 2
+allow = ["file_read", "file_list", "file_tree", "git_status", "git_log", "git_diff", "rag_*"]
+deny = ["file_write", "file_delete", "git_commit", "git_push", "exec_*"]
+safety = "standard"
+
+# ── Budget ─────────────────────────────────────────────────────
+# Conservative for laptop: single-agent serialized, shorter timeout.
+
+[budget]
+max_agents = 20
+max_iterations = 100
+max_parallel = 1
+timeout_secs = 1800
+
+[approval]
+timeout_secs = 300
+notify = "dbus"

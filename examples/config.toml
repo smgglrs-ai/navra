@@ -141,6 +141,8 @@ safety = "standard"
 # execution_mode = "served"
 # format = "gguf"
 # context_size = 8192
+# cache_type = "q8_0"                                # symmetric KV cache
+# kv_cache = { keys = "q8_0", values = "turbo3" }    # asymmetric (TurboQuant)
 
 # ---------------------------------------------------------------------------
 # Credentials
