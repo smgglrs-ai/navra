@@ -845,16 +845,23 @@ TurboQuant extends the laptop from ~64K to 128K context.
 | MLX | Working (`--kv-bits 3.5 --kv-quant-scheme turboquant`). |
 | ONNX Runtime | No support. |
 
-**Plan for it, don't depend on it yet.** When vLLM merges support:
+**navra config support is implemented.** The `kv_cache` config accepts
+asymmetric K/V types including TurboQuant variants. For llama.cpp,
+navra passes `--cache-type-k` and `--cache-type-v` independently.
+vLLM falls back to `--kv-cache-dtype fp8` with a warning until
+official TurboQuant support lands.
 
 ```toml
-[models.reasoning]
-backend = "openai"
-base_url = "http://localhost:8000/v1"
-model = "google/gemma-4-26b-a4b-it"
-locality = "local"
-kv_cache = { keys = "q8_0", values = "turbo3" }  # safe config
+# Symmetric (backward compatible)
+cache_type = "q8_0"
+
+# Asymmetric (TurboQuant) — independent K/V quantization
+kv_cache = { keys = "q8_0", values = "turbo3" }    # safe: 3x savings
+kv_cache = { keys = "turbo4", values = "turbo3" }   # balanced: 4x savings
+kv_cache = { keys = "turbo3", values = "turbo2" }   # aggressive: 5x savings
 ```
+
+Requires a llama-server build with TurboQuant support (PR #21089).
 
 #### References
 
