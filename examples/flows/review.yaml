@@ -1,9 +1,11 @@
 kind: dag
 name: review
 description: |
-  Domain-agnostic review: scout → planner → specialist swarm → synthesizer.
+  Domain-agnostic review: scout → planner → specialist swarm → verifier → synthesizer.
   The scout classifies the project domain and content types. The planner
   selects personas from the full catalog based on what the scout found.
+  Specialists must output structured JSON findings. The verifier re-reads
+  cited files to filter hallucinated findings before synthesis.
   Works on any project: code, legal, financial, scientific, documentation.
 
 parameters:
@@ -16,11 +18,15 @@ tasks:
     specialist: analyst
     model: gemma4:e4b
     mandate: |
-      Examine the project at {{ target_dir }}. Use file_tree to get the
-      structure, then file_read on key files (README, config files,
-      top-level docs, a few representative content files).
+      You are a project classifier. Your ONLY job is to examine the
+      project at {{ target_dir }} and output a JSON classification.
 
-      Classify the project and return a JSON object:
+      Use directory_tree or list_directory to see the structure.
+      Read the README and 1-2 config files (package.json, Cargo.toml,
+      pyproject.toml, go.mod, or equivalent).
+
+      Output ONLY this JSON object — no prose, no questions, no
+      commentary:
       {
         "domain": "software|legal|financial|scientific|documentation|mixed",
         "languages": ["rust", "python", ...],
@@ -33,6 +39,7 @@ tasks:
       }
 
       Be factual. Only report what you observe in the actual files.
+      Do NOT introduce yourself. Do NOT ask questions. Do NOT offer help.
     expected_output: JSON classification of project domain and structure
 
   - id: planner
@@ -47,7 +54,7 @@ tasks:
       STEP 1: Call personas_list to see all available personas.
 
       STEP 2: Based on the project domain and content types from the
-      scout, select 5-8 personas that are relevant. Match personas to
+      scout, select 4-6 personas that are relevant. Match personas to
       the project — do NOT use code-focused personas on a legal project.
 
       Examples of persona-domain matching:
@@ -61,43 +68,94 @@ tasks:
         tech_writer, assessor
       - Mixed → pick based on what content types are present
 
-      STEP 3: Create 10-20 review tasks. Each task must have:
+      STEP 3: Create 8-12 review tasks. Each task must have:
       - "id": unique identifier (e.g., "arch-01", "quality-01")
       - "specialist": a persona name from personas_list output
       - "model": "auto"
       - "mandate": specific review instructions (under 300 words).
-        Name the directory/file area and what to check.
+        Name the exact files to read and what to check.
+
+      CRITICAL: Every mandate you write MUST end with this exact block:
+
+        Output ONLY a JSON array of findings. Each finding:
+        {"file": "path", "line": N, "severity": "high|medium|low",
+         "issue": "one sentence", "evidence": "quoted code or fact"}
+        If no issues found, output []. Do NOT describe the code.
+        Do NOT ask questions. Do NOT offer help.
 
       Distribute tasks across the selected personas. Every major
       area of the project should be covered by at least one task.
 
       Output ONLY the JSON array of tasks.
-    expected_output: JSON array of 10-20 tasks with dynamically selected personas
+    expected_output: JSON array of 8-12 tasks with dynamically selected personas
+
+  - id: verify
+    specialist: assessor
+    model: gemma4:26b
+    depends_on: [planner]
+    mandate: |
+      You are a finding verifier. Your job is to check whether specialist
+      findings are real by re-reading the cited source files.
+
+      STEP 1: Read all specialist outputs via flow_result.
+
+      STEP 2: For each finding that cites a file and line number:
+      - Read the cited file using read_file or read_text_file
+      - Check if the code at that line matches the finding's claim
+      - Verdict: CONFIRMED (code has exactly this issue),
+        PLAUSIBLE (concern is reasonable but overstated),
+        HALLUCINATED (finding doesn't match actual code)
+
+      STEP 3: For findings without file/line citations, mark as
+      UNVERIFIABLE.
+
+      Output ONLY a JSON array of verified findings:
+      [
+        {
+          "original_id": "the specialist task id",
+          "file": "path",
+          "line": N,
+          "severity": "high|medium|low",
+          "issue": "original issue text",
+          "verdict": "CONFIRMED|PLAUSIBLE|HALLUCINATED|UNVERIFIABLE",
+          "reason": "why this verdict"
+        }
+      ]
+
+      Drop any HALLUCINATED findings. Keep CONFIRMED, PLAUSIBLE,
+      and UNVERIFIABLE.
+
+      Do NOT describe findings. Do NOT ask questions. Output ONLY JSON.
+    expected_output: JSON array of verified findings
 
   - id: synthesize
     specialist: summarizer
     model: gemma4:26b
-    depends_on: [planner]
+    depends_on: [verify]
     mandate: |
-      Read all specialist outputs via flow_result. The flow ID is
-      available in context.
+      Read the verifier output via flow_result. It contains verified
+      findings with verdicts (CONFIRMED, PLAUSIBLE, UNVERIFIABLE).
 
       Produce a structured review report:
 
       ## Executive Summary
       3-5 sentences: what kind of project this is, overall quality
-      assessment, and the most critical findings.
+      assessment, and the most critical confirmed findings.
 
-      ## Findings by Area
-      For each specialist area, create a section with findings.
-      Derive the structure from what the specialists actually reported.
-      Include severity levels and specific references where provided.
+      ## Confirmed Findings
+      Findings verified against source code. Include file, line,
+      severity, and the verifier's confirmation.
+
+      ## Plausible Findings
+      Concerns that are reasonable but not fully verified.
 
       ## Action Items
-      Top 10 items, prioritized by severity and impact.
+      Top 10 items from confirmed findings, prioritized by severity.
 
       ## Methodology
-      Which personas were used and why (based on domain classification).
+      Which personas were used, how many findings were produced,
+      how many survived verification.
 
-      Be thorough. Read EVERY specialist output before writing.
-    expected_output: Comprehensive review report
+      Be thorough. Read EVERY verified finding before writing.
+      Do NOT include hallucinated findings — they were already dropped.
+    expected_output: Comprehensive review report with verification status
