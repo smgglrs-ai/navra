@@ -177,7 +177,7 @@ pub(crate) async fn run_agent(params: RunAgentParams<'_>) -> anyhow::Result<()> 
         ($b:expr) => {
             $b.max_iterations(max_iterations)
                 .temperature(0.0)
-                .max_tokens(8192)
+                .max_tokens(32768)
                 .force_tool_iterations(5)
                 .non_progress_tools(non_progress.clone())
         };

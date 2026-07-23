@@ -2394,7 +2394,7 @@ pub fn spawn_teammate_agent(
                             .max_iterations(max_iterations)
                             .force_tool_iterations(1)
                             .temperature(0.3)
-                            .max_tokens(8192);
+                            .max_tokens(32768);
                         if let Some(cw) = card_context_window {
                             builder = builder.context_window_tokens(cw);
                             tracing::info!(
