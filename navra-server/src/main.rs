@@ -411,11 +411,15 @@ async fn main() -> anyhow::Result<()> {
             max_iterations,
             upstream_prompts,
             workflow,
-            file: _file,
+            flow,
             config: _run_config,
             no_embedded,
             dry_run,
         } => {
+            if let Some(ref flow_file) = flow {
+                cmd_run::run_flow_file(flow_file, &prompt, &endpoint, token.as_deref()).await?;
+                return Ok(());
+            }
             // If prompt looks like instance/workflow, treat as workflow run
             let (prompt, _workflow_name) = if let Some(wf) = workflow {
                 (format!("Run workflow: {wf}"), Some(wf))

@@ -438,3 +438,101 @@ pub(crate) async fn run_agent(params: RunAgentParams<'_>) -> anyhow::Result<()> 
 
     Ok(())
 }
+
+/// Run a flow YAML file directly via MCP `flow_start`, poll to
+/// completion, and print the result. No agent loop involved.
+pub(crate) async fn run_flow_file(
+    path: &str,
+    prompt: &str,
+    endpoint: &str,
+    token: Option<&str>,
+) -> anyhow::Result<()> {
+    let yaml = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("Cannot read flow file {path}: {e}"))?;
+    eprintln!("Flow file: {path}");
+    eprintln!("Endpoint:  {endpoint}");
+
+    let transport = authed_transport!(endpoint, token);
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await?;
+    let peer = client.peer().clone();
+    let mut mcp = navra_agent::McpClient::new(peer);
+
+    // Parse parameters from the prompt (key=value pairs)
+    let mut params = serde_json::Map::new();
+    for part in prompt.split_whitespace() {
+        if let Some((k, v)) = part.split_once('=') {
+            params.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+        }
+    }
+
+    let args = serde_json::json!({
+        "flow_definition": yaml,
+        "prompt": prompt,
+        "parameters": params,
+    });
+
+    eprintln!("Starting flow...\n");
+    let start_result = mcp.call_tool("flow_start", args).await?;
+    let start_text = start_result
+        .content
+        .first()
+        .and_then(|c| c.raw.as_text())
+        .map(|t| t.text.clone())
+        .unwrap_or_default();
+
+    // Extract flow_id from response
+    let flow_id = serde_json::from_str::<serde_json::Value>(&start_text)
+        .ok()
+        .and_then(|v| v.get("flow_id").and_then(|f| f.as_str()).map(String::from))
+        .unwrap_or_else(|| {
+            eprintln!("flow_start response: {start_text}");
+            String::new()
+        });
+
+    if flow_id.is_empty() {
+        anyhow::bail!("flow_start did not return a flow_id");
+    }
+    eprintln!("Flow ID: {flow_id}");
+
+    // Poll until complete
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let status_result = mcp
+            .call_tool(
+                "flow_status",
+                serde_json::json!({"flow_id": flow_id}),
+            )
+            .await?;
+        let status_text = status_result
+            .content
+            .first()
+            .and_then(|c| c.raw.as_text())
+            .map(|t| t.text.clone())
+            .unwrap_or_default();
+
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&status_text) {
+            let status = v.get("status").and_then(|s| s.as_str()).unwrap_or("");
+            let completed = v.get("completed").and_then(|c| c.as_u64()).unwrap_or(0);
+            let failed = v.get("failed").and_then(|f| f.as_u64()).unwrap_or(0);
+            let total = v.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+            eprint!("\r{status}: {completed}/{total} done, {failed} failed  ");
+            if status == "completed" || status == "failed" {
+                eprintln!();
+                break;
+            }
+        }
+    }
+
+    // Fetch result
+    let result = mcp
+        .call_tool("flow_result", serde_json::json!({"flow_id": flow_id}))
+        .await?;
+    for content in &result.content {
+        if let Some(text) = content.raw.as_text() {
+            println!("{}", text.text);
+        }
+    }
+
+    let _ = client.cancel().await;
+    Ok(())
+}
