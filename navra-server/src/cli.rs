@@ -159,9 +159,9 @@ pub(crate) enum Commands {
         /// Run a named workflow from an agent instance (e.g., work-assistant/day-planner)
         #[arg(long)]
         workflow: Option<String>,
-        /// Path to a standalone workflow file (for development)
+        /// Path to a flow YAML file to execute directly (e.g., examples/flows/review.yaml)
         #[arg(long)]
-        file: Option<String>,
+        flow: Option<String>,
         /// Path to agent instance config (overrides default resolution)
         #[arg(long)]
         config: Option<String>,
