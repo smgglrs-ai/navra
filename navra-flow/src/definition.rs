@@ -166,9 +166,16 @@ pub struct TaskDefinition {
     #[serde(default)]
     pub operations: Option<Vec<String>>,
     /// Temperature override for this task's model calls.
-    /// Enables the reasoning sandwich pattern within a single flow.
     #[serde(default)]
     pub temperature: Option<f32>,
+    /// Max output tokens per model response. When absent, the model
+    /// uses its full context window (recommended for local models).
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    /// Force the model to call tools for this many initial iterations
+    /// before allowing a text-only response.
+    #[serde(default)]
+    pub force_tool_iterations: Option<usize>,
     /// When true, the executor pauses before this task, checkpoints
     /// state, and waits for external approval before proceeding.
     /// Used by BPMN userTask nodes for human-in-the-loop barriers.
@@ -359,6 +366,8 @@ pub fn single_task_dag(specialist: &str, mandate: &str) -> DagConfig {
             tools: None,
             operations: None,
             temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
             approval_required: false,
         }],
         blackboard_capacity: None,
@@ -408,6 +417,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             },
             TaskDefinition {
@@ -429,6 +440,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             },
             TaskDefinition {
@@ -449,6 +462,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             },
             TaskDefinition {
@@ -469,6 +484,8 @@ pub fn generic_flow_dag(mandate: &str, context: Option<&str>) -> DagConfig {
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             },
         ],

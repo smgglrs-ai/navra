@@ -118,9 +118,12 @@ pub struct Teammate {
     pub persona: Option<String>,
     pub model: String,
     pub locality: String,        // "local", "remote", "auto"
-    pub operations: Vec<String>, // allowed operations for capability token
-    pub tools: Vec<String>,      // allowed tools for capability token
-    pub status: String,          // "idle", "working", "done", "failed"
+    pub operations: Vec<String>,
+    pub tools: Vec<String>,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub force_tool_iterations: Option<usize>,
+    pub status: String,
     pub task: Option<String>,
     pub output: Option<String>,
     pub created_at: Instant,
@@ -327,6 +330,7 @@ impl TeamRegistry {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn add_teammate(
         &self,
         team_id: &str,
@@ -336,6 +340,9 @@ impl TeamRegistry {
         locality: &str,
         operations: Vec<String>,
         tools: Vec<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+        force_tool_iterations: Option<usize>,
     ) -> Result<(), String> {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         let team = teams
@@ -364,6 +371,9 @@ impl TeamRegistry {
                 locality: locality.to_string(),
                 operations,
                 tools,
+                temperature,
+                max_tokens,
+                force_tool_iterations,
                 status: "idle".to_string(),
                 task: None,
                 output: None,
@@ -803,7 +813,19 @@ pub fn team_add_def() -> ToolDefinition {
                 ),
                 (
                     "tools".to_string(),
-                    serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: ['file_tree', 'file_grep', 'file_read', 'team_bb_publish'])"}),
+                    serde_json::json!({"type": "array", "items": {"type": "string"}, "description": "Allowed MCP tools (default: auto-detected from server)"}),
+                ),
+                (
+                    "temperature".to_string(),
+                    serde_json::json!({"type": "number", "description": "Model temperature (0.0 = deterministic, 1.0 = creative). Omit to use model default."}),
+                ),
+                (
+                    "max_tokens".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Max output tokens per response. Omit for unlimited (recommended for local models)."}),
+                ),
+                (
+                    "force_tool_iterations".to_string(),
+                    serde_json::json!({"type": "integer", "description": "Force tool calls for this many initial iterations before allowing text-only response. Default: 1."}),
                 ),
             ])),
             Some(vec!["team_id".to_string(), "name".to_string()]),
@@ -1156,6 +1178,19 @@ pub async fn handle_team_add(
         })
         .unwrap_or_else(|| reg.default_tools_for_operations(&operations));
 
+    let temperature = args
+        .get("temperature")
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32);
+    let max_tokens = args
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32);
+    let force_tool_iterations = args
+        .get("force_tool_iterations")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+
     match reg.add_teammate(
         team_id,
         name,
@@ -1164,6 +1199,9 @@ pub async fn handle_team_add(
         locality,
         operations.clone(),
         tools.clone(),
+        temperature,
+        max_tokens,
+        force_tool_iterations,
     ) {
         Ok(()) => {
             tracing::info!(team = team_id, name = name, persona = ?persona, model = model, locality = locality, operations = ?operations, tools = ?tools, "Teammate added");
@@ -2241,15 +2279,15 @@ pub fn spawn_teammate_agent(
         let result = tokio::time::timeout(deadline, async move {
             let mcp_url = format!("http://{navra_addr}/mcp");
 
-            let (tm_ops, tm_tools) = {
+            let (tm_ops, tm_tools, tm_temperature, tm_max_tokens, tm_force_tool_iters) = {
                 let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
                 teams.get(&team_id)
                     .and_then(|t| t.teammates.get(&teammate_id))
-                    .map(|tm| (tm.operations.clone(), tm.tools.clone()))
+                    .map(|tm| (tm.operations.clone(), tm.tools.clone(), tm.temperature, tm.max_tokens, tm.force_tool_iterations))
                     .unwrap_or_else(|| {
                         let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
                         let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
-                        (fallback_ops, fallback_tools)
+                        (fallback_ops, fallback_tools, None, None, None)
                     })
             };
             let tm_tools_desc = tm_tools.join(", ");
@@ -2392,9 +2430,13 @@ pub fn spawn_teammate_agent(
                             .model($backend)
                             .system_prompt(&system_prompt)
                             .max_iterations(max_iterations)
-                            .force_tool_iterations(1)
-                            .temperature(0.3)
-                            .max_tokens(32768);
+                            .force_tool_iterations(tm_force_tool_iters.unwrap_or(1));
+                        if let Some(t) = tm_temperature {
+                            builder = builder.temperature(t);
+                        }
+                        if let Some(m) = tm_max_tokens {
+                            builder = builder.max_tokens(m);
+                        }
                         if let Some(cw) = card_context_window {
                             builder = builder.context_window_tokens(cw);
                             tracing::info!(
@@ -2827,9 +2869,9 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
 
         // Alice publishes
@@ -2858,9 +2900,9 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
 
         reg.bb_publish(
@@ -2886,11 +2928,11 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
-        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
 
         reg.bb_publish(
@@ -2936,7 +2978,7 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![])
+        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
             .unwrap();
 
         reg.bb_publish(

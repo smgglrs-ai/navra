@@ -403,6 +403,8 @@ fn compile_task(
         tools: None,
         operations: None,
         temperature: None,
+        max_tokens: None,
+        force_tool_iterations: None,
         approval_required: is_user_task,
     })
 }

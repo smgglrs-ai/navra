@@ -128,6 +128,8 @@ async fn handle_flow_graph_bpmn(
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             })
             .collect(),

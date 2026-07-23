@@ -989,6 +989,9 @@ async fn spawn_and_track_tasks(
             "local",
             ops,
             tools,
+            task.temperature,
+            task.max_tokens,
+            task.force_tool_iterations,
         ) {
             tracing::error!(task = %task.id, error = %e, "Failed to add teammate for flow task");
             new_failed.insert(task.id.clone());
@@ -1771,6 +1774,8 @@ pub async fn handle_flow_escalate(
                 tools: None,
                 operations: None,
                 temperature: None,
+                max_tokens: None,
+                force_tool_iterations: None,
                 approval_required: false,
             });
         }

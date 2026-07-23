@@ -231,6 +231,8 @@ mod tests {
             tools: None,
             operations: None,
             temperature: None,
+            max_tokens: None,
+            force_tool_iterations: None,
             approval_required: false,
         }
     }
@@ -424,6 +426,8 @@ mod tests {
             tools: Some(vec!["file_read".to_string(), "file_write".to_string()]),
             operations: Some(vec!["read".to_string(), "write".to_string()]),
             temperature: Some(0.3),
+            max_tokens: None,
+            force_tool_iterations: Some(3),
             approval_required: false,
         };
 
