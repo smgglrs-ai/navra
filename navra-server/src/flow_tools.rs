@@ -1008,6 +1008,24 @@ async fn spawn_and_track_tasks(
 
         // Build the task message with dependency context.
         let mut message = task.mandate.clone();
+
+        // Inject structured output requirement for specialist tasks.
+        // This is appended by the engine so the planner doesn't have to
+        // copy a template (which LLMs garble when reproducing verbatim).
+        let is_specialist = !task.generates_tasks
+            && !is_synthesizer
+            && task.id != "scout"
+            && task.id != "verify";
+        if is_specialist {
+            message.push_str(concat!(
+                "\n\nOutput ONLY a JSON array of findings. Each finding:\n",
+                "{\"file\": \"path\", \"line\": N, \"severity\": \"high|medium|low\",\n",
+                " \"issue\": \"one sentence\", \"evidence\": \"quoted code or fact\"}\n",
+                "If no issues found, output []. Do NOT describe the code.\n",
+                "Do NOT ask questions. Do NOT offer help.",
+            ));
+        }
+
         let dep_count = task.depends_on.len();
         if dep_count > 0 {
             if is_synthesizer && dep_count > 5 {
