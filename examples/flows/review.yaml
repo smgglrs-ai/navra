@@ -49,11 +49,15 @@ tasks:
     generates_tasks: true
     mandate: |
       You are a review planner. Read the scout's project classification,
-      then design a review plan using the right specialists.
+      then design a review plan by selecting the right personas and
+      models for each task.
 
       STEP 1: Call personas_list to see all available personas.
 
-      STEP 2: Based on the project domain and content types from the
+      STEP 2: Call models_list to see available models with their
+      capabilities (tool_use, reasoning, speed_tier, json_compliance).
+
+      STEP 3: Based on the project domain and content types from the
       scout, select 4-6 personas that are relevant. Match personas to
       the project — do NOT use code-focused personas on a legal project.
 
@@ -68,10 +72,13 @@ tasks:
         tech_writer, assessor
       - Mixed → pick based on what content types are present
 
-      STEP 3: Create 8-12 review tasks. Each task must have:
+      STEP 4: Create 8-12 review tasks. Each task must have:
       - "id": unique identifier (e.g., "arch-01", "quality-01")
-      - "specialist": a persona name from personas_list output
-      - "model": "auto"
+      - "specialist": a persona name EXACTLY as shown in personas_list
+      - "model": pick from models_list based on the task:
+        - Tasks needing deep analysis → model with extended reasoning
+        - Tasks needing fast file scanning → fastest model
+        - Use "auto" only if no model cards have capability metadata
       - "mandate": specific review instructions (under 300 words).
         Name the exact files to read and what to check.
 
