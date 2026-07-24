@@ -52,6 +52,8 @@ pub struct McpServerBuilder {
     tool_routing: super::routing::ToolRoutingConfig,
     metrics: Option<Arc<crate::metrics::Metrics>>,
     upstream_modules: HashSet<String>,
+    max_sessions: Option<usize>,
+    session_ttl_secs: Option<u64>,
 }
 
 impl McpServerBuilder {
@@ -91,7 +93,19 @@ impl McpServerBuilder {
             tool_routing: super::routing::ToolRoutingConfig::default(),
             metrics: None,
             upstream_modules: HashSet::new(),
+            max_sessions: None,
+            session_ttl_secs: None,
         }
+    }
+
+    pub fn max_sessions(mut self, n: usize) -> Self {
+        self.max_sessions = Some(n);
+        self
+    }
+
+    pub fn session_ttl_secs(mut self, secs: u64) -> Self {
+        self.session_ttl_secs = Some(secs);
+        self
     }
 
     pub fn upstream_module(mut self, name: impl Into<String>) -> Self {
@@ -894,6 +908,8 @@ impl McpServerBuilder {
             domain_rules: self.domain_rules,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
+            max_sessions: self.max_sessions.unwrap_or(10_000),
+            session_ttl_secs: self.session_ttl_secs.unwrap_or(3600),
             task_store: crate::a2a::TaskStore::new(),
             process_table,
             quota_engine: self.quota_engine.unwrap_or_default(),

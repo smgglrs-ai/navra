@@ -22,6 +22,11 @@ pub struct McpClient {
 }
 
 impl McpClient {
+    /// Drop the underlying rmcp peer, closing the MCP transport.
+    pub fn close(self) {
+        drop(self.peer);
+    }
+
     /// Create from an already-connected rmcp peer.
     pub fn new(peer: rmcp::Peer<rmcp::RoleClient>) -> Self {
         Self {

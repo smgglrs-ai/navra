@@ -2478,7 +2478,9 @@ pub fn spawn_teammate_agent(
                             builder = builder.audit_sink(sink);
                         }
                         let mut agent = builder.build().await?;
-                        agent.run(&message).await
+                        let result = agent.run(&message).await;
+                        agent.close();
+                        result
                     };
                     r.await
                 }};

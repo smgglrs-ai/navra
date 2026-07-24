@@ -51,6 +51,10 @@ pub struct McpServer {
     hooks: HookPipeline,
     /// Shared pause flag — when true, tool calls are rejected.
     paused: Arc<AtomicBool>,
+    /// Maximum concurrent sessions (configurable, default 10000).
+    max_sessions: usize,
+    /// Session idle TTL in seconds (configurable, default 3600).
+    session_ttl_secs: u64,
     /// A2A task store for tracking agent-to-agent tasks.
     task_store: TaskStore,
     /// Process table tracking active agent sessions.

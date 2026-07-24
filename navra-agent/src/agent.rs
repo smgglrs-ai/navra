@@ -42,6 +42,11 @@ impl Agent {
         .await
     }
 
+    /// Close the MCP session and release resources.
+    pub fn close(self) {
+        self.client.close();
+    }
+
     /// Direct access to the MCP client.
     pub fn client(&mut self) -> &mut McpClient {
         &mut self.client

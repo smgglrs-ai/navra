@@ -355,6 +355,8 @@ impl Default for Config {
                 agent_signature_policy: "warn".to_string(),
                 ws_ping_interval_secs: 30,
                 ws_idle_timeout_secs: 600,
+                max_sessions: 10_000,
+                session_ttl_secs: 3600,
                 config_watch: false,
                 config_watch_debounce_ms: 50,
             },
