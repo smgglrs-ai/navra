@@ -81,14 +81,8 @@ tasks:
         - Use "auto" only if no model cards have capability metadata
       - "mandate": specific review instructions (under 300 words).
         Name the exact files to read and what to check.
-
-      CRITICAL: Every mandate you write MUST end with this exact block:
-
-        Output ONLY a JSON array of findings. Each finding:
-        {"file": "path", "line": N, "severity": "high|medium|low",
-         "issue": "one sentence", "evidence": "quoted code or fact"}
-        If no issues found, output []. Do NOT describe the code.
-        Do NOT ask questions. Do NOT offer help.
+        Do NOT include output format instructions — the engine adds
+        them automatically.
 
       Distribute tasks across the selected personas. Every major
       area of the project should be covered by at least one task.
