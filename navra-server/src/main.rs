@@ -865,7 +865,9 @@ async fn serve_inner(
         .mcp_version(&cfg.server.mcp_version)
         .hook_timeout(std::time::Duration::from_secs(cfg.server.hook_timeout_secs))
         .process_table(process_table.clone())
-        .metrics(metrics.clone());
+        .metrics(metrics.clone())
+        .max_sessions(cfg.server.max_sessions)
+        .session_ttl_secs(cfg.server.session_ttl_secs);
 
     // Persistent session store (SQLite) — sessions survive restarts
     {

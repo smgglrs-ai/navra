@@ -211,11 +211,14 @@ impl McpServer {
             return Err("Missing client_info.name".to_string());
         }
 
+        // Expire stale sessions before checking the cap.
+        self.sessions.expire(self.session_ttl_secs);
+
         // DoS protection: cap total sessions
-        const MAX_SESSIONS: usize = 1000;
-        if self.sessions.count() >= MAX_SESSIONS {
+        if self.sessions.count() >= self.max_sessions {
             return Err(format!(
-                "Session limit reached ({MAX_SESSIONS}). Close existing sessions first."
+                "Session limit reached ({}). Close existing sessions first.",
+                self.max_sessions,
             ));
         }
 

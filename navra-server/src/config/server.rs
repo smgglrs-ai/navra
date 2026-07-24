@@ -76,6 +76,13 @@ pub struct ServerConfig {
     #[serde(default = "default_ws_idle_timeout")]
     #[allow(dead_code)]
     pub ws_idle_timeout_secs: u64,
+    /// Maximum concurrent sessions (default: 10000).
+    #[serde(default = "default_max_sessions")]
+    pub max_sessions: usize,
+    /// Session idle TTL in seconds (default: 3600). Stale sessions are
+    /// expired on each new connection to prevent accumulation.
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_secs: u64,
     /// Watch the config file for changes and hot-reload.
     #[serde(default)]
     pub config_watch: bool,
@@ -122,6 +129,14 @@ fn default_ws_ping_interval() -> u64 {
 
 fn default_ws_idle_timeout() -> u64 {
     600
+}
+
+fn default_max_sessions() -> usize {
+    10_000
+}
+
+fn default_session_ttl() -> u64 {
+    3600
 }
 
 fn default_agent_signature_policy() -> String {
