@@ -443,6 +443,7 @@ pub(crate) async fn run_flow_file(
     prompt: &str,
     endpoint: &str,
     token: Option<&str>,
+    default_model: Option<&str>,
 ) -> anyhow::Result<()> {
     let yaml = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Cannot read flow file {path}: {e}"))?;
@@ -462,11 +463,15 @@ pub(crate) async fn run_flow_file(
         }
     }
 
-    let args = serde_json::json!({
+    let mut args = serde_json::json!({
         "flow_definition": yaml,
         "prompt": prompt,
         "parameters": params,
     });
+    if let Some(m) = default_model {
+        args["default_model"] = serde_json::Value::String(m.to_string());
+        eprintln!("Model:     {m}");
+    }
 
     eprintln!("Starting flow...\n");
     let start_result = mcp.call_tool("flow_start", args).await?;
