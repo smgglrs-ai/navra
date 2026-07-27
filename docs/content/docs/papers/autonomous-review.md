@@ -397,21 +397,81 @@ mandates coverage of all 7 dimensions). The dynamic flow
 produces fewer but more focused tasks, with the planner
 concentrating on dimensions the scout identified as relevant.
 
-### 8.2 Domain Adaptation
+### 8.2 Domain Adaptation — External Projects
 
-The same `review.yaml` template was applied to:
+The same `review.yaml` template was applied to three external
+open-source projects in different languages, with no template
+modification:
 
-1. **Rust codebase** (navra): scout classified as
-   `domain: "software"`, planner selected `principal_engineer`,
-   `security_sentinel`, `tech_writer`, `assessor`.
-2. **Mixed project** (documentation + config): scout classified
-   as `domain: "mixed"`, planner selected `tech_writer`,
-   `analyst`, `assessor`.
+| Project | Language | Domain | Personas selected | Tasks |
+|---|---|---|---|---|
+| go-chi/chi | Go | HTTP routing | principal_engineer, security_sentinel, software_developer, tech_writer, assessor | 5-10 |
+| colinhacks/zod | TypeScript | Validation library | principal_engineer, software_developer, security_sentinel, tech_writer, assessor | 8 |
+| tiangolo/fastapi | Python | Web framework | principal_engineer, security_sentinel, tech_writer, assessor, software_developer | 8-10 |
 
-No template modification was required. The planner adapted
-specialist selection to the domain automatically.
+The planner adapted specialist selection to each project's domain
+automatically. The scout correctly classified all three projects
+and the planner selected relevant personas from the catalog.
 
-### 8.3 JSON Parser Recovery Rates
+### 8.3 Model-Card-Driven Selection
+
+When model cards include agentic metadata (tool_use, reasoning,
+speed_tier), the planner differentiates model assignments per task.
+On chi with four configured models:
+
+| Task type | Model selected | Rationale |
+|---|---|---|
+| Architecture review | gemma4:26b | Extended reasoning |
+| Security audit | qwen3.6:35b-a3b | Extended reasoning, slow |
+| Dependency scan | gemma4:e4b | Fast, basic |
+| API review | granite4:small-h | Basic reasoning |
+
+Without agentic metadata, the scorer selects the same model for
+all tasks (parameter-count tiebreaker). The `models_list` MCP tool
+filters out auto-discovered models without operator configuration,
+preventing the planner from selecting unconfigured models.
+
+### 8.4 Verification Stage
+
+The verifier stage re-reads cited source files and classifies
+each finding as CONFIRMED, PLAUSIBLE, HALLUCINATED, or
+UNVERIFIABLE. Hallucinated findings are dropped before synthesis.
+
+| Model | Raw findings | Survived verifier | Confirmed | Hallucinated |
+|---|---|---|---|---|
+| Claude Opus + Sonnet (Vertex AI) | 13 | 13 | 9 confirmed, 4 plausible | 0 |
+| Qwen 3.6 35B-A3B (local, all tasks) | 6 | 6 | 6 | 0 |
+| Gemma 4 26B (local, all tasks) | 1 | 1 | 1 | 0 |
+
+Claude produced the most file-level findings (PUT→Delete bug,
+RegisterMethod race, supress typo). Qwen 3.6 produced deeper
+algorithmic analysis (bitwise method limit, mALL propagation,
+Find false positives, traversal complexity). Both achieved zero
+hallucinations after verification.
+
+### 8.5 Flow Engine Improvements
+
+Three engineering improvements were required to achieve these
+results:
+
+1. **Engine-injected output format.** Specialist mandates
+   originally included a JSON template that the planner had to
+   copy into each task. LLMs garbled the template when
+   reproducing it (e.g., `"line"` → `"undistinguishable"`),
+   causing parse failures. Moving the format requirement to the
+   engine (appended automatically) eliminated this failure mode.
+
+2. **No artificial token limits.** `max_tokens` was set to 8192,
+   which starved thinking models that use thousands of tokens for
+   `<think>` blocks. Removing the limit (letting models use their
+   full context window) was critical for local model quality.
+
+3. **Scoped filesystem.** The upstream MCP filesystem server must
+   be scoped to the target project directory, not a parent
+   containing multiple repos. Without scoping, agents browse
+   the wrong project.
+
+### 8.6 JSON Parser Recovery Rates
 
 Across 50 planner invocations with Gemma 4 27B and Granite 4 8B:
 
@@ -427,7 +487,7 @@ hit output token limit mid-JSON). The 8% failure rate triggers
 retry with context injection, which typically succeeds on the
 second attempt.
 
-### 8.4 Self-Improvement Convergence
+### 8.7 Self-Improvement Convergence
 
 6 improvement cycles on the navra codebase:
 
@@ -445,18 +505,19 @@ convergence pattern (delta threshold) can automatically stop
 when the finding rate drops below a configurable minimum.
 Total: 38 issues found, 20 fixed, 15 verified across 6 cycles.
 
-### 8.5 Fully Local Execution
+### 8.8 Fully Local Execution
 
-All evaluations ran on consumer hardware:
+All local evaluations ran on consumer hardware (RTX 5090, 32 GB
+VRAM) with no cloud API calls:
 
-| Role | Model | Parameters | Quantization |
+| Configuration | Model | Time | Findings |
 |---|---|---|---|
-| Scout | Gemma 4 12B | 12B | Q4_K_M |
-| Planner/Synthesizer | Gemma 4 27B | 27B | Q4_K_M |
-| Specialists | Granite 4 8B | 8B | Q4_K_M |
+| Single model (all tasks) | Qwen 3.6 35B-A3B Q8 | 1388s | 6 confirmed |
+| Mixed models (auto-selected) | Gemma 4 26B + others | 2054s | 1 confirmed |
+| Cloud API benchmark | Claude Opus + Sonnet | 1413s | 13 (9 confirmed) |
 
-No cloud API calls. Gateway: navra with IFC, ACLs, and
-safety filters active.
+Gateway: navra with IFC, ACLs, and safety filters active.
+Upstream tools: `@modelcontextprotocol/server-filesystem`.
 
 ---
 

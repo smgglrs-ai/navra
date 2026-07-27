@@ -3372,6 +3372,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "navra-kv-cache"
+version = "0.3.0"
+
+[[package]]
 name = "navra-macros"
 version = "0.1.0"
 dependencies = [
@@ -3691,6 +3695,7 @@ dependencies = [
  "ksni",
  "mdns-sd",
  "navra-agent",
+ "navra-auth",
  "navra-cognitive",
  "navra-core",
  "navra-flow",
