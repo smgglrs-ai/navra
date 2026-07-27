@@ -435,7 +435,11 @@ async fn compress_extractive(
 
     // Embed the query (use first 512 chars of mandate)
     let query_text = if query.len() > 512 {
-        &query[..512]
+        let mut end = 512;
+        while end > 0 && !query.is_char_boundary(end) {
+            end -= 1;
+        }
+        &query[..end]
     } else {
         query
     };
@@ -449,7 +453,11 @@ async fn compress_extractive(
     let mut scored: Vec<(usize, f32, &str)> = Vec::with_capacity(paragraphs.len());
     for (i, para) in paragraphs.iter().enumerate() {
         let para_text = if para.len() > 1024 {
-            &para[..1024]
+            let mut end = 1024;
+            while end > 0 && !para.is_char_boundary(end) {
+                end -= 1;
+            }
+            &para[..end]
         } else {
             para
         };
@@ -1245,7 +1253,11 @@ pub async fn run_tool_loop(
 
             if let Some(ref sink) = config.audit_sink {
                 let truncated_result = if raw_text.len() > 4096 {
-                    format!("{}…", &raw_text[..4096])
+                    let mut end = 4096;
+                    while end > 0 && !raw_text.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}…", &raw_text[..end])
                 } else {
                     raw_text.clone()
                 };
