@@ -16,7 +16,7 @@ parameters:
 tasks:
   - id: scout
     specialist: analyst
-    model: gemma4:e4b
+    model: auto
     mandate: |
       You are a project classifier. Your ONLY job is to examine the
       project at {{ target_dir }} and output a JSON classification.
@@ -44,7 +44,7 @@ tasks:
 
   - id: planner
     specialist: analyst
-    model: gemma4:26b
+    model: auto
     depends_on: [scout]
     generates_tasks: true
     mandate: |
@@ -92,7 +92,7 @@ tasks:
 
   - id: verify
     specialist: assessor
-    model: gemma4:26b
+    model: auto
     depends_on: [planner]
     mandate: |
       You are a finding verifier. Your job is to check whether specialist
@@ -131,7 +131,7 @@ tasks:
 
   - id: synthesize
     specialist: summarizer
-    model: gemma4:26b
+    model: auto
     depends_on: [verify]
     mandate: |
       Read the verifier output via flow_result. It contains verified

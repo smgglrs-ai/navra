@@ -417,7 +417,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
         } => {
             if let Some(ref flow_file) = flow {
-                cmd_run::run_flow_file(flow_file, &prompt, &endpoint, token.as_deref()).await?;
+                cmd_run::run_flow_file(flow_file, &prompt, &endpoint, token.as_deref(), model.as_deref()).await?;
                 return Ok(());
             }
             // If prompt looks like instance/workflow, treat as workflow run

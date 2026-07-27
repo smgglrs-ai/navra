@@ -1240,6 +1240,22 @@ pub async fn handle_flow_start(
         Err(e) => return CallToolResult::error_msg(format!("Invalid flow YAML: {e}")),
     };
 
+    // Apply default_model override: replace "auto" or absent model
+    // with the operator-specified default. The planner can still
+    // override per-task by setting an explicit model name.
+    let default_model = args
+        .get("default_model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("auto");
+    let mut dag_config = dag_config;
+    if default_model != "auto" {
+        for task in &mut dag_config.tasks {
+            if task.model.is_none() || task.model.as_deref() == Some("auto") {
+                task.model = Some(default_model.to_string());
+            }
+        }
+    }
+
     let flow_id = ctx.flow_registry.register(&dag_config.name);
 
     // Persist flow metadata for resumability
@@ -1299,7 +1315,7 @@ pub async fn handle_flow_start(
     // Execute the DAG synchronously — block until all tasks (including
     // dynamically injected planner tasks and subflows) complete.
     // This ensures the caller gets the full result, not just "started."
-    let final_output = run_dag_execution(&ctx, &flow_id, &team_id, &prompt, dag_config.tasks).await;
+    let final_output = run_dag_execution(&ctx, &flow_id, &team_id, &prompt, dag_config.tasks, default_model).await;
 
     // Mark flow complete in metadata
     if let Some(ref audit) = ctx.audit_log {
@@ -1320,6 +1336,7 @@ async fn run_dag_execution(
     team_id: &str,
     prompt: &str,
     mut task_defs: Vec<navra_flow::TaskDefinition>,
+    default_model: &str,
 ) -> String {
     let mut completed: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut failed: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1568,8 +1585,14 @@ async fn run_dag_execution(
                 "Injecting dynamic tasks from planner"
             );
 
-            // Inject tasks — they depend on the planner
+            // Inject tasks — they depend on the planner.
+            // Apply default_model to injected tasks that use "auto".
             for mut new_task in new_tasks {
+                if default_model != "auto" {
+                    if new_task.model.is_none() || new_task.model.as_deref() == Some("auto") {
+                        new_task.model = Some(default_model.to_string());
+                    }
+                }
                 if new_task.depends_on.is_empty() {
                     new_task.depends_on.push(task.id.clone());
                 }
@@ -2306,6 +2329,7 @@ pub async fn handle_flow_resume(
             &team_id,
             &cp_state.prompt,
             cp_state.task_defs,
+            "auto",
         )
         .await;
 
@@ -2456,7 +2480,7 @@ pub async fn handle_flow_resume(
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 
     let prompt = format!("Resumed flow {flow_id}");
-    let final_output = run_dag_execution(&ctx, &new_flow_id, &team_id, &prompt, remaining).await;
+    let final_output = run_dag_execution(&ctx, &new_flow_id, &team_id, &prompt, remaining, "auto").await;
 
     if let Some(ref audit) = ctx.audit_log {
         let _ = audit.complete_flow_metadata(&new_flow_id, "completed");
