@@ -226,6 +226,18 @@ pub struct AgenticMeta {
     pub locality: Option<String>,
 }
 
+impl AgenticMeta {
+    /// Returns true if any capability field has been set by the operator.
+    pub fn has_metadata(&self) -> bool {
+        self.tool_use.is_some()
+            || self.reasoning.is_some()
+            || self.speed_tier.is_some()
+            || self.cost_tier.is_some()
+            || self.json_compliance.is_some()
+            || self.locality.is_some()
+    }
+}
+
 /// Runtime statistics learned from actual agent executions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuntimeMeta {

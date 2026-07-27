@@ -1355,6 +1355,10 @@ pub async fn handle_models_list(cards: Vec<ModelCard>) -> navra_core::protocol::
     use navra_core::protocol::CallToolResult;
     let enriched: Vec<serde_json::Value> = cards
         .iter()
+        .filter(|c| {
+            c.agentic.has_metadata()
+                || c.vendor.tasks.iter().any(|t| t == "chat" || t == "text-generation")
+        })
         .map(|c| {
             let mut v = serde_json::to_value(c).unwrap_or_default();
             if let Some(obj) = v.as_object_mut() {
