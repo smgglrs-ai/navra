@@ -2494,8 +2494,13 @@ pub fn spawn_teammate_agent(
                         .unwrap_or_else(|_| "my-project".to_string());
                     let region = std::env::var("CLOUD_ML_REGION")
                         .unwrap_or_else(|_| "us-east5".to_string());
+                    let host = if region == "global" {
+                        "aiplatform.googleapis.com".to_string()
+                    } else {
+                        format!("{region}-aiplatform.googleapis.com")
+                    };
                     let url = format!(
-                        "https://{region}-aiplatform.googleapis.com/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{teammate_model}:rawPredict"
+                        "https://{host}/v1/projects/{project}/locations/{region}/publishers/anthropic/models/{teammate_model}:rawPredict"
                     );
                     let token_output = std::process::Command::new("gcloud")
                         .args(["auth", "print-access-token"])
