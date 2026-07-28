@@ -999,7 +999,9 @@ impl McpServer {
                 .collect::<Vec<_>>()
                 .join("");
             let output_trunc = if output_text.len() > 2048 {
-                &output_text[..2048]
+                let mut end = 2048;
+                while end > 0 && !output_text.is_char_boundary(end) { end -= 1; }
+                &output_text[..end]
             } else {
                 &output_text
             };

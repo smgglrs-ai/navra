@@ -117,7 +117,9 @@ impl navra_agent::AuditSink for StreamingAuditSink {
     ) {
         // Truncate large results for streaming
         let result_preview = if tool_result.len() > 4096 {
-            format!("{}...", &tool_result[..4096])
+            let mut end = 4096;
+            while end > 0 && !tool_result.is_char_boundary(end) { end -= 1; }
+            format!("{}...", &tool_result[..end])
         } else {
             tool_result.to_string()
         };
