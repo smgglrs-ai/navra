@@ -21,7 +21,9 @@ tasks:
       You are a project classifier. Your ONLY job is to examine the
       project at {{ target_dir }} and output a JSON classification.
 
-      Use directory_tree or list_directory to see the structure.
+      Use list_directory to see the top-level structure. For large
+      projects, do NOT use directory_tree on the root — it may exceed
+      context limits. Instead, list_directory on subdirectories.
       Read the README and 1-2 config files (package.json, Cargo.toml,
       pyproject.toml, go.mod, or equivalent).
 

@@ -841,40 +841,59 @@ fn current_bb_seq() -> i64 {
 }
 
 /// Pre-compute project file tree for injecting into specialist mandates.
+/// Max files to include in the injected file tree. Larger projects
+/// get a truncated tree — agents can call list_directory/directory_tree
+/// for the full listing.
+const MAX_FILE_TREE_ENTRIES: usize = 200;
+
 fn compute_file_tree(docs_root: &Option<String>) -> String {
     if let Some(root) = docs_root {
         let root_path = std::path::Path::new(root);
         if root_path.is_dir() {
             let mut files = Vec::new();
-            fn collect(dir: &std::path::Path, root: &std::path::Path, files: &mut Vec<String>) {
+            fn collect(
+                dir: &std::path::Path,
+                root: &std::path::Path,
+                files: &mut Vec<String>,
+                limit: usize,
+            ) {
                 let Ok(entries) = std::fs::read_dir(dir) else {
                     return;
                 };
                 for entry in entries.flatten() {
+                    if files.len() >= limit {
+                        return;
+                    }
                     let path = entry.path();
                     let name = entry.file_name();
                     let name_str = name.to_string_lossy();
                     if name_str.starts_with('.')
                         || name_str == "target"
                         || name_str == "node_modules"
+                        || name_str == ".git"
                     {
                         continue;
                     }
                     if path.is_dir() {
-                        collect(&path, root, files);
+                        collect(&path, root, files, limit);
                     } else if path.is_file()
                         && let Ok(rel) = path.strip_prefix(root)
                     {
-                        let lines = std::fs::read_to_string(&path)
-                            .map(|c| c.lines().count())
-                            .unwrap_or(0);
-                        files.push(format!("  {} ({} lines)", rel.display(), lines));
+                        files.push(format!("  {}", rel.display()));
                     }
                 }
             }
-            collect(root_path, root_path, &mut files);
+            collect(root_path, root_path, &mut files, MAX_FILE_TREE_ENTRIES);
+            let total = files.len();
             files.sort();
-            format!("{} files:\n{}", files.len(), files.join("\n"))
+            if total >= MAX_FILE_TREE_ENTRIES {
+                format!(
+                    "{total}+ files (truncated, use list_directory for full listing):\n{}",
+                    files.join("\n")
+                )
+            } else {
+                format!("{total} files:\n{}", files.join("\n"))
+            }
         } else {
             String::new()
         }
