@@ -1,0 +1,77 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running `target/debug/navra run --flow /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml -e 'http://127.0.0.1:9316/mcp' -m 'qwen3.6:35b-a3b' target_dir=/tmp/navra-review-eval/fastapi`
+Flow file: /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml
+Endpoint:  http://127.0.0.1:9316/mcp
+Model:     qwen3.6:35b-a3b
+Starting flow...
+
+flow_start response: Flow completed.
+flow_id: flow-b84f2360
+
+This looks like the file tree for the **FastAPI test suite** (`tests/` directory in the official repository). It covers a wide range of features and edge cases, including:
+
+📦 **Core Modules Tested:**
+- `test_openapi_*.py` → OpenAPI/Swagger generation, schemas, examples, and extensions
+- `test_security_*.py` → API keys, OAuth2, HTTP Basic/Digest, Bearer, OpenID Connect
+- `test_deps_*.py` & `test_dependencies_*.py` → Dependency injection, sub-dependencies, caching
+- `test_request_params/` & `test_tutorial/` → Body, forms, files, cookies, headers, query/path params
+- `test_response_*.py` & `test_custom_response/` → Status codes, cookies, headers, serialization, `Response` objects
+- `test_starlette_*.py` & `test_middleware_*.py` → Starlette integration, middleware, routing
+- `test_validate_response_*.py` → Output validation using Pydantic
+- `test_tutorial/` → Exact replicas of the official documentation examples
+
+🛠 **How can I help you with this?**
+- Explain how a specific test works or what it validates
+- Help you write a new test or reproduce a bug
+- Suggest how to run/cover specific parts of the suite
+- Analyze test patterns for your own FastAPI project
+- Anything else? Just let me know!
+
+---
+## Run Metrics
+- Total time: 2519.0s
+- Agents spawned: 13 (13 flow + 0 subflow)
+- Total tokens: 1877116
+- Tool calls: 517
+- Budget: 13/50 agents, depth 0/5
+- Escalations: 3 (escalation-depth1 at depth 1, generic-escalation at depth 1, escalation-depth1 at depth 1)
+
+### Per-stage timing
+| Stage | Model | Time | Tokens | Status |
+|-------|-------|------|--------|--------|
+| scout | qwen3.6:35b-a3b | 2519.0s | - | done |
+| planner | qwen3.6:35b-a3b | 2200.2s | - | done |
+| verify | qwen3.6:35b-a3b | 2178.7s | - | done |
+| synthesize | qwen3.6:35b-a3b | 183.6s | - | done |
+| arch-01 | qwen3.6:35b-a3b | 2178.2s | - | done |
+| dq-01 | qwen3.6:35b-a3b | 1805.5s | - | done |
+| cq-01 | qwen3.6:35b-a3b | 1805.0s | - | done |
+| sec-01 | qwen3.6:35b-a3b | 1624.4s | - | done |
+| sec-02 | qwen3.6:35b-a3b | 1623.9s | - | done |
+| tq-01 | qwen3.6:35b-a3b | 1173.2s | - | done |
+| dw-01 | qwen3.6:35b-a3b | 1172.7s | - | done |
+| dt-01 | qwen3.6:35b-a3b | 1058.1s | - | done |
+| dq-02 | qwen3.6:35b-a3b | 1057.6s | - | done |
+
+### Tool usage
+- model_proxy: 237
+- read_text_file: 99
+- team_bb_read: 66
+- list_directory: 35
+- directory_tree: 18
+- list_allowed_directories: 15
+- search_files: 12
+- team_bb_notifications: 9
+- read_multiple_files: 6
+- flow_escalate: 5
+- team_bb_publish: 5
+- get_file_info: 3
+- flow_result: 2
+- flow_status: 1
+- list_directory_with_sizes: 1
+- models_list: 1
+- personas_list: 1
+- read_file: 1
+
+[2m2026-07-28T09:10:00.578142Z[0m [31mERROR[0m [2mrmcp::service[0m[2m:[0m fail to close sink [3me[0m[2m=[0mTokio join error: task 33 was cancelled
+Error: flow_start did not return a flow_id

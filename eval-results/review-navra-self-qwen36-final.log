@@ -1,0 +1,98 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running `target/debug/navra run --flow /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml -e 'http://127.0.0.1:9316/mcp' -m 'qwen3.6:35b-a3b' target_dir=/home/fdupont/Code/github.com/smgglrs-ai/navra`
+Flow file: /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml
+Endpoint:  http://127.0.0.1:9316/mcp
+Model:     qwen3.6:35b-a3b
+Starting flow...
+
+flow_start response: Flow completed.
+flow_id: flow-1648a90e
+
+## Security Assessment of `navra` Test Suite
+
+### 1. Security Evaluation & Adversarial Resilience
+The provided test suite demonstrates a mature commitment to zero-trust design and formal security properties, particularly regarding Information Flow Control (IFC) and capability-based authorization.
+
+*   **Formal Property Coverage:** `security_eval.rs` rigorously validates the five core security properties outlined in the architecture: privilege escalation prevention, credential isolation, capability attenuation, audit trail integrity, and token tamper evidence. The tests structurally verify that delegated capabilities cannot inherit superset permissions (`delegation_cannot_add_operations`), that token payloads are not self-descriptive of secret values (`credential_labels_not_values_in_token`), and that expired or version-mismatched tokens are cryptographically or logically rejected.
+*   **Adversarial Corpus Validation:** `ifc_benchmark.rs` implements a statistically grounded adversarial harness, asserting F1 scores against a 261-vector corpus. This indicates the codebase treats security testing not as a binary pass/fail, but as a probabilistic evaluation of false-positive and false-negative rates across benign and malicious flows.
+*   **Label Propagation Integrity:** `ifc_integration.rs` and `mesh_integration.rs` effectively verify that data labels correctly traverse component boundaries. The suite ensures that `UNTRUSTED_SENSITIVE` data read from the blackboard cannot leak into `Public`-clearance mailboxes, enforcing the monotonicity of the IFC lattice under concurrent and sequential operations.
+
+**Gap:** While the cryptographic and logical security of token validation is thoroughly tested, the suite lacks tests verifying the *audience* of security events. `security_eval.rs` asserts that invalid tokens cause authentication to fail, but does not verify that `ChainAuthenticator` or `CapabilityAuthenticator` emit structured audit logs (e.g., failure reason, token nonce, source IP, or user agent) required for the "Audit Trail" property. Security controls that fail silently or drop audit artifacts are a common implementation flaw in capability-based systems.
+
+### 2. State Management & Persistence Fidelity
+The test suite primarily operates on ephemeral, in-memory abstractions.
+
+*   **In-Memory Abstraction Limits:** `mesh_integration.rs` tests `Blackboard` and `MailboxRegistry` using `Blackboard::new(10)` and in-memory registries. While useful for validating core lattice logic and API contracts, these mocks do not exercise storage backends, WAL (Write-Ahead Log) durability, or crash-recovery semantics. The monotonically rising taint tracker (`taint_rises_monotonically_through_multiple_reads`) is validated on a transient heap, meaning any disk-backed storage implementation or state-reconstruction logic remains untested.
+*   **Credential Store Edge Cases:** `security_eval.rs` validates `MappedCredentialStore` against direct API calls (`store.resolve`, `store.store`), confirming that environment-sourced credentials cannot be overwritten. However, it omits tests for credential rotation, secure deletion, and handling of malformed or truncated credential payloads, which are critical for long-running agent lifecycles.
+
+### 3. Concurrency & Resource Contention
+*   **Controlled Concurrency:** `mesh_integration.rs` verifies that `Blackboard::publish` is thread-safe using `Arc`-wrapped `Blackboard` and `std::thread::spawn`, asserting that concurrent publishes from 10 agents preserve entry count and author metadata.
+*   **Concurrency & Lock Contention Gaps:** The concurrency testing is limited to low-contention scenarios. The suite lacks high-throughput stress tests to measure IFC gatekeeper lock contention, mailbox deadlock potential when multiple back-edges trigger simultaneously, and the actual thread-safety of the `TaintTracker` under rapid, interleaved reads/writes. Furthermore, `navra-flow`'s back-edge lifecycle (`back_edge_activates_on_low_score_and_exhausts_at_max`) is tested in a purely synchronous, single-threaded context, missing the asynchronous task-queue race conditions that occur in production DAG execution.
+
+### 4. Integration Breadth & Mock Fidelity
+*   **Upstream Proxy Testing:** `upstream_integration.rs` relies on `test_upstream.py`, a Python process simulating a valid MCP peer. This is an excellent approach for validating transport-layer message framing (JSON-RPC, stdio I/O) and tool discovery.
+*   **Fault Tolerance & Latency Gaps:** The Python test server simulates ideal network conditions. It does not stress-test the `UpstreamModule`'s handling of connection timeouts, TCP resets, malformed JSON replies, or MCP protocol version mismatches. The IFC proxy in `ifc_integration.rs` also runs against a mocked LLM backend that likely bypasses rate-limiting, token-pool exhaustion, and context-window overflow behaviors. Without fault-injection testing, the proxy's resilience to upstream degradation remains unverified.
+
+### 5. Recommendations for Mitigation
+
+| Coverage Gap | Recommended Action |
+| :--- | :--- |
+| **Audit Trail Integrity** | Extend `security_eval.rs` to capture and assert structured audit log entries for every `decode_token` and `validate_delegation` failure, ensuring observability requirements are met. |
+| **Long-Running State Durability** | Implement `navra-flow/tests/test_dag_lifecycle.rs` to validate DAG deserialization, crash recovery, and state persistence across simulated restarts, moving beyond TOML string parsing. |
+| **High-Throughput Concurrency** | Add a stress test in `mesh_integration.rs` that spikes concurrent `Blackboard::publish` and `MailboxRegistry::post` calls to 1,000+ iterations per second to detect IFC lock contention and mailbox head-of-line blocking. |
+| **Credential Lifecycle** | Expand `security_eval.rs` with `test_credential_rotation()` and `test_credential_expiry_handling()` to verify `MappedCredentialStore` correctly invalidates old secrets and handles secure wipe operations. |
+| **Network Fault Injection** | Modify `test_upstream.py` to simulate MCP peer latency jitter, random payload truncation, and TCP reset injection. Verify that `navra_core::UpstreamModule` gracefully degrades, retries with backoff, and correctly bubbles transport-level IFC violations. |
+| **End-to-End Flow Validation** | Create a `navra-core/tests/test_secure_dag_execution.rs` that orchestrates a full multi-mesh DAG execution: trigger a task on Mesh A, propagate tainted data through the blackboard, route through the IFC gateway to Mesh B, and verify the final write is blocked or downgraded according to policy. |
+
+### Summary
+The `navra` test suite is architecturally sound and excels at validating cryptographic constraints, formal IFC lattice properties, and capability attenuation. However, it currently operates within a highly controlled simulation envelope. The primary risk lies in the disparity between the tested in-memory abstractions and the complex, fault-prone realities of distributed networking, long-lifecycle state management, and high-contention concurrency. Implementing fault injection, audit-log verification, and end-to-end DAG execution tests will bridge this gap and align the testing strategy with production deployment requirements.
+
+---
+## Run Metrics
+- Total time: 3001.0s
+- Agents spawned: 16 (16 flow + 0 subflow)
+- Total tokens: 3210935
+- Tool calls: 656
+- Budget: 16/50 agents, depth 0/5
+- Escalations: 3 (escalation-depth1 at depth 1, escalation-depth1 at depth 1, escalation-depth1 at depth 1)
+
+### Per-stage timing
+| Stage | Model | Time | Tokens | Status |
+|-------|-------|------|--------|--------|
+| scout | qwen3.6:35b-a3b | 3001.0s | - | done |
+| planner | qwen3.6:35b-a3b | 2964.4s | - | done |
+| verify | qwen3.6:35b-a3b | 844.5s | - | done |
+| synthesize | qwen3.6:35b-a3b | 177.6s | - | done |
+| arch-01 | qwen3.6:35b-a3b | 2933.9s | - | done |
+| rust-code-01 | qwen3.6:35b-a3b | 2933.4s | - | done |
+| security-01 | qwen3.6:35b-a3b | 2305.5s | - | done |
+| flow-01 | qwen3.6:35b-a3b | 2305.0s | - | done |
+| protocol-01 | qwen3.6:35b-a3b | 2211.4s | - | done |
+| safety-01 | qwen3.6:35b-a3b | 2210.9s | - | done |
+| memory-01 | qwen3.6:35b-a3b | 2033.2s | - | done |
+| ui-01 | qwen3.6:35b-a3b | 2032.7s | - | done |
+| docs-01 | qwen3.6:35b-a3b | 1924.1s | - | done |
+| edge-01 | qwen3.6:35b-a3b | 1923.6s | - | done |
+| compliance-01 | qwen3.6:35b-a3b | 1638.0s | - | done |
+| test-01 | qwen3.6:35b-a3b | 1637.5s | - | done |
+
+### Tool usage
+- model_proxy: 256
+- list_directory: 90
+- read_text_file: 77
+- search_files: 65
+- team_bb_read: 50
+- read_multiple_files: 40
+- list_allowed_directories: 21
+- directory_tree: 15
+- list_directory_with_sizes: 12
+- get_file_info: 8
+- read_file: 8
+- flow_result: 5
+- flow_escalate: 3
+- team_bb_notifications: 3
+- models_list: 1
+- personas_list: 1
+- team_bb_publish: 1
+
+Error: flow_start did not return a flow_id

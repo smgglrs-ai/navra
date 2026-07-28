@@ -1,0 +1,150 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.21s
+     Running `target/debug/navra run --flow /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml -e 'http://127.0.0.1:9316/mcp' -m 'qwen3.6:35b-a3b' target_dir=/home/fdupont/Code/github.com/smgglrs-ai/navra`
+Flow file: /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml
+Endpoint:  http://127.0.0.1:9316/mcp
+Model:     qwen3.6:35b-a3b
+Starting flow...
+
+flow_start response: Flow completed.
+flow_id: flow-161e4ca9
+
+Here is a comprehensive code review of `navra-flow/src/checkpoint.rs`.
+
+### 🔴 Critical Bugs
+
+1. **Invalid Syntax in Struct Constructor**
+   ```rust
+   CheckpointState {
+       // ...
+       prompt: String::new(),
+       _var: v-85659849_, // ❌ Syntax error
+   }
+   ```
+   This line is not valid Rust. It appears to be a diff-generation artifact or placeholder that will cause a compilation failure. It must be removed or replaced with `// _var: v-85659849_` (if it's a comment).
+
+2. **`list_incomplete()` is Misleading and Incorrectly Named**
+   ```rust
+   pub fn list_incomplete(&self) -> Result<Vec<String>, MemoryError> {
+       let sql = r#"SELECT flow_id FROM dag_checkpoints"#;
+       // ...
+   }
+   ```
+   This query returns **all** flow IDs in the table, not just "incomplete" ones. To determine completeness, you'd need to check if `task_defs` is empty and `failed` has no unhandled entries. Renaming it to `list_all` or `list_flow_ids` is necessary. If "incomplete" semantics are desired, the query must be updated (e.g., by storing a `last_modified` or `status` column).
+
+3. **`save_node` Creates a Fallback State with Empty `flow_id` in the Prompt**
+   ```rust
+   flow_id: flow_id.to_string(),
+   team_id: String::new(),
+   prompt: String::new(),
+   ```
+   When a check point is created by `save_node` (no prior state), `team_id` and `prompt` are set to empty strings. If downstream logic relies on these for flow identification or audit logging, this will silently drop context. Consider requiring them as parameters or deriving them from context earlier.
+
+### ⚠️ Code Smells & Design Concerns
+
+4. **Heavy Serialization on Every Checkpoint Write**
+   `CheckpointState` contains `Vec<TaskDefinition>`. `TaskDefinition` likely bundles `Mandate`, `Specialist`, tool schemas, model configs, and system prompts. Serializing this entire blob on every node completion (`save_node`) and load is expensive in CPU and I/O.
+   * **Fix:** Store tasks in a separate table (or a serialized compact ID map) and fetch them only when needed. Or extract a `flow_template_id` and store the full definition once in a `flow_templates` table.
+
+5. **Read-Modify-Write Race in `save_node`, `cache_tool_result`, `get_cached_tool_result`**
+   All three methods follow a `load -> modify -> save` pattern without optimistic concurrency control. Two parallel workers completing nodes simultaneously on the same flow will overwrite each other's state.
+   * **Fix:** Add a `version INTEGER NOT NULL` column and check `WHERE version = old_version` in an `UPDATE`. Or wrap operations in a `BEGIN IMMEDIATE` transaction. `rusqlite` supports `Transaction::isolation_level(IsolationLevel::Immediate)`.
+
+6. **Unbounded `idempotency_cache` Growth**
+   The cache stores every successful tool invocation result (`HashMap<String, String>`) for the flow's lifetime. For long-running flows or many parallel executions without cleanup, this causes a memory leak.
+   * **Fix:** Implement a TTL or LRU eviction strategy. Store `cache_entry: { result_id, expires_at, payload }` in a separate table, or prune entries older than X hours in a periodic maintenance check.
+
+7. **Missing Validation of DAG Consistency**
+   `save_node` blindly removes tasks from `task_defs` and marks them completed. If a node completes twice (e.g., due to retry logic or concurrent execution), the DAG state will silently record duplicate completions. The invariant `completed.len() + failed.len() + task_defs.len() == initial_task_count` is never checked.
+   * **Fix:** Add a guard in `save_node` to reject duplicates: `if state.completed.contains(key) { return Err(...) }`.
+
+8. **`save_node` Drops Task Definition on Completion**
+   ```rust
+   state.task_defs.retain(|def| def.id != task_key);
+   ```
+   Once a node finishes, its full `TaskDefinition` is purged from the checkpoint. If a user later inspects the checkpoint history or needs to resume from a later checkpoint with full context, this information is gone. Consider storing task definitions in a separate append-only `flow_nodes` table.
+
+### 🐢 Performance & Scalability
+
+9. **`list_incomplete()` is an Unindexed Full Table Scan**
+   As the `dag_checkpoints` table grows with finished flows, `SELECT flow_id FROM dag_checkpoints` becomes slower. Add an index or partition by `completed_at`.
+
+10. **Subsecond Timestamp Precision Lost**
+    ```rust
+    .as_secs()
+    ```
+    Using `Instant::now().elapsed().as_secs()` truncates to whole seconds. In high-throughput flows, multiple saves in the same second will have identical timestamps, breaking last-write-wins assumptions. Use `SystemTime::now().duration_since(UNIX_EPOCH).as_nanos()` or a proper UTC timestamp.
+
+### ✅ Rust-Specific Feedback
+
+11. **`Mutex` Wrapping an already-synchronized `Connection`**
+    `rusqlite::Connection` is not thread-safe by default, but you're using `FULL_MUTEX` open flag. The outer `Arc<Self>` pattern is fine, but consider using `tokio-rusqlite` or `diesel` if you move to async, or ensure single-threaded access if `sqlx`/`rusqlite` is used in a `#[tokio::main]` without an executor-safe adapter.
+
+12. **Unused `updated_at` in `save()`**
+    `save()` updates the `updated_at` column, but `load()` reads it and never uses it for cache invalidation or conflict detection. If this was meant for stale-cache detection, it's not wired up.
+
+13. **Error Handling Swallows Deserialization Failures**
+    ```rust
+    .map_err(MemoryError::Io)?
+    ```
+    If the JSON in the DB is corrupted (e.g., after a crash or manual edit), this returns `IOExceptions` which are ambiguous. Consider adding a `CheckpointDeserialization` error variant to track schema drift or format errors.
+
+### 📋 Actionable Recommendations
+
+| Priority | Action |
+|:---|:---|
+| **P0** | Remove/fix the `_var: v-85659849_` syntax error. |
+| **P0** | Add optimistic concurrency (`version` column) to `save_node` and `cache_tool_result` loads. |
+| **P1** | Rename `list_incomplete()` to `list_flow_ids()` or implement actual completeness filtering. |
+| **P1** | Extract `task_defs` out of the checkpoint blob; store in a separate `flow_task_defs` table keyed by `flow_id`. |
+| **P2** | Add a `completed_at` or `expires_at` column to `dag_checkpoints`. Add a cron/cleanup task to purge old checkpoints and their caches. |
+| **P2** | Replace `.as_secs()` with `.as_nanos()` or `chrono::Utc::now().timestamp()`. |
+| **P3** | Add idempotency guard in `save_node`: reject completing already-completed tasks. |
+
+If you'd like, I can provide a refactored schema + migration plan, or drop-in fixes for the concurrency and serialization bottlenecks.
+
+[Warning: 2 of 14 tasks failed: {"arch-01", "core-01"}]
+
+---
+## Run Metrics
+- Total time: 823.8s
+- Agents spawned: 14
+- Total tokens: 1691457
+- Tool calls: 361
+- Budget: 14/50 agents, depth 0/5
+
+### Per-stage timing
+| Stage | Model | Time | Tokens | Status |
+|-------|-------|------|--------|--------|
+| scout | qwen3.6:35b-a3b | 823.7s | - | done |
+| planner | qwen3.6:35b-a3b | 790.2s | - | done |
+| verify | qwen3.6:35b-a3b | 187.1s | - | done |
+| synthesize | qwen3.6:35b-a3b | 120.6s | - | done |
+| arch-01 | qwen3.6:35b-a3b | 765.7s | - | failed |
+| arch-02 | qwen3.6:35b-a3b | 765.2s | - | done |
+| security-01 | qwen3.6:35b-a3b | 659.6s | - | done |
+| security-02 | qwen3.6:35b-a3b | 659.1s | - | done |
+| core-01 | qwen3.6:35b-a3b | 517.5s | - | failed |
+| storage-01 | qwen3.6:35b-a3b | 517.0s | - | done |
+| doc-01 | qwen3.6:35b-a3b | 441.4s | - | done |
+| test-01 | qwen3.6:35b-a3b | 440.8s | - | done |
+| config-01 | qwen3.6:35b-a3b | 323.3s | - | done |
+| edge-01 | qwen3.6:35b-a3b | 322.8s | - | done |
+
+### Tool usage
+- model_proxy: 106
+- list_directory: 65
+- read_text_file: 62
+- read_multiple_files: 29
+- team_bb_read: 29
+- directory_tree: 22
+- list_directory_with_sizes: 16
+- search_files: 16
+- list_allowed_directories: 8
+- read_file: 2
+- team_bb_publish: 2
+- flow_result: 1
+- get_file_info: 1
+- models_list: 1
+- personas_list: 1
+
+Error: flow_start did not return a flow_id
