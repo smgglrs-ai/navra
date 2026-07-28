@@ -19,6 +19,7 @@ pub trait AuditSink: Send + Sync {
         tool_args: &str,
         tool_result: &str,
         duration_ms: u64,
+        trace_id: Option<&str>,
     );
 
     /// Record a model call.

@@ -36,6 +36,7 @@ impl AuditSink for AuditLogSink {
         tool_args: &str,
         tool_result: &str,
         duration_ms: u64,
+        trace_id: Option<&str>,
     ) {
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -52,6 +53,7 @@ impl AuditSink for AuditLogSink {
             duration_ms,
             acl_decision: None,
             ifc_label: None,
+            trace_id: trace_id.map(|s| s.to_string()),
         };
         if let Err(e) = self.0.log_tool_call(&entry) {
             tracing::debug!(error = %e, "Failed to log tool call to audit");

@@ -20,6 +20,8 @@ pub struct AuditToolCall {
     pub duration_ms: u64,
     pub acl_decision: Option<String>,
     pub ifc_label: Option<String>,
+    /// W3C trace ID for cross-system correlation (OpenShell OCSF, OTel).
+    pub trace_id: Option<String>,
 }
 
 /// A model call entry in the audit log.
@@ -170,10 +172,13 @@ impl AuditLog {
                 tool_result TEXT NOT NULL,
                 duration_ms INTEGER NOT NULL,
                 acl_decision TEXT,
-                ifc_label TEXT
+                ifc_label TEXT,
+                trace_id TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_audit_tool_calls_run
                 ON audit_tool_calls(run_id, iteration);
+            CREATE INDEX IF NOT EXISTS idx_audit_tool_calls_trace
+                ON audit_tool_calls(trace_id);
 
             CREATE TABLE IF NOT EXISTS audit_model_calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,6 +252,17 @@ impl AuditLog {
             CREATE INDEX IF NOT EXISTS idx_gpu_samples_flow
                 ON gpu_samples(flow_id);",
         )?;
+
+        // Migrate: add trace_id column if missing.
+        match db.execute_batch("ALTER TABLE audit_tool_calls ADD COLUMN trace_id TEXT;") {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("duplicate column") => {}
+            Err(e) => tracing::error!(error = %e, "audit migration failed"),
+        }
+        let _ = db.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_audit_tool_calls_trace ON audit_tool_calls(trace_id);",
+        );
+
         Ok(())
     }
 
@@ -284,8 +300,8 @@ impl AuditLog {
 
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         db.execute(
-            "INSERT INTO audit_tool_calls (run_id, agent_id, iteration, timestamp_ms, tool_name, tool_args, tool_result, duration_ms, acl_decision, ifc_label)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO audit_tool_calls (run_id, agent_id, iteration, timestamp_ms, tool_name, tool_args, tool_result, duration_ms, acl_decision, ifc_label, trace_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 entry.run_id,
                 entry.agent_id,
@@ -297,6 +313,7 @@ impl AuditLog {
                 entry.duration_ms as i64,
                 entry.acl_decision,
                 entry.ifc_label,
+                entry.trace_id,
             ],
         )?;
         Ok(())
@@ -378,7 +395,7 @@ impl AuditLog {
     pub fn get_tool_calls(&self, run_id: &str) -> Result<Vec<AuditToolCall>, MemoryError> {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let mut stmt = db.prepare(
-            "SELECT run_id, agent_id, iteration, timestamp_ms, tool_name, tool_args, tool_result, duration_ms, acl_decision, ifc_label
+            "SELECT run_id, agent_id, iteration, timestamp_ms, tool_name, tool_args, tool_result, duration_ms, acl_decision, ifc_label, trace_id
              FROM audit_tool_calls
              WHERE run_id = ?1
              ORDER BY iteration ASC",
@@ -397,6 +414,7 @@ impl AuditLog {
                     duration_ms: duration as u64,
                     acl_decision: row.get(8)?,
                     ifc_label: row.get(9)?,
+                    trace_id: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -767,6 +785,7 @@ mod tests {
             duration_ms: 50,
             acl_decision: Some("allowed".to_string()),
             ifc_label: None,
+            trace_id: None,
         }
     }
 
