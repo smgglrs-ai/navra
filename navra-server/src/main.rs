@@ -32,6 +32,7 @@ mod mdns;
 mod memory_tools;
 mod network_discovery;
 mod plan_execute;
+mod policy_sync;
 mod rag_retriever;
 mod registry_tools;
 mod session_distillation;
