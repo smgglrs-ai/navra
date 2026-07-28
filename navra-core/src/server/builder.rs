@@ -43,6 +43,8 @@ pub struct McpServerBuilder {
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    #[cfg(feature = "opa")]
+    opa_engine: Option<navra_auth::permissions::OpaEngine>,
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
@@ -84,6 +86,8 @@ impl McpServerBuilder {
             broadcaster: None,
             #[cfg(feature = "cedar")]
             cedar_engine: None,
+            #[cfg(feature = "opa")]
+            opa_engine: None,
             dmn_engine: None,
             tool_disclosure: HashMap::new(),
             dynamic_filters: Vec::new(),
@@ -426,6 +430,13 @@ impl McpServerBuilder {
     #[cfg(feature = "cedar")]
     pub fn cedar_engine(mut self, engine: navra_auth::permissions::CedarEngine) -> Self {
         self.cedar_engine = Some(engine);
+        self
+    }
+
+    /// Set the OPA/Rego policy engine for conditional access control.
+    #[cfg(feature = "opa")]
+    pub fn opa_engine(mut self, engine: navra_auth::permissions::OpaEngine) -> Self {
+        self.opa_engine = Some(engine);
         self
     }
 
@@ -925,6 +936,8 @@ impl McpServerBuilder {
             broadcaster: self.broadcaster,
             #[cfg(feature = "cedar")]
             cedar_engine: self.cedar_engine,
+            #[cfg(feature = "opa")]
+            opa_engine: self.opa_engine.map(std::sync::Mutex::new),
             dmn_engine: self.dmn_engine,
             tool_disclosure: self.tool_disclosure,
             dynamic_filters: self.dynamic_filters,

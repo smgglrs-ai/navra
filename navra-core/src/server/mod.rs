@@ -92,6 +92,9 @@ pub struct McpServer {
     /// Optional Cedar policy engine for conditional access control.
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    /// Optional OPA/Rego policy engine for conditional access control.
+    #[cfg(feature = "opa")]
+    opa_engine: Option<std::sync::Mutex<navra_auth::permissions::OpaEngine>>,
     /// Optional DMN decision table engine for business-rule guardrails.
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     /// Path ACLs per permission set (allow/deny patterns for tool path arguments).

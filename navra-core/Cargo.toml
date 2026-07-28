@@ -45,6 +45,7 @@ verify = true
 default = ["onnx"]
 onnx = ["navra-safety-hooks/onnx", "navra-model/onnx", "navra-mcp/onnx"]
 cedar = ["navra-auth/cedar"]
+opa = ["navra-auth/opa"]
 
 [build-dependencies]
 tonic-prost-build = "0.14"

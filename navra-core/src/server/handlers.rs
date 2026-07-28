@@ -569,6 +569,43 @@ impl McpServer {
             }
         }
 
+        // OPA/Rego policy check (second gate — can only further restrict)
+        #[cfg(feature = "opa")]
+        if let Some(ref opa_mutex) = self.opa_engine {
+            let context = std::collections::HashMap::from([
+                ("permission_set".to_string(), ctx.agent.permissions.clone()),
+                ("session_id".to_string(), ctx.session_id.clone()),
+            ]);
+            let resource = arguments
+                .get("path")
+                .or_else(|| arguments.get("repo"))
+                .or_else(|| arguments.get("uri"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("_default");
+            if let Ok(mut opa) = opa_mutex.lock() {
+                match opa.is_authorized(&ctx.agent.name, &params.name, resource, &context) {
+                    crate::permissions::OpaDecision::Allow => {}
+                    crate::permissions::OpaDecision::Deny(reason) => {
+                        self.process_table.record_denied(
+                            &ctx.agent.name,
+                            &ctx.agent.permissions,
+                            agent_did,
+                            agent_ring,
+                        );
+                        tracing::warn!(
+                            tool = %params.name,
+                            opa_reason = %reason,
+                            "OPA policy denied"
+                        );
+                        return CallToolResult::error_msg(format!(
+                            "Permission denied: '{}'",
+                            params.name
+                        ));
+                    }
+                }
+            }
+        }
+
         // DMN decision table check (business-rule guardrails)
         if let Some(ref dmn) = self.dmn_engine {
             let mut dmn_context = std::collections::HashMap::from([
