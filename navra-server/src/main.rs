@@ -1507,7 +1507,7 @@ async fn serve_inner(
 
     // --- Upstream MCP servers ---
     builder =
-        setup::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge).await;
+        setup::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge, None).await;
 
     // --- gRPC out-of-process modules ---
     let mut _grpc_manager = if !cfg.grpc_modules.is_empty() {

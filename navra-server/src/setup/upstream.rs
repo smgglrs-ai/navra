@@ -9,11 +9,15 @@ use navra_core::credentials::CredentialStore as _;
 use std::sync::Arc;
 
 /// Wire all configured upstream MCP servers onto the builder.
+///
+/// When `endpoint_registry` is provided, tool-to-domain mappings are
+/// populated for policy sync with OpenShell.
 pub(crate) async fn wire_upstream(
     mut builder: navra_core::McpServerBuilder,
     cfg: &config::Config,
     credential_store: &Arc<navra_core::credentials::MappedCredentialStore>,
     forge: &mut navra_cognitive::ForgeService,
+    endpoint_registry: Option<&crate::policy_sync::ToolEndpointRegistry>,
 ) -> navra_core::McpServerBuilder {
     for upstream_cfg in &cfg.upstream {
         if !upstream_cfg.enabled.unwrap_or(true) {
@@ -94,6 +98,32 @@ pub(crate) async fn wire_upstream(
                             "Upstream tool classification overrides"
                         );
                         builder = builder.merge_tool_classifications(classes);
+                    }
+                }
+
+                // Register tool-to-domain mapping for policy sync.
+                if let Some(registry) = endpoint_registry {
+                    let tool_names: Vec<String> =
+                        module.tool_operations().keys().cloned().collect();
+                    let domains = upstream_cfg
+                        .network
+                        .as_ref()
+                        .map(|n| n.allowed_domains.clone())
+                        .or_else(|| {
+                            crate::network_discovery::known_server_domains(
+                                &upstream_cfg.name,
+                                &upstream_cfg.command,
+                            )
+                        })
+                        .unwrap_or_default();
+                    if !domains.is_empty() {
+                        tracing::debug!(
+                            upstream = %upstream_cfg.name,
+                            tools = tool_names.len(),
+                            domains = domains.len(),
+                            "Registered tool-to-domain mapping"
+                        );
+                        registry.register_upstream(&tool_names, domains);
                     }
                 }
 
