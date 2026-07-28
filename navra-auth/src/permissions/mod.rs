@@ -3,6 +3,8 @@ mod approval;
 #[cfg(feature = "cedar")]
 pub mod cedar;
 pub mod disclosure;
+#[cfg(feature = "opa")]
+pub mod opa;
 pub mod dmn;
 pub mod domain_rules;
 pub mod resource_class;
@@ -15,6 +17,8 @@ pub use approval::{ApprovalRequest, ApprovalStatus, ApprovalStore};
 #[cfg(feature = "cedar")]
 pub use cedar::{CedarDecision, CedarEngine};
 pub use disclosure::ToolDisclosure;
+#[cfg(feature = "opa")]
+pub use opa::{OpaDecision, OpaEngine};
 pub use dmn::{DmnDecision, DmnEngine};
 pub use domain_rules::{DomainPolicy, DomainRules};
 pub use resource_class::{Domain, Operation, ResourceClass};
