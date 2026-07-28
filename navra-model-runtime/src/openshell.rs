@@ -11,6 +11,29 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
+tokio::task_local! {
+    /// Current W3C trace ID for cross-system correlation.
+    /// Set by the tool call handler; read by gRPC calls to inject traceparent.
+    pub static TRACE_ID: String;
+}
+
+/// Inject W3C traceparent metadata into a tonic request if a trace ID
+/// is available on the current task-local.
+fn inject_traceparent<T>(req: &mut tonic::Request<T>) {
+    if let Ok(trace_id) = TRACE_ID.try_with(|t| t.clone()) {
+        if !trace_id.is_empty() {
+            // Version 00, derive span ID from trace_id + counter, sampled flag 01
+            static SPAN_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let ctr = SPAN_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let span_id = format!("{:016x}", ctr);
+            let traceparent = format!("00-{trace_id}-{span_id}-01");
+            if let Ok(val) = traceparent.parse() {
+                req.metadata_mut().insert("traceparent", val);
+            }
+        }
+    }
+}
+
 /// Generated protobuf types for the OpenShell compute driver.
 pub mod proto {
     tonic::include_proto!("openshell.compute.v1");
@@ -78,16 +101,19 @@ impl OpenShellRuntime {
         env: std::collections::HashMap<String, String>,
         timeout_secs: u32,
     ) -> Result<ExecCommandResponse, RuntimeError> {
+        let mut req = tonic::Request::new(ExecCommandRequest {
+            sandbox_id: sandbox_id.to_string(),
+            command,
+            working_dir: working_dir.to_string(),
+            env,
+            timeout_secs,
+        });
+        inject_traceparent(&mut req);
+
         let resp = self
             .client
             .clone()
-            .exec_command(ExecCommandRequest {
-                sandbox_id: sandbox_id.to_string(),
-                command,
-                working_dir: working_dir.to_string(),
-                env,
-                timeout_secs,
-            })
+            .exec_command(req)
             .await
             .map_err(|e| RuntimeError::Start(format!("OpenShell ExecCommand: {e}")))?
             .into_inner();
@@ -129,8 +155,11 @@ impl ModelRuntime for OpenShellRuntime {
         &self,
         config: &ServeConfig,
     ) -> Pin<Box<dyn Future<Output = Result<Endpoint, RuntimeError>> + Send + '_>> {
-        let request = build_create_request(&self.engine, config);
+        let inner = build_create_request(&self.engine, config);
         Box::pin(async move {
+            let mut request = tonic::Request::new(inner);
+            inject_traceparent(&mut request);
+
             let resp = self
                 .client
                 .clone()
@@ -153,9 +182,12 @@ impl ModelRuntime for OpenShellRuntime {
     ) -> Pin<Box<dyn Future<Output = Result<(), RuntimeError>> + Send + '_>> {
         let sandbox_id = endpoint.id.clone();
         Box::pin(async move {
+            let mut req = tonic::Request::new(DestroySandboxRequest { sandbox_id });
+            inject_traceparent(&mut req);
+
             self.client
                 .clone()
-                .destroy_sandbox(DestroySandboxRequest { sandbox_id })
+                .destroy_sandbox(req)
                 .await
                 .map_err(|e| RuntimeError::Stop(format!("OpenShell DestroySandbox: {e}")))?;
             Ok(())
@@ -168,10 +200,13 @@ impl ModelRuntime for OpenShellRuntime {
     ) -> Pin<Box<dyn Future<Output = Result<bool, RuntimeError>> + Send + '_>> {
         let sandbox_id = endpoint.id.clone();
         Box::pin(async move {
+            let mut req = tonic::Request::new(SandboxStatusRequest { sandbox_id });
+            inject_traceparent(&mut req);
+
             let resp = self
                 .client
                 .clone()
-                .sandbox_status(SandboxStatusRequest { sandbox_id })
+                .sandbox_status(req)
                 .await
                 .map_err(|e| RuntimeError::Health(format!("OpenShell SandboxStatus: {e}")))?
                 .into_inner();
