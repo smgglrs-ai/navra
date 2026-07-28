@@ -11,6 +11,7 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 
 use navra_agent::{McpClient, ToolLoopConfig};
+use navra_protocol::truncate_str;
 use navra_cognitive::ForgeService;
 use navra_core::McpServer;
 use navra_memory::{Message, Role, Turn, WorkingMemory};
@@ -117,9 +118,7 @@ impl navra_agent::AuditSink for StreamingAuditSink {
     ) {
         // Truncate large results for streaming
         let result_preview = if tool_result.len() > 4096 {
-            let mut end = 4096;
-            while end > 0 && !tool_result.is_char_boundary(end) { end -= 1; }
-            format!("{}...", &tool_result[..end])
+            format!("{}...", truncate_str(tool_result, 4096))
         } else {
             tool_result.to_string()
         };

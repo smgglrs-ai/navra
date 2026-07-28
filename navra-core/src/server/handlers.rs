@@ -9,6 +9,7 @@ use crate::protocol::{
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::truncate_str;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -958,7 +959,7 @@ impl McpServer {
                 .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
                 .collect::<Vec<_>>()
                 .join("");
-            let result_trunc = crate::blackbox::truncate(&result_text, 4096);
+            let result_trunc = truncate_str(&result_text, 4096);
             bb.record(
                 &ctx.agent.name,
                 &ctx.agent.permissions,
@@ -998,13 +999,7 @@ impl McpServer {
                 .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
                 .collect::<Vec<_>>()
                 .join("");
-            let output_trunc = if output_text.len() > 2048 {
-                let mut end = 2048;
-                while end > 0 && !output_text.is_char_boundary(end) { end -= 1; }
-                &output_text[..end]
-            } else {
-                &output_text
-            };
+            let output_trunc = truncate_str(&output_text, 2048);
             let mut dmn_context = std::collections::HashMap::from([
                 ("agent_name".to_string(), ctx.agent.name.clone()),
                 ("tool_name".to_string(), params.name.to_string()),

@@ -15,6 +15,7 @@ use navra_model::{
 };
 use navra_protocol::CallToolResult;
 use navra_protocol::label::DataLabel;
+use navra_protocol::truncate_str;
 use navra_safety_hooks::hooks::{
     HookPipeline, ModelCallContext, PostModelOutcome, PreModelOutcome,
 };
@@ -321,15 +322,13 @@ fn truncate_reasoning(text: &str, max_tokens: usize) -> String {
     if text.len() <= max_chars {
         return text.to_string();
     }
-    // Find a word boundary near the limit
-    let mut end = max_chars;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    // Back up to a space if possible
-    if let Some(space) = text[..end].rfind(' ') {
-        end = space;
-    }
+    // Find a char boundary near the limit, then back up to a word boundary
+    let truncated = truncate_str(text, max_chars);
+    let end = if let Some(space) = truncated.rfind(' ') {
+        space
+    } else {
+        truncated.len()
+    };
     format!(
         "{}\n\n[reasoning truncated at {} tokens — continue with action]",
         &text[..end],
@@ -434,15 +433,7 @@ async fn compress_extractive(
     }
 
     // Embed the query (use first 512 chars of mandate)
-    let query_text = if query.len() > 512 {
-        let mut end = 512;
-        while end > 0 && !query.is_char_boundary(end) {
-            end -= 1;
-        }
-        &query[..end]
-    } else {
-        query
-    };
+    let query_text = truncate_str(query, 512);
     let query_embedding = model
         .embed(&EmbedRequest {
             text: query_text.to_string(),
@@ -452,15 +443,7 @@ async fn compress_extractive(
     // Embed each paragraph and score
     let mut scored: Vec<(usize, f32, &str)> = Vec::with_capacity(paragraphs.len());
     for (i, para) in paragraphs.iter().enumerate() {
-        let para_text = if para.len() > 1024 {
-            let mut end = 1024;
-            while end > 0 && !para.is_char_boundary(end) {
-                end -= 1;
-            }
-            &para[..end]
-        } else {
-            para
-        };
+        let para_text = truncate_str(para, 1024);
         match model
             .embed(&EmbedRequest {
                 text: para_text.to_string(),
@@ -1253,11 +1236,7 @@ pub async fn run_tool_loop(
 
             if let Some(ref sink) = config.audit_sink {
                 let truncated_result = if raw_text.len() > 4096 {
-                    let mut end = 4096;
-                    while end > 0 && !raw_text.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    format!("{}…", &raw_text[..end])
+                    format!("{}…", truncate_str(&raw_text, 4096))
                 } else {
                     raw_text.clone()
                 };

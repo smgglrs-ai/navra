@@ -2,6 +2,7 @@ use crate::auth::AuthConfig;
 use crate::parser::{Method, OperationMeta};
 use navra_mcp::protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::truncate_str;
 use reqwest::Client;
 
 pub fn truncate_response(body: String, max_bytes: Option<usize>) -> String {
@@ -35,15 +36,12 @@ pub fn truncate_response(body: String, max_bytes: Option<usize>) -> String {
         return result;
     }
 
-    let mut truncated = limit;
-    while truncated > 0 && !body.is_char_boundary(truncated) {
-        truncated -= 1;
-    }
-    let mut result = body[..truncated].to_string();
+    let safe_slice = truncate_str(&body, limit);
+    let mut result = safe_slice.to_string();
     result.push_str(&format!(
         "\n[response truncated: {} bytes, showing first {}]",
         body.len(),
-        truncated
+        safe_slice.len()
     ));
     result
 }

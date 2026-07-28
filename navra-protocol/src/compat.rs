@@ -80,16 +80,12 @@ pub fn compress_result(result: &mut CallToolResult, max_tokens: u32) {
             && tc.text.len() > chars_budget
         {
             let cut = chars_budget.saturating_sub(40).min(tc.text.len());
-            let mut safe_cut = cut;
-            while safe_cut > 0 && !tc.text.is_char_boundary(safe_cut) {
-                safe_cut -= 1;
-            }
-            let slice = &tc.text[..safe_cut];
+            let slice = crate::truncate_str(&tc.text, cut);
             let cut_point = slice
                 .rfind(". ")
                 .or_else(|| slice.rfind('\n'))
                 .map(|p| p + 1)
-                .unwrap_or(safe_cut);
+                .unwrap_or(slice.len());
             let remaining = tc.text.len() - cut_point;
             let new_text = format!(
                 "{}\n[compressed — {remaining} chars omitted]",

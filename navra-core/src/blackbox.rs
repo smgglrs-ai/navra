@@ -9,6 +9,7 @@
 //! - **Transparent**: agents don't know they're recorded.
 
 use crate::safety::{FilterContext, FilterPipeline};
+use navra_protocol::truncate_str;
 use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex};
 use vstd::prelude::*;
@@ -189,8 +190,8 @@ impl Blackbox {
         let sanitized_result = self.sanitize(tool_result);
 
         // Truncate large fields
-        let args_trunc = truncate(&sanitized_args, 4096);
-        let result_trunc = truncate(&sanitized_result, 4096);
+        let args_trunc = truncate_str(&sanitized_args, 4096);
+        let result_trunc = truncate_str(&sanitized_result, 4096);
 
         // Hash chain: SHA-256(seq | prev_hash | agent | tool | args | result | outcome)
         use std::fmt::Write;
@@ -484,17 +485,6 @@ impl Blackbox {
         })
         .unwrap_or(0) as u64
     }
-}
-
-pub(crate) fn truncate(s: &str, max: usize) -> &str {
-    if s.len() <= max {
-        return s;
-    }
-    let mut end = max;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
 }
 
 fn sha256_hex(data: &str) -> String {
@@ -836,10 +826,10 @@ mod tests {
 
     #[test]
     fn truncate_preserves_char_boundary() {
-        // Ensure truncate never splits a multi-byte char
+        // Ensure truncate_str never splits a multi-byte char
         let multibyte = "héllo wörld café résumé";
         for max in 0..multibyte.len() {
-            let t = truncate(multibyte, max);
+            let t = truncate_str(multibyte, max);
             assert!(t.is_char_boundary(t.len()), "bad boundary at max={max}");
         }
     }
@@ -964,7 +954,7 @@ proof fn field_independence_outcome(a: VerusChainFields, b: VerusChainFields)
     ensures chain_preimage_spec(a) != chain_preimage_spec(b),
 { assert(chain_preimage_spec(a)[6] != chain_preimage_spec(b)[6]); }
 
-// Truncation proofs (mirrors truncate() above)
+// Truncation proofs (mirrors navra_protocol::truncate_str)
 spec fn spec_truncate_len(input_len: nat, max: nat) -> nat {
     if input_len <= max { input_len } else { max }
 }
@@ -1049,14 +1039,14 @@ mod kani_proofs {
         let max: u8 = kani::any();
         kani::assume(max <= 20);
         let input = "hello world test data";
-        let result = truncate(input, max as usize);
+        let result = truncate_str(input, max as usize);
         assert!(result.len() <= max as usize);
     }
 
     #[kani::proof]
     fn truncate_within_budget_is_identity() {
         let input = "short";
-        let result = truncate(input, 100);
+        let result = truncate_str(input, 100);
         assert_eq!(result.len(), input.len());
     }
 

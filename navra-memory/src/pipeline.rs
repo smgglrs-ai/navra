@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use navra_model::{GenerateRequest, ModelBackend};
+use navra_protocol::truncate_str;
 
 use crate::error::MemoryError;
 use crate::knowledge::KnowledgeStore;
@@ -224,7 +225,7 @@ impl<'a> DistillationPipeline<'a> {
             for msg in &turn.messages {
                 if msg.role.as_str() == "user" && !msg.content.is_empty() {
                     let title = if msg.content.len() > 80 {
-                        format!("{}...", &msg.content[..77])
+                        format!("{}...", truncate_str(&msg.content, 77))
                     } else {
                         msg.content.clone()
                     };
@@ -400,7 +401,7 @@ impl<'a> DistillationPipeline<'a> {
 
         let prefix = format!("{}_{}", entry.kind.as_str(), sanitized);
         let truncated = if prefix.len() > 60 {
-            prefix[..60].to_string()
+            truncate_str(&prefix, 60).to_string()
         } else {
             prefix
         };
@@ -491,7 +492,7 @@ pub fn extract_success_insight(
     let title = format!("Success: {task_name}");
 
     let summary = if result_summary.len() > 200 {
-        format!("{}...", &result_summary[..197])
+        format!("{}...", truncate_str(result_summary, 197))
     } else {
         result_summary.to_string()
     };

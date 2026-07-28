@@ -1,6 +1,7 @@
 //! Miscellaneous CLI subcommands: approve/deny, status, systemd, audit, policy.
 
 use crate::config;
+use navra_protocol::truncate_str;
 
 /// Send an approve or deny request to the running server via JSON-RPC.
 pub(crate) async fn approve_or_deny(
@@ -256,16 +257,8 @@ pub(crate) fn audit_command(
                 "seq={} agent={} tool={} outcome={} duration={}us",
                 e.seq, e.agent_name, e.tool_name, e.outcome, e.duration_us
             );
-            let args_short = if e.tool_args.len() > 120 {
-                &e.tool_args[..120]
-            } else {
-                &e.tool_args
-            };
-            let result_short = if e.tool_result.len() > 120 {
-                &e.tool_result[..120]
-            } else {
-                &e.tool_result
-            };
+            let args_short = truncate_str(&e.tool_args, 120);
+            let result_short = truncate_str(&e.tool_result, 120);
             println!("  args:   {}", args_short);
             println!("  result: {}", result_short);
             println!("  ifc:    {}", e.ifc_label);

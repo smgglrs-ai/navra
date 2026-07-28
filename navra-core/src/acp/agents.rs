@@ -3,6 +3,7 @@
 use super::store::RunStore;
 use super::types::{AgentCapability, AgentManifest, AgentMetadata, AgentStatus, FlowSummary};
 use crate::server::McpServer;
+use navra_protocol::truncate_str;
 
 /// Build ACP agent manifests: one for the gateway + one per flow node.
 pub fn build_manifests(server: &McpServer, flows: &[FlowSummary]) -> Vec<AgentManifest> {
@@ -124,7 +125,7 @@ fn to_dns_label(name: &str) -> String {
     if label.is_empty() {
         "agent".to_string()
     } else if label.len() > 63 {
-        label[..63].trim_end_matches('-').to_string()
+        truncate_str(&label, 63).trim_end_matches('-').to_string()
     } else {
         label
     }
