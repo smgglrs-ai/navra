@@ -1,0 +1,79 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.22s
+     Running `target/debug/navra run --flow /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml -e 'http://127.0.0.1:9316/mcp' -m 'qwen3.6:35b-a3b' target_dir=/tmp/navra-review-eval/zod`
+Flow file: /home/fdupont/Code/github.com/smgglrs-ai/navra/examples/flows/review.yaml
+Endpoint:  http://127.0.0.1:9316/mcp
+Model:     qwen3.6:35b-a3b
+Starting flow...
+
+flow_start response: Flow completed.
+flow_id: flow-9c9f8845
+
+This appears to be a substantial, deeply customized implementation of a Zod-compatible validation schema library in TypeScript. You’ve shared the internal definitions, runtime validation logic, type inference helpers, and core interfaces for ~25 schema types, along with `ParsePayload`-centric architecture and advanced TypeScript string/math inference.
+
+### 🔍 Key Architectural Observations
+| Pattern | Purpose |
+|--------|---------|
+| `ParsePayload` + `ParseContext` | Collects errors instead of throwing, supports sync/async branching, and tracks `direction` (`forward` vs `backward`) |
+| `util.defineLazy` | Defers expensive metadata (`values`, `pattern`, `optin`, `optout`) until first access |
+| Issue prefixing & aggregation | Nested types (Map, Set, Tuple, Object) automatically annotate errors with key/path for debugging |
+| Directional parsing | Explicit decode (`forward`) vs encode (`backward`) routing, critical for bidirectional types like `$ZodCodec` |
+| Type inference math | `$InferEnumOutput`, `$ZodFunctionArgs`, `ConvertPartsToStringTuple`, etc. show strong TypeScript metaprogramming |
+| Custom internals (`isst`, `optin`, `optout`, `bag`) | Suggests this is either Zod v4/next or a heavily forked/custom build |
+
+### ❓ How can I help?
+Since you pasted the code without a specific question, I can assist with:
+- 🔍 **Explaining** how a specific schema type or inference helper works
+- 🐛 **Debugging** validation logic, async behavior, or circular reference handling
+- 🧩 **Adding** a new schema type (e.g., `$ZodUint8Array`, `$ZodBigInt`, `$ZodDate` refinements)
+- 📐 **Fixing type narrowing** or inference failures
+- ⚡ **Optimizing** sync/async parsing, error collection, or lazy evaluation
+- 🔄 **Refactoring** for stricter TypeScript, better tree-shaking, or cleaner internals
+
+Just let me know your goal, and I’ll give you targeted, production-ready recommendations.
+
+---
+## Run Metrics
+- Total time: 2940.3s
+- Agents spawned: 14 (14 flow + 0 subflow)
+- Total tokens: 2480387
+- Tool calls: 1263
+- Budget: 14/50 agents, depth 0/5
+- Escalations: 4 (escalation-depth1 at depth 1, escalation-depth1 at depth 1, escalation-depth1 at depth 1, generic-escalation at depth 1)
+
+### Per-stage timing
+| Stage | Model | Time | Tokens | Status |
+|-------|-------|------|--------|--------|
+| scout | qwen3.6:35b-a3b | 2940.3s | - | done |
+| planner | qwen3.6:35b-a3b | 2903.7s | - | done |
+| verify | qwen3.6:35b-a3b | 115.1s | - | done |
+| synthesize | qwen3.6:35b-a3b | 51.5s | - | done |
+| api-design-01 | qwen3.6:35b-a3b | 2882.2s | - | done |
+| correctness-v4-01 | qwen3.6:35b-a3b | 2881.7s | - | done |
+| correctness-v3-01 | qwen3.6:35b-a3b | 2050.0s | - | done |
+| type-safety-01 | qwen3.6:35b-a3b | 2049.4s | - | done |
+| test-coverage-01 | qwen3.6:35b-a3b | 1952.8s | - | done |
+| performance-01 | qwen3.6:35b-a3b | 1952.3s | - | done |
+| docs-review-01 | qwen3.6:35b-a3b | 721.0s | - | done |
+| ci-cd-review-01 | qwen3.6:35b-a3b | 720.5s | - | done |
+| package-structure-01 | qwen3.6:35b-a3b | 248.2s | - | done |
+| security-01 | qwen3.6:35b-a3b | 247.7s | - | done |
+
+### Tool usage
+- list_directory: 473
+- model_proxy: 306
+- read_text_file: 280
+- search_files: 82
+- team_bb_read: 45
+- list_allowed_directories: 26
+- directory_tree: 16
+- read_multiple_files: 15
+- flow_escalate: 7
+- team_bb_publish: 5
+- flow_result: 2
+- team_bb_notifications: 2
+- get_file_info: 1
+- list_directory_with_sizes: 1
+- models_list: 1
+- personas_list: 1
+
+Error: flow_start did not return a flow_id

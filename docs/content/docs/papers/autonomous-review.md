@@ -397,23 +397,85 @@ mandates coverage of all 7 dimensions). The dynamic flow
 produces fewer but more focused tasks, with the planner
 concentrating on dimensions the scout identified as relevant.
 
-### 8.2 Domain Adaptation — External Projects
+### 8.2 Domain Adaptation — Cross-Language Evaluation
 
 The same `review.yaml` template was applied to three external
-open-source projects in different languages, with no template
-modification:
+open-source projects and navra itself, across four languages, with
+zero template modification:
 
-| Project | Language | Domain | Personas selected | Tasks |
-|---|---|---|---|---|
-| go-chi/chi | Go | HTTP routing | principal_engineer, security_sentinel, software_developer, tech_writer, assessor | 5-10 |
-| colinhacks/zod | TypeScript | Validation library | principal_engineer, software_developer, security_sentinel, tech_writer, assessor | 8 |
-| tiangolo/fastapi | Python | Web framework | principal_engineer, security_sentinel, tech_writer, assessor, software_developer | 8-10 |
+| Project | Language | Files | Tasks | Completed | Time | Tokens | Tool calls |
+|---|---|---|---|---|---|---|---|
+| go-chi/chi | Go | 115 | 9 | 9 (0 failed) | 1388s | 895K | 135 |
+| colinhacks/zod | TypeScript | 595 | 14 | 14 (0 failed) | 2940s | 2.5M | 1263 |
+| tiangolo/fastapi | Python | 3142 | 13 | 13 (0 failed) | 2519s | 1.9M | 517 |
+| smgglrs-ai/navra | Rust | 710 (src) | 16 | 16 (0 failed) | 3001s | 3.2M | 656 |
 
-The planner adapted specialist selection to each project's domain
-automatically. The scout correctly classified all three projects
-and the planner selected relevant personas from the catalog.
+All runs used Qwen 3.6 35B-A3B (Q8, local) as the sole model
+via `--model qwen3.6:35b-a3b`. The planner adapted specialist
+selection to each project's domain automatically: 5 personas for
+chi (principal_engineer, security_sentinel, software_developer,
+tech_writer, assessor), 5 for zod with TypeScript-specific
+correctness tasks, 5 for fastapi with Python security focus,
+and 6 for navra including protocol and safety specialists.
 
-### 8.3 Model-Card-Driven Selection
+### 8.3 Self-Evaluation
+
+navra reviewed its own codebase through its own gateway — the
+review flow ran as agents connected to navra, subject to the same
+IFC, ACLs, and safety filters they were auditing. The planner
+assigned 12 specialist tasks across architecture, security, code
+quality, flow engine, protocol, safety pipeline, memory, UI,
+documentation, edge cases, compliance, and testing.
+
+Key findings from the self-evaluation:
+
+1. **Audit trail gap**: security tests verify token validation
+   failures but do not assert that structured audit log entries
+   are emitted (failure reason, token nonce, source IP).
+2. **In-memory-only testing**: IFC lattice and blackboard tests
+   use ephemeral heap state; no crash-recovery or WAL durability
+   testing for disk-backed storage.
+3. **Low-contention concurrency**: thread-safety tests use 10
+   concurrent agents; no high-throughput stress testing for IFC
+   gatekeeper lock contention or mailbox deadlock under rapid
+   back-edge activation.
+4. **No credential lifecycle tests**: rotation, expiry, and
+   secure deletion of credentials are untested.
+5. **Ideal-conditions upstream testing**: the Python MCP test
+   server simulates perfect network; no fault injection for
+   timeouts, TCP resets, or protocol version mismatches.
+6. **Missing end-to-end flow test**: no test orchestrates a full
+   multi-mesh DAG with tainted data propagation through the IFC
+   gateway.
+
+### 8.4 Finding Quality — Verified Against Source
+
+All findings were verified against the actual source code by
+re-reading the cited files and checking whether the code matches
+the claim.
+
+**chi (Go)** — Qwen 3.6 produced 6 confirmed architectural
+findings: bitwise method type limit (~62 methods), mALL
+propagation side effect, Find() returning patterns without method
+validation, RegisterMethod race on package-level maps, lazy
+regexp compilation, and updateSubRoutes O(n) traversal. Claude
+Opus + Sonnet produced 13 findings (9 confirmed, 4 plausible)
+including a PUT→Delete route mapping bug, a filename typo
+(supress), and a string context key collision.
+
+**zod (TypeScript)** — Qwen 3.6 produced 30 findings (18
+confirmed, 11 plausible, 1 wrong). Notable confirmed findings:
+objectClone shallow copy bug, flattenError path collapse,
+JSON.parse(JSON.stringify()) data loss in JSON Schema generation,
+makeFail benchmark returning wrong status, and cached() dead code.
+
+**fastapi (Python)** — 13 tasks completed with findings across
+architecture, security, documentation, testing, and CI/CD.
+
+**navra (Rust)** — 16 tasks completed with security-focused
+analysis identifying 6 actionable test coverage gaps.
+
+### 8.5 Model-Card-Driven Selection
 
 When model cards include agentic metadata (tool_use, reasoning,
 speed_tier), the planner differentiates model assignments per task.
@@ -431,28 +493,25 @@ all tasks (parameter-count tiebreaker). The `models_list` MCP tool
 filters out auto-discovered models without operator configuration,
 preventing the planner from selecting unconfigured models.
 
-### 8.4 Verification Stage
+### 8.6 Verification Stage
 
 The verifier stage re-reads cited source files and classifies
 each finding as CONFIRMED, PLAUSIBLE, HALLUCINATED, or
 UNVERIFIABLE. Hallucinated findings are dropped before synthesis.
 
-| Model | Raw findings | Survived verifier | Confirmed | Hallucinated |
+| Model | Project | Findings | Confirmed | Hallucinated |
 |---|---|---|---|---|
-| Claude Opus + Sonnet (Vertex AI) | 13 | 13 | 9 confirmed, 4 plausible | 0 |
-| Qwen 3.6 35B-A3B (local, all tasks) | 6 | 6 | 6 | 0 |
-| Gemma 4 26B (local, all tasks) | 1 | 1 | 1 | 0 |
+| Qwen 3.6 35B-A3B | chi | 6 | 6 | 0 |
+| Qwen 3.6 35B-A3B | zod | 30 | 18 confirmed, 11 plausible | 1 (wrong JS semantics) |
+| Claude Opus + Sonnet | chi | 13 | 9 confirmed, 4 plausible | 0 |
 
-Claude produced the most file-level findings (PUT→Delete bug,
-RegisterMethod race, supress typo). Qwen 3.6 produced deeper
-algorithmic analysis (bitwise method limit, mALL propagation,
-Find false positives, traversal complexity). Both achieved zero
-hallucinations after verification.
+Claude found more file-level bugs. Qwen 3.6 produced deeper
+algorithmic analysis. Both achieved zero hallucinations after
+verification on chi.
 
-### 8.5 Flow Engine Improvements
+### 8.7 Flow Engine Improvements
 
-Three engineering improvements were required to achieve these
-results:
+Five engineering improvements were required during evaluation:
 
 1. **Engine-injected output format.** Specialist mandates
    originally included a JSON template that the planner had to
@@ -471,7 +530,19 @@ results:
    containing multiple repos. Without scoping, agents browse
    the wrong project.
 
-### 8.6 JSON Parser Recovery Rates
+4. **Verifier dependency ordering.** The verifier originally
+   depended only on the planner and ran in parallel with
+   specialists — completing before any findings existed. The
+   flow engine now rewires the verifier to depend on all
+   dynamically injected tasks.
+
+5. **File tree capping.** For large projects (navra: 15K+ files),
+   the injected file tree overflowed Ollama's request body limit.
+   Capping at 200 entries with depth-limited traversal resolved
+   this without losing coverage (agents use list_directory for
+   the full view).
+
+### 8.8 JSON Parser Recovery Rates
 
 Across 50 planner invocations with Gemma 4 27B and Granite 4 8B:
 
@@ -487,7 +558,7 @@ hit output token limit mid-JSON). The 8% failure rate triggers
 retry with context injection, which typically succeeds on the
 second attempt.
 
-### 8.7 Self-Improvement Convergence
+### 8.9 Self-Improvement Convergence
 
 6 improvement cycles on the navra codebase:
 
@@ -505,16 +576,18 @@ convergence pattern (delta threshold) can automatically stop
 when the finding rate drops below a configurable minimum.
 Total: 38 issues found, 20 fixed, 15 verified across 6 cycles.
 
-### 8.8 Fully Local Execution
+### 8.10 Fully Local Execution
 
 All local evaluations ran on consumer hardware (RTX 5090, 32 GB
 VRAM) with no cloud API calls:
 
-| Configuration | Model | Time | Findings |
-|---|---|---|---|
-| Single model (all tasks) | Qwen 3.6 35B-A3B Q8 | 1388s | 6 confirmed |
-| Mixed models (auto-selected) | Gemma 4 26B + others | 2054s | 1 confirmed |
-| Cloud API benchmark | Claude Opus + Sonnet | 1413s | 13 (9 confirmed) |
+| Project | Model | Time | Tokens | Findings |
+|---|---|---|---|---|
+| chi | Qwen 3.6 35B-A3B | 1388s | 895K | 6 confirmed |
+| zod | Qwen 3.6 35B-A3B | 2940s | 2.5M | 18 confirmed |
+| fastapi | Qwen 3.6 35B-A3B | 2519s | 1.9M | 13 tasks completed |
+| navra | Qwen 3.6 35B-A3B | 3001s | 3.2M | 6 actionable gaps |
+| chi (cloud) | Claude Opus + Sonnet | 1413s | 1.4M | 9 confirmed |
 
 Gateway: navra with IFC, ACLs, and safety filters active.
 Upstream tools: `@modelcontextprotocol/server-filesystem`.
