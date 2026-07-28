@@ -115,6 +115,7 @@ impl navra_agent::AuditSink for StreamingAuditSink {
         tool_args: &str,
         tool_result: &str,
         duration_ms: u64,
+        _trace_id: Option<&str>,
     ) {
         // Truncate large results for streaming
         let result_preview = if tool_result.len() > 4096 {

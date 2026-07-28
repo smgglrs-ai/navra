@@ -1248,6 +1248,7 @@ pub async fn run_tool_loop(
                     &fc.arguments,
                     &truncated_result,
                     duration_ms,
+                    None,
                 );
             }
 
