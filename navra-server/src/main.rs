@@ -1505,9 +1505,12 @@ async fn serve_inner(
         }
     }
 
+    // --- Policy sync registry (tool → endpoint mapping) ---
+    let endpoint_registry = std::sync::Arc::new(policy_sync::ToolEndpointRegistry::new());
+
     // --- Upstream MCP servers ---
     builder =
-        setup::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge, None).await;
+        setup::upstream::wire_upstream(builder, &cfg, &credential_store, &mut forge, Some(&endpoint_registry)).await;
 
     // --- gRPC out-of-process modules ---
     let mut _grpc_manager = if !cfg.grpc_modules.is_empty() {
@@ -2995,6 +2998,11 @@ async fn serve_inner(
     // memory extraction, causal provenance, monitoring, tool pruning, DMN.
     builder = setup::hooks::wire_hooks(builder, &cfg, &safety_state, &knowledge_store);
 
+    // Policy sync filter: dynamically hides tools whose endpoints are
+    // unreachable due to OpenShell or config policy changes.
+    let (policy_sync_filter, policy_sync_handle) = policy_sync::PolicySyncFilter::new();
+    builder = builder.tool_filter(policy_sync_filter);
+
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
 
@@ -3003,13 +3011,31 @@ async fn serve_inner(
     // Config watcher for hot reload (K8s ConfigMap pattern)
     let _config_watcher = if cfg.server.config_watch {
         let config_path = config::Config::default_config_path();
-        let (tx, _rx) = tokio::sync::watch::channel(std::sync::Arc::new(cfg.clone()));
+        let (tx, mut rx) = tokio::sync::watch::channel(std::sync::Arc::new(cfg.clone()));
         match config_watcher::ConfigWatcher::new(
             config_path,
             cfg.server.config_watch_debounce_ms,
             tx,
         ) {
-            Ok(w) => Some(w),
+            Ok(w) => {
+                // Spawn policy sync task: on config change, re-evaluate
+                // tool availability against updated network policies.
+                let registry = Arc::clone(&endpoint_registry);
+                tokio::spawn(async move {
+                    while rx.changed().await.is_ok() {
+                        let new_cfg = rx.borrow().clone();
+                        let blocked = registry.evaluate_config(&new_cfg.upstream);
+                        let changed = policy_sync_handle.update_blocked(blocked);
+                        if changed > 0 {
+                            tracing::info!(
+                                changed,
+                                "Policy sync: tool availability updated after config reload"
+                            );
+                        }
+                    }
+                });
+                Some(w)
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to start config watcher");
                 None
