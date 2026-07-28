@@ -1603,9 +1603,9 @@ async fn run_dag_execution(
                 task_defs.push(new_task);
             }
 
-            // Rewrite synthesizer to depend on all injected tasks
+            // Rewrite verifier and synthesizer to depend on all injected tasks
             for td in task_defs.iter_mut() {
-                if td.id == "synthesize" || td.id == "synthesizer" {
+                if td.id == "synthesize" || td.id == "synthesizer" || td.id == "verify" {
                     for nid in &new_ids {
                         if !td.depends_on.contains(nid) {
                             td.depends_on.push(nid.clone());
