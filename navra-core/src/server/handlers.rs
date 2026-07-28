@@ -807,6 +807,7 @@ impl McpServer {
         };
 
         let tool_start = std::time::Instant::now();
+        let trace_id = crate::blackbox::generate_trace_id();
         let mut result = match self.tools.get(params.name.as_ref()) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
@@ -888,7 +889,7 @@ impl McpServer {
                             "error",
                             0,
                             "N/A",
-                            "",
+                            &trace_id,
                         );
                     }
                     return CallToolResult::error_msg(format!("Unknown tool: {}", params.name));
@@ -988,7 +989,7 @@ impl McpServer {
                 },
                 tool_duration_us,
                 &format!("{:?}", result_label),
-                "",
+                &trace_id,
             );
         }
 
