@@ -486,6 +486,7 @@ pub(crate) fn attach_ui_routes(
         models.clone();
     let proxy_gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
     let v1_router = axum::Router::new()
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .route(
             "/chat/completions",
             axum::routing::post(
