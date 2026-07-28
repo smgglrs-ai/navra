@@ -1487,24 +1487,10 @@ async fn run_dag_execution(
                         .map(|_| navra_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
                         .unwrap_or(navra_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC)
                 };
-                // Truncate to 4K for blackboard (full output in audit.db)
-                let truncated = if output.len() > 4096 {
-                    let mut end = 4096;
-                    while end > 0 && !output.is_char_boundary(end) {
-                        end -= 1;
-                    }
-                    format!(
-                        "{}...\n[truncated, {} chars total]",
-                        &output[..end],
-                        output.len()
-                    )
-                } else {
-                    output.clone()
-                };
                 ctx.team_registry.bb_publish(
                     team_id,
                     &format!("findings/{task_id}"),
-                    &truncated,
+                    &output,
                     task_id,
                     label,
                 );
@@ -2309,21 +2295,10 @@ pub async fn handle_flow_resume(
 
         // Publish completed outputs to blackboard for dependency resolution
         for (task_id, output) in &cp_state.completed {
-            let truncated = if output.len() > 4096 {
-                let mut end = 4096;
-                while end > 0 && !output.is_char_boundary(end) { end -= 1; }
-                format!(
-                    "{}...\n[truncated, {} chars total]",
-                    &output[..end],
-                    output.len()
-                )
-            } else {
-                output.clone()
-            };
             ctx.team_registry.bb_publish(
                 &team_id,
                 &format!("findings/{task_id}"),
-                &truncated,
+                output,
                 task_id,
                 navra_core::protocol::label::DataLabel::UNTRUSTED_PUBLIC,
             );
