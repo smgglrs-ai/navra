@@ -541,6 +541,51 @@ impl Blackbox {
     }
 }
 
+/// Generate a W3C-compatible trace ID (32 hex chars, 128 bits).
+///
+/// Used for cross-system correlation between navra and OpenShell.
+/// Combines nanosecond timestamp with an atomic counter for uniqueness.
+pub fn generate_trace_id() -> String {
+    use sha2::{Digest, Sha256};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+
+    let mut hasher = Sha256::new();
+    hasher.update(nanos.to_le_bytes());
+    hasher.update(count.to_le_bytes());
+    hasher.update(pid.to_le_bytes());
+    let hash = hasher.finalize();
+    // Take first 16 bytes (128 bits) → 32 hex chars
+    hex::encode(&hash[..16])
+}
+
+/// Format a W3C traceparent header value from a trace ID.
+///
+/// Uses version 00, derives a span ID from the trace ID, and sets
+/// the sampled flag (01).
+pub fn format_traceparent(trace_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static SPAN_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let count = SPAN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut hasher = Sha256::new();
+    hasher.update(trace_id.as_bytes());
+    hasher.update(count.to_le_bytes());
+    let hash = hasher.finalize();
+    let span_id = hex::encode(&hash[..8]);
+    format!("00-{trace_id}-{span_id}-01")
+}
+
 fn sha256_hex(data: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
