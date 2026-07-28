@@ -125,6 +125,7 @@ mod tests {
             prev_hash: String::new(),
             hash: String::new(),
             obo_sub: None,
+            trace_id: String::new(),
         }
     }
 
