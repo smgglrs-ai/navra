@@ -94,3 +94,24 @@ pub use upstream_config::{RetryConfig, TlsConfig};
 
 // Re-export rmcp for downstream crates that need direct access.
 pub use rmcp;
+
+/// Truncate a string to at most `max_bytes` bytes, rounding down to a
+/// valid UTF-8 char boundary. Returns a sub-slice — never panics.
+///
+/// ```
+/// # use navra_protocol::truncate_str;
+/// assert_eq!(truncate_str("hello", 3), "hel");
+/// // Multi-byte: '€' is 3 bytes, so max_bytes=4 truncates after '€'
+/// assert_eq!(truncate_str("€€", 4), "€");
+/// assert_eq!(truncate_str("short", 100), "short");
+/// ```
+pub fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}

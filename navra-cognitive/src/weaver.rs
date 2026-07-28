@@ -11,6 +11,7 @@ use crate::budget::{self, ContextBudget};
 use crate::error::CognitiveError;
 use crate::forge::ForgeService;
 use crate::types::{InjectPosition, Persona, ResolvedPrompt};
+use navra_protocol::truncate_str;
 
 /// Structured output from the Weaver for prompt caching support.
 ///
@@ -336,12 +337,7 @@ fn inject_at_position(
                 max = MAX_PROMPT_CHARS,
                 "Upstream MCP prompt truncated to prevent prompt injection"
             );
-            // Truncate at a char boundary
-            let mut end = MAX_PROMPT_CHARS;
-            while end > 0 && !rp.content.is_char_boundary(end) {
-                end -= 1;
-            }
-            &rp.content[..end]
+            truncate_str(&rp.content, MAX_PROMPT_CHARS)
         } else {
             &rp.content
         };
@@ -355,11 +351,7 @@ fn inject_at_position(
                 budget_remaining,
                 MAX_TOTAL_PROMPT_CHARS,
             );
-            let mut end = budget_remaining;
-            while end > 0 && !entry.is_char_boundary(end) {
-                end -= 1;
-            }
-            sections.push(entry[..end].to_string());
+            sections.push(truncate_str(&entry, budget_remaining).to_string());
             budget_remaining = 0;
         } else {
             sections.push(entry);

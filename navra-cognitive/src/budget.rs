@@ -9,6 +9,7 @@
 //! for English text). This is deliberately simple — exact tokenization
 //! would require a model-specific tokenizer dependency.
 
+use navra_protocol::truncate_str;
 use vstd::prelude::*;
 
 /// Approximate tokens from character count.
@@ -178,7 +179,7 @@ pub fn compact_history(turns: &[String], keep_recent: usize) -> Vec<String> {
         // Extract first line as summary
         let first_line = turn.lines().next().unwrap_or("(empty)");
         let trimmed = if first_line.len() > 100 {
-            format!("{}...", &first_line[..97])
+            format!("{}...", truncate_str(first_line, 97))
         } else {
             first_line.to_string()
         };

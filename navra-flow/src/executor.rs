@@ -13,6 +13,7 @@ use navra_agent::Agent;
 use navra_agent::signal::{AgentSignal, SignalHandle};
 use navra_auth::ifc::TaintTracker;
 use navra_protocol::label::DataLabel;
+use navra_protocol::truncate_str;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -477,7 +478,7 @@ impl DagExecutor {
                                 // Emit success insight via callback
                                 if let Some(ref cb) = self.insight_callback {
                                     let summary = if task_result.output.len() > 200 {
-                                        format!("{}...", &task_result.output[..197])
+                                        format!("{}...", truncate_str(&task_result.output, 197))
                                     } else {
                                         task_result.output.clone()
                                     };
@@ -515,7 +516,7 @@ impl DagExecutor {
                                 self.emit_event(crate::event_log::FlowEvent::NodeCompleted {
                                     task_id: task.id.clone(),
                                     output_preview: if task_result.output.len() > 200 {
-                                        format!("{}...", &task_result.output[..197])
+                                        format!("{}...", truncate_str(&task_result.output, 197))
                                     } else {
                                         task_result.output.clone()
                                     },

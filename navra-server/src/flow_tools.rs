@@ -6,6 +6,7 @@
 
 use navra_core::protocol::ToolDefinition;
 use navra_protocol::compat::{CallToolResultExt, tool_input_schema};
+use navra_protocol::truncate_str;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -1076,15 +1077,12 @@ async fn spawn_and_track_tasks(
         if !project_file_tree.is_empty() && !task.generates_tasks {
             let max_tree_chars = 2000;
             let tree_slice = if project_file_tree.len() > max_tree_chars {
-                let mut end = max_tree_chars;
-                while end > 0 && !project_file_tree.is_char_boundary(end) {
-                    end -= 1;
-                }
+                let truncated = truncate_str(project_file_tree, max_tree_chars);
                 // Cut at last newline to avoid partial paths
-                if let Some(nl) = project_file_tree[..end].rfind('\n') {
-                    &project_file_tree[..nl]
+                if let Some(nl) = truncated.rfind('\n') {
+                    &truncated[..nl]
                 } else {
-                    &project_file_tree[..end]
+                    truncated
                 }
             } else {
                 project_file_tree

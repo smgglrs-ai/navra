@@ -13,6 +13,7 @@ use crate::retrieval::MemoryRetriever;
 use navra_macros::tool;
 use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
+use navra_protocol::truncate_str;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
@@ -377,7 +378,7 @@ async fn handle_distill(
                     Err(_) => ("fact".to_string(), 0.5),
                 };
                 let title = if trimmed.len() > 80 {
-                    format!("{}...", &trimmed[..77])
+                    format!("{}...", truncate_str(trimmed, 77))
                 } else {
                     trimmed.to_string()
                 };

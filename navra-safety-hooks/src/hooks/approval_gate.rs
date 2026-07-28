@@ -6,6 +6,7 @@
 
 use super::{Hook, HookDecision};
 use navra_auth::auth::CallContext;
+use navra_protocol::truncate_str;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -105,7 +106,7 @@ impl ApprovalGateHook {
     fn summarise_args(args: &serde_json::Value) -> String {
         let s = args.to_string();
         if s.len() > 200 {
-            format!("{}...", &s[..200])
+            format!("{}...", truncate_str(&s, 200))
         } else {
             s
         }
