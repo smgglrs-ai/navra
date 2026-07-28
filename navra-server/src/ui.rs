@@ -887,7 +887,7 @@ pub(crate) fn attach_ui_routes(
                                 "model_proxy",
                                 &format!("model={model_name}"),
                                 &output_summary,
-                                "ok", duration_us, "Trusted",
+                                "ok", duration_us, "Trusted", "",
                             );
                         }
                         srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -1251,7 +1251,7 @@ pub(crate) fn attach_ui_routes(
                                     "model_proxy",
                                     &format!("model={model_name}"),
                                     &output_summary,
-                                    "ok", duration_us, "Trusted",
+                                    "ok", duration_us, "Trusted", "",
                                 );
                             }
                             srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

@@ -888,6 +888,7 @@ impl McpServer {
                             "error",
                             0,
                             "N/A",
+                            "",
                         );
                     }
                     return CallToolResult::error_msg(format!("Unknown tool: {}", params.name));
@@ -987,6 +988,7 @@ impl McpServer {
                 },
                 tool_duration_us,
                 &format!("{:?}", result_label),
+                "",
             );
         }
 

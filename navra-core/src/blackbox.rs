@@ -32,6 +32,8 @@ pub struct BlackboxEntry {
     pub hash: String,      // SHA-256 of this entry
     /// On-behalf-of human subject identifier (when agent acts for a human).
     pub obo_sub: Option<String>,
+    /// W3C trace ID for cross-system correlation (OpenShell OCSF, OTel).
+    pub trace_id: String,
 }
 
 /// Chain state: sequence counter and previous entry hash.
@@ -70,21 +72,32 @@ impl Blackbox {
                 ifc_label     TEXT NOT NULL,
                 prev_hash     TEXT NOT NULL,
                 hash          TEXT NOT NULL,
-                obo_sub       TEXT
+                obo_sub       TEXT,
+                trace_id      TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_bb_agent ON blackbox(agent_name);
             CREATE INDEX IF NOT EXISTS idx_bb_tool ON blackbox(tool_name);
-            CREATE INDEX IF NOT EXISTS idx_bb_ts ON blackbox(timestamp_ms);",
+            CREATE INDEX IF NOT EXISTS idx_bb_ts ON blackbox(timestamp_ms);
+            CREATE INDEX IF NOT EXISTS idx_bb_trace ON blackbox(trace_id);",
         )
         .map_err(|e| format!("blackbox schema failed: {e}"))?;
 
-        // Migrate existing databases: add obo_sub column if missing.
+        // Migrate existing databases: add columns if missing.
         // "duplicate column" errors are expected and safe to ignore.
-        match db.execute_batch("ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;") {
-            Ok(()) => {}
-            Err(e) if e.to_string().contains("duplicate column") => {}
-            Err(e) => tracing::error!(error = %e, "blackbox migration failed"),
+        for stmt in [
+            "ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;",
+            "ALTER TABLE blackbox ADD COLUMN trace_id TEXT NOT NULL DEFAULT '';",
+        ] {
+            match db.execute_batch(stmt) {
+                Ok(()) => {}
+                Err(e) if e.to_string().contains("duplicate column") => {}
+                Err(e) => tracing::error!(error = %e, stmt, "blackbox migration failed"),
+            }
         }
+        // Ensure trace_id index exists (idempotent).
+        let _ = db.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_bb_trace ON blackbox(trace_id);",
+        );
 
         // Resume from last entry
         let (last_seq, last_hash) = db
@@ -147,6 +160,7 @@ impl Blackbox {
         outcome: &str,
         duration_us: u64,
         ifc_label: &str,
+        trace_id: &str,
     ) {
         self.record_with_obo(
             agent_name,
@@ -159,6 +173,7 @@ impl Blackbox {
             duration_us,
             ifc_label,
             None,
+            trace_id,
         );
     }
 
@@ -176,6 +191,7 @@ impl Blackbox {
         duration_us: u64,
         ifc_label: &str,
         obo_sub: Option<&str>,
+        trace_id: &str,
     ) {
         let mut chain = self.chain.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -206,12 +222,12 @@ impl Blackbox {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(e) = db.execute(
             "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
-             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub, trace_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 chain.seq as i64, now, agent_name, agent_permissions, session_id,
                 tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
-                ifc_label, chain.prev_hash, hash, obo_sub,
+                ifc_label, chain.prev_hash, hash, obo_sub, trace_id,
             ],
         ) {
             tracing::error!(error = %e, seq = chain.seq, "blackbox insert failed");
@@ -275,7 +291,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash, obo_sub \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id \
                  FROM blackbox ORDER BY seq DESC LIMIT ?1",
             )
             .unwrap();
@@ -296,6 +312,7 @@ impl Blackbox {
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,
                 obo_sub: row.get(13)?,
+                trace_id: row.get::<_, String>(14).unwrap_or_default(),
             })
         })
         .unwrap()
@@ -376,6 +393,7 @@ impl Blackbox {
                     prev_hash: row.get(11)?,
                     hash: row.get(12)?,
                     obo_sub: row.get(13)?,
+                    trace_id: row.get::<_, String>(14).unwrap_or_default(),
                 })
             })
             .unwrap()
@@ -392,7 +410,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash, obo_sub \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id \
                  FROM blackbox WHERE session_id = ? ORDER BY seq ASC",
             )
             .unwrap();
@@ -412,6 +430,7 @@ impl Blackbox {
                 prev_hash: row.get(11)?,
                 hash: row.get(12)?,
                 obo_sub: row.get(13)?,
+                trace_id: row.get::<_, String>(14).unwrap_or_default(),
             })
         })
         .unwrap()
@@ -475,6 +494,41 @@ impl Blackbox {
             params![cutoff_ms],
         )
         .unwrap_or(0)
+    }
+
+    /// Retrieve all blackbox entries matching a W3C trace ID.
+    pub fn query_trace(&self, trace_id: &str) -> Vec<BlackboxEntry> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db
+            .prepare(
+                "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
+                 tool_name, tool_args, tool_result, outcome, duration_us, \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id \
+                 FROM blackbox WHERE trace_id = ? ORDER BY seq ASC",
+            )
+            .unwrap();
+        stmt.query_map([trace_id], |row| {
+            Ok(BlackboxEntry {
+                seq: row.get::<_, i64>(0)? as u64,
+                timestamp_ms: row.get(1)?,
+                agent_name: row.get(2)?,
+                agent_permissions: row.get(3)?,
+                session_id: row.get(4)?,
+                tool_name: row.get(5)?,
+                tool_args: row.get(6)?,
+                tool_result: row.get(7)?,
+                outcome: row.get(8)?,
+                duration_us: row.get::<_, i64>(9)? as u64,
+                ifc_label: row.get(10)?,
+                prev_hash: row.get(11)?,
+                hash: row.get(12)?,
+                obo_sub: row.get(13)?,
+                trace_id: row.get::<_, String>(14).unwrap_or_default(),
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
     }
 
     /// Entry count.
@@ -558,6 +612,7 @@ mod tests {
             "allowed",
             5,
             "Trusted:Public",
+            "aabbccdd00112233aabbccdd00112233",
         );
         bb.record(
             "agent1",
@@ -569,6 +624,7 @@ mod tests {
             "denied_ifc",
             2,
             "Untrusted:Public",
+            "aabbccdd00112233aabbccdd00112233",
         );
 
         assert_eq!(bb.count(), 2);
@@ -585,9 +641,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
-        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
-        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P");
-        bb.record("a", "dev", "s", "t3", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P", "");
+        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", "");
+        bb.record("a", "dev", "s", "t3", "{}", "ok", "allowed", 1, "T:P", "");
 
         let (valid, broken) = bb.verify_chain();
         assert_eq!(valid, 3);
@@ -600,8 +656,8 @@ mod tests {
         let path = dir.path().join("bb.db");
         let bb = Blackbox::open(&path).unwrap();
 
-        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
-        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P", "");
+        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", "");
 
         // Tamper with entry 2
         {
@@ -637,6 +693,7 @@ mod tests {
             "allowed",
             5,
             "Trusted:Public",
+            "",
         );
 
         let entries = bb.recent(1);
@@ -671,6 +728,7 @@ mod tests {
             "allowed",
             5,
             "T:P",
+            "",
         );
 
         let entries = bb.recent(1);
@@ -683,8 +741,8 @@ mod tests {
         let path = dir.path().join("bb.db");
         let bb = Blackbox::open(&path).unwrap();
 
-        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
-        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P", "");
+        bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", "");
 
         assert_eq!(bb.count(), 2);
 
@@ -765,13 +823,13 @@ mod tests {
 
         {
             let bb = Blackbox::open(&path).unwrap();
-            bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
-            bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P");
+            bb.record("a", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P", "");
+            bb.record("a", "dev", "s", "t2", "{}", "ok", "allowed", 1, "T:P", "");
         }
 
         // Reopen — should continue from seq 2
         let bb = Blackbox::open(&path).unwrap();
-        bb.record("a", "dev", "s", "t3", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("a", "dev", "s", "t3", "{}", "ok", "allowed", 1, "T:P", "");
 
         assert_eq!(bb.count(), 3);
         let (valid, broken) = bb.verify_chain();
@@ -795,6 +853,7 @@ mod tests {
             5,
             "Trusted:Public",
             Some("alice@example.com"),
+            "",
         );
 
         let entries = bb.recent(1);
@@ -817,6 +876,7 @@ mod tests {
             "allowed",
             5,
             "T:P",
+            "",
         );
 
         let entries = bb.recent(1);
@@ -839,7 +899,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
 
-        bb.record("agent1", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P");
+        bb.record("agent1", "dev", "s", "t1", "{}", "ok", "allowed", 1, "T:P", "");
         bb.record_with_obo(
             "agent2",
             "dev",
@@ -851,6 +911,7 @@ mod tests {
             1,
             "T:P",
             Some("bob@corp.com"),
+            "",
         );
 
         let entries = bb.recent(10);
