@@ -29,6 +29,8 @@ pub struct A2aClient {
     http: reqwest::Client,
     /// Request timeout.
     timeout: Duration,
+    /// W3C traceparent header for cross-system correlation.
+    traceparent: Option<String>,
 }
 
 impl A2aClient {
@@ -39,12 +41,19 @@ impl A2aClient {
             auth_token: auth_token.to_string(),
             http: reqwest::Client::new(),
             timeout: DEFAULT_TIMEOUT,
+            traceparent: None,
         }
     }
 
     /// Set the request timeout (default: 60 seconds).
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    /// Set a W3C traceparent header for cross-system correlation.
+    pub fn with_traceparent(mut self, traceparent: String) -> Self {
+        self.traceparent = Some(traceparent);
         self
     }
 
@@ -219,6 +228,9 @@ impl A2aClient {
 
         if let Some(label) = data_label {
             req = req.header(DATA_LABEL_HEADER, label);
+        }
+        if let Some(tp) = &self.traceparent {
+            req = req.header("traceparent", tp);
         }
 
         let response = req.send().await.map_err(A2aError::Network)?;
