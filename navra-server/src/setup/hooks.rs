@@ -225,6 +225,7 @@ pub(crate) fn wire_hooks(
                     "verdict",
                     0,
                     "Trusted",
+                    "",
                 );
             }
         }
