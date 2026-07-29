@@ -436,27 +436,11 @@ async fn handle_status(_ctx: CallContext, #[state] state: Arc<RagState>) -> Call
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::test_perm_engine;
     use navra_mcp::auth::AgentIdentity;
-    use navra_mcp::permissions::PathAcl;
-    use std::collections::HashSet;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("test", "dev"), "test")
-    }
-
-    fn test_perm_engine() -> PermissionEngine {
-        let mut engine = PermissionEngine::new();
-        engine.add_permission_set(
-            "dev".to_string(),
-            PathAcl {
-                ring: None,
-                allow: vec!["/**".to_string()],
-                deny: vec![],
-                operations: ["read", "search"].into_iter().map(String::from).collect(),
-                requires_approval: HashSet::new(),
-            },
-        );
-        engine
     }
 
     #[test]
