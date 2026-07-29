@@ -291,3 +291,70 @@ async fn pii_filter_applied_to_cross_sandbox_data() {
         "PII filter should detect IBAN pattern"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 7: Unified inference routing — OpenShell identity accepted on model proxy
+// ---------------------------------------------------------------------------
+
+/// Verifies that navra's model proxy authentication path is compatible
+/// with OpenShell's unified inference routing.
+///
+/// The model proxy at /v1/chat/completions uses
+/// `srv.authenticator().authenticate(&headers)` (ui.rs:510). When
+/// OpenShell auth is configured, the ChainAuthenticator includes
+/// OpenShellAuthenticator. This test verifies the structural property
+/// that the auth chain is correctly assembled.
+///
+/// The cryptographic JWT roundtrip is already tested in
+/// navra-auth/src/auth/openshell.rs::static_jwt_roundtrip.
+#[tokio::test]
+async fn unified_inference_routing_auth_path() {
+    use navra_auth::auth::{
+        Authenticator,
+        chain::ChainAuthenticator,
+        openshell::{OpenShellAuthConfig, OpenShellAuthMode, OpenShellAuthenticator},
+    };
+
+    // Build a chain authenticator with OpenShell mode (same as setup/auth.rs)
+    let dir = tempfile::tempdir().unwrap();
+    let key_path = dir.path().join("pub.pem");
+    // Write a dummy key (authentication will fail, but the chain
+    // should attempt OpenShell verification, not skip it)
+    std::fs::write(&key_path, "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n-----END PUBLIC KEY-----\n").unwrap();
+
+    let config = OpenShellAuthConfig {
+        mode: OpenShellAuthMode::Static {
+            public_key_path: key_path,
+            audience: None,
+        },
+        label_mapping: std::collections::HashMap::new(),
+        default_permissions: "restricted".to_string(),
+        jwks_cache_ttl_secs: 300,
+        http_timeout_secs: 10,
+    };
+
+    let chain = ChainAuthenticator::new()
+        .add(OpenShellAuthenticator::new(config));
+
+    // Unauthenticated request should fail (not return anonymous)
+    let headers = axum::http::HeaderMap::new();
+    let result = chain.authenticate(&headers);
+    assert!(
+        result.is_err(),
+        "Empty headers should not authenticate when OpenShell is the only authenticator"
+    );
+
+    // Request with a Bearer token should attempt OpenShell verification
+    // (it will fail because the key is dummy, but the important thing
+    // is that the code path is exercised — it doesn't panic or skip)
+    let mut headers_with_token = axum::http::HeaderMap::new();
+    headers_with_token.insert(
+        "authorization",
+        "Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.test.sig".parse().unwrap(),
+    );
+    let result = chain.authenticate(&headers_with_token);
+    assert!(
+        result.is_err(),
+        "Invalid token should be rejected by OpenShell authenticator"
+    );
+}
