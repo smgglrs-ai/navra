@@ -5,6 +5,8 @@ pub mod cedar;
 pub mod disclosure;
 #[cfg(feature = "opa")]
 pub mod opa;
+#[cfg(all(feature = "cedar", feature = "opa"))]
+pub mod equivalence;
 pub mod dmn;
 pub mod domain_rules;
 pub mod resource_class;
