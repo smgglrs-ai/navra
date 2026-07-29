@@ -1,0 +1,31 @@
+id: NAVRA-184
+title: "OPA/Rego policy engine for navra"
+status: done
+priority: high
+effort: 3-5d
+depends_on: []
+feeds: ["NAVRA-179", "NAVRA-180"]
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [security, openshell, opa, policy]
+description: |
+  Implemented OPA/Rego as a second policy engine alongside Cedar.
+
+  - navra-auth/src/permissions/opa.rs: OpaEngine using regorus crate
+  - Feature-gated behind cargo feature "opa"
+  - Same second-gate semantics as Cedar (restrict only)
+  - Integrated into McpServer handler chain (navra-core)
+  - 12 unit tests
+acceptance:
+  - Feature-gated OPA engine loads and evaluates .rego policies
+  - Same restrict-only semantics as Cedar
+  - Integrated into handler chain after Cedar, before DMN
+scope:
+  - navra-auth/src/permissions/opa.rs
+  - navra-auth/src/permissions/mod.rs
+  - navra-auth/Cargo.toml
+  - navra-core/src/server/handlers.rs
+  - navra-core/src/server/builder.rs
+  - navra-core/src/server/mod.rs
+  - navra-core/Cargo.toml
+verification:
+  quick: cargo test -p navra-auth --features opa -- opa

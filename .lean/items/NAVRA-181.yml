@@ -1,0 +1,29 @@
+id: NAVRA-181
+title: "Bidirectional policy sync with OpenShell"
+status: done
+priority: medium
+effort: 3-5d
+depends_on: []
+feeds: []
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [openshell, policy, reliability]
+description: |
+  Implemented ToolEndpointRegistry + PolicySyncFilter for runtime
+  tool availability management based on network policy changes.
+
+  - ToolEndpointRegistry maps upstream tools to required domains
+  - PolicySyncFilter implements ToolFilter to dynamically hide
+    tools whose endpoints are unreachable
+  - ConfigWatcher wired to re-evaluate tool availability on
+    config file changes
+  - 7 unit tests
+acceptance:
+  - Tools with unreachable endpoints are hidden from tools/list
+  - Config reload triggers policy re-evaluation
+  - Wildcard domain matching works
+scope:
+  - navra-server/src/policy_sync.rs
+  - navra-server/src/setup/upstream.rs
+  - navra-server/src/main.rs
+verification:
+  quick: cargo test -p navra-server --bin navra -- policy_sync --test-threads=1

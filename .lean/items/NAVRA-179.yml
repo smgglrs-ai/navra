@@ -1,0 +1,26 @@
+id: NAVRA-179
+title: "Cedar↔Rego policy equivalence verification"
+status: done
+priority: high
+effort: 3-5d
+depends_on: ["NAVRA-184"]
+feeds: []
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [security, openshell, verification, cedar, opa]
+description: |
+  Exhaustive decision-table comparison proving Cedar and OPA/Rego
+  policies produce identical decisions for all meaningful inputs.
+
+  Implemented:
+  - policies/owasp-asi-baseline.rego (Rego translation of Cedar baseline)
+  - navra-auth/src/permissions/equivalence.rs (PolicyEquivalenceChecker)
+  - 300+ test vectors, 3 unit tests proving equivalence
+acceptance:
+  - OWASP ASI baselines produce identical decisions across all vectors
+  - Divergence detection works on modified policies
+  - Test vector coverage spans all policy-relevant actions
+scope:
+  - navra-auth/src/permissions/equivalence.rs
+  - policies/owasp-asi-baseline.rego
+verification:
+  quick: cargo test -p navra-auth --features cedar,opa -- equivalence

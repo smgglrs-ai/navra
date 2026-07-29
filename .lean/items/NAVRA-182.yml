@@ -1,0 +1,30 @@
+id: NAVRA-182
+title: "Unified audit trail with OpenShell (OTel trace correlation)"
+status: done
+priority: high
+effort: 1-2d
+depends_on: []
+feeds: []
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [openshell, observability, security]
+description: |
+  Implemented W3C trace ID correlation across navra and OpenShell.
+
+  - trace_id column in Blackbox (hash-chained) and AuditLog
+  - generate_trace_id() produces 128-bit W3C-compatible IDs
+  - traceparent header injected on all OpenShell gRPC calls
+  - traceparent header on A2A HTTP calls
+  - query_trace() method for trace-based blackbox lookup
+acceptance:
+  - Every tool call has a unique trace_id in blackbox and audit
+  - OpenShell gRPC calls carry traceparent metadata
+  - A2A calls carry traceparent header
+scope:
+  - navra-core/src/blackbox.rs
+  - navra-core/src/server/handlers.rs
+  - navra-model-runtime/src/openshell.rs
+  - navra-protocol/src/a2a_client.rs
+  - navra-memory/src/audit.rs
+  - navra-agent/src/audit.rs
+verification:
+  quick: just test-workspace

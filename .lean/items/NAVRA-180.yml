@@ -1,0 +1,36 @@
+id: NAVRA-180
+title: "IFC taint visibility at OpenShell egress proxy"
+status: blocked
+priority: high
+effort: 1-2d (navra side) + OpenShell RFC
+depends_on: []
+feeds: ["NAVRA-179"]
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [security, openshell, ifc]
+blocked_reason: |
+  Requires OpenShell RFC 0002 (Policy Information Point) to be
+  accepted. The RFC proposes a supervisor-initiated gRPC streaming
+  interface where the supervisor queries governance frameworks for
+  runtime security context. Draft RFC written and ready for
+  GitHub Discussion submission.
+description: |
+  navra's IFC taint labels travel as MCP-level metadata. OpenShell's
+  egress proxy cannot see them. A tainted response could be
+  exfiltrated via a non-MCP channel that OpenShell allows.
+
+  navra-side work (1-2 days once RFC is accepted):
+  - Expose PolicyInformationPoint gRPC service on Unix socket
+  - Stream taint context (data_classification, trust_state) from
+    navra's TaintTracker to the supervisor
+  - Supervisor injects into OPA input.pip for deny rules
+
+  RFC draft: docs/openshell/rfc-0002-policy-information-point.md
+acceptance:
+  - navra exposes PIP gRPC service on /run/openshell/pip/navra.sock
+  - Supervisor queries and injects taint into OPA input
+  - Integration test: tainted data blocked at proxy
+scope:
+  - navra-server/src/ (PIP service)
+  - docs/openshell/rfc-0002-policy-information-point.md
+verification:
+  quick: just test-server
