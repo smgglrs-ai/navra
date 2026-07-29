@@ -696,7 +696,7 @@ mod tests {
     use rmcp::service::ServiceExt;
     use std::future::Future;
     use std::pin::Pin;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     /// Mock model that returns a sequence of scripted Open Responses.
     struct MockModel {
