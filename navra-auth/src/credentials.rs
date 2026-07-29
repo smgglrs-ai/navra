@@ -324,6 +324,143 @@ mod tests {
     }
 
     #[test]
+    fn delete_credential_removes_entry() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Use keyring backend with a unique service name to avoid collisions
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let service = format!("navra-test-delete-{unique}");
+        let path = format!("{service}/test-user");
+
+        let mut mappings = HashMap::new();
+        mappings.insert(
+            "api-key".to_string(),
+            CredentialMapping {
+                source: "keyring".to_string(),
+                path: Some(path),
+                var: None,
+            },
+        );
+        let store = MappedCredentialStore::new(mappings);
+
+        // Store a credential, then delete it, then verify resolve fails
+        match store.store("api-key", b"secret-value") {
+            Ok(()) => {
+                // Verify we can resolve it
+                let secret = store.resolve("api-key").unwrap();
+                assert_eq!(secret.as_str(), Some("secret-value"));
+
+                // Delete it
+                store.delete("api-key").unwrap();
+
+                // Verify resolve now fails
+                assert!(
+                    store.resolve("api-key").is_err(),
+                    "resolve should fail after delete"
+                );
+            }
+            Err(_) => {
+                // Keyring not available in this environment (e.g., CI).
+                // Fall back to testing error paths.
+                let err = store.delete("nonexistent-label").unwrap_err();
+                assert!(matches!(err, CredentialError::UnknownLabel(_)));
+            }
+        }
+    }
+
+    #[test]
+    fn delete_env_credential_rejected() {
+        let mut mappings = HashMap::new();
+        mappings.insert(
+            "env-cred".to_string(),
+            CredentialMapping {
+                source: "env".to_string(),
+                path: None,
+                var: Some("MCPD_TEST_DELETE_ENV".to_string()),
+            },
+        );
+        let store = MappedCredentialStore::new(mappings);
+
+        let err = store.delete("env-cred").unwrap_err();
+        assert!(
+            matches!(err, CredentialError::EnvReadOnly(_)),
+            "Expected EnvReadOnly error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn delete_unknown_label_fails() {
+        let store = MappedCredentialStore::new(HashMap::new());
+        let err = store.delete("nonexistent").unwrap_err();
+        assert!(
+            matches!(err, CredentialError::UnknownLabel(_)),
+            "Expected UnknownLabel error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn store_overwrites_existing_credential() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let service = format!("navra-test-overwrite-{unique}");
+        let path = format!("{service}/test-user");
+
+        let mut mappings = HashMap::new();
+        mappings.insert(
+            "api-key".to_string(),
+            CredentialMapping {
+                source: "keyring".to_string(),
+                path: Some(path),
+                var: None,
+            },
+        );
+        let store = MappedCredentialStore::new(mappings);
+
+        // Store initial value, then overwrite, then verify new value
+        match store.store("api-key", b"initial-value") {
+            Ok(()) => {
+                let secret = store.resolve("api-key").unwrap();
+                assert_eq!(secret.as_str(), Some("initial-value"));
+
+                // Overwrite with new value (rotation)
+                store.store("api-key", b"rotated-value").unwrap();
+
+                let secret = store.resolve("api-key").unwrap();
+                assert_eq!(
+                    secret.as_str(),
+                    Some("rotated-value"),
+                    "resolve should return the rotated value"
+                );
+
+                // Clean up
+                let _ = store.delete("api-key");
+            }
+            Err(_) => {
+                // Keyring not available in this environment.
+                // Verify store to env is rejected (rotation not possible for env).
+                let mut env_mappings = HashMap::new();
+                env_mappings.insert(
+                    "env-key".to_string(),
+                    CredentialMapping {
+                        source: "env".to_string(),
+                        path: None,
+                        var: Some("X".to_string()),
+                    },
+                );
+                let env_store = MappedCredentialStore::new(env_mappings);
+                assert!(env_store.store("env-key", b"val").is_err());
+            }
+        }
+    }
+
+    #[test]
     fn keyring_invalid_path_format_fails() {
         let mut mappings = HashMap::new();
         mappings.insert(
