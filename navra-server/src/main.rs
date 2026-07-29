@@ -25,6 +25,8 @@ mod direct_transport;
 mod discover;
 mod exec_tools;
 mod flow_api;
+mod flow_escalation;
+mod flow_execution;
 mod flow_tools;
 mod grpc_manager;
 mod init;
