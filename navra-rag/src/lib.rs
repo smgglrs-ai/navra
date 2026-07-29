@@ -9,6 +9,8 @@ pub mod cache;
 pub mod chunk;
 pub mod rerank;
 mod store;
+#[doc(hidden)]
+pub mod test_support;
 mod tools;
 
 pub use agentic::{

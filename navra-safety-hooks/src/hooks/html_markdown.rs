@@ -136,27 +136,8 @@ impl Hook for HtmlToMarkdownHook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::test_ctx;
     use serde_json::json;
-
-    fn test_ctx() -> CallContext {
-        CallContext {
-            agent: navra_auth::auth::AgentIdentity {
-                name: "test".to_string(),
-                permissions: "full".to_string(),
-                signing_key: None,
-                did: None,
-                capabilities: None,
-                model: None,
-                allowed_upstreams: Vec::new(),
-                max_concurrent: None,
-                max_context: None,
-            },
-            session_id: "sess-1".to_string(),
-            taint: navra_auth::ifc::TaintTracker::new(),
-            remaining_tokens: None,
-            sandbox: None,
-        }
-    }
 
     fn make_result(text: &str) -> CallToolResult {
         CallToolResult::text(text.to_string())

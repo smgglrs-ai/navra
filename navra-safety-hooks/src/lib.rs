@@ -9,3 +9,5 @@ pub use navra_safety as safety;
 pub mod bridge;
 pub mod hooks;
 pub mod integrity_monitor;
+#[cfg(test)]
+mod test_support;
