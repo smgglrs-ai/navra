@@ -399,6 +399,19 @@ impl McpServer {
                 self.metrics
                     .tool_calls_denied
                     .fetch_add(1, Ordering::Relaxed);
+                if let Some(ref bb) = self.blackbox {
+                    bb.record(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        &ctx.session_id,
+                        &params.name,
+                        &arguments.to_string(),
+                        "Permission denied: capability token",
+                        "denied_acl",
+                        0,
+                        "N/A",
+                    );
+                }
                 return CallToolResult::error_msg(format!(
                     "Permission denied: tool '{}' not in capability token grants",
                     params.name
