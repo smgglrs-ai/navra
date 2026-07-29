@@ -765,7 +765,7 @@ pub(crate) fn attach_ui_routes(
 
                         if is_streaming {
                             let stream = resp.bytes_stream();
-                            srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            srv.metrics().model.proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             return axum::body::Body::from_stream(stream).into_response();
                         }
 
@@ -890,7 +890,7 @@ pub(crate) fn attach_ui_routes(
                                 "ok", duration_us, "Trusted", "",
                             );
                         }
-                        srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        srv.metrics().model.proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                         if let Some(usage) = resp_json.get("usage") {
                             let prompt = usage["prompt_tokens"].as_u64().unwrap_or(0);
@@ -1184,7 +1184,7 @@ pub(crate) fn attach_ui_routes(
                             // Streaming: SSE pass-through
                             if is_streaming {
                                 let stream = resp.bytes_stream();
-                                srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                srv.metrics().model.proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                 return axum::body::Body::from_stream(stream).into_response();
                             }
 
@@ -1254,7 +1254,7 @@ pub(crate) fn attach_ui_routes(
                                     "ok", duration_us, "Trusted", "",
                                 );
                             }
-                            srv.metrics().model_proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                            srv.metrics().model.proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
                             // Token metrics (Anthropic usage format)
                             if let Some(usage) = resp_json.get("usage") {

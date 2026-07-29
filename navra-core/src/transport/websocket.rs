@@ -37,7 +37,7 @@ async fn handle_ws_connection(
 ) {
     state
         .metrics
-        .websocket_connections
+        .sessions.websocket_connections
         .fetch_add(1, Ordering::Relaxed);
 
     let (ws_sender, mut ws_receiver) = socket.split();
@@ -189,7 +189,7 @@ async fn handle_ws_connection(
 
     state
         .metrics
-        .websocket_connections
+        .sessions.websocket_connections
         .fetch_sub(1, Ordering::Relaxed);
 
     tracing::debug!("WebSocket connection closed");
@@ -239,7 +239,7 @@ mod tests {
     fn metrics_initial_zero() {
         let state = make_state();
         assert_eq!(
-            state.metrics.websocket_connections.load(Ordering::Relaxed),
+            state.metrics.sessions.websocket_connections.load(Ordering::Relaxed),
             0
         );
     }

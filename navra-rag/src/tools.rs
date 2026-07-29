@@ -205,7 +205,7 @@ async fn handle_index(
         chunks.retain(|c| predict_chunk_value(c, &state.chunk_config) >= threshold);
         let skipped = total_before - chunks.len();
         if let Some(ref m) = state.metrics {
-            m.rag_chunks_skipped
+            m.rag.chunks_skipped
                 .fetch_add(skipped as u64, std::sync::atomic::Ordering::Relaxed);
         }
         if chunks.is_empty() {
@@ -217,7 +217,7 @@ async fn handle_index(
         }
     }
     if let Some(ref m) = state.metrics {
-        m.rag_chunks_indexed
+        m.rag.chunks_indexed
             .fetch_add(chunks.len() as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -284,7 +284,7 @@ async fn handle_query(
     };
 
     if let Some(ref m) = state.metrics {
-        m.rag_queries_total
+        m.rag.queries_total
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -304,11 +304,11 @@ async fn handle_query(
         Ok((candidates, vector_skipped, rerank_skipped)) => {
             if let Some(ref m) = state.metrics {
                 if vector_skipped {
-                    m.rag_vector_skips
+                    m.rag.vector_skips
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 if rerank_skipped {
-                    m.rag_rerank_skips
+                    m.rag.rerank_skips
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }
