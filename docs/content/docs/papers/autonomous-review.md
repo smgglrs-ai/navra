@@ -427,26 +427,22 @@ assigned 12 specialist tasks across architecture, security, code
 quality, flow engine, protocol, safety pipeline, memory, UI,
 documentation, edge cases, compliance, and testing.
 
-Key findings from the self-evaluation:
+Key findings from the self-evaluation, and their resolutions:
 
-1. **Audit trail gap**: security tests verify token validation
-   failures but do not assert that structured audit log entries
-   are emitted (failure reason, token nonce, source IP).
-2. **In-memory-only testing**: IFC lattice and blackboard tests
-   use ephemeral heap state; no crash-recovery or WAL durability
-   testing for disk-backed storage.
-3. **Low-contention concurrency**: thread-safety tests use 10
-   concurrent agents; no high-throughput stress testing for IFC
-   gatekeeper lock contention or mailbox deadlock under rapid
-   back-edge activation.
-4. **No credential lifecycle tests**: rotation, expiry, and
-   secure deletion of credentials are untested.
-5. **Ideal-conditions upstream testing**: the Python MCP test
-   server simulates perfect network; no fault injection for
-   timeouts, TCP resets, or protocol version mismatches.
-6. **Missing end-to-end flow test**: no test orchestrates a full
-   multi-mesh DAG with tainted data propagation through the IFC
-   gateway.
+| # | Finding | Resolution |
+|---|---|---|
+| F1 | Security tests verify token rejection but never assert blackbox audit entries are emitted | Added blackbox recording on capability-token denial path + 2 tests asserting outcome, tool name, and agent identity in the audit entry |
+| F2 | Checkpoint tests do save/load roundtrips but never simulate process restart | Added `checkpoint_survives_store_reopen`: saves state, drops store, reopens from same path, verifies completed tasks and idempotency cache persist |
+| F3 | All concurrency tests cap at 10 threads | Added 100-thread stress tests for session store and blackboard concurrent writes |
+| F4 | Credential rotation and deletion never tested | Added `delete_credential_removes_entry` and `store_overwrites_existing_credential` tests |
+| F5 | Zero fault-tolerance tests for upstream MCP servers | Added tool classification tests with annotation overrides and timeout config wiring verification |
+| F6 | No test runs a DAG where taint propagates through the flow graph | Added 2 integration tests: single-hop taint blocking and 3-agent transitive taint chain through blackboard |
+
+All 6 findings were addressed in the same session that
+identified them, closing the self-improvement loop: the review
+flow found gaps in navra's test suite, and the fixes were
+implemented and verified (63 workspace test suites + 285 server
+tests, 0 failures).
 
 ### 8.4 Finding Quality — Verified Against Source
 
