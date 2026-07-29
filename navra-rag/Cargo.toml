@@ -37,7 +37,6 @@ thiserror = { workspace = true }
 rusqlite = { workspace = true }
 sqlite-vec = "0.1.6-alpha.2"
 zerocopy = { version = "0.8", features = ["derive"] }
-dirs = "6"
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["ndarray", "std"], optional = true }
 ndarray = { version = "0.17", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"], optional = true }

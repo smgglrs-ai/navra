@@ -11,13 +11,14 @@
 
 use crate::screenshot;
 use navra_auth::auth::CallContext;
+use navra_core::path_util::resolve_path;
 use navra_macros::tool;
 use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::{Module, ToolHandler};
 use navra_protocol::compat::CallToolResultExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Vision module for image understanding.
@@ -101,25 +102,6 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
         data: encoded,
         mime_type: mime_type.to_string(),
     })
-}
-
-fn resolve_path(raw: &str) -> Result<PathBuf, String> {
-    let expanded = if raw.starts_with("~/") {
-        match dirs::home_dir() {
-            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
-            None => return Err("Cannot resolve home directory".to_string()),
-        }
-    } else {
-        PathBuf::from(raw)
-    };
-
-    if !expanded.is_absolute() {
-        return Err(format!("Path must be absolute: {raw}"));
-    }
-
-    expanded
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
 }
 
 // --- Permission check ---
