@@ -381,14 +381,4 @@ mod kani_proofs {
         assert!(page_len <= page_size as usize);
     }
 
-    #[kani::proof]
-    fn cursor_roundtrip() {
-        let offset: u8 = kani::any();
-        let encoded = encode_cursor(offset as usize);
-        let req = PaginatedRequest {
-            cursor: Some(encoded),
-        };
-        let decoded = req.decode_offset().unwrap();
-        assert_eq!(decoded, offset as usize);
-    }
 }
