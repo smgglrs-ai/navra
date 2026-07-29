@@ -402,6 +402,68 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_survives_store_reopen() {
+        // Simulate a process restart: save state, drop the store, reopen from
+        // the same file, and verify all data survived.
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_path_buf();
+
+        {
+            let cp = DagCheckpoint::open(&path).unwrap();
+
+            // Build a state with 5 tasks
+            let state = CheckpointState {
+                flow_id: "flow-reopen".to_string(),
+                completed: HashMap::new(),
+                failed: HashSet::new(),
+                task_defs: vec![
+                    make_task("t1", "analyst", "Analyze"),
+                    make_task("t2", "developer", "Develop"),
+                    make_task("t3", "tester", "Test"),
+                    make_task("t4", "reviewer", "Review"),
+                    make_task("t5", "deployer", "Deploy"),
+                ],
+                team_id: "team-restart".to_string(),
+                prompt: "Full pipeline".to_string(),
+                idempotency_cache: HashMap::new(),
+            };
+            cp.save(&state).unwrap();
+
+            // Mark 2 tasks completed via save_node
+            cp.save_node("flow-reopen", "t1", "analysis done").unwrap();
+            cp.save_node("flow-reopen", "t2", "code written").unwrap();
+
+            // Cache a tool result
+            cp.cache_tool_result("flow-reopen", "git_commit:abc", "sha:def")
+                .unwrap();
+
+            // Store is dropped here, simulating process exit
+        }
+
+        // Reopen from the same path — simulates process restart
+        let cp2 = DagCheckpoint::open(&path).unwrap();
+        let loaded = cp2.load("flow-reopen").unwrap().expect("checkpoint must survive reopen");
+
+        // 2 completed tasks
+        assert_eq!(loaded.completed.len(), 2);
+        assert_eq!(loaded.completed["t1"], "analysis done");
+        assert_eq!(loaded.completed["t2"], "code written");
+
+        // 3 remaining task definitions (t3, t4, t5)
+        assert_eq!(loaded.task_defs.len(), 3);
+        let remaining_ids: HashSet<&str> = loaded.task_defs.iter().map(|t| t.id.as_str()).collect();
+        assert!(remaining_ids.contains("t3"));
+        assert!(remaining_ids.contains("t4"));
+        assert!(remaining_ids.contains("t5"));
+
+        // Cached tool result survives
+        let cached = cp2
+            .get_cached_tool_result("flow-reopen", "git_commit:abc")
+            .unwrap();
+        assert_eq!(cached.as_deref(), Some("sha:def"));
+    }
+
+    #[test]
     fn task_definition_serialization_roundtrip() {
         let task = TaskDefinition {
             id: "test".to_string(),

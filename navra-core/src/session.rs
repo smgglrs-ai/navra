@@ -394,6 +394,27 @@ mod tests {
     }
 
     #[test]
+    fn stress_100_concurrent_sessions() {
+        let store = Arc::new(dashmap_store());
+        let handles: Vec<_> = (0..100)
+            .map(|i| {
+                let store = store.clone();
+                std::thread::spawn(move || {
+                    let id = format!("stress-{i}");
+                    store.create(test_session(&id));
+                    store.touch(&id);
+                    let label = store.context_label(&id);
+                    assert_eq!(label, DataLabel::TRUSTED_PUBLIC);
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("thread must not panic");
+        }
+        assert_eq!(store.count(), 100);
+    }
+
+    #[test]
     fn list_all_empty_store() {
         let store = SessionStore::new();
         assert!(store.list_all().is_empty());
