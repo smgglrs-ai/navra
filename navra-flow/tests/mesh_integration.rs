@@ -427,3 +427,113 @@ fn mailbox_message_carries_sender_label() {
     taint.absorb(msg.label);
     assert_eq!(taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
 }
+
+// ── DAG + IFC: taint propagation through multi-step flows ──
+
+#[test]
+fn tainted_dag_node_write_blocked_by_ifc() {
+    // Scenario: Agent A publishes untrusted-sensitive data to the blackboard.
+    // Agent B reads it (absorbs taint), then tries to publish to a
+    // Public-clearance mailbox. IFC must block the write.
+
+    let bb = Blackboard::new(10);
+
+    // Step 1: Agent A publishes sensitive data to the blackboard
+    bb.publish(
+        "agent_a",
+        "analysis_result",
+        serde_json::json!({"findings": "sensitive internal data"}),
+        DataLabel::UNTRUSTED_SENSITIVE,
+    )
+    .unwrap();
+
+    // Step 2: Agent B reads from the blackboard, absorbing taint
+    let mut agent_b_taint = TaintTracker::new();
+    assert_eq!(agent_b_taint.level(), DataLabel::TRUSTED_PUBLIC);
+
+    let entry = bb.read("analysis_result", &mut agent_b_taint).unwrap();
+    assert_eq!(entry.author, "agent_a");
+    assert_eq!(agent_b_taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
+
+    // Step 3: Agent B attempts to post to Agent C's Public mailbox
+    let ids = vec![
+        "agent_b".to_string(),
+        "agent_c_public".to_string(),
+    ];
+    let reg = MailboxRegistry::new(&ids, 16);
+    // agent_c_public has default Public clearance
+
+    let err = reg
+        .post(
+            "agent_b",
+            agent_b_taint.level(),
+            "agent_c_public",
+            "processed result".into(),
+        )
+        .unwrap_err();
+    assert!(matches!(err, FlowError::IfcViolation { .. }));
+}
+
+#[test]
+fn taint_propagation_through_blackboard_chain() {
+    // Scenario: taint flows transitively through a chain of agents.
+    // Agent A publishes with Untrusted label.
+    // Agent B reads (absorbs taint), processes, publishes its own result.
+    // Agent C reads Agent B's output.
+    // Verify Agent C's taint tracker is also tainted (transitivity).
+
+    let bb = Blackboard::new(20);
+
+    // Step 1: Agent A publishes untrusted-sensitive data
+    bb.publish(
+        "agent_a",
+        "raw_input",
+        serde_json::json!("user-supplied sensitive data"),
+        DataLabel::UNTRUSTED_SENSITIVE,
+    )
+    .unwrap();
+
+    // Step 2: Agent B reads from blackboard, absorbing taint
+    let mut agent_b_taint = TaintTracker::new();
+    bb.read("raw_input", &mut agent_b_taint).unwrap();
+    assert_eq!(agent_b_taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
+
+    // Agent B processes the data and publishes its result.
+    // The published label carries Agent B's taint level.
+    bb.publish(
+        "agent_b",
+        "processed_output",
+        serde_json::json!("processed: user-supplied data"),
+        agent_b_taint.level(),
+    )
+    .unwrap();
+
+    // Step 3: Agent C reads Agent B's output
+    let mut agent_c_taint = TaintTracker::new();
+    assert_eq!(agent_c_taint.level(), DataLabel::TRUSTED_PUBLIC);
+
+    let entry = bb.read("processed_output", &mut agent_c_taint).unwrap();
+    assert_eq!(entry.author, "agent_b");
+
+    // Transitivity: Agent C is now tainted even though it never
+    // directly read Agent A's data
+    assert_eq!(agent_c_taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
+
+    // Step 4: Verify Agent C cannot post to a Public-clearance mailbox
+    // The Sensitive confidentiality cannot write down to Public clearance.
+    let ids = vec![
+        "agent_c".to_string(),
+        "clean_agent".to_string(),
+    ];
+    let reg = MailboxRegistry::new(&ids, 16);
+
+    let err = reg
+        .post(
+            "agent_c",
+            agent_c_taint.level(),
+            "clean_agent",
+            "should be blocked".into(),
+        )
+        .unwrap_err();
+    assert!(matches!(err, FlowError::IfcViolation { .. }));
+}

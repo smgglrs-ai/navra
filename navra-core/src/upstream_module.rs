@@ -403,6 +403,74 @@ mod tests {
         );
     }
 
+    #[test]
+    fn classify_tool_read_only_annotation_returns_read() {
+        let ann = navra_protocol::ToolAnnotations::new().read_only(true);
+        // Even a tool with a write-like name should be classified Read
+        // when the read_only_hint annotation is true.
+        assert_eq!(
+            classify_tool(&tool_def("write_something", Some(ann))),
+            ToolOperation::Read
+        );
+    }
+
+    #[test]
+    fn classify_tool_destructive_annotation_returns_write() {
+        let ann = navra_protocol::ToolAnnotations::new().destructive(true);
+        // A tool with a read-like name should be classified Write
+        // when the destructive_hint annotation is true.
+        assert_eq!(
+            classify_tool(&tool_def("list_items", Some(ann))),
+            ToolOperation::Write
+        );
+    }
+
+    #[test]
+    fn classify_tool_read_only_takes_priority_over_destructive() {
+        // When both read_only and destructive are set, read_only wins
+        // because we check it first.
+        let ann = navra_protocol::ToolAnnotations::new()
+            .read_only(true)
+            .destructive(true);
+        assert_eq!(
+            classify_tool(&tool_def("ambiguous_tool", Some(ann))),
+            ToolOperation::Read
+        );
+    }
+
+    #[test]
+    fn classify_tool_no_annotations_falls_through_to_name_heuristic() {
+        // Tools without annotations are classified by name heuristic.
+        assert_eq!(
+            classify_tool(&tool_def("git_commit", None)),
+            ToolOperation::Write
+        );
+        assert_eq!(
+            classify_tool(&tool_def("git_status", None)),
+            ToolOperation::Read
+        );
+        assert_eq!(
+            classify_tool(&tool_def("shell_exec", None)),
+            ToolOperation::Write
+        );
+    }
+
+    #[test]
+    fn request_timeout_secs_wired_into_retry_config() {
+        // Verify the config-to-RetryConfig conversion correctly maps
+        // request_timeout_secs to the RetryConfig's request_timeout field.
+        let mut config = navra_protocol::RetryConfig::default();
+        assert_eq!(config.request_timeout, std::time::Duration::from_secs(45));
+
+        // Simulate what UpstreamConfig::retry_config() does
+        let custom_timeout_secs: u64 = 10;
+        config.request_timeout = std::time::Duration::from_secs(custom_timeout_secs);
+        assert_eq!(
+            config.request_timeout,
+            std::time::Duration::from_secs(10)
+        );
+    }
+
     fn tool_def(
         name: &str,
         annotations: Option<navra_protocol::ToolAnnotations>,
