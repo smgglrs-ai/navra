@@ -5,7 +5,7 @@
 //! enforce trajectory-level constraints like "cannot write unless read
 //! first" or "3+ destructive tools require human check-in."
 
-use super::{Hook, HookDecision};
+use super::{Hook, HookDecision, glob_match};
 use navra_auth::auth::CallContext;
 use navra_protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
@@ -218,20 +218,6 @@ impl TemporalPredicate {
 /// Check if a DataLabel meets or exceeds the trigger label in any dimension.
 fn label_matches(actual: &DataLabel, trigger: &DataLabel) -> bool {
     actual.confidentiality >= trigger.confidentiality || actual.integrity >= trigger.integrity
-}
-
-/// Simple glob matching (prefix `*`, suffix `*`, exact).
-fn glob_match(pattern: &str, text: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return text.starts_with(prefix);
-    }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        return text.ends_with(suffix);
-    }
-    pattern == text
 }
 
 /// Action to take when a temporal contract is violated.

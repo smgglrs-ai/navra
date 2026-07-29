@@ -201,3 +201,22 @@ pub trait Hook: Send + Sync + 'static {
     /// Returning `Block` is a no-op — session cleanup always proceeds.
     async fn on_session_end(&self, _session_id: &str, _agent_name: &str, _tool_count: usize) {}
 }
+
+/// Simple glob matching supporting `*` as a wildcard prefix or suffix.
+///
+/// - `"*"` matches everything
+/// - `"prefix*"` matches text starting with `prefix`
+/// - `"*suffix"` matches text ending with `suffix`
+/// - Otherwise, requires exact equality
+pub fn glob_match(pattern: &str, text: &str) -> bool {
+    if pattern == "*" {
+        return true;
+    }
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        return text.starts_with(prefix);
+    }
+    if let Some(suffix) = pattern.strip_prefix('*') {
+        return text.ends_with(suffix);
+    }
+    pattern == text
+}

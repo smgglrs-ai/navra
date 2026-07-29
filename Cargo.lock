@@ -3469,6 +3469,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "dashmap",
+ "dirs",
  "futures-util",
  "glob",
  "hex",
@@ -3584,9 +3585,9 @@ name = "navra-modal-vision"
 version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
- "dirs",
  "futures-util",
  "navra-auth",
+ "navra-core",
  "navra-macros",
  "navra-mcp",
  "navra-protocol",
@@ -3603,7 +3604,7 @@ name = "navra-modal-voice"
 version = "0.3.0"
 dependencies = [
  "cpal",
- "dirs",
+ "navra-core",
  "navra-macros",
  "navra-mcp",
  "navra-protocol",
@@ -3734,7 +3735,6 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
- "dirs",
  "navra-core",
  "navra-macros",
  "navra-mcp",

@@ -6,7 +6,7 @@
 //! and is not in the exclusion list, the hook extracts text content
 //! and stores it via a pluggable storage backend.
 
-use super::{Hook, HookDecision};
+use super::{Hook, HookDecision, glob_match};
 use navra_auth::auth::CallContext;
 use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::{CallToolResult, Content, RawContent};
@@ -207,23 +207,6 @@ fn extract_context_hint(tool_name: &str, arguments: &serde_json::Value) -> Strin
         }
     }
     String::new()
-}
-
-/// Simple glob matching supporting only `*` wildcards.
-///
-/// Patterns like `"memory_*"` match any tool starting with `"memory_"`.
-/// A bare `*` matches everything.
-fn glob_match(pattern: &str, text: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return text.starts_with(prefix);
-    }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        return text.ends_with(suffix);
-    }
-    pattern == text
 }
 
 #[cfg(test)]

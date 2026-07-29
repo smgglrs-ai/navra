@@ -8,6 +8,7 @@
 //! - `rag_status` — show index statistics
 
 use crate::chunk::{ChunkConfig, chunk_text, predict_chunk_value};
+use navra_core::path_util::resolve_path;
 use crate::rerank::{NoopReranker, Reranker};
 use crate::store::{CascadeConfig, ChunkStore};
 use navra_macros::tool;
@@ -17,7 +18,7 @@ use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Over-fetch factor for reranking. When a reranker is active, fetch
@@ -130,27 +131,6 @@ impl Module for RagModule {
             handle_status_handler(s.clone()),
         ]
     }
-}
-
-// --- Path helpers ---
-
-fn resolve_path(raw: &str) -> Result<PathBuf, String> {
-    let expanded = if raw.starts_with("~/") {
-        match dirs::home_dir() {
-            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
-            None => return Err("Cannot resolve home directory".to_string()),
-        }
-    } else {
-        PathBuf::from(raw)
-    };
-
-    if !expanded.is_absolute() {
-        return Err(format!("Path must be absolute: {raw}"));
-    }
-
-    expanded
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
 }
 
 // --- Permission check ---

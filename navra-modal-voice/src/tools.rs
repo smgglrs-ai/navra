@@ -9,6 +9,7 @@
 //! - `voice_status` — show audio device info and model availability
 
 use crate::audio;
+use navra_core::path_util::resolve_path;
 use navra_macros::tool;
 use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
@@ -16,7 +17,7 @@ use navra_mcp::models::ModelBackend;
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Voice module for speech I/O.
@@ -276,27 +277,6 @@ async fn handle_status(ctx: CallContext, #[state] state: Arc<VoiceState>) -> Cal
     }
 
     CallToolResult::text(output)
-}
-
-// --- Path helpers ---
-
-fn resolve_path(raw: &str) -> Result<PathBuf, String> {
-    let expanded = if raw.starts_with("~/") {
-        match dirs::home_dir() {
-            Some(home) => home.join(raw.strip_prefix("~/").unwrap()),
-            None => return Err("Cannot resolve home directory".to_string()),
-        }
-    } else {
-        PathBuf::from(raw)
-    };
-
-    if !expanded.is_absolute() {
-        return Err(format!("Path must be absolute: {raw}"));
-    }
-
-    expanded
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve path {raw}: {e}"))
 }
 
 // --- Permission check ---
