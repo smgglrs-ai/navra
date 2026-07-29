@@ -1,0 +1,30 @@
+id: NAVRA-183
+title: "Unified inference routing (navra as inference.local backend)"
+status: done
+priority: medium
+effort: 1d
+depends_on: []
+feeds: []
+source: OPENSHELL.md gap analysis (2026-07-28)
+tags: [openshell, inference, architecture]
+description: |
+  Documented and tested that navra's existing /v1/chat/completions
+  model proxy works as OpenShell's inference.local backend with
+  zero code changes. The model proxy already:
+  - Authenticates via ChainAuthenticator (includes OpenShellAuthenticator)
+  - Applies safety filters (inbound + outbound)
+  - Records in blackbox with trace_id
+  - Speaks OpenAI-compatible API
+
+  Configuration-only integration: set OpenShell's inference_backend
+  to navra's endpoint.
+acceptance:
+  - OpenShell identity tokens authenticate on model proxy path
+  - Sandbox config template documents the routing setup
+  - OPA policy comments explain the topology
+scope:
+  - docs/openshell/navra-sandbox.toml
+  - docs/openshell/opa-sandbox-policy.rego
+  - navra-server/tests/openshell_integration.rs
+verification:
+  quick: cargo test -p navra-server --test openshell_integration -- unified_inference --test-threads=1
