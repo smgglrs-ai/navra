@@ -5,10 +5,9 @@
 
 use navra_core::Module;
 use navra_core::models::{EmbedRequest, EmbedResponse, ModelBackend, ModelError};
-use navra_core::permissions::{PathAcl, PermissionEngine};
 use navra_rag::chunk::chunk_text;
+use navra_rag::test_support::test_perm_engine;
 use navra_rag::{ChunkConfig, ChunkStore, RagModule};
-use std::collections::HashSet;
 use std::sync::Arc;
 
 // =====================================================================
@@ -31,21 +30,6 @@ impl ModelBackend for FakeEmbeddingModel {
             })
         })
     }
-}
-
-fn test_perm_engine() -> PermissionEngine {
-    let mut engine = PermissionEngine::new();
-    engine.add_permission_set(
-        "dev".to_string(),
-        PathAcl {
-            ring: None,
-            allow: vec!["/**".to_string()],
-            deny: vec![],
-            operations: ["read", "search"].into_iter().map(String::from).collect(),
-            requires_approval: HashSet::new(),
-        },
-    );
-    engine
 }
 
 fn build_rag_module() -> RagModule {
