@@ -109,10 +109,15 @@ any path, and ignore IFC labels. A compromised agent process
 has unrestricted tool access.
 
 **navra without OpenShell**: The agent respects navra's ACLs at
-the application layer, but a compromised agent process can
-bypass navra entirely — open raw sockets, exfiltrate data to
-the internet, read arbitrary files via the OS, or tamper with
-other processes.
+the application layer, but without OS-level containment the
+attack surface depends on what else is in the image. In a
+minimal container (agent binary only, no shell, no compiler,
+no interpreter), OS-level controls (seccomp, Landlock, network
+namespace) already block most bypass vectors. The real threat
+is **tool-mediated**: if the agent has access to MCP tools like
+`file_write` + `exec_run`, or if the image contains a scripting
+runtime (Python, Node), the agent can compose a multi-step
+attack through legitimate MCP channels that navra alone governs.
 
 **Both together**: OpenShell prevents the agent from reaching
 anything except navra and its model. navra prevents the agent
@@ -124,6 +129,70 @@ This maps to the AI OS analogy: OpenShell is mandatory access
 control (SELinux/AppArmor), navra is discretionary access
 control (Unix permissions + capability tokens). Defense in
 depth requires both.
+
+### Refined threat model: minimal containers
+
+In production, the navra-agent container image contains only the
+agent binary — no shell, no compiler, no interpreter, no cURL.
+This eliminates the "bypass MCP via raw sockets" threat:
+
+- **seccomp** blocks `socket(SOCK_RAW)` regardless of caller
+- **Landlock** prevents writing new executables to disk
+- **Network namespace** forces all `SOCK_STREAM` through the
+  egress proxy, which enforces OPA policy
+- **No toolchain** means nothing to compile or interpret
+
+The layers are not redundant fallbacks for the same threat —
+they govern **different attack surfaces entirely**:
+
+- **OpenShell makes MCP the only channel.** The agent cannot
+  reach anything except navra's MCP endpoint and its model.
+- **navra makes MCP the right channel.** Every tool call is
+  checked against ACLs, IFC labels, and safety filters.
+
+#### Tool-mediated attack path
+
+The remaining attack surface is **tool composition through
+legitimate MCP channels**. If upstream MCP servers expose both
+a write tool and an execution tool, an agent can chain them:
+
+```
+1. file_write("/tmp/exfil.py", "import socket; ...")
+   → navra ACL: allowed (file_write to /tmp permitted)
+   → OpenShell Landlock: allowed (but /tmp is noexec)
+
+2. exec_run("python3 /tmp/exfil.py")
+   → navra ACL: allowed (exec_run permitted)
+   → OpenShell: BLOCKED — no Python in minimal image
+
+3. If Python IS in the image:
+   → python3 opens socket → network namespace → proxy
+   → OpenShell OPA: DENIED (destination not in allowlist)
+   → Even if destination IS allowed, navra IFC can taint
+     the data flowing from step 1 → step 2
+```
+
+Each layer catches different steps. The full chain requires
+compromising both OpenShell policy (network allowlist) AND
+navra policy (ACL + IFC) simultaneously.
+
+#### Interpreter-in-image risk
+
+When the container includes a scripting runtime (for code
+execution tools, REPL features, etc.), the attack surface
+expands. The agent can `import socket` directly without
+writing a file. Mitigations:
+
+| Step | OpenShell | navra |
+|------|-----------|-------|
+| Open socket | Network namespace → proxy | — |
+| Connect out | OPA destination check | — |
+| Send data | — | IFC taint on the data's origin |
+| Receive response | — | Safety filter on ingested content |
+
+The semantic taint gap applies here: navra tracks explicit
+taint labels but cannot detect implicit information flow
+through LLM reasoning (see adversarial limits documentation).
 
 ## 1. OpenShell-provided identity
 
@@ -787,6 +856,198 @@ schemas). navra sits at exactly this application layer:
   support. Lacks IFC.
 - AgentGuard (chitinhq, Issue #1036): governance hooks. Similar thesis,
   less mature.
+
+## Closing the seams: from 100x to 1000x (July 2026)
+
+The Layer 0 + Layer 1 architecture is sound, and the integration
+is production-level. But the two layers operate as independent
+systems that happen to talk to each other. The gaps below are
+where **synergy leaks out** — closing them turns defense-in-depth
+into a unified security fabric.
+
+### Gap 1: Unified policy language with formal equivalence
+
+**Problem.** navra evaluates Cedar policies (application-layer
+tool governance). OpenShell evaluates OPA/Rego policies
+(network-layer egress control). Each system has its own formal
+verification:
+
+- **navra**: Kani/Verus prove implementation correctness
+  (Rust code). TLA+ specs prove policy properties —
+  capability delegation attenuation, taint monotonicity,
+  session isolation, flow concurrency safety. Cedar policies
+  are validated by the `cedar-policy` engine at load time.
+- **OpenShell**: Z3 encodes OPA/Rego network policies as
+  constraints and checks for data exfiltration paths and
+  write-bypass violations.
+
+Neither checks **consistency between the two systems'
+policies**. A navra Cedar rule might permit a tool whose
+network calls OpenShell's Rego policy blocks (silent failure),
+or OpenShell might permit an endpoint that navra's Cedar
+rules and IFC should govern (invisible exfiltration path).
+
+**What breaks.** Operators maintain two policy languages for
+the same deployment. Policy drift between them creates gaps
+or contradictions that only manifest at runtime. No tooling
+catches this at deploy time.
+
+**Solution: dual-engine with proven equivalence.**
+
+navra adds OPA/Rego as a second policy engine alongside Cedar
+(same feature-gate pattern). The operator writes policy in
+**either** language. navra transpiles the network-relevant
+subset between them:
+
+```
+Operator writes Cedar          Operator writes Rego
+        │                              │
+        ▼                              ▼
+navra Cedar engine             navra OPA engine
+        │                              │
+        ├── transpile ─────────────────┤
+        │   network subset             │
+        ▼                              ▼
+OpenShell OPA proxy ◄──── Rego ────── navra exports
+```
+
+**Formal equivalence proof.** Both Cedar and Rego have formal
+semantics (Cedar: Amazon's Dafny spec; Rego: partial
+evaluation to constraint form). For the bounded policy domain
+(finite tool names, actions, resource types, context fields),
+navra can:
+
+1. Parse both policy representations into an intermediate
+   decision model (tool → action → context → permit/deny)
+2. Encode both decision models as SMT constraints
+3. Prove equivalence: for all inputs, both engines produce
+   the same decision
+4. If not equivalent, produce a counterexample showing the
+   divergent input
+
+This is tractable because the policy domain is finite — not
+arbitrary programs. AWS Zelkova proves similar properties for
+IAM policies. The `openshell-prover` crate already has Z3
+bindings that navra can reuse.
+
+**Consistency check.** Beyond equivalence, the combined model
+verifies: (a) every tool navra permits has a reachable network
+path through OpenShell, (b) every network path OpenShell
+permits is governed by a navra policy rule or IFC label,
+(c) no tainted data flows to an unmonitored endpoint.
+
+Ship as `navra policy verify --equivalence` (proof between
+Cedar and Rego) and `navra policy verify --combined` (cross-
+layer consistency).
+
+### Gap 2: IFC taint visibility at the egress proxy
+
+**Problem.** navra's IFC taint labels travel as MCP-level
+metadata (X-Navra-Taint headers, side-channel labels). OpenShell's
+egress proxy evaluates OPA policy on network-level attributes
+(destination host, port, binary identity, HTTP method/path).
+The proxy cannot see taint labels — it doesn't know that the
+data in a permitted HTTPS POST carries a `pii` or `secret`
+taint.
+
+**What breaks.** An agent reads PII via a tainted tool call,
+then sends it to an allowed endpoint (e.g., a logging service
+on the allowlist). navra sees the taint but the data leaves
+through a channel navra doesn't govern (direct HTTPS, not MCP).
+OpenShell allows the connection because the destination is
+permitted.
+
+**Solution sketch.** navra publishes taint context to the
+sandbox supervisor via a lightweight sidecar protocol (Unix
+socket or gRPC stream). The OPA policy gains a `taint_labels`
+input that can express rules like "deny egress to logging
+endpoints when payload originates from a pii-tainted tool
+call." This bridges L0 and L1 without requiring the proxy to
+understand MCP.
+
+### Gap 3: Bidirectional policy sync
+
+**Problem.** navra generates OpenShell policy YAML (NAVRA-160),
+but there is no feedback loop. If an OpenShell admin tightens
+network policy (removes an endpoint), navra continues offering
+tools that call that endpoint. Tool calls succeed at the ACL
+layer but fail silently at the proxy.
+
+**What breaks.** Agents experience unexplained failures. The
+operator sees denials in OpenShell logs but navra reports
+success. No single pane of glass shows the conflict.
+
+**Solution sketch.** navra watches OpenShell's policy version
+via the supervisor session (already a gRPC stream). On policy
+change, navra diffs the effective network allowlist against
+its tool→endpoint mapping and either (a) disables tools whose
+endpoints are no longer reachable, or (b) emits a warning to
+the operator. Symmetric: when navra policy changes, it pushes
+an updated network policy hint to OpenShell.
+
+### Gap 4: Unified audit trail
+
+**Problem.** OpenShell logs OCSF security events (network
+denials, sandbox lifecycle). navra logs its own audit trail
+(tool calls, IFC decisions, safety filter activations). Correlating
+"tool call X → network request Y → proxy decision Z" requires
+manual timestamp join across two separate event streams.
+
+**What breaks.** Incident response is slow. A security analyst
+investigating an exfiltration attempt must cross-reference two
+log systems, reconstruct causality manually, and hope the
+clocks are synchronized.
+
+**Solution sketch.** navra injects a trace ID (OpenTelemetry
+trace context) into every outbound request. The egress proxy
+propagates this trace ID into its OCSF events. A shared event
+collector (or navra's own audit log) can join on trace ID to
+produce a single causal chain: agent intent → tool call →
+ACL decision → network request → proxy decision → response →
+safety filter. Ship as structured OCSF events from navra
+(already partially implemented via navra-ocsf concepts) with
+OpenShell trace ID correlation.
+
+### Gap 5: Unified inference routing
+
+**Problem.** OpenShell has `inference.local` (strips agent
+credentials, injects backend keys, routes to model APIs).
+navra has `navra-model-runtime` (provisions sandboxes, manages
+model lifecycle). The two inference paths are independent —
+an agent might hit `inference.local` directly (OpenShell
+manages credentials) or go through navra's model runtime
+(navra manages credentials), with different security policies
+applying to each path.
+
+**What breaks.** Credential management is split. Audit trails
+diverge. An agent could be denied a model by navra's ACLs but
+reach the same model through `inference.local`, or vice versa.
+
+**Solution sketch.** Register navra as the `inference.local`
+backend in OpenShell's router configuration. All inference
+requests flow: agent → `inference.local` → OpenShell strips
+agent creds → navra model runtime → navra applies ACL + IFC +
+safety filter → navra injects backend creds → model API.
+Single credential store, single audit trail, single policy
+enforcement point for inference.
+
+### Summary: gap closure roadmap
+
+| Gap | Effort | Impact | Depends on |
+|-----|--------|--------|------------|
+| **1. Cedar↔Rego equivalence** | High | Single policy language, proven consistent across layers | OPA engine in navra (NAVRA-184), Z3 bindings |
+| **2. Taint at proxy** | Medium | Closes the semantic exfiltration path | Supervisor sidecar protocol |
+| **3. Policy sync** | Medium | Eliminates silent tool failures | Supervisor session watch |
+| **4. Unified audit** | Low-Medium | Enables single-pane incident response | OTel trace propagation |
+| **5. Inference unification** | Medium | Single credential/policy/audit path | OpenShell router config |
+
+Recommended order: **4 → 3 → NAVRA-184 (OPA engine) → 1 → 2 → 5.**
+Gaps 4 and 3 are lowest-friction wins. NAVRA-184 (OPA engine)
+is the prerequisite for gap 1 and also feeds gap 2 (taint
+rules in Rego). Gap 1 is the most ambitious but has the
+highest long-term payoff — operators write one policy, both
+layers enforce it, and the proof guarantees they agree. Gap 5
+is the cleanest architectural simplification.
 
 ## References
 
