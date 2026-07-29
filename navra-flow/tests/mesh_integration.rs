@@ -245,6 +245,45 @@ fn blackboard_handles_concurrent_writes_from_multiple_threads() {
     }
 }
 
+// ── Blackboard concurrent stress (100 threads) ──
+
+#[test]
+fn stress_100_concurrent_blackboard_writes() {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    let bb = Arc::new(Blackboard::new(1000));
+    let handles: Vec<_> = (0..100)
+        .map(|i| {
+            let bb_clone = Arc::clone(&bb);
+            std::thread::spawn(move || {
+                bb_clone
+                    .publish(
+                        &format!("agent_{i}"),
+                        &format!("key_{i}"),
+                        serde_json::json!(i),
+                        DataLabel::TRUSTED_PUBLIC,
+                    )
+                    .unwrap();
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().expect("thread must not panic");
+    }
+
+    assert_eq!(bb.len(), 100);
+
+    // Verify all 100 unique authors are present
+    let snapshot = bb.snapshot();
+    let authors: HashSet<&str> = snapshot.values().map(|e| e.author.as_str()).collect();
+    assert_eq!(authors.len(), 100);
+    for i in 0..100 {
+        assert!(authors.contains(format!("agent_{i}").as_str()));
+    }
+}
+
 // ── Back-edge lifecycle ──
 
 #[test]
