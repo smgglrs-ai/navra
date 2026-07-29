@@ -410,6 +410,7 @@ impl McpServer {
                         "denied_acl",
                         0,
                         "N/A",
+                        &crate::blackbox::generate_trace_id(),
                     );
                 }
                 return CallToolResult::error_msg(format!(
