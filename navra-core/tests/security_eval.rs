@@ -603,6 +603,120 @@ mod attenuation {
 mod audit {
     use super::*;
 
+    #[tokio::test]
+    async fn blackbox_records_denied_capability_token() {
+        use navra_core::auth::capability::ResolvedCapabilities;
+        use navra_core::blackbox::Blackbox;
+        use navra_core::protocol::{CallToolParams, CallToolResult, ToolDefinition};
+        use navra_protocol::compat::{CallToolResultExt, empty_input_schema};
+        use std::collections::HashSet;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("audit.db")).unwrap();
+
+        let server = navra_core::McpServer::builder()
+            .allow_anonymous()
+            .tool(
+                ToolDefinition::new("allowed_tool", "An allowed tool", empty_input_schema()),
+                |_args, _ctx| Box::pin(async { CallToolResult::text("ok") }),
+            )
+            .blackbox(bb)
+            .build();
+
+        // Build a context with capabilities that only grant "other_tool"
+        let mut agent = AgentIdentity::new("cap-agent", "dev");
+        agent.did = Some("did:key:z6MkTestAgent".to_string());
+        agent.capabilities = Some(ResolvedCapabilities {
+            issuer_did: "did:key:z6MkRoot".to_string(),
+            subject_did: "did:key:z6MkTestAgent".to_string(),
+            ring: 2,
+            paths: vec![],
+            operations: HashSet::from(["read".to_string()]),
+            tools: vec!["other_tool".to_string()], // does NOT include "allowed_tool"
+            credentials: vec![],
+            expires_at: u64::MAX,
+            obo_sub: None,
+            sandbox: None,
+        });
+
+        let ctx =
+            navra_core::auth::CallContext::new(agent, "audit-test-session");
+        let result = server
+            .handle_call_tool(CallToolParams::new("allowed_tool"), ctx)
+            .await;
+
+        // The call must be denied
+        assert!(result.is_error == Some(true));
+        let text = result.content[0]
+            .raw
+            .as_text()
+            .expect("expected text content");
+        assert!(text.text.contains("Permission denied"));
+
+        // Query the blackbox and assert the denial was recorded
+        let bb_ref = server.blackbox().expect("blackbox should be attached");
+        let entries = bb_ref.recent(1);
+        assert_eq!(entries.len(), 1);
+        assert!(
+            entries[0].outcome.contains("denied"),
+            "Expected outcome containing 'denied', got: {}",
+            entries[0].outcome
+        );
+        assert_eq!(entries[0].tool_name, "allowed_tool");
+        assert_eq!(entries[0].agent_name, "cap-agent");
+    }
+
+    #[tokio::test]
+    async fn blackbox_records_correct_tool_and_agent_on_denial() {
+        use navra_core::auth::capability::ResolvedCapabilities;
+        use navra_core::blackbox::Blackbox;
+        use navra_core::protocol::{CallToolParams, CallToolResult, ToolDefinition};
+        use navra_protocol::compat::{CallToolResultExt, empty_input_schema};
+        use std::collections::HashSet;
+
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("audit2.db")).unwrap();
+
+        let server = navra_core::McpServer::builder()
+            .allow_anonymous()
+            .tool(
+                ToolDefinition::new("secret_tool", "A secret tool", empty_input_schema()),
+                |_args, _ctx| Box::pin(async { CallToolResult::text("secret") }),
+            )
+            .blackbox(bb)
+            .build();
+
+        let mut agent = AgentIdentity::new("restricted-agent", "readonly");
+        agent.did = Some("did:key:z6MkRestricted".to_string());
+        agent.capabilities = Some(ResolvedCapabilities {
+            issuer_did: "did:key:z6MkRoot".to_string(),
+            subject_did: "did:key:z6MkRestricted".to_string(),
+            ring: 3,
+            paths: vec![],
+            operations: HashSet::new(),
+            tools: vec!["harmless_*".to_string()], // glob that does NOT match "secret_tool"
+            credentials: vec![],
+            expires_at: u64::MAX,
+            obo_sub: None,
+            sandbox: None,
+        });
+
+        let ctx = navra_core::auth::CallContext::new(agent, "audit-session-2");
+        let result = server
+            .handle_call_tool(CallToolParams::new("secret_tool"), ctx)
+            .await;
+        assert!(result.is_error == Some(true));
+
+        let bb_ref = server.blackbox().unwrap();
+        let entries = bb_ref.recent(1);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tool_name, "secret_tool");
+        assert_eq!(entries[0].agent_name, "restricted-agent");
+        assert_eq!(entries[0].agent_permissions, "readonly");
+        assert_eq!(entries[0].session_id, "audit-session-2");
+        assert_eq!(entries[0].outcome, "denied_acl");
+    }
+
     #[test]
     fn token_contains_issuer_and_subject_did() {
         let signer = Ed25519Signer::generate();
