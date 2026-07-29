@@ -438,6 +438,9 @@ Key findings from the self-evaluation, and their resolutions:
 | F5 | Zero fault-tolerance tests for upstream MCP servers | Added tool classification tests with annotation overrides and timeout config wiring verification |
 | F6 | No test runs a DAG where taint propagates through the flow graph | Added 2 integration tests: single-hop taint blocking and 3-agent transitive taint chain through blackboard |
 
+The self-evaluation ran entirely on local hardware (RTX 5090,
+Qwen 3.6 35B-A3B Q8) in 3001 seconds (50 minutes), consuming
+3.2M tokens across 656 tool calls with 16 specialist tasks.
 All 6 findings were addressed in the same session that
 identified them, closing the self-improvement loop: the review
 flow found gaps in navra's test suite, and the fixes were
