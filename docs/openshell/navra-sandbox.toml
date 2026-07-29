@@ -147,12 +147,24 @@ category = "sandbox-credential"
 pattern = "SANDBOX_TOKEN_[A-Za-z0-9]{32,}"
 action = "redact"
 
-# --- Models ---
+# --- Unified Inference Routing ---
 #
-# Model configuration is injected by the supervisor based on
-# sandbox labels. Example for a local llama-server endpoint:
+# When OpenShell's inference.local routes through navra, the model
+# proxy at /v1/chat/completions applies:
+#   - Agent identity verification (via OpenShell auth token)
+#   - Safety filters (inbound + outbound)
+#   - Blackbox audit trail with W3C trace_id
+#   - Concurrency limits per agent
+#   - Persona injection via X-Persona header
 #
-# [models.inference]
-# backend = "openai"
-# endpoint = "<model_endpoint>"
-# model = "granite3.3:8b"
+# OpenShell router config (set in OpenShell's sandbox template):
+#   inference_backend = "http://<navra-host>:9315"
+#
+# navra then forwards to the actual model backend configured below.
+# Result: agent → inference.local → OpenShell strips agent creds →
+# navra model proxy → safety + audit → model backend.
+
+[models.inference]
+backend = "openai"
+endpoint = "<model_endpoint>"
+model = "granite3.3:8b"

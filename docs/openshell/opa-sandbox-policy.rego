@@ -6,12 +6,24 @@
 # tunneled through the proxy and evaluated against this policy.
 #
 # Default: deny all traffic. Only three destinations are allowed:
-#   1. The navra gateway (MCP tool access + A2A teammate mesh)
-#   2. The model endpoint (LLM inference)
+#   1. The navra gateway (MCP tool access + A2A teammate mesh +
+#      unified inference proxy at /v1/chat/completions)
+#   2. The model endpoint (LLM inference — only needed if the agent
+#      calls the model directly; when inference routes through navra
+#      via inference.local → navra → model, this rule is redundant
+#      since navra runs outside the sandbox and contacts the model
+#      on its own network)
 #   3. The OpenShell gateway (control plane, credential delivery)
 #
 # Everything else is blocked — no internet, no lateral movement
 # between sandboxes, no direct access to host services.
+#
+# Unified inference routing: when OpenShell's inference.local
+# backend is set to navra's /v1/chat/completions endpoint, all
+# model requests flow through Rule 1 (navra gateway). navra
+# applies safety filters, ACLs, and audit logging before
+# forwarding to the actual model backend. This eliminates the
+# need for separate model endpoint credentials inside the sandbox.
 #
 # Configuration is provided via OPA data document at
 # `data.config.*` (injected by the supervisor at sandbox creation):
