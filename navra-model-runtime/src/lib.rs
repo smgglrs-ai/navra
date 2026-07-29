@@ -370,6 +370,17 @@ pub trait ModelRuntime: Send + Sync {
     }
 }
 
+/// Shared HTTP health check: GET `{endpoint.url}/health` and return
+/// `Ok(true)` on a 2xx status, `Ok(false)` on connection failure.
+pub(crate) async fn http_health_check(endpoint: &Endpoint) -> Result<bool, RuntimeError> {
+    let url = format!("{}/health", endpoint.url);
+    let client = reqwest::Client::new();
+    match client.get(&url).send().await {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false),
+    }
+}
+
 /// Auto-detect the best available runtime.
 ///
 /// Picks the best isolation mode first, then the best engine within it.

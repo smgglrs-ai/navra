@@ -114,14 +114,8 @@ impl ModelRuntime for DirectRuntime {
         &self,
         endpoint: &Endpoint,
     ) -> Pin<Box<dyn Future<Output = Result<bool, RuntimeError>> + Send + '_>> {
-        let url = format!("{}/health", endpoint.url);
-        Box::pin(async move {
-            let client = reqwest::Client::new();
-            match client.get(&url).send().await {
-                Ok(resp) => Ok(resp.status().is_success()),
-                Err(_) => Ok(false),
-            }
-        })
+        let endpoint = endpoint.clone();
+        Box::pin(async move { crate::http_health_check(&endpoint).await })
     }
 
     fn backend(&self) -> RuntimeBackend {
