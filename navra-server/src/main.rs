@@ -36,6 +36,8 @@ mod policy_sync;
 mod rag_retriever;
 mod registry_tools;
 mod session_distillation;
+mod agent_spawn;
+mod model_selection;
 mod team_tools;
 mod tray;
 mod triggers;
