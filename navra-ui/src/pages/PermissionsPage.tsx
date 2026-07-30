@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
+import { mutateApi } from '../hooks/useMutation';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from '../components/shared/Spinner';
 import { EmptyState } from '../components/shared/EmptyState';
@@ -8,7 +9,11 @@ import type { PermissionSet } from '../types/api';
 
 export function PermissionsPage() {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Partial<PermissionSet>>({});
+  const [saving, setSaving] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['permissions'],
@@ -23,6 +28,35 @@ export function PermissionsPage() {
       else next.add(name);
       return next;
     });
+  };
+
+  const startEdit = (name: string, pset: PermissionSet) => {
+    setEditing(name);
+    setEditForm({
+      ring: pset.ring,
+      allow: pset.allow ? [...pset.allow] : [],
+      deny: pset.deny ? [...pset.deny] : [],
+      safety: pset.safety || 'standard',
+      operations: pset.operations ? [...pset.operations] : [],
+    });
+  };
+
+  const saveEdit = async (name: string) => {
+    setSaving(true);
+    const resp = await mutateApi(`/api/permissions/${name}`, 'PUT', editForm, token);
+    setSaving(false);
+    if (resp.ok) {
+      setEditing(null);
+      queryClient.invalidateQueries({ queryKey: ['permissions'] });
+    }
+  };
+
+  const deletePermission = async (name: string) => {
+    if (!confirm(`Delete permission set "${name}"?`)) return;
+    const resp = await mutateApi(`/api/permissions/${name}`, 'DELETE', undefined, token);
+    if (resp.ok) {
+      queryClient.invalidateQueries({ queryKey: ['permissions'] });
+    }
   };
 
   if (isLoading) {
@@ -44,7 +78,7 @@ export function PermissionsPage() {
         <EmptyState
           icon="⚿"
           title="No permission sets configured"
-          description="Define permission sets in [permissions.*] in config.toml."
+          description="Define permission sets in config.json or config.toml."
         />
       ) : (
         <div className="perm-tree">
@@ -59,12 +93,55 @@ export function PermissionsPage() {
                   {pset.safety && (
                     <span className="badge success">{pset.safety}</span>
                   )}
+                  <button className="btn" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={e => { e.stopPropagation(); startEdit(name, pset); }}>
+                    Edit
+                  </button>
+                  <button className="btn danger" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={e => { e.stopPropagation(); deletePermission(name); }}>
+                    Delete
+                  </button>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
                     {expanded.has(name) ? '▾' : '▸'}
                   </span>
                 </div>
               </div>
-              {expanded.has(name) && (
+              {editing === name ? (
+                <div className="perm-set-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Ring</label>
+                    <input className="filter-input" type="number" min="0" max="3" value={editForm.ring ?? ''} onChange={e => setEditForm({ ...editForm, ring: e.target.value ? Number(e.target.value) : undefined })} style={{ width: '80px' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Safety</label>
+                    <select className="filter-input" value={editForm.safety || 'standard'} onChange={e => setEditForm({ ...editForm, safety: e.target.value })}>
+                      <option value="standard">standard</option>
+                      <option value="pseudonymize">pseudonymize</option>
+                      <option value="secrets-only">secrets-only</option>
+                      <option value="block">block</option>
+                      <option value="guardian">guardian</option>
+                      <option value="guardian-deep">guardian-deep</option>
+                      <option value="none">none</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Allow paths (one per line)</label>
+                    <textarea className="filter-input" rows={3} value={(editForm.allow ?? []).join('\n')} onChange={e => setEditForm({ ...editForm, allow: e.target.value.split('\n').filter(Boolean) })} style={{ width: '100%', resize: 'vertical' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Deny paths (one per line)</label>
+                    <textarea className="filter-input" rows={3} value={(editForm.deny ?? []).join('\n')} onChange={e => setEditForm({ ...editForm, deny: e.target.value.split('\n').filter(Boolean) })} style={{ width: '100%', resize: 'vertical' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Operations (comma-separated)</label>
+                    <input className="filter-input" value={(editForm.operations ?? []).join(', ')} onChange={e => setEditForm({ ...editForm, operations: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} style={{ width: '100%' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn primary" onClick={() => saveEdit(name)} disabled={saving}>
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : expanded.has(name) && (
                 <div className="perm-set-body">
                   {pset.allow && pset.allow.length > 0 && (
                     <div style={{ marginBottom: '8px' }}>
