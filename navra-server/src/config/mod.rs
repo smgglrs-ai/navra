@@ -122,40 +122,79 @@ impl Config {
     pub fn load(path: Option<&str>) -> anyhow::Result<Self> {
         let config_path = match path {
             Some(p) => PathBuf::from(p),
-            None => Self::default_config_path(),
+            None => Self::find_config_path(),
         };
 
         let mut config = if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)?;
-            let mut value: toml::Value = toml::from_str(&content)?;
+            let ext = config_path.extension().and_then(|e| e.to_str());
 
-            // Resolve library dirs from the raw TOML (before full deserialization)
-            // so library fragments participate in the final Config struct.
-            let lib_dirs = value
-                .get("libraries")
-                .and_then(|v| v.get("library_dirs"))
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_str().map(String::from))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_else(|| vec!["~/.config/navra/libraries".to_string()]);
+            match ext {
+                Some("json") => {
+                    let json_val: serde_json::Value = serde_json::from_str(&content)?;
 
-            let resolved = libraries::resolve_dirs(&lib_dirs);
-            let libs = libraries::scan_libraries(&resolved)?;
-            if !libs.is_empty() {
-                libraries::merge_libraries(&mut value, libs)?;
+                    let lib_dirs = json_val
+                        .get("libraries")
+                        .and_then(|v| v.get("library_dirs"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_else(|| vec!["~/.config/navra/libraries".to_string()]);
+
+                    let resolved = libraries::resolve_dirs(&lib_dirs);
+                    let libs = libraries::scan_libraries(&resolved)?;
+
+                    if libs.is_empty() {
+                        serde_json::from_value(json_val)?
+                    } else {
+                        let mut toml_val: toml::Value =
+                            toml::Value::try_from(json_val).unwrap_or(toml::Value::Table(Default::default()));
+                        libraries::merge_libraries(&mut toml_val, libs)?;
+                        toml_val.try_into()?
+                    }
+                }
+                _ => {
+                    if ext != Some("toml") {
+                        tracing::warn!(
+                            path = %config_path.display(),
+                            "Config file has unknown extension, assuming TOML"
+                        );
+                    } else {
+                        tracing::warn!(
+                            "TOML config is deprecated. Run `navra config export` to convert to JSON."
+                        );
+                    }
+
+                    let mut value: toml::Value = toml::from_str(&content)?;
+
+                    let lib_dirs = value
+                        .get("libraries")
+                        .and_then(|v| v.get("library_dirs"))
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(String::from))
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_else(|| vec!["~/.config/navra/libraries".to_string()]);
+
+                    let resolved = libraries::resolve_dirs(&lib_dirs);
+                    let libs = libraries::scan_libraries(&resolved)?;
+                    if !libs.is_empty() {
+                        libraries::merge_libraries(&mut value, libs)?;
+                    }
+
+                    value.try_into()?
+                }
             }
-
-            let config: Config = value.try_into()?;
-            config
         } else {
             Self::default()
         };
 
         // Derive socket path from config filename when not explicitly set.
-        // config.toml → navra.sock (default), dev.toml → navra-dev.sock
         if config.server.socket == server::default_socket() {
             let stem = config_path
                 .file_stem()
@@ -176,10 +215,31 @@ impl Config {
         Ok(config)
     }
 
-    pub fn default_config_path() -> PathBuf {
-        dirs::config_dir()
+    pub fn find_config_path() -> PathBuf {
+        let dir = dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("navra/config.toml")
+            .join("navra");
+        let json = dir.join("config.json");
+        if json.exists() {
+            return json;
+        }
+        let toml = dir.join("config.toml");
+        if toml.exists() {
+            return toml;
+        }
+        json
+    }
+
+    pub fn default_config_path() -> PathBuf {
+        Self::find_config_path()
+    }
+
+    pub fn save(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        let json = serde_json::to_string_pretty(self)?;
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, &json)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
     }
 
     pub fn git_enabled(&self) -> bool {
