@@ -118,6 +118,7 @@ impl SessionBackend for SqliteSessionBackend {
                         allowed_upstreams: Vec::new(),
                         max_concurrent: None,
                         max_context: None,
+                        wimse: None,
                     },
                     client_info: ClientInfo::new(
                         row.get::<_, String>(5)?,
@@ -221,6 +222,7 @@ impl SessionBackend for SqliteSessionBackend {
                     allowed_upstreams: Vec::new(),
                     max_concurrent: None,
                     max_context: None,
+                    wimse: None,
                 },
                 client_info: ClientInfo::new(
                     row.get::<_, String>(5)?,

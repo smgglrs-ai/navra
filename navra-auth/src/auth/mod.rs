@@ -5,6 +5,7 @@ pub mod oauth;
 pub mod oauth_client;
 pub mod openshell;
 pub mod sandbox_profile;
+pub mod wimse;
 
 use std::fmt;
 use subtle::ConstantTimeEq;
@@ -30,6 +31,8 @@ pub struct AgentIdentity {
     pub max_concurrent: Option<u32>,
     /// Context window cap for this agent's model requests.
     pub max_context: Option<u32>,
+    /// WIMSE/SPIFFE identity (set when authenticated via WIMSE provider).
+    pub wimse: Option<wimse::WimseIdentity>,
 }
 
 impl fmt::Display for AgentIdentity {
@@ -178,6 +181,7 @@ impl AgentIdentity {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         }
     }
 }

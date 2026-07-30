@@ -406,6 +406,7 @@ impl Authenticator for OpenShellAuthenticator {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         })
     }
 }
