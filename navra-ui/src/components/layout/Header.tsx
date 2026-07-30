@@ -20,8 +20,8 @@ export function Header() {
   return (
     <header className="header">
       <div className="header-brand">
-        <div className="logo">S</div>
-        <span>smgglrs</span>
+        <div className="logo">N</div>
+        <span>navra</span>
       </div>
       <div className="header-right">
         {status && (
@@ -31,7 +31,7 @@ export function Header() {
         )}
         <span title={wsConnected ? 'WebSocket connected' : 'WebSocket disconnected'}>
           <span className={`status-dot ${isOnline ? 'online' : 'offline'}`} />
-          <span>{isOnline ? status?.name || 'smgglrs' : 'offline'}</span>
+          <span>{isOnline ? status?.name || 'navra' : 'offline'}</span>
         </span>
         {wsConnected && (
           <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>WS</span>

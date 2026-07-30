@@ -11,10 +11,10 @@ const AuthContext = createContext<AuthState>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState(() => localStorage.getItem('smgglrs_token') || '');
+  const [token, setTokenState] = useState(() => localStorage.getItem('navra_token') || '');
 
   const setToken = useCallback((t: string) => {
-    localStorage.setItem('smgglrs_token', t);
+    localStorage.setItem('navra_token', t);
     setTokenState(t);
   }, []);
 

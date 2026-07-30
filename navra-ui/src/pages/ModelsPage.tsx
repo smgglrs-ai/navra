@@ -32,7 +32,7 @@ export function ModelsPage() {
         <EmptyState
           icon="⚙"
           title="No models loaded"
-          description="Configure models in config.toml or run smgglrs model pull."
+          description="Configure models in config.toml or run navra model pull."
         />
       ) : (
         <div className="card-grid">

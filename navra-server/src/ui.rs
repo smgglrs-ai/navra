@@ -103,6 +103,7 @@ pub(crate) fn attach_ui_routes(
     ollama_fallback_model: Option<&str>,
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
     context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
+    pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>>,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -181,7 +182,7 @@ pub(crate) fn attach_ui_routes(
                 "did": a.did,
                 "safety": pset.map(|p| &p.safety),
                 "operations": pset.map(|p| &p.operations),
-                "taint": "Trusted",
+                "taint": "unknown",
             })
         })
         .collect();
@@ -243,7 +244,7 @@ pub(crate) fn attach_ui_routes(
                         "status": "running",
                         "models": model_names,
                         "personas": *personas,
-                        "crates": 17,
+                        "crates": 24,
                     }))
                 }
             })
@@ -435,6 +436,34 @@ pub(crate) fn attach_ui_routes(
                         }))
                     }).collect();
                     axum::Json(serde_json::json!({ "permission_sets": sets }))
+                }
+            })
+        })
+
+        // --- API: Safety metrics ---
+        .route("/safety", {
+            let metrics = pii_metrics.clone();
+            axum::routing::get(move || {
+                let metrics = metrics.clone();
+                async move {
+                    if let Some(ref m) = metrics {
+                        let snap = m.snapshot();
+                        axum::Json(serde_json::json!({
+                            "total_scans": snap.total_scans,
+                            "pii_detected": snap.pii_detected,
+                            "pii_redacted": snap.pii_redacted,
+                            "pii_blocked": snap.pii_blocked,
+                            "by_category": snap.by_category,
+                        }))
+                    } else {
+                        axum::Json(serde_json::json!({
+                            "total_scans": 0,
+                            "pii_detected": 0,
+                            "pii_redacted": 0,
+                            "pii_blocked": 0,
+                            "by_category": {},
+                        }))
+                    }
                 }
             })
         })
@@ -1478,7 +1507,7 @@ mod tests {
         let models = test_models();
         let cfg = test_config();
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None)
+        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None, None)
     }
 
     async fn post_json(

@@ -18,6 +18,7 @@ pub(crate) struct TransportState {
     pub(crate) models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     pub(crate) trigger_webhook_router: Option<axum::Router>,
     pub(crate) rag_context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
+    pub(crate) pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>>,
     pub(crate) mdns_enabled: bool,
 }
 
@@ -266,6 +267,7 @@ pub(crate) async fn run_http_transport(
         ollama_fallback.as_deref(),
         Some(ui_broadcaster),
         state.rag_context_retriever.clone(),
+        state.pii_metrics.clone(),
     );
 
     tracing::info!(

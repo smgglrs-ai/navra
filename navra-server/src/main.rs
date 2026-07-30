@@ -1272,6 +1272,7 @@ async fn serve_inner(
                     models,
                     trigger_webhook_router: trigger_webhook_router.take(),
                     rag_context_retriever,
+                    pii_metrics,
                     mdns_enabled,
                 },
                 no_tray,
