@@ -401,6 +401,7 @@ impl Default for Config {
                 discovery: None,
                 identity: None,
                 openshell_auth: None,
+                wimse_auth: None,
                 pii_model_path: None,
                 pii_multilingual_model_path: None,
                 containerized: None,

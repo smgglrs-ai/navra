@@ -21,6 +21,10 @@ pub struct ServerConfig {
     /// When set, OpenShellAuthenticator is inserted into the auth chain.
     #[serde(default)]
     pub openshell_auth: Option<navra_core::auth::openshell::OpenShellAuthConfig>,
+    /// WIMSE/SPIFFE identity federation config.
+    /// When set, WimseAuthenticator is inserted into the auth chain.
+    #[serde(default)]
+    pub wimse_auth: Option<navra_core::auth::wimse::WimseAuthConfig>,
     /// Path to PII NER model directory (English).
     /// Default: ~/.local/share/navra/models/pii-ner/
     #[serde(default)]

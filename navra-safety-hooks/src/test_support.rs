@@ -18,6 +18,7 @@ pub(crate) fn test_ctx() -> CallContext {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         },
         session_id: "sess-1".to_string(),
         taint: navra_auth::ifc::TaintTracker::new(),

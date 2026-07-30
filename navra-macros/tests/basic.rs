@@ -187,6 +187,7 @@ async fn handler_can_be_called() {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         },
         "test-session",
     );
@@ -216,6 +217,7 @@ async fn missing_required_arg_returns_error() {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         },
         "test-session",
     );
@@ -289,6 +291,7 @@ async fn state_handler_passes_state_to_function() {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         },
         "test-session",
     );

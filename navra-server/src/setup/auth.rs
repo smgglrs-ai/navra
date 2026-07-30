@@ -52,6 +52,7 @@ pub(crate) fn wire_auth(
                         .max_concurrent
                         .or(perm_set.and_then(|p| p.max_concurrent)),
                     max_context: agent.max_context.or(perm_set.and_then(|p| p.max_context)),
+                    wimse: None,
                 },
             );
             if agent.pubkey.is_some() {
@@ -68,6 +69,15 @@ pub(crate) fn wire_auth(
                 nonce_cache_ttl,
             );
             let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
+
+            if let Some(wimse_config) = cfg.server.wimse_auth.clone() {
+                if wimse_config.enabled {
+                    let wimse_auth =
+                        navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
+                    chain = chain.add(wimse_auth);
+                    tracing::info!("WIMSE/SPIFFE identity federation enabled");
+                }
+            }
 
             if let Some(os_config) = cfg.server.openshell_auth.clone() {
                 let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);
@@ -89,6 +99,14 @@ pub(crate) fn wire_auth(
             nonce_cache_ttl,
         );
         let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
+
+        if let Some(wimse_config) = cfg.server.wimse_auth.clone() {
+            if wimse_config.enabled {
+                let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
+                chain = chain.add(wimse_auth);
+                tracing::info!("WIMSE/SPIFFE identity federation enabled");
+            }
+        }
 
         if let Some(os_config) = cfg.server.openshell_auth.clone() {
             let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);

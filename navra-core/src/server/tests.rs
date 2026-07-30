@@ -909,6 +909,7 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         },
         "cap-session",
     )

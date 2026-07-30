@@ -104,6 +104,7 @@ impl Authenticator for CapabilityAuthenticator {
             allowed_upstreams: Vec::new(),
             max_concurrent: None,
             max_context: None,
+            wimse: None,
         })
     }
 }
