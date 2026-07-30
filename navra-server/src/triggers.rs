@@ -14,12 +14,12 @@ use axum::{
 };
 use navra_protocol::compat::{CallToolResultExt, content_as_text};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Configuration for a single trigger, deserialized from TOML.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type")]
 pub enum TriggerConfig {
     #[serde(rename = "webhook")]

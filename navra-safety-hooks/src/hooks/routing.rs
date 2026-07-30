@@ -384,7 +384,7 @@ mod tests {
 }
 
 /// Configuration for the routing hook, deserializable from TOML.
-#[derive(Debug, Clone, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RoutingConfig {
     /// Whether routing is enabled.
     #[serde(default)]
@@ -408,7 +408,7 @@ impl Default for RoutingConfig {
 }
 
 /// A single tier in the routing configuration.
-#[derive(Debug, Clone, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ModelTierConfig {
     /// Tier name (e.g., "small", "medium", "large").
     pub name: String,

@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use navra_core::grpc_module::{GrpcModule, GrpcModuleError};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Child;
@@ -14,7 +14,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
 /// Configuration for a single gRPC module.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GrpcModuleConfig {
     /// Module name (used in logging and tool registration).
     pub name: String,

@@ -1,8 +1,8 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Per-module enablement and configuration.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ModulesConfig {
     /// File indexing and search module (alias: "docs").
     #[serde(default)]
@@ -28,7 +28,7 @@ pub struct ModulesConfig {
     pub memory: Option<MemoryModuleConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MemoryModuleConfig {
     /// PII filter profile for memory ingestion and audit logs.
     /// Uses the same profiles as safety: "standard", "secrets-only", "none".
@@ -78,14 +78,14 @@ impl Default for MemoryModuleConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GitModuleConfig {
     /// Enable the git module. Default: true.
     #[serde(default = "super::default_true")]
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct VisionModuleConfig {
     /// Enable the vision module. Default: true.
     #[serde(default = "super::default_true")]
@@ -99,7 +99,7 @@ fn default_vision_model() -> String {
     "vision".to_string()
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RagModuleConfig {
     /// Enable the RAG module. Default: true.
     #[serde(default = "super::default_true")]
@@ -137,7 +137,7 @@ pub(super) fn default_rag_db_path() -> String {
         .into_owned()
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct VoiceModuleConfig {
     /// Enable the voice module. Default: true.
     #[serde(default = "super::default_true")]
@@ -182,7 +182,7 @@ fn default_silence_timeout_ms() -> u64 {
     1500
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct FileModuleConfig {
     /// Enable the file module. Default: true.
     #[serde(default = "super::default_true")]
@@ -210,7 +210,7 @@ pub(super) fn default_db_path() -> String {
         .into_owned()
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RegistryModuleConfig {
     /// Enable the registry module. Default: true.
     #[serde(default = "super::default_true")]
@@ -244,7 +244,7 @@ impl Default for FileModuleConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ApprovalConfig {
     /// Timeout in seconds for human approval responses (default: 300).
     #[serde(default = "default_timeout")]

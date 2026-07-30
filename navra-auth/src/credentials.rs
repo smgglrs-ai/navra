@@ -6,7 +6,7 @@
 //! resolves credential labels through config-defined mappings and
 //! injects values into tool calls.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zeroize::Zeroizing;
 
@@ -68,7 +68,7 @@ pub trait CredentialStore: Send + Sync {
 ///
 /// Maps a label (e.g., "github.pat") to a backend source
 /// (keyring path, environment variable, etc.).
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CredentialMapping {
     /// Backend: "keyring" or "env".
     pub source: String,
