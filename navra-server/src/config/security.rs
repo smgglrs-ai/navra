@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Server-side configuration for the statistical guardrail hook.
 ///
@@ -12,7 +12,7 @@ use serde::Deserialize;
 /// entropy_max = 4.0
 /// block_on_anomaly = false
 /// ```
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StatisticalGuardrailServerConfig {
     /// Whether statistical guardrails are enabled. Default: false.
     #[serde(default)]
@@ -128,7 +128,7 @@ pub type MonitoringServerConfig = navra_core::hooks::MonitoringConfig;
 /// action = { type = "block", value = "Read the file first" }
 /// applies_to = ["*"]
 /// ```
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TemporalContractServerConfig {
     /// Whether temporal contracts are enabled. Default: false.
     #[serde(default)]
@@ -146,7 +146,7 @@ fn default_max_history() -> usize {
 }
 
 /// A single temporal contract definition in server config.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TemporalContractConfig {
     /// Unique contract name for logging and diagnostics.
     pub name: String,

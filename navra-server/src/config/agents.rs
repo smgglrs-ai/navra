@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgentConfig {
     /// Unique agent identifier used in logging and auth.
     pub name: String,
@@ -41,7 +41,7 @@ pub struct AgentConfig {
     pub max_context: Option<u32>,
 }
 
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamConfig {
     /// Unique name for this upstream server.
     pub name: String,
@@ -141,7 +141,7 @@ pub struct UpstreamConfig {
 /// is true (the default), raw IP addresses are blocked unless they appear
 /// in `allowed_ips`. This prevents bypassing domain-based rules by
 /// resolving to an IP and connecting directly.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NetworkPolicy {
     /// Domains the upstream is allowed to reach (e.g., `"*.googleapis.com"`).
     /// Supports wildcard prefix matching (`*.example.com`).
@@ -164,7 +164,7 @@ pub struct NetworkPolicy {
     pub deny_all_external: bool,
 }
 
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct OpenApiAuthConfig {
     /// Bearer token (or env var reference like "${JIRA_TOKEN}").
     #[serde(default)]
@@ -191,7 +191,7 @@ pub struct OpenApiAuthConfig {
 /// Enables navra to authenticate to remote upstream servers that require
 /// OAuth. Supports Authorization Code + PKCE, Client Credentials, and
 /// Device Authorization (RFC 8628) flows.
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamOAuthConfig {
     /// Pre-registered OAuth client ID. If absent, navra uses Dynamic
     /// Client Registration (RFC 7591) to obtain credentials.

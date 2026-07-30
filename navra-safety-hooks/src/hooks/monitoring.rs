@@ -320,7 +320,7 @@ fn analyze_event(event: &EscalationEvent) -> Verdict {
 }
 
 /// Configuration for the monitoring agent.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize, schemars::JsonSchema)]
 pub struct MonitoringConfig {
     /// Whether the monitoring agent is enabled. Default: false.
     #[serde(default)]

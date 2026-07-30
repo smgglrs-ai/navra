@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Configuration for a model.
 ///
 /// Models can be loaded from local files (ONNX) or pulled from registries
 /// and served via a runtime backend.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ModelConfig {
     /// Path to a local model file (ONNX). Used directly when no `source` is set.
     #[serde(default)]
@@ -88,7 +88,7 @@ pub struct ModelConfig {
 }
 
 /// Speculative decoding configuration for runtime-served models.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SpeculativeModelConfig {
     /// Model name or path for the draft (fast) model.
     pub draft_model: String,
@@ -119,7 +119,7 @@ fn default_draft_tokens() -> u32 {
 /// cost_tier = "free"
 /// speed_tier = "fast"
 /// ```
-#[derive(Debug, Clone, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct AgenticConfig {
     /// What this model is good at (free-text tags for routing).
     #[serde(default)]
@@ -199,7 +199,7 @@ fn default_threshold() -> Option<f32> {
 /// checkpoint = true     # enable SQLite checkpoint for crash recovery
 /// checkpoint_db = "~/.local/share/navra/checkpoints.db"
 /// ```
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct BudgetConfig {
     /// Maximum total agents across all teams/subflows (default: 50).
     #[serde(default = "default_budget_max_agents")]

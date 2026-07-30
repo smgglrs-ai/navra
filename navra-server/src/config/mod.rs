@@ -6,7 +6,7 @@ mod modules;
 mod permissions;
 mod server;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub(crate) fn default_pii_model_dir(name: &str) -> std::path::PathBuf {
@@ -36,7 +36,7 @@ fn default_true() -> bool {
 }
 
 /// Top-level navra configuration, loaded from `~/.config/navra/config.toml`.
-#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Config {
     /// Server transport, identity, and container settings.
     pub server: ServerConfig,
