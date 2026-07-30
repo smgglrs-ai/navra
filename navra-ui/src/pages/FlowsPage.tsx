@@ -68,7 +68,7 @@ export function FlowsPage() {
                   <div className="model-name">{flow.name}</div>
                   <div className="model-meta">{flow.tasks} tasks</div>
                 </div>
-                <button className="btn primary">Run</button>
+                <button className="btn primary" onClick={() => alert('Flow execution API not yet implemented')}>Run</button>
               </div>
             ))}
           </div>

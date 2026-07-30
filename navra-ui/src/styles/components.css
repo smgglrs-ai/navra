@@ -322,6 +322,25 @@
 .chat-send:hover { background: var(--accent-hover); }
 .chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* === Chat sidebar === */
+.chat-sidebar {
+  width: 220px;
+  min-width: 220px;
+  border-right: 1px solid var(--border-subtle);
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--surface);
+}
+.chat-session-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+  margin-bottom: 4px;
+}
+.chat-session-item:hover { background: var(--surface-2); }
+.chat-session-item.active { background: var(--accent-glow); border: 1px solid var(--accent); }
+
 /* === Flow DAG === */
 .flow-list {
   display: flex;

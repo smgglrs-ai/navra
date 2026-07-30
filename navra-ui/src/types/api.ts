@@ -121,4 +121,5 @@ export interface ChatEvent {
   arguments?: string;
   result?: string;
   usage?: { input_tokens: number; output_tokens: number };
+  session_id?: string;
 }

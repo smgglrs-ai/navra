@@ -1,19 +1,30 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useWs } from '../contexts/WebSocketContext';
 import { Spinner } from '../components/shared/Spinner';
 import { EmptyState } from '../components/shared/EmptyState';
 import type { ProcessSnapshot } from '../types/api';
 
 export function SessionsPage() {
   const { token } = useAuth();
+  const { subscribe } = useWs();
+  const queryClient = useQueryClient();
 
   const { data: processes, isLoading } = useQuery({
     queryKey: ['process'],
     queryFn: () => fetchJson<ProcessSnapshot[]>('/api/process', token),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
     retry: false,
   });
+
+  useEffect(() => {
+    const unsub = subscribe('process_update', () => {
+      queryClient.invalidateQueries({ queryKey: ['process'] });
+    });
+    return unsub;
+  }, [subscribe, queryClient]);
 
   if (isLoading) {
     return <div className="page" style={{ display: 'flex', justifyContent: 'center', paddingTop: '80px' }}><Spinner size="lg" /></div>;
