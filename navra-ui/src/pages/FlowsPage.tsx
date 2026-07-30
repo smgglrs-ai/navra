@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { fetchJson } from '../hooks/useApi';
+import { mutateApi } from '../hooks/useMutation';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from '../components/shared/Spinner';
 import { EmptyState } from '../components/shared/EmptyState';
@@ -8,6 +10,8 @@ import type { FlowInfo, FlowRunSummary } from '../types/api';
 
 export function FlowsPage() {
   const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const [running, setRunning] = useState<string | null>(null);
 
   const { data: flows, isLoading: loadingDefs } = useQuery({
     queryKey: ['flows'],
@@ -21,6 +25,21 @@ export function FlowsPage() {
     refetchInterval: 5000,
     retry: false,
   });
+
+  const runFlow = async (name: string) => {
+    setRunning(name);
+    try {
+      const resp = await mutateApi(`/api/flows/${name}/run`, 'POST', { prompt: 'Execute the flow' }, token);
+      if (resp.ok) {
+        queryClient.invalidateQueries({ queryKey: ['flow-runs'] });
+      } else {
+        const err = await resp.text();
+        alert(`Flow failed: ${err}`);
+      }
+    } finally {
+      setRunning(null);
+    }
+  };
 
   const isLoading = loadingDefs || loadingRuns;
 
@@ -68,7 +87,13 @@ export function FlowsPage() {
                   <div className="model-name">{flow.name}</div>
                   <div className="model-meta">{flow.tasks} tasks</div>
                 </div>
-                <button className="btn primary" onClick={() => alert('Flow execution API not yet implemented')}>Run</button>
+                <button
+                  className="btn primary"
+                  onClick={() => runFlow(flow.name)}
+                  disabled={running === flow.name}
+                >
+                  {running === flow.name ? 'Starting...' : 'Run'}
+                </button>
               </div>
             ))}
           </div>

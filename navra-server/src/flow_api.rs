@@ -19,6 +19,7 @@ use crate::flow_tools::FlowRegistry;
 pub(crate) struct FlowApiState {
     pub registry: Arc<FlowRegistry>,
     pub event_log: Option<Arc<navra_flow::event_log::EventLog>>,
+    pub server: Option<Arc<navra_core::McpServer>>,
 }
 
 /// `GET /flows` — returns a list of all flow runs.
@@ -227,17 +228,70 @@ async fn handle_flow_events(
 }
 
 /// Build an axum Router for the flow graph API.
+/// `POST /api/flows/{name}/run` — start a flow by name.
+async fn handle_run_flow(
+    State(state): State<FlowApiState>,
+    Path(name): Path<String>,
+    axum::Json(body): axum::Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let Some(server) = &state.server else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Flow execution not available").into_response();
+    };
+
+    let prompt = body
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Execute the flow")
+        .to_string();
+
+    let mut args = serde_json::json!({
+        "flow_name": name,
+        "prompt": prompt,
+    });
+    if let Some(params) = body.get("parameters") {
+        args["parameters"] = params.clone();
+    }
+    if let Some(model) = body.get("default_model") {
+        args["default_model"] = model.clone();
+    }
+
+    let mut params = navra_protocol::CallToolParams::new("flow_start");
+    params.arguments = args.as_object().cloned();
+    let ctx = navra_core::auth::CallContext::new(
+        navra_core::auth::AgentIdentity::new("ui-flow", "dev"),
+        &uuid::Uuid::new_v4().to_string(),
+    );
+
+    let result = server.handle_call_tool(params, ctx).await;
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| navra_protocol::compat::content_as_text(c))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let is_error = result.is_error.unwrap_or(false);
+
+    if is_error {
+        (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error": text}))).into_response()
+    } else {
+        axum::Json(serde_json::json!({"ok": true, "output": text})).into_response()
+    }
+}
+
 pub(crate) fn flow_api_router(
     registry: Arc<FlowRegistry>,
     event_log: Option<Arc<navra_flow::event_log::EventLog>>,
+    server: Option<Arc<navra_core::McpServer>>,
 ) -> axum::Router {
     let state = FlowApiState {
         registry,
         event_log,
+        server,
     };
 
     axum::Router::new()
         .route("/api/flow-runs", axum::routing::get(handle_list_flows))
+        .route("/api/flows/{name}/run", axum::routing::post(handle_run_flow))
         .route("/flows/{id}/graph", axum::routing::get(handle_flow_graph))
         .route(
             "/flows/{id}/graph/dot",
@@ -358,7 +412,7 @@ mod tests {
             }],
         );
 
-        let app = flow_api_router(reg, None);
+        let app = flow_api_router(reg, None, None);
 
         let resp = app
             .oneshot(
@@ -387,7 +441,7 @@ mod tests {
         use tower::ServiceExt;
 
         let reg = Arc::new(FlowRegistry::new());
-        let app = flow_api_router(reg, None);
+        let app = flow_api_router(reg, None, None);
 
         let resp = app
             .oneshot(
@@ -422,7 +476,7 @@ mod tests {
             }],
         );
 
-        let app = flow_api_router(reg, None);
+        let app = flow_api_router(reg, None, None);
 
         let resp = app
             .oneshot(
@@ -460,7 +514,7 @@ mod tests {
         let reg = Arc::new(FlowRegistry::new());
         let _id = reg.register("evt-test");
 
-        let app = flow_api_router(reg, None);
+        let app = flow_api_router(reg, None, None);
 
         let resp = app
             .oneshot(

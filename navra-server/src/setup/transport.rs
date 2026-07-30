@@ -240,7 +240,7 @@ pub(crate) async fn run_http_transport(
 
     // --- Flow graph API ---
     let flow_api =
-        flow_api::flow_api_router(Arc::clone(&state.flow_registry), flow_event_log.clone());
+        flow_api::flow_api_router(Arc::clone(&state.flow_registry), flow_event_log.clone(), Some(Arc::clone(&server)));
     let router = router.merge(flow_api);
     tracing::info!("Flow graph API at /flows/{{id}}/graph, /graph/dot, /graph/bpmn, /events");
 
