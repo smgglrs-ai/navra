@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from '../components/shared/Spinner';
-import type { AuditResponse } from '../types/api';
+import type { AuditResponse, BlackboxEntry } from '../types/api';
 
 const PAGE_SIZE = 50;
 
@@ -12,6 +12,7 @@ export function AuditPage() {
   const [offset, setOffset] = useState(0);
   const [agentFilter, setAgentFilter] = useState('');
   const [toolFilter, setToolFilter] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('');
   const [expandedSeq, setExpandedSeq] = useState<number | null>(null);
 
   const params = new URLSearchParams({
@@ -20,21 +21,49 @@ export function AuditPage() {
   });
   if (agentFilter) params.set('agent', agentFilter);
   if (toolFilter) params.set('tool', toolFilter);
+  if (outcomeFilter) params.set('outcome', outcomeFilter);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit', offset, agentFilter, toolFilter],
+    queryKey: ['audit', offset, agentFilter, toolFilter, outcomeFilter],
     queryFn: () => fetchJson<AuditResponse>(`/api/audit?${params}`, token),
     refetchInterval: 10_000,
     retry: false,
   });
 
+  const entries = data?.entries ?? [];
+  const filtered = outcomeFilter
+    ? entries.filter(e => outcomeFilter === 'allowed' ? e.outcome === 'allowed' : e.outcome !== 'allowed')
+    : entries;
+
+  const exportCsv = useCallback(() => {
+    if (!data) return;
+    const rows = [
+      ['seq', 'timestamp', 'agent', 'tool', 'outcome', 'duration_us', 'ifc_label'].join(','),
+      ...filtered.map(e =>
+        [e.seq, new Date(e.timestamp_ms).toISOString(), e.agent_name, e.tool_name, e.outcome, e.duration_us, e.ifc_label].join(',')
+      ),
+    ].join('\n');
+    const blob = new Blob([rows], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `navra-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [data, filtered]);
+
   return (
     <div className="page">
       <div className="page-header">
         <h1 className="page-title">Audit Log</h1>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-          {data?.total ?? 0} entries
-        </span>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            {data?.total ?? 0} entries
+          </span>
+          <button className="btn" onClick={exportCsv} disabled={!data}>
+            Export CSV
+          </button>
+        </div>
       </div>
 
       <div className="filter-bar">
@@ -50,6 +79,15 @@ export function AuditPage() {
           value={toolFilter}
           onChange={e => { setToolFilter(e.target.value); setOffset(0); }}
         />
+        <select
+          className="filter-input"
+          value={outcomeFilter}
+          onChange={e => { setOutcomeFilter(e.target.value); setOffset(0); }}
+        >
+          <option value="">All outcomes</option>
+          <option value="allowed">Allowed</option>
+          <option value="denied">Denied</option>
+        </select>
       </div>
 
       {isLoading ? (
@@ -69,40 +107,13 @@ export function AuditPage() {
               </tr>
             </thead>
             <tbody>
-              {data?.entries.map(entry => (
-                <>
-                  <tr
-                    key={entry.seq}
-                    onClick={() => setExpandedSeq(expandedSeq === entry.seq ? null : entry.seq)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td className="mono">{entry.seq}</td>
-                    <td className="mono">{new Date(entry.timestamp_ms).toLocaleString()}</td>
-                    <td>{entry.agent_name}</td>
-                    <td className="mono">{entry.tool_name}</td>
-                    <td>
-                      <span className={`badge ${entry.outcome === 'allowed' ? 'success' : 'danger'}`}>
-                        {entry.outcome}
-                      </span>
-                    </td>
-                    <td className="mono">{formatDuration(entry.duration_us)}</td>
-                    <td className="mono">{entry.ifc_label}</td>
-                  </tr>
-                  {expandedSeq === entry.seq && (
-                    <tr key={`${entry.seq}-detail`}>
-                      <td colSpan={7} style={{ background: 'var(--surface)', padding: '16px' }}>
-                        <div style={{ marginBottom: '8px' }}>
-                          <strong>Arguments:</strong>
-                          <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_args)}</pre>
-                        </div>
-                        <div>
-                          <strong>Result:</strong>
-                          <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_result)}</pre>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
+              {filtered.map(entry => (
+                <AuditRow
+                  key={entry.seq}
+                  entry={entry}
+                  expanded={expandedSeq === entry.seq}
+                  onToggle={() => setExpandedSeq(expandedSeq === entry.seq ? null : entry.seq)}
+                />
               ))}
             </tbody>
           </table>
@@ -133,6 +144,40 @@ export function AuditPage() {
         </>
       )}
     </div>
+  );
+}
+
+function AuditRow({ entry, expanded, onToggle }: { entry: BlackboxEntry; expanded: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
+        <td className="mono">{entry.seq}</td>
+        <td className="mono">{new Date(entry.timestamp_ms).toLocaleString()}</td>
+        <td>{entry.agent_name}</td>
+        <td className="mono">{entry.tool_name}</td>
+        <td>
+          <span className={`badge ${entry.outcome === 'allowed' ? 'success' : 'danger'}`}>
+            {entry.outcome}
+          </span>
+        </td>
+        <td className="mono">{formatDuration(entry.duration_us)}</td>
+        <td className="mono">{entry.ifc_label}</td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={7} style={{ background: 'var(--surface)', padding: '16px' }}>
+            <div style={{ marginBottom: '8px' }}>
+              <strong>Arguments:</strong>
+              <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_args)}</pre>
+            </div>
+            <div>
+              <strong>Result:</strong>
+              <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_result)}</pre>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
