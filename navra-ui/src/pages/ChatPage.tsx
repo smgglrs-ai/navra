@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Markdown from 'react-markdown';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
 import type { ServerStatus, ChatEvent } from '../types/api';
@@ -262,7 +263,7 @@ export function ChatPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
               {msg.role === 'assistant' ? (
-                <div dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                <Markdown>{msg.content}</Markdown>
               ) : (
                 msg.content
               )}
@@ -310,23 +311,6 @@ export function ChatPage() {
       </div>
     </div>
   );
-}
-
-function renderMarkdown(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^/, '<p>')
-    .replace(/$/, '</p>');
 }
 
 function formatJson(s: string): string {

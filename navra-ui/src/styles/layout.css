@@ -131,3 +131,35 @@
 .footer-tag.ifc { background: var(--info-bg); color: var(--info); }
 .footer-tag.safety { background: var(--success-bg); color: var(--success); }
 .footer-tag.ring { background: var(--warning-bg); color: var(--warning); }
+
+/* === Responsive === */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+  .page {
+    padding: 16px;
+  }
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .card-grid {
+    grid-template-columns: 1fr;
+  }
+  .data-table {
+    font-size: 0.8rem;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 6px 8px;
+  }
+  .chat-sidebar {
+    display: none;
+  }
+  .filter-bar {
+    flex-wrap: wrap;
+  }
+}
