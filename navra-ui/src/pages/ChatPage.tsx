@@ -13,7 +13,7 @@ interface Message {
 export function ChatPage() {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'system', content: 'Welcome to smgglrs. Select a persona and start chatting.' },
+    { role: 'system', content: 'Welcome to navra. Select a persona and start chatting.' },
   ]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
