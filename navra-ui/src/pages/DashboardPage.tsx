@@ -1,31 +1,45 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useWs } from '../contexts/WebSocketContext';
 import { Spinner } from '../components/shared/Spinner';
 import type { ServerStatus, ProcessSnapshot, BlackboxEntry } from '../types/api';
 
 export function DashboardPage() {
   const { token } = useAuth();
+  const { subscribe } = useWs();
+  const queryClient = useQueryClient();
 
   const { data: status } = useQuery({
     queryKey: ['status'],
     queryFn: () => fetchJson<ServerStatus>('/api/status', token),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
   });
 
   const { data: processes } = useQuery({
     queryKey: ['process'],
     queryFn: () => fetchJson<ProcessSnapshot[]>('/api/process', token),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
     retry: false,
   });
 
   const { data: audit } = useQuery({
     queryKey: ['audit-recent'],
     queryFn: () => fetchJson<{ entries: BlackboxEntry[]; total: number }>('/api/audit?limit=15', token),
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
     retry: false,
   });
+
+  useEffect(() => {
+    const unsub1 = subscribe('process_update', () => {
+      queryClient.invalidateQueries({ queryKey: ['process'] });
+    });
+    const unsub2 = subscribe('tool_call_end', () => {
+      queryClient.invalidateQueries({ queryKey: ['audit-recent'] });
+    });
+    return () => { unsub1(); unsub2(); };
+  }, [subscribe, queryClient]);
 
   const totalCalls = processes?.reduce((sum, p) => sum + p.call_count, 0) ?? 0;
   const totalDenied = processes?.reduce((sum, p) => sum + p.denied_count, 0) ?? 0;
