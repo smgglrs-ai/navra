@@ -104,6 +104,8 @@ pub(crate) fn attach_ui_routes(
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
     context_retriever: Option<Arc<dyn navra_agent::ContextRetriever>>,
     pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>>,
+    config_state: Arc<tokio::sync::RwLock<config::Config>>,
+    config_path: std::path::PathBuf,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -463,6 +465,127 @@ pub(crate) fn attach_ui_routes(
                             "pii_blocked": 0,
                             "by_category": {},
                         }))
+                    }
+                }
+            })
+        })
+
+        // --- API: Upsert permission set ---
+        .route("/permissions/{name}", {
+            let cs_put = Arc::clone(&config_state);
+            let cp_put = config_path.clone();
+            let cs_del = Arc::clone(&config_state);
+            let cp_del = config_path.clone();
+            axum::routing::put(move |
+                axum::extract::Path(name): axum::extract::Path<String>,
+                axum::Json(body): axum::Json<config::PermissionSet>,
+            | {
+                let cs = cs_put.clone();
+                let cp = cp_put.clone();
+                async move {
+                    let mut cfg = cs.write().await;
+                    cfg.permissions.insert(name.clone(), body);
+                    match cfg.save(&cp) {
+                        Ok(()) => axum::Json(serde_json::json!({"ok": true, "name": name})).into_response(),
+                        Err(e) => (
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to save config: {e}"),
+                        ).into_response(),
+                    }
+                }
+            })
+            .delete(move |
+                axum::extract::Path(name): axum::extract::Path<String>,
+            | {
+                let cs = cs_del.clone();
+                let cp = cp_del.clone();
+                async move {
+                    let mut cfg = cs.write().await;
+                    if cfg.permissions.remove(&name).is_some() {
+                        match cfg.save(&cp) {
+                            Ok(()) => axum::Json(serde_json::json!({"ok": true, "deleted": name})).into_response(),
+                            Err(e) => (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("Failed to save config: {e}"),
+                            ).into_response(),
+                        }
+                    } else {
+                        (axum::http::StatusCode::NOT_FOUND, "Permission set not found").into_response()
+                    }
+                }
+            })
+        })
+
+        // --- API: Upsert agent ---
+        .route("/agents/{name}", {
+            let cs_put = Arc::clone(&config_state);
+            let cp_put = config_path.clone();
+            let cs_del = Arc::clone(&config_state);
+            let cp_del = config_path.clone();
+            axum::routing::put(move |
+                axum::extract::Path(name): axum::extract::Path<String>,
+                axum::Json(mut body): axum::Json<config::AgentConfig>,
+            | {
+                let cs = cs_put.clone();
+                let cp = cp_put.clone();
+                async move {
+                    body.name = name.clone();
+                    let mut cfg = cs.write().await;
+                    if let Some(existing) = cfg.agents.iter_mut().find(|a| a.name == name) {
+                        *existing = body;
+                    } else {
+                        cfg.agents.push(body);
+                    }
+                    match cfg.save(&cp) {
+                        Ok(()) => axum::Json(serde_json::json!({"ok": true, "name": name})).into_response(),
+                        Err(e) => (
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to save config: {e}"),
+                        ).into_response(),
+                    }
+                }
+            })
+            .delete(move |
+                axum::extract::Path(name): axum::extract::Path<String>,
+            | {
+                let cs = cs_del.clone();
+                let cp = cp_del.clone();
+                async move {
+                    let mut cfg = cs.write().await;
+                    let before = cfg.agents.len();
+                    cfg.agents.retain(|a| a.name != name);
+                    if cfg.agents.len() < before {
+                        match cfg.save(&cp) {
+                            Ok(()) => axum::Json(serde_json::json!({"ok": true, "deleted": name})).into_response(),
+                            Err(e) => (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                format!("Failed to save config: {e}"),
+                            ).into_response(),
+                        }
+                    } else {
+                        (axum::http::StatusCode::NOT_FOUND, "Agent not found").into_response()
+                    }
+                }
+            })
+        })
+
+        // --- API: Force config reload ---
+        .route("/config/reload", {
+            let cs = Arc::clone(&config_state);
+            let cp = config_path.clone();
+            axum::routing::post(move || {
+                let cs = cs.clone();
+                let cp = cp.clone();
+                async move {
+                    match config::Config::load(Some(cp.to_str().unwrap_or("config.json"))) {
+                        Ok(new_cfg) => {
+                            *cs.write().await = new_cfg;
+                            axum::Json(serde_json::json!({"ok": true})).into_response()
+                        }
+                        Err(e) => (
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Reload failed: {e}"),
+                        ).into_response(),
                     }
                 }
             })
@@ -1506,8 +1629,9 @@ mod tests {
         let server = test_server();
         let models = test_models();
         let cfg = test_config();
+        let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None, None)
+        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None, None, config_state, std::path::PathBuf::from("/tmp/navra-test-config.json"))
     }
 
     async fn post_json(
