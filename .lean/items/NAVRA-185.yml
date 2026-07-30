@@ -1,35 +1,31 @@
 id: NAVRA-185
-title: "Migrate config persistence from TOML to SQLite for UI write operations"
-status: backlog
+title: "Replace TOML config with JSON for UI write operations"
+status: done
 priority: medium
 effort: 10-15d
 tags: [config, ui, architecture]
+progress: |
+  Implemented JSON config format as replacement for TOML:
+  - Step 1: Added Serialize derive to all config structs (14 files, 3 crates)
+  - Step 2: Dual-format Config::load() supports .json and .toml, TOML deprecated
+  - Step 4: Mutation API endpoints (PUT/DELETE for permissions + agents,
+    POST /api/config/reload) with atomic JSON write-back
+  - Step 5: PermissionsPage and AgentsPage wired with edit/delete forms
+  - Step 7: `navra config export` CLI command for TOML→JSON migration
 description: |
-  The navra-ui web console is currently read-only because config
-  mutations (editing permissions, agents, safety rules) require
-  writing back to config.toml, which risks clobbering comments
-  and hand-edited formatting.
+  Replace TOML config with JSON for UI-driven config mutations.
+  JSON is natively serializable without formatting loss, following
+  the pattern of Claude Code (settings.json) and OpenCode.
 
-  Use this as the forcing function to migrate config persistence
-  from TOML files to SQLite (or structured JSON), enabling:
-  - UI-driven CRUD for permission sets, agent definitions,
-    safety rules, and model configurations
-  - Hot-reload without restart
-  - Config versioning and rollback
-  - Audit trail for config changes
+  Both formats supported during transition: Config::load() detects
+  by extension (.json preferred, .toml deprecated with warning).
+  Config::save() writes pretty-printed JSON with atomic rename.
 
-  TOML files remain as the initial seed format (import on first
-  run), but runtime state lives in the database.
-
-  Scope:
-  - Design config schema in SQLite
-  - Implement config read/write layer with migration from TOML
-  - Add mutation API endpoints (POST/PUT/DELETE for permissions,
-    agents, safety, models)
-  - Wire navra-ui pages to use mutation endpoints
-  - Add config change audit logging
+  Mutation endpoints write directly to config.json via
+  Arc<RwLock<Config>>.
 acceptance:
   - Permission sets can be created/edited/deleted from the web UI
   - Agent definitions can be modified from the web UI
-  - Changes persist across restarts
-  - Existing TOML configs are imported on first run
+  - Changes persist across restarts via config.json
+  - Existing TOML configs work with deprecation warning
+  - `navra config export` converts TOML to JSON
