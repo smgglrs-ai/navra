@@ -292,6 +292,15 @@ pub(crate) enum ConfigAction {
         #[arg(short, long)]
         config: Option<String>,
     },
+    /// Export config as JSON (for TOML→JSON migration)
+    Export {
+        /// Source config file (default: auto-detect)
+        #[arg(short, long)]
+        input: Option<String>,
+        /// Output JSON file (default: ~/.config/navra/config.json)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

@@ -294,6 +294,20 @@ async fn main() -> anyhow::Result<()> {
                     cmd_misc::import_mcp_file(p, redact)?;
                 }
             }
+            ConfigAction::Export { input, output } => {
+                let cfg = config::Config::load(input.as_deref())?;
+                let out_path = match output {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => dirs::config_dir()
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("navra/config.json"),
+                };
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                cfg.save(&out_path)?;
+                println!("Config exported to {}", out_path.display());
+            }
             ConfigAction::ListLibraries { config: cfg_path } => {
                 let cfg = config::Config::load(cfg_path.as_deref())
                     .unwrap_or_else(|_| config::Config::default());
