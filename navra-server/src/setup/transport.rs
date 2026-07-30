@@ -259,6 +259,8 @@ pub(crate) async fn run_http_transport(
     };
     let ui_broadcaster = Arc::new(ui_events::UiBroadcaster::new(256));
     ui_events::start_polling_bridge(Arc::clone(&ui_broadcaster), Arc::clone(&server));
+    let config_path = config::Config::find_config_path();
+    let config_state = Arc::new(tokio::sync::RwLock::new(state.cfg.clone()));
     let router = ui::attach_ui_routes(
         router,
         &state.cfg,
@@ -268,6 +270,8 @@ pub(crate) async fn run_http_transport(
         Some(ui_broadcaster),
         state.rag_context_retriever.clone(),
         state.pii_metrics.clone(),
+        Arc::clone(&config_state),
+        config_path,
     );
 
     tracing::info!(
