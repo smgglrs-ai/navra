@@ -425,6 +425,7 @@ pub async fn auto_runtime() -> Result<Box<dyn ModelRuntime>, RuntimeError> {
     #[cfg(feature = "embedded")]
     {
         tracing::info!("Using embedded llama.cpp runtime (in-process)");
+        #[allow(clippy::needless_return)]
         return Ok(Box::new(embedded::EmbeddedRuntime::new()));
     }
 

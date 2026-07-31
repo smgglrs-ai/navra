@@ -108,7 +108,7 @@ async fn handle_search(
 
     // Try hybrid search with vector channel if available
     #[cfg(feature = "rag")]
-    if let (Some(ref chunk_store), Some(ref embed_model)) =
+    if let (Some(chunk_store), Some(embed_model)) =
         (&state.chunk_store, &state.embedding_model)
     {
         let embed_req = navra_mcp::models::EmbedRequest {

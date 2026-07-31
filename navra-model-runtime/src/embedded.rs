@@ -44,6 +44,15 @@ pub struct EmbeddedRuntime {
     backend: OnceLock<Arc<LlamaBackend>>,
 }
 
+impl Default for EmbeddedRuntime {
+    fn default() -> Self {
+        Self {
+            pool: Mutex::new(HashMap::new()),
+            backend: OnceLock::new(),
+        }
+    }
+}
+
 impl EmbeddedRuntime {
     pub fn new() -> Self {
         Self {
@@ -409,24 +418,26 @@ impl ModelRuntime for EmbeddedRuntime {
                     .unwrap_or(u64::MAX)
             };
 
-            if !gpu_offloaded && model_size > available_ram {
-                if let Some((name, shutdown, _, _)) = self.evict_lru() {
-                    let _ = shutdown.send(());
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    tracing::info!(evicted = %name, "Freed memory for new model");
-                }
+            if !gpu_offloaded
+                && model_size > available_ram
+                && let Some((name, shutdown, _, _)) = self.evict_lru()
+            {
+                let _ = shutdown.send(());
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tracing::info!(evicted = %name, "Freed memory for new model");
             }
 
-            if gpu_offloaded && model_size > available_vram {
-                if let Some((name, shutdown, _, was_gpu)) = self.evict_lru() {
-                    let _ = shutdown.send(());
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    tracing::info!(
-                        evicted = %name,
-                        freed_gpu = was_gpu,
-                        "Freed VRAM for new model"
-                    );
-                }
+            if gpu_offloaded
+                && model_size > available_vram
+                && let Some((name, shutdown, _, was_gpu)) = self.evict_lru()
+            {
+                let _ = shutdown.send(());
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tracing::info!(
+                    evicted = %name,
+                    freed_gpu = was_gpu,
+                    "Freed VRAM for new model"
+                );
             }
 
             let backend = self.init_backend()?;
