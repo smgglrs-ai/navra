@@ -176,6 +176,18 @@ pub struct DiscoveredEndpoint {
     pub source: DiscoverySource,
 }
 
+impl DiscoveredEndpoint {
+    /// Whether this endpoint advertises MCP protocol support.
+    pub fn supports_mcp(&self) -> bool {
+        self.protocols.iter().any(|p| *p == AgentProtocol::Mcp)
+    }
+
+    /// Whether this endpoint advertises A2A protocol support.
+    pub fn supports_a2a(&self) -> bool {
+        self.protocols.iter().any(|p| *p == AgentProtocol::A2a)
+    }
+}
+
 /// How an endpoint was discovered.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -246,7 +258,118 @@ pub async fn lookup_domain_with_timeout(
     })
 }
 
+/// Query DNS-AID SVCB records for a domain via `dig`.
+///
+/// Looks up `_agent._tcp.<domain>` SVCB records. Returns endpoints
+/// for each record that advertises MCP or A2A protocols.
+pub async fn lookup_dns_aid(domain: &str) -> Vec<DiscoveredEndpoint> {
+    let query_name = format!("_agent._tcp.{domain}");
+    let output = match tokio::process::Command::new("dig")
+        .args(["+short", &query_name, "SVCB"])
+        .output()
+        .await
+    {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+        Ok(_) | Err(_) => {
+            tracing::debug!(domain, "DNS-AID: dig command failed or not available");
+            return Vec::new();
+        }
+    };
+
+    let mut endpoints = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let full_line = format!("{query_name}. 300 IN SVCB {line}");
+        if let Some(record) = parse_svcb_text(&full_line) {
+            let url = record.endpoint_url();
+            let protocols = record.protocols.clone();
+            endpoints.push(DiscoveredEndpoint {
+                domain: domain.to_string(),
+                url,
+                description: None,
+                auth: None,
+                protocols,
+                source: DiscoverySource::DnsAidSvcb,
+            });
+        }
+    }
+
+    if !endpoints.is_empty() {
+        tracing::info!(
+            domain,
+            count = endpoints.len(),
+            "DNS-AID: found SVCB records"
+        );
+    }
+    endpoints
+}
+
+/// Discover endpoints from an ARD catalog at `/.well-known/ai-catalog.json`.
+pub async fn lookup_ard_catalog(
+    domain: &str,
+    timeout: std::time::Duration,
+) -> Vec<DiscoveredEndpoint> {
+    let base_url = format!("https://{domain}");
+    match fetch_ard_catalog(&base_url, timeout).await {
+        Ok(catalog) => {
+            let endpoints = ard_to_endpoints(&catalog, domain);
+            if !endpoints.is_empty() {
+                tracing::info!(
+                    domain,
+                    count = endpoints.len(),
+                    "ARD: found catalog entries"
+                );
+            }
+            endpoints
+        }
+        Err(e) => {
+            tracing::debug!(domain, error = %e, "ARD catalog lookup failed");
+            Vec::new()
+        }
+    }
+}
+
+/// Discover MCP/A2A endpoints for a domain using all available methods.
+///
+/// Tries in order: DNS-AID SVCB → ARD catalog → HTTP well-known.
+/// Returns all endpoints found across all methods (deduped by URL).
+async fn discover_domain(domain: &str, timeout: std::time::Duration) -> Vec<DiscoveredEndpoint> {
+    let mut all = Vec::new();
+    let mut seen_urls = std::collections::HashSet::new();
+
+    // 1. DNS-AID SVCB records
+    let svcb = lookup_dns_aid(domain).await;
+    for ep in svcb {
+        if seen_urls.insert(ep.url.clone()) {
+            all.push(ep);
+        }
+    }
+
+    // 2. ARD catalog
+    let ard = lookup_ard_catalog(domain, timeout).await;
+    for ep in ard {
+        if seen_urls.insert(ep.url.clone()) {
+            all.push(ep);
+        }
+    }
+
+    // 3. HTTP well-known fallback
+    if let Some(ep) = lookup_domain_with_timeout(domain, timeout).await {
+        if seen_urls.insert(ep.url.clone()) {
+            all.push(ep);
+        }
+    }
+
+    all
+}
+
 /// Discover MCP endpoints from a list of domains with a custom timeout.
+///
+/// For each domain, tries DNS-AID SVCB, ARD catalog, and HTTP
+/// well-known in order. Results are deduped by URL per domain.
 pub async fn discover_all_with_timeout(
     domains: &[String],
     timeout: std::time::Duration,
@@ -258,15 +381,15 @@ pub async fn discover_all_with_timeout(
     let mut handles = Vec::with_capacity(domains.len());
     for domain in domains {
         let domain = domain.clone();
-        handles.push(tokio::spawn(async move {
-            lookup_domain_with_timeout(&domain, timeout).await
-        }));
+        handles.push(tokio::spawn(
+            async move { discover_domain(&domain, timeout).await },
+        ));
     }
 
     let mut results = Vec::new();
     for handle in handles {
-        if let Ok(Some(endpoint)) = handle.await {
-            results.push(endpoint);
+        if let Ok(endpoints) = handle.await {
+            results.extend(endpoints);
         }
     }
 
@@ -620,5 +743,31 @@ mod tests {
         )
         .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn dns_aid_nonexistent_domain() {
+        let results = lookup_dns_aid("this-domain-does-not-exist-navra-test.invalid").await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ard_catalog_nonexistent_domain() {
+        let results = lookup_ard_catalog(
+            "this-domain-does-not-exist-navra-test.invalid",
+            std::time::Duration::from_secs(2),
+        )
+        .await;
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discover_domain_deduplicates() {
+        let results =
+            discover_domain("this-domain-does-not-exist-navra-test.invalid", std::time::Duration::from_secs(2))
+                .await;
+        let urls: std::collections::HashSet<&str> =
+            results.iter().map(|e| e.url.as_str()).collect();
+        assert_eq!(urls.len(), results.len());
     }
 }
