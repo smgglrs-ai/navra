@@ -663,6 +663,10 @@ pub async fn run_tool_loop(
                     iteration,
                     "Loop detection triggered"
                 );
+                if let Some(ref phase_lock) = config.flow_phase {
+                    *phase_lock.lock().unwrap() =
+                        navra_cognitive::FlowPhase::TrajectoryConvergence;
+                }
                 input.push(InputItem::Message(navra_model::MessageItem {
                     role: navra_model::MessageRole::System,
                     content: navra_model::MessageContent::Text(warning),
@@ -675,11 +679,24 @@ pub async fn run_tool_loop(
             call_timestamps.push(std::time::Instant::now());
         }
 
-        // Compact old conversation history to bound memory
+        // Compact old conversation history to bound memory.
+        // When a SelfCompact compression policy is set, compaction timing
+        // is governed by flow execution state (fire at node boundaries,
+        // suppress during active derivation). Otherwise falls back to a
+        // fixed token threshold.
         let est_tokens = estimate_input_tokens(&input);
-        let compaction_threshold =
-            (config.context_window_tokens as f32 * config.effective_compaction_trigger()) as u32;
-        if est_tokens > compaction_threshold {
+        let should_compact = if let (Some(policy), Some(phase_lock)) =
+            (&config.compression_policy, &config.flow_phase)
+        {
+            let phase = phase_lock.lock().unwrap().clone();
+            let budget = navra_cognitive::ContextBudget::new(config.context_window_tokens);
+            policy.should_compact(&phase, &budget, est_tokens)
+        } else {
+            let threshold = (config.context_window_tokens as f32
+                * config.effective_compaction_trigger()) as u32;
+            est_tokens > threshold
+        };
+        if should_compact {
             compact_conversation(&mut input, config.effective_keep_recent());
         }
     }
