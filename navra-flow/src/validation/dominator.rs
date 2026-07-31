@@ -452,7 +452,7 @@ mod tests {
 
         assert_eq!(tree.dominators.get("b"), Some(&"a".to_string()));
         assert_eq!(tree.dominators.get("c"), Some(&"b".to_string()));
-        assert!(tree.dominators.get("a").is_none()); // root has no idom
+        assert!(!tree.dominators.contains_key("a")); // root has no idom
     }
 
     #[test]

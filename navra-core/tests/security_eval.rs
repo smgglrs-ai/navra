@@ -7,7 +7,7 @@ use axum::http::HeaderMap;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use navra_core::auth::capability::{
-    CapabilityPayload, CapabilitySet, build_payload, decode_token, encode_token,
+    CapabilitySet, build_payload, decode_token, encode_token,
     validate_delegation,
 };
 use navra_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
@@ -485,7 +485,7 @@ mod credential_isolation {
 
         // Token contains the label "github.pat" but not the actual secret
         assert!(
-            token.contains("github") == false || {
+            !token.contains("github") || {
                 // The token is base64-encoded CBOR — the raw string won't appear
                 // unless we decode it
                 let decoded = decode_token(&token, &signer).unwrap();

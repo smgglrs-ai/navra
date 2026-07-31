@@ -10,8 +10,6 @@ use navra_model::{
     ModelBackend, ModelError, ModelResponse, OpenAiBackend, OutputItem, ResponseStatus,
     safe_backend::{ModelSafetyFilter, SafeModelBackend},
 };
-#[cfg(feature = "onnx")]
-use navra_model::{Device, ModelTask, OnnxBackend};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;

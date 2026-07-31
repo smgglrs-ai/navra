@@ -138,6 +138,22 @@ fn canonical_json_bytes(value: &serde_json::Value) -> Vec<u8> {
     buf
 }
 
+pub fn verify_manifest_option(
+    manifest: &ToolManifest,
+    signature: Option<&ManifestSignature>,
+    key_store: &mut ManifestKeyStore,
+    signer: &dyn CapSigner,
+) -> Option<bool> {
+    let sig = signature?;
+    if !manifest.verify(sig, signer) {
+        return Some(false);
+    }
+    match key_store.check(&manifest.server_name, &sig.signer_did) {
+        TofuResult::Trusted | TofuResult::FirstUse => Some(true),
+        TofuResult::KeyChanged => Some(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,22 +271,6 @@ mod tests {
         let sig2 = manifest.sign(&signer2);
         let r2 = verify_manifest_option(&manifest, Some(&sig2), &mut store, &signer2);
         assert_eq!(r2, Some(false));
-    }
-}
-
-pub fn verify_manifest_option(
-    manifest: &ToolManifest,
-    signature: Option<&ManifestSignature>,
-    key_store: &mut ManifestKeyStore,
-    signer: &dyn CapSigner,
-) -> Option<bool> {
-    let sig = signature?;
-    if !manifest.verify(sig, signer) {
-        return Some(false);
-    }
-    match key_store.check(&manifest.server_name, &sig.signer_did) {
-        TofuResult::Trusted | TofuResult::FirstUse => Some(true),
-        TofuResult::KeyChanged => Some(false),
     }
 }
 

@@ -266,6 +266,15 @@ pub(crate) enum Commands {
         #[arg(trailing_var_arg = true, required = true)]
         command: Vec<String>,
     },
+    /// Interactive terminal UI dashboard
+    Tui {
+        /// navra endpoint URL
+        #[arg(short, long, default_value = "http://127.0.0.1:9315")]
+        endpoint: String,
+        /// Auth token (reads from NAVRA_TOKEN env if not set)
+        #[arg(short, long)]
+        token: Option<String>,
+    },
     /// Run the end-to-end security audit demo
     Demo {
         /// Path to the demo project (default: examples/payments-app)
@@ -889,5 +898,37 @@ mod tests {
     fn cli_deprecated_run_still_parses() {
         let cli = Cli::try_parse_from(["navra", "run", "do something"]).unwrap();
         assert!(matches!(cli.command, Commands::Run { .. }));
+    }
+
+    #[test]
+    fn cli_tui_default() {
+        let cli = Cli::try_parse_from(["navra", "tui"]).unwrap();
+        match cli.command {
+            Commands::Tui { endpoint, token } => {
+                assert_eq!(endpoint, "http://127.0.0.1:9315");
+                assert!(token.is_none());
+            }
+            _ => panic!("Expected Tui command"),
+        }
+    }
+
+    #[test]
+    fn cli_tui_with_args() {
+        let cli = Cli::try_parse_from([
+            "navra",
+            "tui",
+            "--endpoint",
+            "http://localhost:8080",
+            "--token",
+            "secret",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Tui { endpoint, token } => {
+                assert_eq!(endpoint, "http://localhost:8080");
+                assert_eq!(token.as_deref(), Some("secret"));
+            }
+            _ => panic!("Expected Tui command"),
+        }
     }
 }

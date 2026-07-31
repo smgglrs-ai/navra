@@ -354,6 +354,7 @@ pub fn check_attenuation(
 /// Returns Err if child introduces or mutates OBO identity.
 /// Extracted for Kani verification.
 #[cfg(any(test, kani))]
+#[allow(dead_code)]
 fn check_obo_attenuation(
     parent_has_obo: bool,
     child_has_obo: bool,
@@ -371,6 +372,7 @@ fn check_obo_attenuation(
 /// Check sandbox escalation rules.
 /// Returns Err if child removes a sandbox profile that parent had.
 #[cfg(any(test, kani))]
+#[allow(dead_code)]
 fn check_sandbox_escalation(
     parent_has_sandbox: bool,
     child_has_sandbox: bool,
@@ -384,6 +386,7 @@ fn check_sandbox_escalation(
 /// Check that child operations are a subset of parent operations.
 /// Uses bounded arrays of u8 IDs instead of HashSet<String>.
 #[cfg(any(test, kani))]
+#[allow(dead_code)]
 fn check_ops_subset(parent_ops: &[u8], child_ops: &[u8]) -> bool {
     child_ops.iter().all(|c| parent_ops.contains(c))
 }

@@ -154,29 +154,24 @@ mod tests {
                 .with_server_info(Implementation::new("mock", "0.1.0"))
         }
 
-        fn list_tools(
+        async fn list_tools(
             &self,
             _request: Option<PaginatedRequestParams>,
             _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-        ) -> impl std::future::Future<Output = Result<ListToolsResult, rmcp::Error>> + Send + '_
-        {
-            async {
-                Ok(ListToolsResult {
-                    meta: None,
-                    tools: self.tools.clone(),
-                    next_cursor: None,
-                })
-            }
+        ) -> Result<ListToolsResult, rmcp::ErrorData> {
+            Ok(ListToolsResult {
+                meta: None,
+                tools: self.tools.clone(),
+                next_cursor: None,
+            })
         }
 
-        fn call_tool(
+        async fn call_tool(
             &self,
             request: CallToolRequestParams,
             _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-        ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::Error>> + Send + '_
-        {
-            let resp = (self.call_response)(request.name.as_ref());
-            async move { Ok(resp) }
+        ) -> Result<CallToolResult, rmcp::ErrorData> {
+            Ok((self.call_response)(request.name.as_ref()))
         }
     }
 

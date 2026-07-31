@@ -125,8 +125,8 @@ async fn handle_exec_run(
         timeout_secs,
     });
     // Inject traceparent from task-local if available.
-    if let Ok(trace_id) = navra_model_runtime::openshell::TRACE_ID.try_with(|t| t.clone()) {
-        if !trace_id.is_empty() {
+    if let Ok(trace_id) = navra_model_runtime::openshell::TRACE_ID.try_with(|t| t.clone())
+        && !trace_id.is_empty() {
             static SPAN_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let ctr = SPAN_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let traceparent = format!("00-{trace_id}-{ctr:016x}-01");
@@ -134,7 +134,6 @@ async fn handle_exec_run(
                 req.metadata_mut().insert("traceparent", val);
             }
         }
-    }
 
     let resp = state
         .client

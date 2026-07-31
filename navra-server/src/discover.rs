@@ -74,11 +74,11 @@ pub struct DnsAidRecord {
 #[allow(dead_code)]
 impl DnsAidRecord {
     pub fn supports_mcp(&self) -> bool {
-        self.protocols.iter().any(|p| *p == AgentProtocol::Mcp)
+        self.protocols.contains(&AgentProtocol::Mcp)
     }
 
     pub fn supports_a2a(&self) -> bool {
-        self.protocols.iter().any(|p| *p == AgentProtocol::A2a)
+        self.protocols.contains(&AgentProtocol::A2a)
     }
 
     pub fn endpoint_url(&self) -> String {
@@ -180,13 +180,13 @@ pub struct DiscoveredEndpoint {
 impl DiscoveredEndpoint {
     /// Whether this endpoint advertises MCP protocol support.
     pub fn supports_mcp(&self) -> bool {
-        self.protocols.iter().any(|p| *p == AgentProtocol::Mcp)
+        self.protocols.contains(&AgentProtocol::Mcp)
     }
 
     /// Whether this endpoint advertises A2A protocol support.
     #[allow(dead_code)]
     pub fn supports_a2a(&self) -> bool {
-        self.protocols.iter().any(|p| *p == AgentProtocol::A2a)
+        self.protocols.contains(&AgentProtocol::A2a)
     }
 }
 
@@ -359,11 +359,10 @@ async fn discover_domain(domain: &str, timeout: std::time::Duration) -> Vec<Disc
     }
 
     // 3. HTTP well-known fallback
-    if let Some(ep) = lookup_domain_with_timeout(domain, timeout).await {
-        if seen_urls.insert(ep.url.clone()) {
+    if let Some(ep) = lookup_domain_with_timeout(domain, timeout).await
+        && seen_urls.insert(ep.url.clone()) {
             all.push(ep);
         }
-    }
 
     all
 }

@@ -61,7 +61,7 @@ fn bench_ifc_taint_propagation(c: &mut Criterion) {
         b.iter(|| {
             let mut tracker = TaintTracker::new();
             for label in &labels {
-                tracker.absorb(black_box(label.clone()));
+                tracker.absorb(black_box(*label));
             }
             tracker.level()
         });

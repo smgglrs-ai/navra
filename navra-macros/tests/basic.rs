@@ -1,7 +1,7 @@
 use navra_macros::tool;
 use navra_mcp::auth::CallContext;
 use navra_protocol::compat::CallToolResultExt;
-use navra_protocol::{CallToolResult, Content};
+use navra_protocol::CallToolResult;
 
 // --- Basic tool: single required arg ---
 
@@ -49,6 +49,7 @@ fn tool_def_has_message_property() {
 
 // --- Tool with optional args and defaults ---
 
+#[allow(dead_code)]
 #[tool(name = "test_search", description = "Search with limit")]
 async fn test_search(
     #[arg(description = "Search query")] query: String,
@@ -83,6 +84,7 @@ fn optional_arg_has_default_in_schema() {
 
 // --- Tool with multiple types ---
 
+#[allow(dead_code)]
 #[tool(name = "test_types", description = "Test type mapping")]
 async fn test_types(
     #[arg(description = "A string")] name: String,
@@ -306,6 +308,7 @@ async fn state_handler_passes_state_to_function() {
 
 // --- Tool with no args (besides context) ---
 
+#[allow(dead_code)]
 #[tool(name = "test_noop", description = "A tool with no arguments")]
 async fn test_noop(ctx: CallContext) -> CallToolResult {
     let _ = ctx;

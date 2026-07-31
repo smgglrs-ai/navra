@@ -649,6 +649,18 @@ pub fn verify_chain_link(
     sha256_hex(&preimage) == stored_hash
 }
 
+verus! {
+
+pub struct VerusChainFields {
+    pub seq: nat,
+    pub prev_hash: nat,
+    pub agent: nat,
+    pub tool: nat,
+    pub args: nat,
+    pub result_val: nat,
+    pub outcome: nat,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -978,18 +990,6 @@ mod tests {
         assert_eq!(entries[0].obo_sub.as_deref(), Some("bob@corp.com"));
         assert!(entries[1].obo_sub.is_none());
     }
-}
-
-verus! {
-
-pub struct VerusChainFields {
-    pub seq: nat,
-    pub prev_hash: nat,
-    pub agent: nat,
-    pub tool: nat,
-    pub args: nat,
-    pub result_val: nat,
-    pub outcome: nat,
 }
 
 spec fn chain_preimage_spec(f: VerusChainFields) -> Seq<nat> {

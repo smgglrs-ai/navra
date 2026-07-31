@@ -630,7 +630,7 @@ pub(crate) async fn run_dag_execution(
                 ctx.team_registry.bb_publish(
                     team_id,
                     &format!("findings/{task_id}"),
-                    &output,
+                    output,
                     task_id,
                     label,
                 );
@@ -714,11 +714,10 @@ pub(crate) async fn run_dag_execution(
             );
 
             for mut new_task in new_tasks {
-                if default_model != "auto" {
-                    if new_task.model.is_none() || new_task.model.as_deref() == Some("auto") {
+                if default_model != "auto"
+                    && (new_task.model.is_none() || new_task.model.as_deref() == Some("auto")) {
                         new_task.model = Some(default_model.to_string());
                     }
-                }
                 if new_task.depends_on.is_empty() {
                     new_task.depends_on.push(task.id.clone());
                 }

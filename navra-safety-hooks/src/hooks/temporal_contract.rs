@@ -495,13 +495,12 @@ mod tests {
 
     #[test]
     fn predicate_taint_gate_blocks_after_pii() {
-        let mut history = Vec::new();
-        history.push(ActionEntry {
+        let history = vec![ActionEntry {
             tool_name: "file_read".to_string(),
             result_status: ResultStatus::Success,
             ifc_label: DataLabel::UNTRUSTED_PII,
             timestamp: Instant::now(),
-        });
+        }];
         let pred = TemporalPredicate::TaintGate {
             trigger_label: DataLabel::UNTRUSTED_PII,
             blocked_tools: vec!["team_message".to_string(), "flow_start".to_string()],
@@ -538,13 +537,12 @@ mod tests {
 
     #[test]
     fn predicate_cooldown_blocks_rapid_calls() {
-        let mut history = Vec::new();
-        history.push(ActionEntry {
+        let history = vec![ActionEntry {
             tool_name: "git_commit".to_string(),
             result_status: ResultStatus::Success,
             ifc_label: DataLabel::TRUSTED_PUBLIC,
             timestamp: Instant::now(),
-        });
+        }];
         let pred = TemporalPredicate::Cooldown {
             tool: "git_commit".to_string(),
             min_interval_ms: 5000,

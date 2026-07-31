@@ -203,8 +203,10 @@ pub fn compact_history(turns: &[String], keep_recent: usize) -> Vec<String> {
 /// reliably detect their own context degradation, so the gateway
 /// enforces compression timing based on flow execution state.
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum FlowPhase {
     /// Between flow nodes — safe to compact.
+    #[default]
     NodeBoundary,
     /// Agent is actively reasoning / calling tools within a node.
     ActiveDerivation,
@@ -216,11 +218,6 @@ pub enum FlowPhase {
     Stuck,
 }
 
-impl Default for FlowPhase {
-    fn default() -> Self {
-        Self::NodeBoundary
-    }
-}
 
 /// SelfCompact 4-condition compression rubric.
 ///
@@ -234,6 +231,7 @@ impl Default for FlowPhase {
 /// - Suppress during stuck state (needs intervention, not compression)
 #[derive(Debug, Clone)]
 pub struct CompressionPolicy {
+    /// Whether this policy is active.
     pub enabled: bool,
 }
 
@@ -244,6 +242,7 @@ impl Default for CompressionPolicy {
 }
 
 impl CompressionPolicy {
+    /// Returns true if compaction should fire given the current flow phase and token usage.
     pub fn should_compact(
         &self,
         phase: &FlowPhase,
@@ -268,7 +267,7 @@ mod tests {
     fn estimate_tokens_basic() {
         // "hello world" = 11 chars → ~3 tokens
         let t = estimate_tokens("hello world");
-        assert!(t >= 3 && t <= 5);
+        assert!((3..=5).contains(&t));
     }
 
     #[test]

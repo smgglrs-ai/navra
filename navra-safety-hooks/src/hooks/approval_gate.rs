@@ -228,7 +228,6 @@ mod tests {
             risk_keywords: keywords.into_iter().map(String::from).collect(),
             timeout_secs: 1,
             default_on_timeout: TimeoutDefault::Deny,
-            ..Default::default()
         }
     }
 

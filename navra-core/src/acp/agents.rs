@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn flow_manifests_appended() {
-        let flows = vec![FlowSummary {
+        let flows = [FlowSummary {
             name: "security-audit".to_string(),
             description: "Security audit flow".to_string(),
             nodes: vec![

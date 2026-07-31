@@ -110,14 +110,13 @@ fn domain_matches_any(domain: &str, allowed: &[String]) -> bool {
         if pattern == domain {
             return true;
         }
-        if let Some(suffix) = pattern.strip_prefix("*.") {
-            if domain.ends_with(suffix)
+        if let Some(suffix) = pattern.strip_prefix("*.")
+            && domain.ends_with(suffix)
                 && domain.len() > suffix.len()
                 && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.'
             {
                 return true;
             }
-        }
     }
     false
 }

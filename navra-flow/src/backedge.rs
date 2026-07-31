@@ -138,7 +138,7 @@ impl BackEdgeTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::task::{TaskResult, TaskStatus};
+    use crate::task::TaskResult;
     use navra_protocol::label::DataLabel;
 
     fn make_result(

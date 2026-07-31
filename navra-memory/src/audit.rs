@@ -1243,6 +1243,7 @@ mod tests {
              FROM audit_findings WHERE flow_id = 'flow-f' ORDER BY finding_id",
             )
             .unwrap();
+        #[allow(clippy::type_complexity)]
         let rows: Vec<(
             String,
             String,

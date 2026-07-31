@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn pii_classifier_default_labels() {
-        let labels = vec!["no_pii".to_string(), "has_pii".to_string()];
+        let labels = ["no_pii".to_string(), "has_pii".to_string()];
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0], "no_pii");
         assert_eq!(labels[1], "has_pii");
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn softmax_computation() {
-        let logits = vec![2.0f32, 1.0, 0.1];
+        let logits = [2.0f32, 1.0, 0.1];
         let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let exp_sum: f32 = logits.iter().map(|x| (x - max_logit).exp()).sum();
         let probs: Vec<f32> = logits

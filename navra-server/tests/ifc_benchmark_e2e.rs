@@ -277,6 +277,7 @@ fn is_error_result(resp: &serde_json::Value) -> bool {
     resp["result"]["isError"].as_bool().unwrap_or(false)
 }
 
+#[allow(dead_code)]
 fn result_text(resp: &serde_json::Value) -> String {
     resp["result"]["content"]
         .as_array()

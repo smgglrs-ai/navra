@@ -259,7 +259,7 @@ async fn handle_run_flow(
     params.arguments = args.as_object().cloned();
     let ctx = navra_core::auth::CallContext::new(
         navra_core::auth::AgentIdentity::new("ui-flow", "dev"),
-        &uuid::Uuid::new_v4().to_string(),
+        uuid::Uuid::new_v4().to_string(),
     );
 
     let result = server.handle_call_tool(params, ctx).await;
@@ -431,7 +431,7 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["name"], "api-test");
-        assert!(json["nodes"].as_array().unwrap().len() > 0);
+        assert!(!json["nodes"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -104,7 +104,7 @@ async fn start_mock_server() -> (u16, tokio::task::JoinHandle<()>) {
                 },
             )
             .delete(
-                |axum::extract::Path(id): axum::extract::Path<String>| async move {
+                |axum::extract::Path(_id): axum::extract::Path<String>| async move {
                     axum::http::StatusCode::NO_CONTENT
                 },
             ),

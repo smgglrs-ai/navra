@@ -588,11 +588,9 @@ fn would_regress(proposal: &HarnessProposal, events: &[StoredEvent]) -> bool {
                     iteration,
                     ..
                 } = &event.event
-                {
-                    if edge_from == from && *iteration > *new_limit && *iteration <= *old_limit {
+                    && edge_from == from && *iteration > *new_limit && *iteration <= *old_limit {
                         return true;
                     }
-                }
             }
             false
         }

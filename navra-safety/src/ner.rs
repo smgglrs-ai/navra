@@ -1409,7 +1409,7 @@ mod tests {
     #[test]
     fn load_ner_filter_missing_tokenizer() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.onnx"), &[0u8; 10]).unwrap();
+        std::fs::write(dir.path().join("model.onnx"), [0u8; 10]).unwrap();
         std::fs::write(dir.path().join("label_map.json"), r#"{"0": "O"}"#).unwrap();
         let result = load_ner_filter(dir.path());
         assert!(result.is_none());
@@ -1423,7 +1423,7 @@ mod tests {
         // but the error should be about the model, not about a missing
         // label_map.json.
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("model.onnx"), &[0u8; 10]).unwrap();
+        std::fs::write(dir.path().join("model.onnx"), [0u8; 10]).unwrap();
         std::fs::write(dir.path().join("tokenizer.json"), "{}").unwrap();
         // Returns None because model.onnx is not a valid ONNX file,
         // but notably does NOT fail because label_map.json is missing.
@@ -1448,7 +1448,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let onnx_dir = dir.path().join("onnx");
         std::fs::create_dir_all(&onnx_dir).unwrap();
-        std::fs::write(onnx_dir.join("model.onnx"), &[0u8; 10]).unwrap();
+        std::fs::write(onnx_dir.join("model.onnx"), [0u8; 10]).unwrap();
         std::fs::write(dir.path().join("tokenizer.json"), "{}").unwrap();
         // The directory has onnx/model.onnx + tokenizer.json — should attempt load
         // (fails because model.onnx is invalid, but detects the files correctly)
@@ -1698,6 +1698,7 @@ mod tests {
     #[test]
     fn ner_filter_is_content_filter() {
         // Verify the trait bound at compile time by accepting a trait object reference
+        #[allow(dead_code)]
         fn accepts_content_filter(_f: &dyn ContentFilter) {}
         // We can't construct a real NerFilter without model files,
         // but the compile-time check is sufficient. The function
