@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 15 active items
+# 14 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -25,12 +25,6 @@ items:
     priority: high
     effort: 3-5d
     feeds: ['NAVRA-092']
-
-  - id: "NAVRA-171"
-    title: "Self-Harness out-of-band flow improvement via blackbox traces"
-    status: planned
-    priority: high
-    effort: 5-8d
 
   - id: "NAVRA-150"
     title: "Contribute rate limiting middleware to rmcp (issue #388)"
