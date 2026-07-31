@@ -221,6 +221,10 @@ async fn main() -> anyhow::Result<()> {
             let addr = cfg.server.listen_addr();
             cmd_misc::query_status(&addr).await?;
         }
+        Commands::Tui { endpoint, token } => {
+            let token = token.or_else(|| std::env::var("NAVRA_TOKEN").ok());
+            navra_tui::run(endpoint, token).await?;
+        }
         Commands::Schema => {
             let schema = schemars::schema_for!(config::Config);
             println!(

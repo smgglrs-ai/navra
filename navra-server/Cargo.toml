@@ -49,6 +49,7 @@ navra-rag = { path = "../navra-rag", default-features = false }
 navra-modal-vision = { path = "../navra-modal-vision", default-features = false }
 navra-modal-voice = { path = "../navra-modal-voice", default-features = false }
 navra-openapi = { path = "../navra-openapi", default-features = false }
+navra-tui = { path = "../navra-tui" }
 axum = { workspace = true }
 tokio = { workspace = true }
 schemars = { workspace = true }

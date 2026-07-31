@@ -371,6 +371,12 @@ impl PermissionEngine {
     }
 }
 
+verus! {
+
+#[verifier::external_type_specification]
+#[allow(dead_code)]
+pub struct ExPermissionResult(PermissionResult);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,12 +831,6 @@ mod tests {
         assert_eq!(result, PermissionResult::DeniedOperation);
     }
 }
-
-verus! {
-
-#[verifier::external_type_specification]
-#[allow(dead_code)]
-pub struct ExPermissionResult(PermissionResult);
 
 pub open spec fn spec_deny_wins_eval(
     deny_matched: bool,

@@ -497,6 +497,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn matryoshka_truncation_logic() {
         // Simulate hidden_states for 2 tokens, 4 dims each
         // Token 0: [1.0, 2.0, 3.0, 4.0], Token 1: [2.0, 4.0, 6.0, 8.0]
@@ -547,10 +548,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::needless_range_loop)]
     fn matryoshka_full_dimensions_passthrough() {
         // When target_dimensions == hidden_dim, truncation is a no-op
         let hidden_states: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0];
-        let seq_len = 1;
+        let _seq_len = 1;
         let hidden_dim = 4;
         let target_dimensions = 4;
 

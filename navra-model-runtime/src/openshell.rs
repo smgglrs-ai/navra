@@ -19,9 +19,10 @@ tokio::task_local! {
 
 /// Inject W3C traceparent metadata into a tonic request if a trace ID
 /// is available on the current task-local.
+#[allow(clippy::collapsible_if)]
 fn inject_traceparent<T>(req: &mut tonic::Request<T>) {
-    if let Ok(trace_id) = TRACE_ID.try_with(|t| t.clone()) {
-        if !trace_id.is_empty() {
+    if let Ok(trace_id) = TRACE_ID.try_with(|t| t.clone())
+        && !trace_id.is_empty() {
             // Version 00, derive span ID from trace_id + counter, sampled flag 01
             static SPAN_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let ctr = SPAN_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -31,7 +32,6 @@ fn inject_traceparent<T>(req: &mut tonic::Request<T>) {
                 req.metadata_mut().insert("traceparent", val);
             }
         }
-    }
 }
 
 /// Generated protobuf types for the OpenShell compute driver.

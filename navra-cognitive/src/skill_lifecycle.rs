@@ -316,23 +316,21 @@ mod tests {
         reg.register(make_skill(
             "git_workflow",
             vec!["git", "commit", "branch"],
-            &"Use git_status to check repository state before making changes. \
+            "Use git_status to check repository state before making changes. \
               Always create a branch for new features. Commit frequently with \
               descriptive messages. Push to remote after committing. Review diffs \
               before staging. Never force push to main. Check for merge conflicts \
-              before merging. Use rebase for linear history when appropriate."
-                .to_string(),
+              before merging. Use rebase for linear history when appropriate.",
         ))
         .unwrap();
         reg.register(make_skill(
             "security_check",
             vec!["security", "auth", "vulnerability"],
-            &"Check for hardcoded secrets in source code. Validate all external \
+            "Check for hardcoded secrets in source code. Validate all external \
               inputs before processing. Use parameterized queries for database \
               access. Apply principle of least privilege to all service accounts. \
               Review dependency versions for known vulnerabilities. Enable TLS \
-              for all network communications. Audit authentication flows regularly."
-                .to_string(),
+              for all network communications. Audit authentication flows regularly.",
         ))
         .unwrap();
 

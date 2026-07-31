@@ -33,7 +33,7 @@ pub(crate) fn wire_cap_delegate(
         .server
         .identity
         .as_ref()
-        .map(|i| i.max_delegation_depth as u8)
+        .map(|i| i.max_delegation_depth)
         .unwrap_or(3);
     let default_ttl = cfg
         .server
@@ -386,8 +386,8 @@ pub(crate) async fn wire_team_tools(
         && let Some(model_list) = tags["models"].as_array()
     {
         for m in model_list {
-            if let Some(name) = m["name"].as_str() {
-                if let Ok(show_resp) = reqwest::Client::new()
+            if let Some(name) = m["name"].as_str()
+                && let Ok(show_resp) = reqwest::Client::new()
                     .post("http://localhost:11434/api/show")
                     .json(&serde_json::json!({"name": name}))
                     .send()
@@ -396,7 +396,6 @@ pub(crate) async fn wire_team_tools(
                 {
                     ollama_meta.insert(name.to_string(), info);
                 }
-            }
         }
     }
     if !ollama_meta.is_empty() {

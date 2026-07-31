@@ -506,7 +506,7 @@ mod tests {
     fn mime_type_png() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/png");
     }
 
@@ -515,7 +515,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for ext in &["jpg", "jpeg"] {
             let path = dir.path().join(format!("test.{ext}"));
-            std::fs::write(&path, &tiny_png()).unwrap(); // content irrelevant for MIME check
+            std::fs::write(&path, tiny_png()).unwrap(); // content irrelevant for MIME check
             assert_eq!(load_image(&path).unwrap().mime_type, "image/jpeg");
         }
     }
@@ -524,7 +524,7 @@ mod tests {
     fn mime_type_gif() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.gif");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/gif");
     }
 
@@ -532,7 +532,7 @@ mod tests {
     fn mime_type_webp() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.webp");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/webp");
     }
 
@@ -540,7 +540,7 @@ mod tests {
     fn mime_type_bmp() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.bmp");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/bmp");
     }
 
@@ -549,7 +549,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         for ext in &["tiff", "tif"] {
             let path = dir.path().join(format!("test.{ext}"));
-            std::fs::write(&path, &tiny_png()).unwrap();
+            std::fs::write(&path, tiny_png()).unwrap();
             assert_eq!(load_image(&path).unwrap().mime_type, "image/tiff");
         }
     }
@@ -558,7 +558,7 @@ mod tests {
     fn mime_type_svg() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.svg");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/svg+xml");
     }
 
@@ -566,7 +566,7 @@ mod tests {
     fn mime_type_unknown_defaults_to_png() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.xyz");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
         assert_eq!(load_image(&path).unwrap().mime_type, "image/png");
     }
 
@@ -672,7 +672,7 @@ mod tests {
     async fn describe_with_valid_image() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
 
         let state = make_state();
         let (_, handler) = handle_describe_handler(state);
@@ -699,7 +699,7 @@ mod tests {
     async fn ocr_with_valid_image() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
 
         let state = make_state();
         let (_, handler) = handle_ocr_handler(state);
@@ -723,7 +723,7 @@ mod tests {
     async fn ask_rejects_empty_question() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
 
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
@@ -747,7 +747,7 @@ mod tests {
     async fn ask_with_valid_image_and_question() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
 
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
@@ -780,7 +780,7 @@ mod tests {
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.png");
-        std::fs::write(&path, &tiny_png()).unwrap();
+        std::fs::write(&path, tiny_png()).unwrap();
 
         let (_, handler) = handle_describe_handler(state);
         let result = handler(serde_json::json!({"path": path.to_str().unwrap()}), ctx).await;

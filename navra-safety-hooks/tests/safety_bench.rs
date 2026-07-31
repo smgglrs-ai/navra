@@ -157,7 +157,7 @@ fn description_injection_detection_rate() {
     let mut detected = 0;
 
     for variant in &variants {
-        let findings = check_description_injection(&variant);
+        let findings = check_description_injection(variant);
         if !findings.is_empty() {
             detected += 1;
         }

@@ -34,6 +34,7 @@ impl MockServer {
         }
     }
 
+    #[allow(dead_code)]
     fn empty() -> Self {
         Self::new(vec![], vec![])
     }
@@ -45,25 +46,23 @@ impl rmcp::ServerHandler for MockServer {
             .with_server_info(Implementation::new("test", "0.1.0"))
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<ListToolsResult, rmcp::Error>> + Send + '_ {
-        async {
-            Ok(ListToolsResult {
-                meta: None,
-                tools: self.tools.clone(),
-                next_cursor: None,
-            })
-        }
+    ) -> Result<ListToolsResult, rmcp::ErrorData> {
+        Ok(ListToolsResult {
+            meta: None,
+            tools: self.tools.clone(),
+            next_cursor: None,
+        })
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         _request: CallToolRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::Error>> + Send + '_ {
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
         let resp = {
             let mut responses = self.call_responses.lock().unwrap();
             if responses.is_empty() {
@@ -72,7 +71,7 @@ impl rmcp::ServerHandler for MockServer {
                 responses.remove(0)
             }
         };
-        async move { Ok(resp) }
+        Ok(resp)
     }
 }
 

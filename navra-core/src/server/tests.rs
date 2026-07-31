@@ -1043,8 +1043,8 @@ async fn dispatch_request(
         _ => {
             let sid = session_id.unwrap_or_else(|| format!("stateless:{}", agent.name));
 
-            if server.mcp_version() != navra_protocol::PROTOCOL_VERSION_2026 {
-                if server.sessions().get(&sid).is_none() {
+            if server.mcp_version() != navra_protocol::PROTOCOL_VERSION_2026
+                && server.sessions().get(&sid).is_none() {
                     return JsonRpcResponse::error(
                         id,
                         JsonRpcError::new(
@@ -1053,7 +1053,6 @@ async fn dispatch_request(
                         ),
                     );
                 }
-            }
 
             server.ensure_session(&sid, &agent);
             dispatch_request_inner(server, method, params, &agent, &sid, id).await
@@ -1078,7 +1077,7 @@ async fn dispatch_request_inner(
             let pagination: crate::protocol::PaginatedRequest = params
                 .and_then(|p| serde_json::from_value(p).ok())
                 .unwrap_or_default();
-            let result = server.handle_list_tools(&agent, &pagination);
+            let result = server.handle_list_tools(agent, &pagination);
             JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
         }
 
@@ -1104,7 +1103,7 @@ async fn dispatch_request_inner(
             let pagination: crate::protocol::PaginatedRequest = params
                 .and_then(|p| serde_json::from_value(p).ok())
                 .unwrap_or_default();
-            let result = server.handle_list_resources(&agent, &pagination);
+            let result = server.handle_list_resources(agent, &pagination);
             JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
         }
 
@@ -1112,7 +1111,7 @@ async fn dispatch_request_inner(
             let pagination: crate::protocol::PaginatedRequest = params
                 .and_then(|p| serde_json::from_value(p).ok())
                 .unwrap_or_default();
-            let result = server.handle_list_resource_templates(&agent, &pagination);
+            let result = server.handle_list_resource_templates(agent, &pagination);
             JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
         }
 
@@ -1127,7 +1126,7 @@ async fn dispatch_request_inner(
                         );
                     }
                 };
-            match server.handle_read_resource(p, &agent, &sid).await {
+            match server.handle_read_resource(p, agent, sid).await {
                 Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             }
@@ -1137,7 +1136,7 @@ async fn dispatch_request_inner(
             let pagination: crate::protocol::PaginatedRequest = params
                 .and_then(|p| serde_json::from_value(p).ok())
                 .unwrap_or_default();
-            let result = server.handle_list_prompts(&agent, &pagination);
+            let result = server.handle_list_prompts(agent, &pagination);
             JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
         }
 
@@ -1152,7 +1151,7 @@ async fn dispatch_request_inner(
                         );
                     }
                 };
-            match server.handle_get_prompt(p, &agent, &sid).await {
+            match server.handle_get_prompt(p, agent, sid).await {
                 Ok(result) => JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap()),
                 Err(msg) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&msg)),
             }
@@ -1193,7 +1192,7 @@ async fn dispatch_request_inner(
                         );
                     }
                 };
-            server.handle_set_log_level(p, &sid);
+            server.handle_set_log_level(p, sid);
             JsonRpcResponse::success(id, serde_json::json!({}))
         }
 
@@ -1209,7 +1208,7 @@ async fn dispatch_request_inner(
                     );
                 }
             };
-            match server.handle_resource_subscribe(&uri, &sid) {
+            match server.handle_resource_subscribe(&uri, sid) {
                 Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
                 Err(e) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
             }
@@ -1227,7 +1226,7 @@ async fn dispatch_request_inner(
                     );
                 }
             };
-            match server.handle_resource_unsubscribe(&uri, &sid) {
+            match server.handle_resource_unsubscribe(&uri, sid) {
                 Ok(()) => JsonRpcResponse::success(id, serde_json::json!({})),
                 Err(e) => JsonRpcResponse::error(id, JsonRpcError::invalid_params(&e)),
             }
@@ -1726,7 +1725,7 @@ async fn ifc_read_tool_auto_labels_untrusted() {
         })
         .build();
 
-    let result = server
+    let _result = server
         .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
         .await;
 
@@ -1744,7 +1743,7 @@ async fn ifc_trusted_path_keeps_trusted_label() {
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
 
-    let result = server
+    let _result = server
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_read");
@@ -1771,7 +1770,7 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
 
-    let result = server
+    let _result = server
         .handle_call_tool(
             {
                 let mut p = CallToolParams::new("file_read");
@@ -1798,7 +1797,7 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
 
-    let result = server
+    let _result = server
         .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
         .await;
 }

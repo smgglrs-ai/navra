@@ -37,8 +37,8 @@ pub(crate) fn flow_list(cfg: &config::Config) -> anyhow::Result<()> {
     }
 
     // Scan agent instance flow dirs
-    if let Some(agents_dir) = instance_agents_dir() {
-        if agents_dir.is_dir() {
+    if let Some(agents_dir) = instance_agents_dir()
+        && agents_dir.is_dir() {
             for entry in std::fs::read_dir(&agents_dir)? {
                 let entry = entry?;
                 let instance_dir = entry.path();
@@ -71,7 +71,6 @@ pub(crate) fn flow_list(cfg: &config::Config) -> anyhow::Result<()> {
                 }
             }
         }
-    }
 
     if !found {
         println!("No flows found.");
@@ -93,12 +92,12 @@ pub(crate) fn trigger_list(cfg: &config::Config) -> anyhow::Result<()> {
     }
 
     println!(
-        "{:<20} {:<12} {:<30} {}",
-        "SOURCE", "TYPE", "TARGET", "DETAILS"
+        "{:<20} {:<12} {:<30} DETAILS",
+        "SOURCE", "TYPE", "TARGET"
     );
     println!(
-        "{:<20} {:<12} {:<30} {}",
-        "------", "----", "------", "-------"
+        "{:<20} {:<12} {:<30} -------",
+        "------", "----", "------"
     );
 
     for (source, trigger) in &all {

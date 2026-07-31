@@ -302,7 +302,7 @@ mod tests {
         ] {
             for conf in [0.0, 0.5, 1.0, 1.5, -0.1] {
                 let imp = DistilledEntry::importance_heuristic(&kind, conf);
-                assert!(imp >= 0.0 && imp <= 1.0, "{kind:?} conf={conf} → {imp}");
+                assert!((0.0..=1.0).contains(&imp), "{kind:?} conf={conf} → {imp}");
             }
         }
     }

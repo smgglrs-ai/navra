@@ -248,7 +248,6 @@ pub fn select_model_for_task(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::team_tools::{TeamBudget, TeamRegistry};
 
     fn test_registry() -> TeamRegistry {

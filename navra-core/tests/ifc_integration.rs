@@ -10,7 +10,7 @@ use navra_core::McpServer;
 use navra_core::auth::{AgentIdentity, CallContext};
 use navra_core::ifc::{DataLabel, TaintedWritePolicy};
 use navra_core::protocol::{
-    CallToolParams, CallToolResult, ClientInfo, Content, InitializeParams, ProtocolVersion,
+    CallToolParams, CallToolResult, ClientInfo, InitializeParams,
     ToolDefinition,
 };
 use navra_protocol::compat::CallToolResultExt;
@@ -88,7 +88,7 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
                     let rest = &line[start..];
                     // Stop at space, underscore, or end of string
                     let end = rest
-                        .find(|c: char| c == ' ' || c == '_')
+                        .find([' ', '_'])
                         .unwrap_or(rest.len());
                     return Some(rest[..end].to_string());
                 }
@@ -762,7 +762,7 @@ async fn llm_exfiltration_attempt_blocked() {
 
     // Step 2: Ask the LLM what to do with this file content
     use navra_model::{
-        CreateResponseRequest, InputItem, Locality, ModelBackend, OpenAiBackend, OutputItem,
+        CreateResponseRequest, InputItem, Locality, ModelBackend, OpenAiBackend,
         ResponseTool,
     };
 

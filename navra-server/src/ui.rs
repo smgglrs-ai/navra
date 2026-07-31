@@ -95,6 +95,7 @@ async fn auth_middleware(
 /// This adds static asset routes (`/`, `/ui/style.css`, `/ui/app.js`)
 /// and authenticated API routes (`/api/status`, `/api/models`, `/api/agents`,
 /// `/api/flows`, `/api/chat`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn attach_ui_routes(
     router: axum::Router,
     cfg: &config::Config,
@@ -1579,6 +1580,7 @@ mod tests {
         }
     }
 
+    #[allow(clippy::field_reassign_with_default)]
     fn test_config() -> config::Config {
         let mut cfg = config::Config::default();
         cfg.cognitive_core = None;

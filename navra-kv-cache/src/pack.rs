@@ -5,7 +5,7 @@
 
 /// Pack 1-bit values into bytes (MSB-first within each byte).
 pub fn pack_bits(bits: &[u8]) -> Vec<u8> {
-    let num_bytes = (bits.len() + 7) / 8;
+    let num_bytes = bits.len().div_ceil(8);
     let mut packed = vec![0u8; num_bytes];
     for (i, &bit) in bits.iter().enumerate() {
         if bit != 0 {
@@ -31,9 +31,9 @@ pub fn unpack_bits(packed: &[u8], count: usize) -> Vec<u8> {
 /// code 1 occupies bits 3-5, etc. Codes that straddle byte boundaries
 /// are split across bytes.
 pub fn pack_nbits(codes: &[u8], bits: u8) -> Vec<u8> {
-    assert!(bits >= 1 && bits <= 8, "bits must be 1..=8");
+    assert!((1..=8).contains(&bits), "bits must be 1..=8");
     let total_bits = codes.len() * bits as usize;
-    let num_bytes = (total_bits + 7) / 8;
+    let num_bytes = total_bits.div_ceil(8);
     let mut packed = vec![0u8; num_bytes];
 
     let mask = (1u8 << bits) - 1;
@@ -57,7 +57,7 @@ pub fn pack_nbits(codes: &[u8], bits: u8) -> Vec<u8> {
 
 /// Unpack n-bit codes from bytes.
 pub fn unpack_nbits(packed: &[u8], bits: u8, count: usize) -> Vec<u8> {
-    assert!(bits >= 1 && bits <= 8, "bits must be 1..=8");
+    assert!((1..=8).contains(&bits), "bits must be 1..=8");
     let mask = (1u8 << bits) - 1;
     let mut codes = Vec::with_capacity(count);
     let mut bit_pos = 0usize;

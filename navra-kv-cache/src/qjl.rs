@@ -39,7 +39,7 @@ impl QjlSketch {
     pub fn sketch(&self, residual: &[f32]) -> Vec<u8> {
         assert_eq!(residual.len(), self.dim);
 
-        let mut bits = vec![0u8; (self.projections + 7) / 8];
+        let mut bits = vec![0u8; self.projections.div_ceil(8)];
 
         for j in 0..self.projections {
             let dot = self.projection_dot(j, residual);
@@ -51,6 +51,7 @@ impl QjlSketch {
         bits
     }
 
+    #[allow(clippy::needless_range_loop)]
     /// Reconstruct the correction vector from a 1-bit sketch.
     ///
     /// Returns an approximation of the original residual via
@@ -74,6 +75,7 @@ impl QjlSketch {
         correction
     }
 
+    #[allow(clippy::needless_range_loop)]
     /// Compute dot product of j-th row of S with the residual.
     fn projection_dot(&self, j: usize, residual: &[f32]) -> f32 {
         let mut state = self.row_seed(j);

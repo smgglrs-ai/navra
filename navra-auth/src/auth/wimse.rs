@@ -193,11 +193,10 @@ impl WimseAuthenticator {
     fn get_or_fetch_jwks(&self, jwks_uri: &str) -> Result<jwk::JwkSet, AuthError> {
         {
             let cache = self.jwks_caches.read().unwrap_or_else(|e| e.into_inner());
-            if let Some(entry) = cache.get(jwks_uri) {
-                if entry.fetched_at.elapsed().as_secs() < 300 {
+            if let Some(entry) = cache.get(jwks_uri)
+                && entry.fetched_at.elapsed().as_secs() < 300 {
                     return Ok(entry.keys.clone());
                 }
-            }
         }
 
         let jwks = fetch_jwks(jwks_uri)?;

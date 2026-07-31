@@ -723,7 +723,7 @@ mod tests {
         };
         let agent = AgentIdentity::new("tester", "dev");
         let run = dispatch::create_run(&state.runs, &state.server, "test-agent", None, &agent);
-        let router = build_acp_router(server);
+        let _router = build_acp_router(server);
 
         // We need to use the same state — build a custom router for this test
         let test_router = Router::new()

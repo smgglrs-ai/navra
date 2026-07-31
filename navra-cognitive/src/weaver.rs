@@ -940,7 +940,7 @@ facets:
         assert_eq!(selected[0].name, "card_a");
         assert_eq!(selected[1].name, "card_b");
 
-        let formatted = format_skill_cards(&selected.iter().copied().collect::<Vec<_>>());
+        let formatted = format_skill_cards(&selected.to_vec());
         let tokens = crate::budget::estimate_tokens(&formatted);
         assert!(
             tokens <= 500,

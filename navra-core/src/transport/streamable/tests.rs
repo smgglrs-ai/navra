@@ -146,9 +146,8 @@ async fn call_unknown_tool_returns_error() {
     let result = client
         .call_tool(CallToolRequestParams::new("nonexistent"))
         .await;
-    match result {
-        Ok(r) => assert!(r.is_error == Some(true), "expected tool-level error"),
-        Err(_) => {} // protocol-level error also acceptable
+    if let Ok(r) = result {
+        assert!(r.is_error == Some(true), "expected tool-level error");
     }
     client.cancel().await.ok();
 }

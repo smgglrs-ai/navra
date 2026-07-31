@@ -217,6 +217,7 @@ mod tests {
     use std::sync::Mutex;
 
     /// A test store that records extractions.
+    #[allow(clippy::type_complexity)]
     struct TestStore {
         entries: Mutex<Vec<(String, String, String, Vec<String>)>>,
     }

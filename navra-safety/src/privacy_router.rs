@@ -335,8 +335,8 @@ mod tests {
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: PrivacyRouterConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.path_pii, false);
-        assert_eq!(parsed.privacy_model, false);
+        assert!(!parsed.path_pii);
+        assert!(!parsed.privacy_model);
         assert_eq!(parsed.short_circuit_threshold, 3);
     }
 
