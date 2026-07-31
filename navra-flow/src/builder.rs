@@ -171,6 +171,7 @@ impl FlowBuilder {
             signal_handles,
             mailbox_registry,
             blackboard,
+            flow_phase: None,
         })
     }
 }
