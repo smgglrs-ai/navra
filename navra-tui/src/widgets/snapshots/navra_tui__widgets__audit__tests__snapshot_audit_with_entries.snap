@@ -1,0 +1,13 @@
+---
+source: navra-tui/src/widgets/audit.rs
+assertion_line: 201
+expression: out
+---
+┌ Audit Log (1/1) ─────────────────────────────────────────────────────────────┐
+│Seq    Agent          Tool                    Outcome    Duration   IFC       │
+│42     test-agent     git_commit              allowed    5.0ms      public    │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘

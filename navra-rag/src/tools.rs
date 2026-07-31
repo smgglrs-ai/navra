@@ -135,6 +135,7 @@ impl Module for RagModule {
 
 // --- Permission check ---
 
+#[allow(clippy::result_large_err)]
 fn check_perm(
     state: &RagState,
     ctx: &CallContext,

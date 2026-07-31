@@ -1,0 +1,13 @@
+---
+source: navra-tui/src/widgets/models.rs
+assertion_line: 134
+expression: out
+---
+┌ Models (1) ────────────────────────────────────────────────────────────────────────────┐
+│Name                     Task             Backend    Source               Context       │
+│test-model               chat             external   --                   4096          │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+└────────────────────────────────────────────────────────────────────────────────────────┘

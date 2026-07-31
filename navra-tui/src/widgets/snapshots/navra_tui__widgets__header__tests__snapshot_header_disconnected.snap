@@ -1,0 +1,6 @@
+---
+source: navra-tui/src/widgets/header.rs
+assertion_line: 110
+expression: out
+---
+ navra v? |  disconnected

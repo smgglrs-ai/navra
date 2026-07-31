@@ -1,0 +1,13 @@
+---
+source: navra-tui/src/widgets/agents.rs
+assertion_line: 197
+expression: out
+---
+┌ Active Agents ───────────────────────────────────────────────────────────────────────────────────┐
+│Name             Permissions    Ring  Calls   Denied  Uptime     Idle       Active                │
+│agent-a          ops            1     42      0       2m0s       5s                               │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘

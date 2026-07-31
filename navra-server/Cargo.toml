@@ -84,10 +84,10 @@ sha2 = "0.10"
 hex = "0.4"
 vstd = { workspace = true }
 
-opentelemetry = { version = "0.28", optional = true }
-opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"], optional = true }
-opentelemetry-otlp = { version = "0.28", features = ["tonic"], optional = true }
-tracing-opentelemetry = { version = "0.29", optional = true }
+opentelemetry = { version = "0.29", features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.29", features = ["trace"], optional = true }
+opentelemetry-otlp = { version = "0.29", features = ["grpc-tonic", "trace"], optional = true }
+tracing-opentelemetry = { version = "0.30", optional = true }
 
 [features]
 default = ["onnx"]

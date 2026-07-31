@@ -24,6 +24,7 @@ members = [
     "navra-model-server",
     "navra-kv-cache",
     "navra-server",
+    "navra-tui",
     "benchmarks",
 ]
 

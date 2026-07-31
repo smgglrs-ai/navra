@@ -1,0 +1,6 @@
+---
+source: navra-tui/src/widgets/footer.rs
+assertion_line: 83
+expression: out
+---
+ 1-6:tab  j/k:scroll  /:filter  r:refresh  q:quit
