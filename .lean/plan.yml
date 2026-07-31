@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 17 active items
+# 15 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -31,18 +31,6 @@ items:
     status: planned
     priority: high
     effort: 5-8d
-
-  - id: "NAVRA-173"
-    title: "Implement DNS-AID integration for agent discovery"
-    status: planned
-    priority: high
-    effort: 3-5d
-
-  - id: "NAVRA-174"
-    title: "Implement ARD v0.9 ai-catalog.json for MCP server registry"
-    status: planned
-    priority: high
-    effort: 3-5d
 
   - id: "NAVRA-150"
     title: "Contribute rate limiting middleware to rmcp (issue #388)"
