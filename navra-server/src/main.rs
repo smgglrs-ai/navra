@@ -12,6 +12,7 @@ mod build_tools;
 mod cli;
 mod cmd_agent;
 mod cmd_eval;
+mod cmd_flow;
 mod cmd_misc;
 mod cmd_model;
 mod cmd_pii;
@@ -57,7 +58,10 @@ use navra_core::identity::{self, CapSigner, Ed25519Signer};
 use navra_core::permissions::{PathAcl, PermissionEngine};
 use std::sync::Arc;
 
-use cli::{AgentAction, Cli, Commands, ConfigAction, ModelAction, PiiAction, TokenAction};
+use cli::{
+    AgentAction, Cli, Commands, ConfigAction, FlowAction, McpAction, ModelAction, PiiAction,
+    TokenAction, TriggerAction,
+};
 
 
 fn init_tracing() -> anyhow::Result<()> {
@@ -103,6 +107,27 @@ async fn main() -> anyhow::Result<()> {
     init_tracing()?;
 
     match cli.command {
+        Commands::Mcp { action } => match action {
+            McpAction::Serve {
+                config: config_path,
+                no_tray,
+                dev_mode,
+            } => {
+                let cfg = config::Config::load(config_path.as_deref())?;
+                if dev_mode {
+                    tracing::warn!(
+                        "--dev-mode enabled: anonymous access allowed without authentication"
+                    );
+                }
+                serve(cfg, no_tray, dev_mode).await?;
+            }
+            McpAction::Stdio {
+                config: config_path,
+            } => {
+                let cfg = config::Config::load(config_path.as_deref())?;
+                stdio(cfg).await?;
+            }
+        },
         Commands::Init {
             quiet,
             agent_name,
@@ -138,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
             no_tray,
             dev_mode,
         } => {
+            eprintln!("hint: `navra serve` is deprecated, use `navra mcp serve`");
             let cfg = config::Config::load(config_path.as_deref())?;
             if dev_mode {
                 tracing::warn!(
@@ -149,6 +175,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Stdio {
             config: config_path,
         } => {
+            eprintln!("hint: `navra stdio` is deprecated, use `navra mcp stdio`");
             let cfg = config::Config::load(config_path.as_deref())?;
             stdio(cfg).await?;
         }
@@ -236,6 +263,96 @@ async fn main() -> anyhow::Result<()> {
             AgentAction::Remove { name } => {
                 cmd_agent::agent_remove(&name)?;
             }
+            AgentAction::Run {
+                prompt,
+                model,
+                persona,
+                endpoint,
+                token,
+                max_iterations,
+                upstream_prompts,
+                workflow,
+                config: _run_config,
+                no_embedded,
+                dry_run,
+            } => {
+                let (prompt, _workflow_name) = if let Some(wf) = workflow {
+                    (format!("Run workflow: {wf}"), Some(wf))
+                } else if prompt.contains('/') && !prompt.contains(' ') {
+                    let wf = prompt.clone();
+                    (format!("Run workflow: {wf}"), Some(wf))
+                } else {
+                    (prompt, None)
+                };
+                if dry_run {
+                    println!("--- Dry Run ---");
+                    println!("Endpoint: {endpoint}");
+                    println!("Model: {}", model.as_deref().unwrap_or("auto-detect"));
+                    println!("Persona: {persona}");
+                    println!("Max iterations: {max_iterations}");
+                    if !upstream_prompts.is_empty() {
+                        println!("Upstream prompts: {}", upstream_prompts.join(", "));
+                    }
+                    let forge = navra_cognitive::ForgeService::empty();
+                    match navra_cognitive::assemble(&forge, &persona, &prompt, None, None) {
+                        Ok(output) => {
+                            println!("\n--- System Prompt ---");
+                            println!("{}", output.system_prompt());
+                            println!("\n--- User Prompt ---");
+                            println!("{prompt}");
+                        }
+                        Err(e) => {
+                            println!("\nPersona '{persona}' not found: {e}");
+                            println!("\n--- User Prompt ---");
+                            println!("{prompt}");
+                        }
+                    }
+                } else {
+                    cmd_run::run_agent(cmd_run::RunAgentParams {
+                        prompt: &prompt,
+                        model_name: model.as_deref(),
+                        persona_name: &persona,
+                        endpoint: &endpoint,
+                        token: token.as_deref(),
+                        max_iterations,
+                        upstream_prompts: &upstream_prompts,
+                        no_embedded,
+                    })
+                    .await?;
+                }
+            }
+        },
+        Commands::Flow { action } => match action {
+            FlowAction::Run {
+                file,
+                prompt,
+                endpoint,
+                token,
+                model,
+            } => {
+                cmd_flow::flow_run(&file, &prompt, &endpoint, token.as_deref(), model.as_deref())
+                    .await?;
+            }
+            FlowAction::List {
+                config: config_path,
+            } => {
+                let cfg = config::Config::load(config_path.as_deref())?;
+                cmd_flow::flow_list(&cfg)?;
+            }
+            FlowAction::Trigger { action } => match action {
+                TriggerAction::Start {
+                    config: config_path,
+                } => {
+                    let cfg = config::Config::load(config_path.as_deref())?;
+                    cmd_flow::trigger_start(cfg).await?;
+                }
+                TriggerAction::List {
+                    config: config_path,
+                } => {
+                    let cfg = config::Config::load(config_path.as_deref())?;
+                    cmd_flow::trigger_list(&cfg)?;
+                }
+            },
         },
         Commands::Model { action } => match action {
             ModelAction::Serve {
@@ -434,6 +551,9 @@ async fn main() -> anyhow::Result<()> {
             no_embedded,
             dry_run,
         } => {
+            eprintln!(
+                "hint: `navra run` is deprecated, use `navra agent run` or `navra flow run`"
+            );
             if let Some(ref flow_file) = flow {
                 cmd_run::run_flow_file(flow_file, &prompt, &endpoint, token.as_deref(), model.as_deref()).await?;
                 return Ok(());
