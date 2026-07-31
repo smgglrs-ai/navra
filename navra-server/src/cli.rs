@@ -22,7 +22,13 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
-    /// Start the MCP server
+    /// MCP gateway server
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
+    /// Start the MCP server (deprecated: use `navra mcp serve`)
+    #[command(hide = true)]
     Serve {
         /// Path to config file
         #[arg(short, long)]
@@ -75,7 +81,8 @@ pub(crate) enum Commands {
         #[arg(long)]
         profile: Option<String>,
     },
-    /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
+    /// Run as a stdio MCP server (deprecated: use `navra mcp stdio`)
+    #[command(hide = true)]
     Stdio {
         /// Path to config file
         #[arg(short, long)]
@@ -146,7 +153,13 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "10000")]
         slow_tool_ms: u64,
     },
-    /// Run an agent task against a running navra instance
+    /// Manage flows, triggers, and flow execution
+    Flow {
+        #[command(subcommand)]
+        action: FlowAction,
+    },
+    /// Run an agent task (deprecated: use `navra agent run` or `navra flow run`)
+    #[command(hide = true)]
     Run {
         /// Prompt for the agent (or instance/workflow for named workflows)
         prompt: String,
@@ -359,6 +372,42 @@ pub(crate) enum AgentAction {
         /// Agent name
         name: String,
     },
+    /// Run an agent task against a running navra instance
+    Run {
+        /// Prompt for the agent
+        prompt: String,
+        /// Model to use (default: auto-detect from Ollama)
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Persona to use (default: leader)
+        #[arg(short, long, default_value = "leader")]
+        persona: String,
+        /// navra endpoint URL
+        #[arg(short, long, default_value = "http://127.0.0.1:9315/mcp")]
+        endpoint: String,
+        /// Auth token (reads from MCPD_TOKEN env if not set)
+        #[arg(short, long)]
+        token: Option<String>,
+        /// Max iterations (default 200, set lower for quick tasks)
+        #[arg(short = 'n', long, default_value = "200")]
+        max_iterations: usize,
+        /// Inject an upstream MCP prompt into the system prompt.
+        /// Format: "upstream:prompt_name" (e.g., "syllogis:legal_analysis").
+        #[arg(long = "upstream-prompt")]
+        upstream_prompts: Vec<String>,
+        /// Run a named workflow from an agent instance
+        #[arg(long)]
+        workflow: Option<String>,
+        /// Path to agent instance config
+        #[arg(long)]
+        config: Option<String>,
+        /// Force Ollama API even when local GGUF blob exists
+        #[arg(long)]
+        no_embedded: bool,
+        /// Preview the constructed prompt without executing
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -482,6 +531,76 @@ pub(crate) enum TokenAction {
     },
     /// List registered agents
     List,
+}
+
+#[derive(Subcommand)]
+pub(crate) enum McpAction {
+    /// Start the MCP gateway server
+    Serve {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+        /// Disable system tray icon
+        #[arg(long)]
+        no_tray: bool,
+        /// Enable anonymous access (dev only — do not use in production)
+        #[arg(long)]
+        dev_mode: bool,
+    },
+    /// Run as a stdio MCP server (for Claude Desktop, Cursor, etc.)
+    Stdio {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum FlowAction {
+    /// Execute a flow YAML file
+    Run {
+        /// Path to the flow YAML file
+        file: String,
+        /// Prompt / input for the flow
+        #[arg(short, long, default_value = "")]
+        prompt: String,
+        /// navra endpoint URL
+        #[arg(short, long, default_value = "http://127.0.0.1:9315/mcp")]
+        endpoint: String,
+        /// Auth token (reads from MCPD_TOKEN env if not set)
+        #[arg(short, long)]
+        token: Option<String>,
+        /// Model to use
+        #[arg(short, long)]
+        model: Option<String>,
+    },
+    /// List available flows from configured directories and agent instances
+    List {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
+    /// Manage flow triggers (cron, webhook, file-watch)
+    Trigger {
+        #[command(subcommand)]
+        action: TriggerAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum TriggerAction {
+    /// Start the trigger engine (loads triggers from config and agent instances)
+    Start {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
+    /// List configured triggers from config and agent instances
+    List {
+        /// Path to config file
+        #[arg(short, long)]
+        config: Option<String>,
+    },
 }
 
 #[cfg(test)]
