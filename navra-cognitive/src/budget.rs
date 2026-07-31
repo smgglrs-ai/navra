@@ -197,6 +197,69 @@ pub fn compact_history(turns: &[String], keep_recent: usize) -> Vec<String> {
     compacted
 }
 
+/// Flow execution phase for compression timing decisions.
+///
+/// Based on the SelfCompact rubric (arxiv 2606.23525): agents cannot
+/// reliably detect their own context degradation, so the gateway
+/// enforces compression timing based on flow execution state.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FlowPhase {
+    /// Between flow nodes — safe to compact.
+    NodeBoundary,
+    /// Agent is actively reasoning / calling tools within a node.
+    ActiveDerivation,
+    /// A flow node just completed successfully.
+    NodeCompleted,
+    /// Progress has plateaued (repeated tool calls, no new results).
+    TrajectoryConvergence,
+    /// Agent is stuck (errors, retries, no forward progress).
+    Stuck,
+}
+
+impl Default for FlowPhase {
+    fn default() -> Self {
+        Self::NodeBoundary
+    }
+}
+
+/// SelfCompact 4-condition compression rubric.
+///
+/// Decides *when* to compact based on flow state. The existing
+/// `compact_conversation()` and `apply_compaction()` decide *how*.
+///
+/// Rules:
+/// - Fire on sub-task resolution (`NodeCompleted`, `NodeBoundary`)
+/// - Fire on trajectory convergence (repeated tool patterns)
+/// - Suppress during active derivation (mid-reasoning)
+/// - Suppress during stuck state (needs intervention, not compression)
+#[derive(Debug, Clone)]
+pub struct CompressionPolicy {
+    pub enabled: bool,
+}
+
+impl Default for CompressionPolicy {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl CompressionPolicy {
+    pub fn should_compact(
+        &self,
+        phase: &FlowPhase,
+        budget: &ContextBudget,
+        current_tokens: u32,
+    ) -> bool {
+        if !self.enabled || !budget.needs_compaction(current_tokens) {
+            return false;
+        }
+        matches!(
+            phase,
+            FlowPhase::NodeCompleted | FlowPhase::NodeBoundary | FlowPhase::TrajectoryConvergence
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,6 +433,61 @@ mod tests {
             recommended_strategy("Claude"),
             CompactionStrategy::KeepLastN(10)
         );
+    }
+
+    #[test]
+    fn policy_fires_on_node_completed() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        assert!(policy.should_compact(&FlowPhase::NodeCompleted, &budget, 9000));
+    }
+
+    #[test]
+    fn policy_fires_on_node_boundary() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        assert!(policy.should_compact(&FlowPhase::NodeBoundary, &budget, 9000));
+    }
+
+    #[test]
+    fn policy_fires_on_convergence() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        assert!(policy.should_compact(&FlowPhase::TrajectoryConvergence, &budget, 9000));
+    }
+
+    #[test]
+    fn policy_suppresses_active_derivation() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        assert!(!policy.should_compact(&FlowPhase::ActiveDerivation, &budget, 9000));
+    }
+
+    #[test]
+    fn policy_suppresses_stuck() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        assert!(!policy.should_compact(&FlowPhase::Stuck, &budget, 9000));
+    }
+
+    #[test]
+    fn policy_respects_budget_threshold() {
+        let policy = CompressionPolicy { enabled: true };
+        let budget = ContextBudget::new(10000);
+        // Under 80% threshold — should not compact even at node boundary
+        assert!(!policy.should_compact(&FlowPhase::NodeCompleted, &budget, 5000));
+    }
+
+    #[test]
+    fn policy_disabled_never_compacts() {
+        let policy = CompressionPolicy { enabled: false };
+        let budget = ContextBudget::new(10000);
+        assert!(!policy.should_compact(&FlowPhase::NodeCompleted, &budget, 9000));
+    }
+
+    #[test]
+    fn flow_phase_default_is_boundary() {
+        assert_eq!(FlowPhase::default(), FlowPhase::NodeBoundary);
     }
 }
 
