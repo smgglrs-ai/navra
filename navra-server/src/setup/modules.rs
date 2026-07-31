@@ -262,13 +262,24 @@ pub(crate) async fn wire_modules(
         let discovered =
             discover::discover_all_with_timeout(&cfg.discover, discovery_timeout).await;
         for endpoint in &discovered {
+            let protocols: Vec<&str> = endpoint.protocols.iter().map(|p| p.as_str()).collect();
             tracing::info!(
                 domain = %endpoint.domain,
                 url = %endpoint.url,
+                source = ?endpoint.source,
+                protocols = ?protocols,
                 description = ?endpoint.description,
                 auth = ?endpoint.auth,
-                "Discovered MCP endpoint"
+                "Discovered endpoint"
             );
+            if !endpoint.supports_mcp() {
+                tracing::debug!(
+                    domain = %endpoint.domain,
+                    url = %endpoint.url,
+                    "Skipping non-MCP endpoint (A2A support pending)"
+                );
+                continue;
+            }
             let transport =
                 rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
             match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
