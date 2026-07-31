@@ -1,10 +1,14 @@
+# Deprecated: use navra.target instead, which starts navra-mcp, navra-model,
+# and navra-triggers as separate services.
+# This unit is kept for backward compatibility with existing installations.
+
 [Unit]
-Description=navra — Composable MCP Server
+Description=navra MCP Gateway (legacy)
 After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/navra serve --no-tray
+ExecStart=%h/.cargo/bin/navra mcp serve --no-tray
 Restart=on-failure
 RestartSec=5
 Environment=ORT_LIB_PATH=/usr/lib64

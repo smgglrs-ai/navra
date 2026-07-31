@@ -135,23 +135,37 @@ pub(crate) async fn query_status(addr: &str) -> anyhow::Result<()> {
 }
 
 /// Install systemd user units for navra.
+/// All systemd unit files shipped with navra.
+const SYSTEMD_UNITS: &[(&str, &str)] = &[
+    ("navra.target", include_str!("../systemd/navra.target")),
+    (
+        "navra-mcp.service",
+        include_str!("../systemd/navra-mcp.service"),
+    ),
+    (
+        "navra-model.service",
+        include_str!("../systemd/navra-model.service"),
+    ),
+    (
+        "navra-triggers.service",
+        include_str!("../systemd/navra-triggers.service"),
+    ),
+    ("navra.socket", include_str!("../systemd/navra.socket")),
+    // Legacy unit kept for backward compatibility
+    ("navra.service", include_str!("../systemd/navra.service")),
+];
+
 pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
     let unit_dir = dirs::config_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
         .join("systemd/user");
     std::fs::create_dir_all(&unit_dir)?;
 
-    let service_content = include_str!("../systemd/navra.service");
-    let socket_content = include_str!("../systemd/navra.socket");
-
-    let service_path = unit_dir.join("navra.service");
-    let socket_path = unit_dir.join("navra.socket");
-
-    std::fs::write(&service_path, service_content)?;
-    println!("Installed {}", service_path.display());
-
-    std::fs::write(&socket_path, socket_content)?;
-    println!("Installed {}", socket_path.display());
+    for (name, content) in SYSTEMD_UNITS {
+        let path = unit_dir.join(name);
+        std::fs::write(&path, content)?;
+        println!("Installed {}", path.display());
+    }
 
     // Reload systemd and enable
     let reload = std::process::Command::new("systemctl")
@@ -164,43 +178,59 @@ pub(crate) fn install_systemd_units() -> anyhow::Result<()> {
     }
 
     let enable = std::process::Command::new("systemctl")
-        .args(["--user", "enable", "navra.service", "navra.socket"])
+        .args([
+            "--user",
+            "enable",
+            "navra.target",
+            "navra-mcp.service",
+            "navra.socket",
+        ])
         .status();
     if let Ok(status) = enable
         && status.success()
     {
-        println!("Enabled navra.service and navra.socket");
+        println!("Enabled navra.target, navra-mcp.service, navra.socket");
     }
 
-    println!("\nTo start now:  systemctl --user start navra.service");
-    println!("To check logs: journalctl --user -u navra.service -f");
+    println!("\nTo start all services: systemctl --user start navra.target");
+    println!("To start gateway only: systemctl --user start navra-mcp.service");
+    println!("To check logs:         journalctl --user -u navra-mcp -u navra-model -f");
     Ok(())
 }
+
+const ALL_UNIT_NAMES: &[&str] = &[
+    "navra.target",
+    "navra-mcp.service",
+    "navra-model.service",
+    "navra-triggers.service",
+    "navra.service",
+    "navra.socket",
+];
 
 /// Uninstall systemd user units for navra.
 pub(crate) fn uninstall_systemd_units() -> anyhow::Result<()> {
     // Stop and disable first
     let _ = std::process::Command::new("systemctl")
-        .args(["--user", "stop", "navra.service", "navra.socket"])
+        .args(["--user", "stop", "navra.target"])
         .status();
     let _ = std::process::Command::new("systemctl")
-        .args(["--user", "disable", "navra.service", "navra.socket"])
+        .args({
+            let mut args = vec!["--user", "disable"];
+            args.extend(ALL_UNIT_NAMES);
+            args
+        })
         .status();
 
     let unit_dir = dirs::config_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
         .join("systemd/user");
 
-    let service_path = unit_dir.join("navra.service");
-    let socket_path = unit_dir.join("navra.socket");
-
-    if service_path.exists() {
-        std::fs::remove_file(&service_path)?;
-        println!("Removed {}", service_path.display());
-    }
-    if socket_path.exists() {
-        std::fs::remove_file(&socket_path)?;
-        println!("Removed {}", socket_path.display());
+    for name in ALL_UNIT_NAMES {
+        let path = unit_dir.join(name);
+        if path.exists() {
+            std::fs::remove_file(&path)?;
+            println!("Removed {}", path.display());
+        }
     }
 
     let _ = std::process::Command::new("systemctl")
