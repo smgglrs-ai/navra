@@ -39,6 +39,7 @@ pub mod mesh;
 pub mod mesh_tools;
 mod recovery;
 pub mod sdb;
+pub mod self_harness;
 mod task;
 mod validation;
 pub mod verification;
