@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 164 completed items
+# 167 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -952,6 +952,19 @@ items:
     effort: 1-3d
     progress: 100
 
+  - id: "NAVRA-152"
+    title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
+    status: done
+    priority: high
+    effort: 5-10d
+    progress: CLI subcommands implemented (agent-dojo, mcp-tox, report).
+15 tests passing. AgentDojo connects to running instance via HTTP/JSON-RPC.
+MCPTox uses real Rust ToolScanner. Report generates markdown comparison tables.
+Step 6 complete: docs/content/docs/evaluations/eval-cli.md added with
+full CLI reference, flag tables, output format, and cross-links to
+IFC benchmark, ASSERT, and ADR-Bench docs.
+
+
   - id: "NAVRA-153"
     title: "Integration guides (Claude Code, Goose, OpenAI clients)"
     status: done
@@ -1031,6 +1044,21 @@ items:
     status: done
     priority: high
     effort: 2-3d
+
+  - id: "NAVRA-172"
+    title: "Add WIMSE/SPIFFE identity support alongside DID:key"
+    status: done
+    priority: high
+    effort: 5-8d
+    feeds: ['NAVRA-147']
+
+  - id: "NAVRA-175"
+    title: "Implement Uber-style actor-chain JWT delegation tracking"
+    status: done
+    priority: medium
+    effort: 3-5d
+    depends_on: ['NAVRA-172']
+    feeds: ['NAVRA-147']
 
   - id: "NAVRA-176"
     title: "DMN decision tables as policy rules (dsntk integration)"

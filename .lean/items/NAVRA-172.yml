@@ -1,6 +1,6 @@
 id: NAVRA-172
 title: "Add WIMSE/SPIFFE identity support alongside DID:key"
-status: planned
+status: done
 priority: high
 effort: 5-8d
 depends_on: []

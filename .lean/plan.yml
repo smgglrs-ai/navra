@@ -1,21 +1,10 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 20 active items
+# 17 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
 
 items:
-  - id: "NAVRA-152"
-    title: "navra eval CLI (AgentDojo + MCPTox adversarial evals)"
-    status: in_progress
-    priority: high
-    effort: 5-10d
-    progress: CLI subcommands implemented (agent-dojo, mcp-tox, report).
-15 tests passing. AgentDojo connects to running instance via HTTP/JSON-RPC.
-MCPTox uses real Rust ToolScanner. Report generates markdown comparison tables.
-Remaining: docs site documentation (step 6).
-
-
   - id: "NAVRA-180"
     title: "IFC taint visibility at OpenShell egress proxy"
     status: blocked
@@ -42,13 +31,6 @@ Remaining: docs site documentation (step 6).
     status: planned
     priority: high
     effort: 5-8d
-
-  - id: "NAVRA-172"
-    title: "Add WIMSE/SPIFFE identity support alongside DID:key"
-    status: planned
-    priority: high
-    effort: 5-8d
-    feeds: ['NAVRA-147']
 
   - id: "NAVRA-173"
     title: "Implement DNS-AID integration for agent discovery"
@@ -81,14 +63,6 @@ Remaining: docs site documentation (step 6).
     priority: medium
     effort: 3-5d
     depends_on: ['NAVRA-151']
-
-  - id: "NAVRA-175"
-    title: "Implement Uber-style actor-chain JWT delegation tracking"
-    status: planned
-    priority: medium
-    effort: 3-5d
-    depends_on: ['NAVRA-172']
-    feeds: ['NAVRA-147']
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"
