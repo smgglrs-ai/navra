@@ -255,7 +255,7 @@ impl ModelRuntime for KubernetesRuntime {
             Ok(Endpoint {
                 url,
                 id: name,
-                backend: RuntimeBackend::new(self.engine.clone(), Isolation::Kubernetes),
+                backend: RuntimeBackend::new(self.engine, Isolation::Kubernetes),
             })
         })
     }
@@ -302,7 +302,7 @@ impl ModelRuntime for KubernetesRuntime {
     }
 
     fn backend(&self) -> RuntimeBackend {
-        RuntimeBackend::new(self.engine.clone(), Isolation::Kubernetes)
+        RuntimeBackend::new(self.engine, Isolation::Kubernetes)
     }
 }
 

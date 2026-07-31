@@ -1,0 +1,6 @@
+---
+source: navra-tui/src/widgets/footer.rs
+assertion_line: 92
+expression: out
+---
+ Filter: agent-x_   Esc/Enter: apply

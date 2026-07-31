@@ -1,0 +1,20 @@
+---
+source: navra-tui/src/widgets/safety.rs
+assertion_line: 156
+expression: out
+---
+┌ PII Safety Metrics ──────────────────────────────────────┐
+│Total scans:  50                                          │
+│PII detected: 3                                           │
+│PII redacted: 3                                           │
+│PII blocked:  0                                           │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+┌ By Category ─────────────────────────────────────────────┐
+│Category                 Count                            │
+│ssn                      3                                │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+└──────────────────────────────────────────────────────────┘

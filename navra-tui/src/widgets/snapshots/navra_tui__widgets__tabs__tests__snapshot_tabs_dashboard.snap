@@ -1,0 +1,6 @@
+---
+source: navra-tui/src/widgets/tabs.rs
+assertion_line: 76
+expression: out
+---
+ 1 Dashboard  2 Agents  3 Audit  4 Models  5 Flows  6 Safety

@@ -281,6 +281,7 @@ async fn handle_status(ctx: CallContext, #[state] state: Arc<VoiceState>) -> Cal
 
 // --- Permission check ---
 
+#[allow(clippy::result_large_err)]
 fn check_perm(
     state: &VoiceState,
     ctx: &CallContext,

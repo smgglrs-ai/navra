@@ -90,7 +90,10 @@ fn init_tracing() -> anyhow::Result<()> {
                         .build(),
                 )
                 .build();
-            let otel_layer = tracing_opentelemetry::layer().with_tracer(provider.tracer("navra"));
+            use opentelemetry::trace::TracerProvider as _;
+            let tracer = provider.tracer("navra");
+            let otel_layer = tracing_opentelemetry::layer()
+                .with_tracer(tracer);
             registry.with(otel_layer).init();
             return Ok(());
         }
