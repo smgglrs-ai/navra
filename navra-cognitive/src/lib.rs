@@ -28,8 +28,8 @@ mod types;
 mod weaver;
 
 pub use budget::{
-    CompactionStrategy, ContextBudget, apply_compaction, compact_history, estimate_tokens,
-    recommended_strategy, truncate_to_budget,
+    CompactionStrategy, CompressionPolicy, ContextBudget, FlowPhase, apply_compaction,
+    compact_history, estimate_tokens, recommended_strategy, truncate_to_budget,
 };
 pub use error::CognitiveError;
 pub use evolution::{TraitStore, TraitVector};
