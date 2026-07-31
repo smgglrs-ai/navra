@@ -77,6 +77,10 @@ pub struct Flow {
     pub(crate) signal_handles: HashMap<String, SignalHandle>,
     pub(crate) mailbox_registry: Option<MailboxRegistry>,
     pub(crate) blackboard: Option<Blackboard>,
+    /// Shared flow phase handle for SelfCompact compression policy.
+    /// When set, the flow engine updates the phase at node boundaries
+    /// so the agent tool loop can time compaction correctly.
+    pub(crate) flow_phase: Option<std::sync::Arc<std::sync::Mutex<navra_cognitive::FlowPhase>>>,
 }
 
 impl Flow {
@@ -196,6 +200,7 @@ impl Flow {
             signal_handles,
             mailbox_registry,
             blackboard,
+            flow_phase: None,
         })
     }
 
@@ -213,6 +218,13 @@ impl Flow {
         let mut total_prompt = 0u32;
         let mut total_completion = 0u32;
         let mut path = Vec::new();
+        let phase_handle = self.flow_phase.clone();
+
+        let update_phase = |phase: navra_cognitive::FlowPhase| {
+            if let Some(ref handle) = phase_handle {
+                *handle.lock().unwrap() = phase;
+            }
+        };
 
         for hop in 0..self.max_hops {
             path.push(current_node_id.clone());
@@ -229,6 +241,8 @@ impl Flow {
                 "Running flow node"
             );
 
+            update_phase(navra_cognitive::FlowPhase::ActiveDerivation);
+
             let result = run_node_loop(
                 node,
                 &current_node_id,
@@ -236,34 +250,45 @@ impl Flow {
                 self.mailbox_registry.as_ref(),
                 self.blackboard.as_ref(),
             )
-            .await?;
+            .await;
 
-            total_prompt += result.prompt_tokens;
-            total_completion += result.completion_tokens;
-            taint.absorb(result.taint);
+            match result {
+                Ok(result) => {
+                    update_phase(navra_cognitive::FlowPhase::NodeCompleted);
 
-            match result.outcome {
-                NodeOutcome::Stop(response) => {
-                    return Ok(FlowResult {
-                        response,
-                        hops: hop + 1,
-                        prompt_tokens: total_prompt,
-                        completion_tokens: total_completion,
-                        taint: taint.level(),
-                        path,
-                    });
-                }
-                NodeOutcome::Handoff { target, task } => {
-                    if !self.nodes.contains_key(&target) {
-                        return Err(FlowError::UnknownTarget(target));
+                    total_prompt += result.prompt_tokens;
+                    total_completion += result.completion_tokens;
+                    taint.absorb(result.taint);
+
+                    match result.outcome {
+                        NodeOutcome::Stop(response) => {
+                            return Ok(FlowResult {
+                                response,
+                                hops: hop + 1,
+                                prompt_tokens: total_prompt,
+                                completion_tokens: total_completion,
+                                taint: taint.level(),
+                                path,
+                            });
+                        }
+                        NodeOutcome::Handoff { target, task } => {
+                            if !self.nodes.contains_key(&target) {
+                                return Err(FlowError::UnknownTarget(target));
+                            }
+                            update_phase(navra_cognitive::FlowPhase::NodeBoundary);
+                            tracing::info!(
+                                from = %current_node_id,
+                                to = %target,
+                                "Handoff"
+                            );
+                            current_node_id = target;
+                            current_prompt = task;
+                        }
                     }
-                    tracing::info!(
-                        from = %current_node_id,
-                        to = %target,
-                        "Handoff"
-                    );
-                    current_node_id = target;
-                    current_prompt = task;
+                }
+                Err(e) => {
+                    update_phase(navra_cognitive::FlowPhase::Stuck);
+                    return Err(e);
                 }
             }
         }
@@ -275,6 +300,15 @@ impl Flow {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    /// Set the shared flow phase handle for SelfCompact compression.
+    pub fn set_flow_phase_handle(
+        &mut self,
+        handle: std::sync::Arc<std::sync::Mutex<navra_cognitive::FlowPhase>>,
+    ) {
+        self.flow_phase = Some(handle);
+    }
+
 }
 
 /// Run a single node's agent loop with handoff and mesh tool interception.
