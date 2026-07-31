@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 167 completed items
+# 169 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1051,6 +1051,18 @@ IFC benchmark, ASSERT, and ADR-Bench docs.
     priority: high
     effort: 5-8d
     feeds: ['NAVRA-147']
+
+  - id: "NAVRA-173"
+    title: "Implement DNS-AID integration for agent discovery"
+    status: done
+    priority: high
+    effort: 3-5d
+
+  - id: "NAVRA-174"
+    title: "Implement ARD v0.9 ai-catalog.json for MCP server registry"
+    status: done
+    priority: high
+    effort: 3-5d
 
   - id: "NAVRA-175"
     title: "Implement Uber-style actor-chain JWT delegation tracking"

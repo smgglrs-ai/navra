@@ -1,6 +1,6 @@
 id: NAVRA-173
 title: "Implement DNS-AID integration for agent discovery"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 depends_on: []

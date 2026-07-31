@@ -1,6 +1,6 @@
 id: NAVRA-174
 title: "Implement ARD v0.9 ai-catalog.json for MCP server registry"
-status: planned
+status: done
 priority: high
 effort: 3-5d
 depends_on: []
