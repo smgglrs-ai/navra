@@ -1,6 +1,6 @@
 id: NAVRA-171
 title: "Self-Harness out-of-band flow improvement via blackbox traces"
-status: planned
+status: done
 priority: high
 effort: 5-8d
 depends_on: []
