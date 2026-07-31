@@ -345,7 +345,7 @@ mod tests {
     fn build_request_llamacpp_cache_type() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test.gguf"),
-            cache_type: Some(crate::KvCacheType::Q8_0),
+            cache_type: Some(crate::KvCacheConfig::symmetric(crate::KvCacheType::Q8_0)),
             ..ServeConfig::default()
         };
 
@@ -360,7 +360,7 @@ mod tests {
     fn build_request_vllm_cache_type() {
         let config = ServeConfig {
             model_path: PathBuf::from("/models/test"),
-            cache_type: Some(crate::KvCacheType::Q4_0),
+            cache_type: Some(crate::KvCacheConfig::symmetric(crate::KvCacheType::Q4_0)),
             ..ServeConfig::default()
         };
 
