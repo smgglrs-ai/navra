@@ -16,6 +16,7 @@ mod cmd_misc;
 mod cmd_model;
 mod cmd_pii;
 mod cmd_run;
+mod cmd_self_harness;
 mod cmd_wrap;
 mod eval;
 mod config;
@@ -491,6 +492,14 @@ async fn main() -> anyhow::Result<()> {
             verify,
         } => {
             cmd_misc::audit_command(limit, detail, agent, tool, verify)?;
+        }
+        Commands::SelfHarness {
+            flow,
+            json,
+            retry_threshold,
+            slow_tool_ms,
+        } => {
+            cmd_self_harness::self_harness_command(flow, json, retry_threshold, slow_tool_ms)?;
         }
         Commands::Policy { action } => match action {
             cli::PolicyAction::Suggest {

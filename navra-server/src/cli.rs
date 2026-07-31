@@ -131,6 +131,21 @@ pub(crate) enum Commands {
         #[arg(long)]
         verify: bool,
     },
+    /// Analyze flow execution traces for weaknesses and propose improvements
+    SelfHarness {
+        /// Flow IDs to analyze (default: auto-discover recent flows)
+        #[arg(long)]
+        flow: Vec<String>,
+        /// Output report as JSON
+        #[arg(long)]
+        json: bool,
+        /// Back-edge iteration count considered excessive (default: 3)
+        #[arg(long, default_value = "3")]
+        retry_threshold: u32,
+        /// Tool call duration (ms) considered slow (default: 10000)
+        #[arg(long, default_value = "10000")]
+        slow_tool_ms: u64,
+    },
     /// Run an agent task against a running navra instance
     Run {
         /// Prompt for the agent (or instance/workflow for named workflows)
