@@ -148,9 +148,9 @@ mod tests {
     #[test]
     fn single_element() {
         let wht = WalshHadamard::new(1);
-        let input = vec![3.14];
+        let input = vec![2.75];
         let transformed = wht.forward(&input);
-        assert!((transformed[0] - 3.14).abs() < 1e-5);
+        assert!((transformed[0] - 2.75).abs() < 1e-5);
     }
 
     #[test]
