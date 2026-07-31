@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 171 completed items
+# 172 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1051,6 +1051,13 @@ IFC benchmark, ASSERT, and ADR-Bench docs.
     status: done
     priority: high
     effort: 2-3d
+
+  - id: "NAVRA-170"
+    title: "SelfCompact rubric as flow-driven compression policy"
+    status: done
+    priority: high
+    effort: 3-5d
+    feeds: ['NAVRA-092']
 
   - id: "NAVRA-171"
     title: "Self-Harness out-of-band flow improvement via blackbox traces"
