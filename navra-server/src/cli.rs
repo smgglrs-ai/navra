@@ -785,4 +785,109 @@ mod tests {
             _ => panic!("Expected Eval Report command"),
         }
     }
+
+    #[test]
+    fn cli_mcp_serve() {
+        let cli = Cli::try_parse_from(["navra", "mcp", "serve", "--no-tray"]).unwrap();
+        match cli.command {
+            Commands::Mcp {
+                action: McpAction::Serve { no_tray, dev_mode, .. },
+            } => {
+                assert!(no_tray);
+                assert!(!dev_mode);
+            }
+            _ => panic!("Expected Mcp Serve command"),
+        }
+    }
+
+    #[test]
+    fn cli_mcp_stdio() {
+        let cli = Cli::try_parse_from(["navra", "mcp", "stdio"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Mcp {
+                action: McpAction::Stdio { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn cli_agent_run() {
+        let cli = Cli::try_parse_from(["navra", "agent", "run", "hello world"]).unwrap();
+        match cli.command {
+            Commands::Agent {
+                action: AgentAction::Run { prompt, persona, max_iterations, .. },
+            } => {
+                assert_eq!(prompt, "hello world");
+                assert_eq!(persona, "leader");
+                assert_eq!(max_iterations, 200);
+            }
+            _ => panic!("Expected Agent Run command"),
+        }
+    }
+
+    #[test]
+    fn cli_flow_run() {
+        let cli =
+            Cli::try_parse_from(["navra", "flow", "run", "review.yaml", "-p", "check this"])
+                .unwrap();
+        match cli.command {
+            Commands::Flow {
+                action: FlowAction::Run { file, prompt, .. },
+            } => {
+                assert_eq!(file, "review.yaml");
+                assert_eq!(prompt, "check this");
+            }
+            _ => panic!("Expected Flow Run command"),
+        }
+    }
+
+    #[test]
+    fn cli_flow_list() {
+        let cli = Cli::try_parse_from(["navra", "flow", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Flow {
+                action: FlowAction::List { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn cli_flow_trigger_list() {
+        let cli = Cli::try_parse_from(["navra", "flow", "trigger", "list"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Flow {
+                action: FlowAction::Trigger {
+                    action: TriggerAction::List { .. }
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn cli_flow_trigger_start() {
+        let cli = Cli::try_parse_from(["navra", "flow", "trigger", "start"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Flow {
+                action: FlowAction::Trigger {
+                    action: TriggerAction::Start { .. }
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn cli_deprecated_serve_still_parses() {
+        let cli = Cli::try_parse_from(["navra", "serve", "--no-tray"]).unwrap();
+        assert!(matches!(cli.command, Commands::Serve { .. }));
+    }
+
+    #[test]
+    fn cli_deprecated_run_still_parses() {
+        let cli = Cli::try_parse_from(["navra", "run", "do something"]).unwrap();
+        assert!(matches!(cli.command, Commands::Run { .. }));
+    }
 }
