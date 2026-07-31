@@ -85,6 +85,7 @@ export interface BlackboxEntry {
   outcome: string;
   duration_us: number;
   ifc_label: string;
+  act_chain?: string;
 }
 
 export interface AuditResponse {

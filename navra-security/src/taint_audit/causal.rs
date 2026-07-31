@@ -91,6 +91,7 @@ mod tests {
             hash: String::new(),
             obo_sub: None,
             trace_id: String::new(),
+            act_chain: None,
         }
     }
 

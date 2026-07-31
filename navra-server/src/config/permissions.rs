@@ -139,6 +139,25 @@ pub struct PermissionSet {
     /// Name of the DMN decision to evaluate (must match a `<decision name="...">` in the DMN file).
     #[serde(default)]
     pub dmn_decision: Option<String>,
+    /// Actor-chain delegation policy. When set, the gateway enforces
+    /// chain depth limits and optionally requires a WIMSE-identified root.
+    #[serde(default)]
+    pub chain_policy: Option<ChainPolicy>,
+}
+
+/// Policy for actor-chain delegation enforcement.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ChainPolicy {
+    /// Maximum delegation chain depth. Default: 5.
+    #[serde(default = "default_max_chain_depth")]
+    pub max_depth: u8,
+    /// Require the chain to originate from a WIMSE-identified agent.
+    #[serde(default)]
+    pub require_wimse_root: bool,
+}
+
+fn default_max_chain_depth() -> u8 {
+    5
 }
 
 /// A domain rule entry in config.
@@ -236,6 +255,7 @@ impl Default for PermissionSet {
             max_context: None,
             dmn_policies: None,
             dmn_decision: None,
+            chain_policy: None,
         }
     }
 }

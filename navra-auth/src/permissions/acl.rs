@@ -789,6 +789,7 @@ mod tests {
             expires_at: u64::MAX,
             obo_sub: None,
             sandbox: None,
+            act_chain: Vec::new(),
         };
         let result = engine.check_with_capabilities(
             "cap:ring2",
@@ -813,6 +814,7 @@ mod tests {
             expires_at: u64::MAX,
             obo_sub: None,
             sandbox: None,
+            act_chain: Vec::new(),
         };
         let result = engine.check_with_capabilities(
             "cap:ring2",

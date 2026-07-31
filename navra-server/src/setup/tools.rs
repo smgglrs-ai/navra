@@ -252,6 +252,7 @@ async fn handle_cap_delegate(
         obo: None,
         sandbox: None,
         aud: None,
+        act_chain: Vec::new(),
     };
 
     child_payload.parent = Some(parent_payload.nonce);
