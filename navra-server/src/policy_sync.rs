@@ -35,6 +35,7 @@ impl ToolEndpointRegistry {
     }
 
     /// Get the required domains for a tool, if registered.
+    #[allow(dead_code)] // pending NAVRA-180
     pub fn domains_for(&self, tool_name: &str) -> Option<HashSet<String>> {
         let map = self.tool_domains.read().unwrap_or_else(|e| e.into_inner());
         map.get(tool_name).cloned()
@@ -43,6 +44,7 @@ impl ToolEndpointRegistry {
     /// Return tool names whose required domains are NOT covered by
     /// the given allowed set. A tool is blocked if any of its required
     /// domains is not matched by the allowed set (with wildcard support).
+    #[allow(dead_code)] // pending NAVRA-180
     pub fn blocked_tools(&self, allowed_domains: &[String]) -> HashSet<String> {
         let map = self.tool_domains.read().unwrap_or_else(|e| e.into_inner());
         let mut blocked = HashSet::new();
@@ -180,6 +182,7 @@ impl PolicySyncHandle {
     }
 
     /// Get the current set of blocked tools.
+    #[allow(dead_code)] // pending NAVRA-180
     pub fn blocked(&self) -> HashSet<String> {
         self.blocked.read().unwrap_or_else(|e| e.into_inner()).clone()
     }

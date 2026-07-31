@@ -71,6 +71,7 @@ pub struct DnsAidRecord {
     pub realm: Option<String>,
 }
 
+#[allow(dead_code)]
 impl DnsAidRecord {
     pub fn supports_mcp(&self) -> bool {
         self.protocols.iter().any(|p| *p == AgentProtocol::Mcp)
@@ -183,6 +184,7 @@ impl DiscoveredEndpoint {
     }
 
     /// Whether this endpoint advertises A2A protocol support.
+    #[allow(dead_code)]
     pub fn supports_a2a(&self) -> bool {
         self.protocols.iter().any(|p| *p == AgentProtocol::A2a)
     }
