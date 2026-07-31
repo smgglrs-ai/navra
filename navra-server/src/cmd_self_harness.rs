@@ -108,7 +108,7 @@ pub(crate) fn self_harness_command(
     Ok(())
 }
 
-fn discover_flow_ids(log: &EventLog) -> anyhow::Result<Vec<&'static str>> {
+fn discover_flow_ids(_log: &EventLog) -> anyhow::Result<Vec<&'static str>> {
     let db_path = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("navra")
