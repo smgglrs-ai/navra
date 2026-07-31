@@ -1,0 +1,6 @@
+[Unit]
+Description=navra Services
+Wants=navra-mcp.service navra-model.service navra-triggers.service
+
+[Install]
+WantedBy=default.target

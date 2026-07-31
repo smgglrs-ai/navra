@@ -1,14 +1,10 @@
-# Deprecated: use navra.target instead, which starts navra-mcp, navra-model,
-# and navra-triggers as separate services.
-# This unit is kept for backward compatibility with existing installations.
-
 [Unit]
-Description=navra MCP Gateway (legacy)
-After=default.target
+Description=navra Model Server
+PartOf=navra.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/navra mcp serve --no-tray
+ExecStart=%h/.cargo/bin/navra model serve --auto
 Restart=on-failure
 RestartSec=5
 Environment=ORT_LIB_PATH=/usr/lib64
@@ -16,14 +12,13 @@ Environment=ORT_PREFER_DYNAMIC_LINK=1
 
 # Paths
 RuntimeDirectory=navra
-ReadWritePaths=%h/.local/share/navra %h/.config/navra
+ReadWritePaths=%h/.local/share/navra %h/.config/navra %h/.cache/navra
 
 # Hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=yes
-PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectControlGroups=yes
 RestrictRealtime=yes
@@ -33,4 +28,4 @@ SystemCallFilter=@system-service
 SystemCallArchitectures=native
 
 [Install]
-WantedBy=default.target
+WantedBy=navra.target

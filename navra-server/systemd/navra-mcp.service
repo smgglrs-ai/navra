@@ -1,10 +1,7 @@
-# Deprecated: use navra.target instead, which starts navra-mcp, navra-model,
-# and navra-triggers as separate services.
-# This unit is kept for backward compatibility with existing installations.
-
 [Unit]
-Description=navra MCP Gateway (legacy)
-After=default.target
+Description=navra MCP Gateway
+After=navra-model.service
+PartOf=navra.target
 
 [Service]
 Type=simple
@@ -33,4 +30,4 @@ SystemCallFilter=@system-service
 SystemCallArchitectures=native
 
 [Install]
-WantedBy=default.target
+WantedBy=navra.target
