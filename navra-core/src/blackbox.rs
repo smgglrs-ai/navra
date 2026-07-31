@@ -34,6 +34,9 @@ pub struct BlackboxEntry {
     pub obo_sub: Option<String>,
     /// W3C trace ID for cross-system correlation (OpenShell OCSF, OTel).
     pub trace_id: String,
+    /// Actor delegation chain — serialized JSON of the chain entries.
+    /// When present, shows the full delegation lineage for this call.
+    pub act_chain: Option<String>,
 }
 
 /// Chain state: sequence counter and previous entry hash.
@@ -73,7 +76,8 @@ impl Blackbox {
                 prev_hash     TEXT NOT NULL,
                 hash          TEXT NOT NULL,
                 obo_sub       TEXT,
-                trace_id      TEXT NOT NULL DEFAULT ''
+                trace_id      TEXT NOT NULL DEFAULT '',
+                act_chain     TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_bb_agent ON blackbox(agent_name);
             CREATE INDEX IF NOT EXISTS idx_bb_tool ON blackbox(tool_name);
@@ -87,6 +91,7 @@ impl Blackbox {
         for stmt in [
             "ALTER TABLE blackbox ADD COLUMN obo_sub TEXT;",
             "ALTER TABLE blackbox ADD COLUMN trace_id TEXT NOT NULL DEFAULT '';",
+            "ALTER TABLE blackbox ADD COLUMN act_chain TEXT;",
         ] {
             match db.execute_batch(stmt) {
                 Ok(()) => {}
@@ -174,6 +179,7 @@ impl Blackbox {
             ifc_label,
             None,
             trace_id,
+            None,
         );
     }
 
@@ -192,6 +198,7 @@ impl Blackbox {
         ifc_label: &str,
         obo_sub: Option<&str>,
         trace_id: &str,
+        act_chain: Option<&str>,
     ) {
         let mut chain = self.chain.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -222,12 +229,12 @@ impl Blackbox {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         if let Err(e) = db.execute(
             "INSERT INTO blackbox (seq, timestamp_ms, agent_name, agent_perms, session_id, \
-             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub, trace_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             tool_name, tool_args, tool_result, outcome, duration_us, ifc_label, prev_hash, hash, obo_sub, trace_id, act_chain) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 chain.seq as i64, now, agent_name, agent_permissions, session_id,
                 tool_name, args_trunc, result_trunc, outcome, duration_us as i64,
-                ifc_label, chain.prev_hash, hash, obo_sub, trace_id,
+                ifc_label, chain.prev_hash, hash, obo_sub, trace_id, act_chain,
             ],
         ) {
             tracing::error!(error = %e, seq = chain.seq, "blackbox insert failed");
@@ -291,7 +298,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash, obo_sub, trace_id \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id, act_chain \
                  FROM blackbox ORDER BY seq DESC LIMIT ?1",
             )
             .unwrap();
@@ -313,6 +320,7 @@ impl Blackbox {
                 hash: row.get(12)?,
                 obo_sub: row.get(13)?,
                 trace_id: row.get::<_, String>(14).unwrap_or_default(),
+                act_chain: row.get(15).ok().flatten(),
             })
         })
         .unwrap()
@@ -394,6 +402,7 @@ impl Blackbox {
                     hash: row.get(12)?,
                     obo_sub: row.get(13)?,
                     trace_id: row.get::<_, String>(14).unwrap_or_default(),
+                    act_chain: row.get(15).ok().flatten(),
                 })
             })
             .unwrap()
@@ -410,7 +419,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash, obo_sub, trace_id \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id, act_chain \
                  FROM blackbox WHERE session_id = ? ORDER BY seq ASC",
             )
             .unwrap();
@@ -431,6 +440,7 @@ impl Blackbox {
                 hash: row.get(12)?,
                 obo_sub: row.get(13)?,
                 trace_id: row.get::<_, String>(14).unwrap_or_default(),
+                act_chain: row.get(15).ok().flatten(),
             })
         })
         .unwrap()
@@ -503,7 +513,7 @@ impl Blackbox {
             .prepare(
                 "SELECT seq, timestamp_ms, agent_name, agent_perms, session_id, \
                  tool_name, tool_args, tool_result, outcome, duration_us, \
-                 ifc_label, prev_hash, hash, obo_sub, trace_id \
+                 ifc_label, prev_hash, hash, obo_sub, trace_id, act_chain \
                  FROM blackbox WHERE trace_id = ? ORDER BY seq ASC",
             )
             .unwrap();
@@ -524,6 +534,7 @@ impl Blackbox {
                 hash: row.get(12)?,
                 obo_sub: row.get(13)?,
                 trace_id: row.get::<_, String>(14).unwrap_or_default(),
+                act_chain: row.get(15).ok().flatten(),
             })
         })
         .unwrap()
@@ -899,6 +910,7 @@ mod tests {
             "Trusted:Public",
             Some("alice@example.com"),
             "",
+            None,
         );
 
         let entries = bb.recent(1);
@@ -957,6 +969,7 @@ mod tests {
             "T:P",
             Some("bob@corp.com"),
             "",
+            None,
         );
 
         let entries = bb.recent(10);

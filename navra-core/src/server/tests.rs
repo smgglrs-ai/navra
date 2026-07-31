@@ -904,6 +904,7 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
                 expires_at: u64::MAX,
                 obo_sub: None,
                 sandbox: None,
+                act_chain: Vec::new(),
             }),
             model: None,
             allowed_upstreams: Vec::new(),
@@ -2319,6 +2320,7 @@ fn resource_list_filtered_by_capability_token_globs() {
         expires_at: u64::MAX,
         obo_sub: None,
         sandbox: None,
+        act_chain: Vec::new(),
     });
 
     let server = test_builder().build();

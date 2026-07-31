@@ -66,6 +66,22 @@ pub struct OboIdentity {
     pub auth_time: Option<i64>,
 }
 
+/// Entry in an actor delegation chain (NAVRA-175).
+///
+/// Each entry records an agent that participated in a delegation sequence.
+/// The chain provides full lineage for authorization and audit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ActorChainEntry {
+    /// Agent identity (SPIFFE ID or DID).
+    pub sub: String,
+    /// Unique agent instance identifier.
+    pub agent_id: String,
+    /// When this agent joined the chain (Unix timestamp, seconds).
+    pub iat: u64,
+    /// Permission set at this delegation level.
+    pub permissions: String,
+}
+
 /// Set of capabilities granted by a token.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CapabilitySet {
@@ -116,6 +132,10 @@ pub struct CapabilityPayload {
     /// Prevents token replay across different servers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aud: Option<String>,
+    /// Actor delegation chain: ordered entries recording which agents
+    /// participated in the delegation sequence that produced this token.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub act_chain: Vec<ActorChainEntry>,
 }
 
 /// Resolved capabilities extracted from a verified token.
@@ -133,6 +153,8 @@ pub struct ResolvedCapabilities {
     pub obo_sub: Option<String>,
     /// Sandbox profile from the capability token.
     pub sandbox: Option<super::sandbox_profile::SandboxProfile>,
+    /// Actor delegation chain from the capability token.
+    pub act_chain: Vec<ActorChainEntry>,
 }
 
 /// Revocation list for capability tokens.
@@ -305,6 +327,7 @@ pub fn resolve_capabilities(payload: &CapabilityPayload) -> ResolvedCapabilities
         expires_at: payload.exp,
         obo_sub: payload.obo.as_ref().map(|o| o.sub.clone()),
         sandbox: payload.sandbox.clone(),
+        act_chain: payload.act_chain.clone(),
     }
 }
 
@@ -510,6 +533,36 @@ pub fn validate_delegation(
     Ok(())
 }
 
+/// Validate an actor chain against a chain policy.
+///
+/// Returns `Ok(())` if the chain passes all policy constraints,
+/// or an error describing the violation.
+pub fn validate_chain_policy(
+    act_chain: &[ActorChainEntry],
+    max_depth: u8,
+    require_wimse_root: bool,
+) -> Result<(), CapabilityError> {
+    if act_chain.len() > max_depth as usize {
+        return Err(CapabilityError::DelegationViolation(format!(
+            "actor chain depth {} exceeds maximum {}",
+            act_chain.len(),
+            max_depth
+        )));
+    }
+
+    if require_wimse_root
+        && !act_chain.is_empty()
+        && !act_chain[0].sub.starts_with("spiffe://")
+    {
+        return Err(CapabilityError::DelegationViolation(format!(
+            "chain root '{}' is not a WIMSE/SPIFFE identity",
+            act_chain[0].sub
+        )));
+    }
+
+    Ok(())
+}
+
 // --- CBOR helpers ---
 
 fn cbor_encode(payload: &CapabilityPayload) -> Result<Vec<u8>, CapabilityError> {
@@ -557,6 +610,7 @@ pub fn build_payload(
         obo: None,
         sandbox: None,
         aud: None,
+        act_chain: Vec::new(),
     }
 }
 
@@ -633,6 +687,19 @@ pub fn build_delegated_payload(
         credentials: vec![], // teammates don't inherit credentials
     };
 
+    let mut act_chain = parent.act_chain.clone();
+    act_chain.push(ActorChainEntry {
+        sub: parent.sub.clone(),
+        agent_id: parent.sub.clone(),
+        iat: now,
+        permissions: parent
+            .cap
+            .operations
+            .first()
+            .cloned()
+            .unwrap_or_default(),
+    });
+
     Ok(CapabilityPayload {
         v: 1,
         iss: parent.iss.clone(),
@@ -646,6 +713,7 @@ pub fn build_delegated_payload(
         obo: parent.obo.clone(),
         sandbox: parent.sandbox.clone(),
         aud: parent.aud.clone(),
+        act_chain,
     })
 }
 
@@ -860,6 +928,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -916,6 +985,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -945,6 +1015,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -974,6 +1045,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1003,6 +1075,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         assert!(validate_delegation(&parent, &child, 3).is_ok());
@@ -1031,6 +1104,7 @@ mod tests {
             obo: None,
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1374,6 +1448,7 @@ mod tests {
             obo: Some(test_obo()), // trying to inject obo
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1408,6 +1483,7 @@ mod tests {
             }),
             sandbox: None,
             aud: None,
+            act_chain: Vec::new(),
         };
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
@@ -1556,6 +1632,161 @@ mod tests {
 
         let err = validate_delegation(&parent, &child, 3).unwrap_err();
         assert!(err.to_string().contains("sandbox escalation"));
+    }
+
+    // --- Actor chain tests ---
+
+    #[test]
+    fn act_chain_empty_on_root_token() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        assert!(payload.act_chain.is_empty());
+    }
+
+    #[test]
+    fn act_chain_extended_on_delegation() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:agent:child",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        assert_eq!(child.act_chain.len(), 1);
+        assert_eq!(child.act_chain[0].sub, parent.sub);
+    }
+
+    #[test]
+    fn act_chain_grows_through_multi_hop() {
+        let signer = Ed25519Signer::generate();
+        let root = test_payload(&signer);
+
+        let child1 = build_delegated_payload(
+            &root,
+            "did:agent:child1",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+        assert_eq!(child1.act_chain.len(), 1);
+
+        let child2 = build_delegated_payload(
+            &child1,
+            "did:agent:child2",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            3,
+            300,
+        )
+        .unwrap();
+        assert_eq!(child2.act_chain.len(), 2);
+        assert_eq!(child2.act_chain[0].sub, root.sub);
+        assert_eq!(child2.act_chain[1].sub, child1.sub);
+    }
+
+    #[test]
+    fn act_chain_roundtrip_serialization() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:agent:child",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        let token = encode_token(&child, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+
+        assert_eq!(decoded.act_chain.len(), 1);
+        assert_eq!(decoded.act_chain[0].sub, parent.sub);
+    }
+
+    #[test]
+    fn act_chain_in_resolved_capabilities() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let child = build_delegated_payload(
+            &parent,
+            "did:agent:child",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            2,
+            600,
+        )
+        .unwrap();
+
+        let resolved = resolve_capabilities(&child);
+        assert_eq!(resolved.act_chain.len(), 1);
+    }
+
+    #[test]
+    fn chain_policy_depth_limit_enforced() {
+        let chain: Vec<ActorChainEntry> = (0..6)
+            .map(|i| ActorChainEntry {
+                sub: format!("did:agent:agent{i}"),
+                agent_id: format!("agent-{i}"),
+                iat: 1700000000 + i,
+                permissions: "read".to_string(),
+            })
+            .collect();
+
+        assert!(validate_chain_policy(&chain, 10, false).is_ok());
+        assert!(validate_chain_policy(&chain, 6, false).is_ok());
+
+        let err = validate_chain_policy(&chain, 5, false).unwrap_err();
+        assert!(err.to_string().contains("chain depth"));
+    }
+
+    #[test]
+    fn chain_policy_empty_chain_always_passes() {
+        assert!(validate_chain_policy(&[], 0, false).is_ok());
+        assert!(validate_chain_policy(&[], 0, true).is_ok());
+    }
+
+    #[test]
+    fn chain_policy_require_wimse_root() {
+        let spiffe_chain = vec![ActorChainEntry {
+            sub: "spiffe://example.org/agent/root".to_string(),
+            agent_id: "root-agent".to_string(),
+            iat: 1700000000,
+            permissions: "read".to_string(),
+        }];
+
+        assert!(validate_chain_policy(&spiffe_chain, 5, true).is_ok());
+
+        let did_chain = vec![ActorChainEntry {
+            sub: "did:key:z6MkSomeAgent".to_string(),
+            agent_id: "some-agent".to_string(),
+            iat: 1700000000,
+            permissions: "read".to_string(),
+        }];
+
+        let err = validate_chain_policy(&did_chain, 5, true).unwrap_err();
+        assert!(err.to_string().contains("not a WIMSE/SPIFFE identity"));
+    }
+
+    #[test]
+    fn act_chain_empty_backward_compat() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+
+        let token = encode_token(&payload, &signer).unwrap();
+        let decoded = decode_token(&token, &signer).unwrap();
+        assert!(decoded.act_chain.is_empty());
     }
 }
 

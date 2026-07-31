@@ -637,6 +637,7 @@ mod audit {
             expires_at: u64::MAX,
             obo_sub: None,
             sandbox: None,
+            act_chain: Vec::new(),
         });
 
         let ctx =
@@ -699,6 +700,7 @@ mod audit {
             expires_at: u64::MAX,
             obo_sub: None,
             sandbox: None,
+            act_chain: Vec::new(),
         });
 
         let ctx = navra_core::auth::CallContext::new(agent, "audit-session-2");
