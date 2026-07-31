@@ -1,51 +1,43 @@
 id: NAVRA-162
-title: "navra daemon: unified persistent process"
-status: planned
+title: "CLI restructuring and systemd service architecture"
+status: done
 priority: high
 effort: 5-10d
-tags: [architecture, daemon, scheduler, events]
+tags: [architecture, cli, systemd, triggers]
 depends_on: [NAVRA-161]
 description: |
-  Introduce `navra daemon start|stop|status` as the single
-  persistent process managing model server, scheduler, event
-  watchers, and MCP gateway for external clients.
+  Restructured the CLI to reflect navra's architecture with
+  separate command groups instead of a monolithic daemon:
 
-  Today running navra at full capacity requires multiple
-  processes: model server, gateway, watch loops. The daemon
-  consolidates these.
+  - `navra mcp serve|stdio` — MCP gateway (replaces navra serve)
+  - `navra agent run` — agentic loop (split from navra run)
+  - `navra flow run|list|trigger` — flow execution and triggers
+  - Old commands kept as hidden deprecated aliases with hints
 
-  Components:
-  - Embedded model server (from NAVRA-161) or connects to
-    external one
-  - Scheduler: cron-like, reads trigger configs from agent
-    instance configs, fires `navra run` equivalents
-  - Event watcher: poll-based (v1) — IMAP IDLE, WebSocket,
-    MCP notifications. Webhook listener deferred to cloud
-    deployment story.
-  - MCP gateway endpoint for external clients (Claude Desktop,
-    Cursor, other MCP clients) — replaces standalone `navra serve`
+  Process lifecycle delegated to systemd instead of reimplementing
+  daemonization. Multi-service architecture:
 
-  `navra daemon start --detach` daemonizes. Integrates with
-  systemd user service (existing navra install/uninstall).
+  - navra.target groups all services
+  - navra-mcp.service — MCP gateway
+  - navra-model.service — model inference server
+  - navra-triggers.service — flow trigger engine
 
-  Agent instance configs declare triggers:
+  Agent instance configs at ~/.config/navra/agents/*/config.toml
+  can now declare [[triggers]] that are loaded by the trigger
+  engine alongside main config.toml triggers.
 
-    triggers:
-      - type: schedule
-        cron: "0 6 * * 1-5"
-        workflow: day-planner
-      - type: event
-        source: gmail
-        filter: "is:unread"
-        workflow: triage
-
-  `navra serve` becomes `navra daemon start --gateway` or is
-  kept as sugar that starts the daemon with gateway enabled.
+  Design decision: no `navra daemon` command. systemd handles
+  start/stop/status/detach/restart/logs — reimplementing that
+  in Rust adds complexity with zero benefit on Linux.
 acceptance:
-  - navra daemon start|stop|status works
-  - Embeds model server or connects to external
-  - Scheduled triggers fire from agent instance configs
-  - Poll-based event watchers (IMAP IDLE at minimum)
-  - MCP gateway for external clients available as daemon mode
-  - systemd user service integration
-  - navra serve still works (delegates to daemon)
+  - navra mcp serve starts the MCP gateway
+  - navra mcp stdio starts stdio transport
+  - navra agent run executes an agentic loop
+  - navra flow run executes a flow file
+  - navra flow trigger list shows triggers from config + instances
+  - navra flow trigger start starts the trigger engine
+  - navra flow list shows available flows
+  - navra serve/stdio/run still work with deprecation hints
+  - systemd multi-service setup (navra.target)
+  - navra install deploys all systemd units
+  - 22 new tests pass, no regressions

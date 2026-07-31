@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 14 active items
+# 13 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,13 +11,6 @@ items:
     priority: high
     effort: 1-2d (navra side) + OpenShell RFC
     feeds: ['NAVRA-179']
-
-  - id: "NAVRA-162"
-    title: "navra daemon: unified persistent process"
-    status: planned
-    priority: high
-    effort: 5-10d
-    depends_on: ['NAVRA-161']
 
   - id: "NAVRA-170"
     title: "SelfCompact rubric as flow-driven compression policy"
