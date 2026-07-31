@@ -138,6 +138,7 @@ pub fn build_router_with_discovery(
         .route("/metrics", get(handle_metrics))
         .route("/.well-known/mcp.json", get(handle_server_card))
         .route("/v0.1/servers", get(handle_registry))
+        .route("/.well-known/ai-catalog.json", get(handle_ai_catalog))
         .route("/sys/status", get(handle_sys_status));
 
     if state.aid_record.is_some() {

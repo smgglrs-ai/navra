@@ -99,6 +99,50 @@ pub(super) async fn handle_agent_card(State(state): State<AppState>) -> impl Int
     }
 }
 
+/// Serve the ARD (Agentic Resource Discovery) catalog.
+///
+/// Available at `GET /.well-known/ai-catalog.json` without authentication.
+/// Returns the ARD v0.9 catalog format listing managed MCP servers.
+/// See: https://agenticresourcediscovery.org/spec/
+pub(super) async fn handle_ai_catalog(State(state): State<AppState>) -> impl IntoResponse {
+    let entries: Vec<serde_json::Value> = state
+        .registry_entries
+        .iter()
+        .map(|entry| {
+            let server = &entry["server"];
+            let name = server["name"].as_str().unwrap_or("unknown");
+            let description = server["description"].as_str().unwrap_or("");
+            let remotes = server["remotes"].as_array();
+
+            let mut transport = serde_json::json!({});
+            if let Some(remotes) = remotes {
+                if let Some(first) = remotes.first() {
+                    let remote_type = first["type"].as_str().unwrap_or("streamable-http");
+                    let url = first["url"].as_str().unwrap_or("");
+                    transport = serde_json::json!({
+                        "type": remote_type,
+                        "url": url,
+                    });
+                }
+            }
+
+            let media_type = "application/mcp-server-card+json";
+
+            serde_json::json!({
+                "name": name,
+                "description": description,
+                "mediaType": media_type,
+                "transport": transport,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "version": "0.9",
+        "catalog": entries,
+    }))
+}
+
 /// Serve the AID (Agent Identity & Discovery) record.
 ///
 /// Available at `GET /.well-known/agent` without authentication.
