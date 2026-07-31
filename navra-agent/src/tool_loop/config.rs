@@ -95,6 +95,13 @@ pub struct ToolLoopConfig {
     /// Context fill ratio at which conversation compaction triggers.
     /// When `None`, defaults to 0.6.
     pub compaction_trigger_ratio: Option<f32>,
+    /// SelfCompact flow-driven compression policy. When set, compaction
+    /// timing is governed by flow execution state instead of a fixed
+    /// token threshold. Requires `flow_phase` to be set.
+    pub compression_policy: Option<navra_cognitive::CompressionPolicy>,
+    /// Shared flow phase handle. Updated by the flow engine at node
+    /// boundaries; read by the tool loop to decide compaction timing.
+    pub flow_phase: Option<std::sync::Arc<std::sync::Mutex<navra_cognitive::FlowPhase>>>,
     /// Optional embedding model for query-aware extractive compression.
     /// When set, tool outputs are compressed by selecting the most
     /// relevant paragraphs instead of truncating from the tail.
@@ -153,6 +160,8 @@ impl Default for ToolLoopConfig {
             compression_start_ratio: None,
             compaction_keep_recent: None,
             compaction_trigger_ratio: None,
+            compression_policy: None,
+            flow_phase: None,
             embedding_model: None,
             audit_sink: None,
             signal_rx: None,
