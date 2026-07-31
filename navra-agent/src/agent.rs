@@ -285,6 +285,17 @@ impl AgentBuilder {
         self
     }
 
+    /// Enable SelfCompact flow-driven compression policy with a shared phase handle.
+    pub fn compression_policy(
+        mut self,
+        policy: navra_cognitive::CompressionPolicy,
+        phase: std::sync::Arc<std::sync::Mutex<navra_cognitive::FlowPhase>>,
+    ) -> Self {
+        self.config.compression_policy = Some(policy);
+        self.config.flow_phase = Some(phase);
+        self
+    }
+
     /// Set an embedding model for query-aware extractive compression.
     pub fn embedding_model(mut self, model: Arc<dyn navra_model::ModelBackend>) -> Self {
         self.config.embedding_model = Some(model);

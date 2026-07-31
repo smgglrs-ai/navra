@@ -53,6 +53,8 @@ pub struct TeammateSpawnContext {
     pub compaction_keep_recent: Option<usize>,
     /// Context fill ratio to trigger conversation compaction. None = derive.
     pub compaction_trigger_ratio: Option<f32>,
+    /// Enable SelfCompact flow-driven compression policy.
+    pub compression_policy: bool,
 }
 
 /// Check if Podman is available on this system.
@@ -890,6 +892,7 @@ pub fn spawn_teammate_agent(
     let compression_start_ratio = ctx.compression_start_ratio;
     let compaction_keep_recent = ctx.compaction_keep_recent;
     let compaction_trigger_ratio = ctx.compaction_trigger_ratio;
+    let compression_policy_enabled = ctx.compression_policy;
     let navra_addr = ctx.navra_addr.clone();
     let team_id = team_id.to_string();
     let teammate_id = teammate_id.to_string();
@@ -1080,6 +1083,15 @@ pub fn spawn_teammate_agent(
                         }
                         if let Some(r) = compaction_trigger_ratio {
                             builder = builder.compaction_trigger_ratio(r);
+                        }
+                        if compression_policy_enabled {
+                            let phase = std::sync::Arc::new(std::sync::Mutex::new(
+                                navra_cognitive::FlowPhase::default(),
+                            ));
+                            builder = builder.compression_policy(
+                                navra_cognitive::CompressionPolicy::default(),
+                                phase,
+                            );
                         }
                         // Enable cooperative signal delivery
                         let (builder_with_signal, signal_handle) = builder.with_signal();

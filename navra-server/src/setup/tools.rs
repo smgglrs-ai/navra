@@ -545,6 +545,7 @@ pub(crate) async fn wire_team_tools(
         compression_start_ratio: cfg.budget.compression_start_ratio,
         compaction_keep_recent: cfg.budget.compaction_keep_recent,
         compaction_trigger_ratio: cfg.budget.compaction_trigger_ratio,
+        compression_policy: cfg.budget.compression_policy,
     });
     builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
         let spawn_ctx = Arc::clone(&msg_spawn_ctx);

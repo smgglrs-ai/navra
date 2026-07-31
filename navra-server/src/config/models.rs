@@ -239,6 +239,11 @@ pub struct BudgetConfig {
     /// Context fill ratio to trigger conversation compaction.
     #[serde(default)]
     pub compaction_trigger_ratio: Option<f32>,
+    /// Enable SelfCompact flow-driven compression policy.
+    /// When true, compression fires at flow node boundaries instead of
+    /// at a fixed token threshold. Requires flow execution context.
+    #[serde(default)]
+    pub compression_policy: bool,
     /// Enable SQLite-backed checkpointing for DAG execution crash resilience.
     #[serde(default)]
     pub checkpoint: bool,
@@ -262,6 +267,7 @@ impl Default for BudgetConfig {
             compression_start_ratio: None,
             compaction_keep_recent: None,
             compaction_trigger_ratio: None,
+            compression_policy: false,
             checkpoint: false,
             checkpoint_db: default_checkpoint_db(),
         }

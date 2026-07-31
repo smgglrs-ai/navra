@@ -287,6 +287,7 @@ pub(crate) async fn spawn_and_track_tasks(
             compression_start_ratio: ctx.budget_cfg.compression_start_ratio,
             compaction_keep_recent: ctx.budget_cfg.compaction_keep_recent,
             compaction_trigger_ratio: ctx.budget_cfg.compaction_trigger_ratio,
+            compression_policy: ctx.budget_cfg.compression_policy,
         };
         let per_task_iters = if is_synthesizer && dep_count > 2 {
             dep_count.min(30)
