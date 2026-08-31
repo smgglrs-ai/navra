@@ -882,6 +882,53 @@ connection strings, Slack webhooks.
    - `PathPiiFilter` detects PII in file paths (e.g., usernames
      in `/home/jean.dupont/`, personal directory names)
 
+**SsrfFilter** — Detects URLs pointing to private/internal networks:
+
+- Private IPv4 ranges (10/8, 172.16/12, 192.168/16, 127/8, link-local)
+- Cloud metadata endpoints (AWS `169.254.169.254`, GCP
+  `metadata.google.internal`, Alibaba `100.100.100.200`,
+  Oracle `192.0.0.192`)
+- IP encoding evasion (hex `0x7f000001`, octal `0177.0.0.1`,
+  decimal `2130706433`, IPv6-mapped `::ffff:127.0.0.1`)
+- Dangerous URL schemes (`file://`, `gopher://`, `ftp://`, `data://`)
+
+**ExfilDetectionFilter** — Detects bash command exfiltration patterns:
+
+- Credential theft (`curl` with `$TOKEN`, `$SECRET` variables)
+- Environment collection piped to network (`env | nc`,
+  `printenv | curl`)
+- Key file exfiltration (`cat ~/.ssh/id_rsa | curl`)
+- Base64-encoded key files (obfuscation attempt)
+- Cloud metadata piped to external services
+- Secret directory collection (`tar`/`zip` of `~/.ssh`, `~/.gnupg`,
+  `~/.aws`)
+
+**ContextPoisoningFilter** — Two-tier persistent instruction injection
+detection (OWASP LLM03):
+
+- Tier 1: 13 persistence patterns ("from now on", "always remember",
+  "ignore all previous")
+- Tier 2: 18 dangerous action patterns ("bypass security",
+  "exfiltrate", "rm -rf")
+- Scoring: persistence alone → 0.5, dangerous alone → 0.6,
+  combined → 0.95
+
+**TieredInjectionFilter** — Four-tier prompt injection heuristics:
+
+- Critical (0.95): instruction override, role assignment, system
+  prompt extraction, fake completion markers
+- High (0.85): DAN/jailbreak, privilege escalation, constraint removal
+- Medium (0.7): chain-of-thought exploitation, output format
+  manipulation
+- Low (0.5): encoded content requests, hypothetical framing
+
+**CanaryFilter** — User-registered tripwire tokens for exfiltration
+detection:
+
+- Exact string and regex matching
+- Configured via `[[canary_tokens]]` in TOML
+- Categories formatted as `canary:{name}`
+
 **Four filter actions**:
 
 | Action | Behavior |
@@ -1141,6 +1188,14 @@ KDE, Gnome (AppIndicator extension), XFCE, Cinnamon, Sway/Waybar.
 | Hook bypass | Hooks run with timeout, timeout continues (no bypass) |
 | Prompt injection via documents | Out of scope (agent responsibility) |
 | Denial of service | Systemd resource limits, pause/resume |
+| SSRF via tool arguments | SsrfFilter (private IPs, metadata endpoints, encoding evasion) |
+| Credential exfiltration via bash | ExfilDetectionFilter + SupplyChainGuardHook |
+| Persistent instruction injection | ContextPoisoningFilter (two-tier: persistence + dangerous action) |
+| Prompt injection in tool results | TieredInjectionFilter (4-tier heuristic) + ML classifier |
+| Data exfiltration via canary | CanaryFilter (user-defined tripwire tokens) |
+| Download-and-execute in tool args | SupplyChainGuardHook (blocks Critical, warns High) |
+| Reverse shell in tool args | SupplyChainGuardHook via `scan_tool_arguments()` |
+| Environment hijacking in tool args | SupplyChainGuardHook (LD_PRELOAD, NODE_OPTIONS, etc.) |
 
 ### Supply Chain & Dependencies
 
@@ -1154,6 +1209,15 @@ compatible updates while the lockfile ensures reproducible builds.
 |-------|---------|------|------------|
 | `ort` | 2.0.0-rc.12 | Pre-release, API may change | No stable alternative for ONNX. Pin in Cargo.lock. |
 | `sqlite-vec` | 0.1.x | Pre-1.0, may have breaking changes | Only sqlite-vec crate available. Pin in Cargo.lock. |
+
+**Tool argument scanning:** `scan_tool_arguments()` recursively
+extracts string values from tool call JSON arguments and scans for
+4 threat categories: `DownloadAndExecute` (curl|sh, eval of
+downloads), `ReverseShell` (nc -e, bash -i /dev/tcp), `EnvHijacking`
+(LD_PRELOAD, NODE_OPTIONS), `SuspiciousMcpInstall` (npx -y @scope,
+uvx from URL). Wired as the `SupplyChainGuardHook` pre-tool hook —
+Critical findings block execution, High severity findings log
+warnings.
 
 **Cognitive core integrity:** YAML files (personas, directives,
 heuristics) can be verified via `checksums.sha256` using SHA-256.

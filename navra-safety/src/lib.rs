@@ -29,8 +29,11 @@
 //! - **default**: regex-only filters, zero native dependencies
 //! - **onnx**: enables NER and privacy-filter models via ONNX Runtime
 
+pub mod canary;
 pub mod classifier;
 pub mod confidentiality;
+pub mod exfil;
+pub mod injection;
 pub mod ml;
 #[cfg(feature = "onnx")]
 pub mod ner;
@@ -38,11 +41,14 @@ pub mod ner;
 pub mod pii_classifier;
 #[cfg(feature = "onnx")]
 pub mod privacy_filter;
+pub mod poisoning;
 pub mod privacy_router;
 pub mod projection;
 pub mod pseudonym;
 mod regex;
+pub mod ssrf;
 
+pub use self::canary::{CanaryFilter, CanaryMatch, CanaryToken};
 pub use self::classifier::{Classifier, ClassifyError, ClassifyLabel, ClassifyOutput};
 pub use self::confidentiality::Confidentiality;
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
@@ -57,9 +63,13 @@ pub use self::privacy_filter::{
 pub use self::privacy_router::{PrivacyRouter, PrivacyRouterBuilder, PrivacyRouterConfig};
 pub use self::projection::{ProjectionError, SparseProjectionMatrix};
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
+pub use self::injection::TieredInjectionFilter;
+pub use self::poisoning::ContextPoisoningFilter;
 pub use self::regex::{
     CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter,
 };
+pub use self::exfil::ExfilDetectionFilter;
+pub use self::ssrf::SsrfFilter;
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -718,6 +728,11 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline.add_filter(PathPiiFilter::new());
+            pipeline.add_filter(SsrfFilter::new());
+            pipeline.add_filter(ExfilDetectionFilter::new());
+            pipeline.add_filter(ContextPoisoningFilter::new());
+            pipeline.add_filter(PromptInjectionFilter::new());
+            pipeline.add_filter(TieredInjectionFilter::new());
             pipeline
         }
         "pseudonymize" => {
@@ -725,6 +740,11 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline.add_filter(PathPiiFilter::new());
+            pipeline.add_filter(SsrfFilter::new());
+            pipeline.add_filter(ExfilDetectionFilter::new());
+            pipeline.add_filter(ContextPoisoningFilter::new());
+            pipeline.add_filter(PromptInjectionFilter::new());
+            pipeline.add_filter(TieredInjectionFilter::new());
             pipeline
         }
         "secrets-only" => {
@@ -737,6 +757,11 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline.add_filter(PathPiiFilter::new());
+            pipeline.add_filter(SsrfFilter::new());
+            pipeline.add_filter(ExfilDetectionFilter::new());
+            pipeline.add_filter(ContextPoisoningFilter::new());
+            pipeline.add_filter(PromptInjectionFilter::new());
+            pipeline.add_filter(TieredInjectionFilter::new());
             pipeline
         }
         "guardian" | "guardian-deep" => {
@@ -744,6 +769,11 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline.add_filter(PathPiiFilter::new());
+            pipeline.add_filter(SsrfFilter::new());
+            pipeline.add_filter(ExfilDetectionFilter::new());
+            pipeline.add_filter(ContextPoisoningFilter::new());
+            pipeline.add_filter(PromptInjectionFilter::new());
+            pipeline.add_filter(TieredInjectionFilter::new());
             pipeline
         }
         "multi-label" => {
@@ -751,6 +781,11 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             pipeline.add_filter(SecretFilter::new());
             pipeline.add_filter(PiiFilter::new());
             pipeline.add_filter(PathPiiFilter::new());
+            pipeline.add_filter(SsrfFilter::new());
+            pipeline.add_filter(ExfilDetectionFilter::new());
+            pipeline.add_filter(ContextPoisoningFilter::new());
+            pipeline.add_filter(PromptInjectionFilter::new());
+            pipeline.add_filter(TieredInjectionFilter::new());
             pipeline
         }
         "none" | "" => FilterPipeline::new(FilterAction::Pass),

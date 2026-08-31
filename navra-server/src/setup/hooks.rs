@@ -42,7 +42,7 @@ pub(crate) fn wire_hooks(
         let mut safety_hook =
             navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
         for (name, pset) in &cfg.permissions {
-            let pipeline = build_safety_pipeline(pset, name, &cfg.models, safety_state);
+            let pipeline = build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);
             safety_hook.add_pipeline(name.clone(), pipeline);
         }
         builder = builder.hook(safety_hook);
@@ -71,6 +71,9 @@ pub(crate) fn wire_hooks(
                 tracing::info!("Egress endpoint filtering enabled from permission config");
             }
         }
+
+        // Supply chain argument guard
+        builder = builder.hook(navra_core::hooks::SupplyChainGuardHook);
 
         builder = builder.hook(BudgetHook::new(cfg.budget.max_tool_output_tokens, strategy));
         tracing::info!(

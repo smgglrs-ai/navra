@@ -48,8 +48,31 @@ pub(crate) fn build_safety_pipeline(
     name: &str,
     model_configs: &HashMap<String, config::ModelConfig>,
     state: &SafetyFilterState,
+    canary_tokens: &[config::CanaryTokenConfig],
 ) -> navra_core::safety::FilterPipeline {
     let mut pipeline = navra_core::safety::build_pipeline(&pset.safety);
+
+    // Add canary tokens if configured
+    if !canary_tokens.is_empty() {
+        match pset.safety.as_str() {
+            "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" | "pseudonymize" => {
+                let configs: Vec<(String, String, bool)> = canary_tokens
+                    .iter()
+                    .map(|ct| (ct.name.clone(), ct.value.clone(), ct.is_regex))
+                    .collect();
+                let canary = navra_core::safety::CanaryFilter::from_config(configs);
+                if canary.has_tokens() {
+                    tracing::info!(
+                        permission_set = %name,
+                        tokens = canary_tokens.len(),
+                        "Canary tokens"
+                    );
+                    pipeline.add_filter(canary);
+                }
+            }
+            _ => {}
+        }
+    }
 
     // Add global custom PII filter to profiles that use content filtering
     if let Some(ref pii_filter) = state.custom_pii_filter {
@@ -144,7 +167,7 @@ pub(crate) fn wire_safety_profiles(
     use navra_core::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
     for (name, pset) in &cfg.permissions {
-        let pipeline = build_safety_pipeline(pset, name, &cfg.models, state);
+        let pipeline = build_safety_pipeline(pset, name, &cfg.models, state, &cfg.canary_tokens);
 
         tracing::info!(
             permission_set = %name,
