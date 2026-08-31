@@ -47,8 +47,6 @@ Generate and manage agent capability tokens.
 
 ```bash
 navra token generate --agent <name> --permissions <set> [--ttl <seconds>]
-navra token inspect <token>
-navra token revoke <token-id>
 ```
 
 ### audit
@@ -189,7 +187,6 @@ navra run "plan my day" --workflow work-assistant/day-planner
 Configuration management.
 
 ```bash
-navra config validate [--config <path>]
 navra config list-libraries
 ```
 
