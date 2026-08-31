@@ -451,4 +451,70 @@ mod tests {
         assert_eq!(resp.status, crate::ResponseStatus::Completed);
         assert_eq!(resp.text().unwrap(), "cli response");
     }
+
+    #[test]
+    fn format_prompt_function_call_output_parts() {
+        let req = CreateResponseRequest::new(
+            String::from("test"),
+            vec![crate::InputItem::FunctionCallOutput(
+                crate::FunctionCallOutputItem {
+                    id: None,
+                    call_id: "call_1".into(),
+                    output: crate::FunctionCallOutputContent::Parts(vec![
+                        crate::InputContent::text("chunk_a"),
+                        crate::InputContent::text("chunk_b"),
+                    ]),
+                    status: None,
+                },
+            )],
+        );
+        let prompt = CliBackend::format_prompt(&req);
+        assert_eq!(prompt, "Tool result: chunk_achunk_b");
+    }
+
+    #[test]
+    fn format_prompt_mixed_roles() {
+        use crate::{InputItem, MessageItem};
+
+        let req = CreateResponseRequest::new(
+            String::from("test"),
+            vec![
+                InputItem::system("You are helpful"),
+                InputItem::user("Hello"),
+                InputItem::Message(MessageItem::assistant("Hi back")),
+                InputItem::FunctionCallOutput(crate::FunctionCallOutputItem {
+                    id: None,
+                    call_id: "c1".into(),
+                    output: crate::FunctionCallOutputContent::Text("result".into()),
+                    status: None,
+                }),
+            ],
+        );
+        let prompt = CliBackend::format_prompt(&req);
+        // System and user render as-is; assistant prefixed; tool result prefixed
+        assert!(prompt.contains("You are helpful"));
+        assert!(prompt.contains("Hello"));
+        assert!(prompt.contains("Assistant: Hi back"));
+        assert!(prompt.contains("Tool result: result"));
+    }
+
+    #[test]
+    fn build_args_empty_args() {
+        let backend = CliBackend::new("test", vec![]);
+        let (args, use_stdin) = backend.build_args("some prompt");
+        assert!(args.is_empty());
+        assert!(use_stdin); // no placeholder -> use stdin
+    }
+
+    #[tokio::test]
+    async fn respond_wraps_in_model_response() {
+        let backend = CliBackend::new("echo", vec!["ok".into()]);
+        let req =
+            CreateResponseRequest::new(String::from("test"), vec![crate::InputItem::user("hi")]);
+        let resp = backend.respond(&req).await.unwrap();
+        // respond() uses chat_to_responses with model "cli"
+        assert_eq!(resp.model.as_deref(), Some("cli"));
+        assert_eq!(resp.object, "response");
+        assert!(resp.id.starts_with("resp_"));
+    }
 }
