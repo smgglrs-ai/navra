@@ -8,7 +8,7 @@ agents, and team members.
 
 When referencing files, use exact paths relative to the project root.
 
-- `navra-security/src/acl.rs:42` — correct
+- `navra-auth/src/permissions/acl.rs:42` — correct
 - `navra-core/tests/session_test.rs` — correct
 - "the security file" — wrong
 - "acl.rs" — wrong (which crate?)

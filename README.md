@@ -37,7 +37,7 @@ navra gateway
     ├── Information Flow Control (taint tracking, no-write-down)
     ├── Hook pipeline (pre/post tool-call, safety, egress)
     ├── Safety filters (regex + NER + ML classifiers)
-    ├── Built-in modules (file, git, RAG, voice, vision)
+    ├── Built-in modules (exec, RAG, voice, vision, cognitive)
     ├── Upstream MCP servers (proxied, safety-filtered)
     └── Model proxy (OpenAI-compat, Anthropic, ONNX)
 
@@ -82,7 +82,7 @@ cp target/release/navra ~/.local/bin/
 navra init
 
 # Start the gateway
-navra serve
+navra mcp serve
 ```
 
 `navra init` detects your agent (Claude Code, Goose), recommends
@@ -204,7 +204,7 @@ manifests.
 ## Documentation
 
 - [SDK Guide](docs/content/docs/sdk/) — building agents with navra-agent
-- [CONFIG.md](CONFIG.md) — complete configuration reference
+- [Configuration](docs/content/docs/configuration/_index.md) — complete configuration reference
 - [DESIGN.md](DESIGN.md) — full architecture and security model
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution guidelines
 - [SECURITY.md](SECURITY.md) — vulnerability disclosure

@@ -101,16 +101,14 @@ or when the 26B-A4B MoE overhead isn't worth the benchmark gains.
 Config example:
 ```toml
 [models.vision]
-type = "generate"
-backend = "openai"
-endpoint = "http://localhost:11434/v1"
-model = "gemma4:12b"
+task = "chat"
+base_url = "http://localhost:11434/v1"
+model_name = "gemma4:12b"
 
 [models.chat]
-type = "generate"
-backend = "openai"
-endpoint = "http://localhost:11434/v1"
-model = "gemma4:12b"
+task = "chat"
+base_url = "http://localhost:11434/v1"
+model_name = "gemma4:12b"
 ```
 
 Ollama Modelfile for agentic use:
@@ -142,9 +140,9 @@ model. It does not belong in `navra model pull`. Configure as:
 
 ```toml
 [models.vision]
-backend = "openai"
+task = "chat"
 base_url = "http://localhost:11434/v1"
-model = "ibm/granite3.3-vision"           # upgrade to 4.0 when GA
+model_name = "ibm/granite3.3-vision"      # upgrade to 4.0 when GA
 locality = "local"
 ```
 
@@ -164,8 +162,8 @@ locality = "local"
 
 ### OCR / Document Understanding Candidates
 
-Models evaluated for document ingestion in navra-tools-docs and
-navra-rag (landscape research, April 2026):
+Models evaluated for document ingestion in navra-rag
+(landscape research, April 2026):
 
 | Model | Params | Runtime | Speed | Notes |
 |-------|--------|---------|-------|-------|
@@ -283,7 +281,7 @@ locality = "local"
 
 # In-process model — no hub/runtime needed
 [models.embeddings]
-backend = "onnx"
+task = "embedding"
 model_path = "~/.local/share/navra/models/granite-embedding-r2-int8.onnx"
 tokenizer_path = "~/.local/share/navra/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
@@ -574,43 +572,45 @@ The `ModelBackend` trait unifies both in-process (ONNX) and
 external (API) backends behind a single interface.
 
 ```rust
-/// Model inference backend.
+/// Model inference backend (Open Responses as canonical I/O).
 ///
-/// Two implementations:
+/// Three implementations:
 /// - OnnxBackend: in-process via ort crate (CPU tier)
 /// - OpenAiBackend: external via HTTP API (GPU tier)
+/// - AnthropicBackend: Claude Messages API
 pub trait ModelBackend: Send + Sync + 'static {
-    /// Generate text from a prompt.
-    fn generate(
-        &self,
-        request: &GenerateRequest,
-    ) -> BoxFuture<'_, Result<GenerateResponse, ModelError>>;
+    /// Create a response (Open Responses format) — primary LLM interface.
+    fn respond(&self, request: &CreateResponseRequest)
+        -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>>;
 
-    /// Generate embeddings for input text or image.
-    fn embed(
-        &self,
-        request: &EmbedRequest,
-    ) -> BoxFuture<'_, Result<EmbedResponse, ModelError>>;
+    /// Streaming response (Open Responses format).
+    fn respond_stream(&self, request: &CreateResponseRequest)
+        -> Pin<Box<dyn Stream<Item = Result<StreamEvent, ModelError>> + Send + '_>>;
+
+    /// Generate text from a prompt (simple, single-turn).
+    fn generate(&self, request: &GenerateRequest)
+        -> Pin<Box<dyn Future<Output = Result<GenerateResponse, ModelError>> + Send + '_>>;
+
+    /// Generate embeddings for input text.
+    fn embed(&self, request: &EmbedRequest)
+        -> Pin<Box<dyn Future<Output = Result<EmbedResponse, ModelError>> + Send + '_>>;
 
     /// Classify content (safety, moderation).
-    fn classify(
-        &self,
-        request: &ClassifyRequest,
-    ) -> BoxFuture<'_, Result<ClassifyResponse, ModelError>>;
+    fn classify(&self, request: &ClassifyRequest)
+        -> Pin<Box<dyn Future<Output = Result<ClassifyResponse, ModelError>> + Send + '_>>;
 
     /// Transcribe audio to text.
-    fn transcribe(
-        &self,
-        request: &TranscribeRequest,
-    ) -> BoxFuture<'_, Result<TranscribeResponse, ModelError>>;
+    fn transcribe(&self, request: &TranscribeRequest)
+        -> Pin<Box<dyn Future<Output = Result<TranscribeResponse, ModelError>> + Send + '_>>;
 
     /// Synthesize text to audio.
-    fn synthesize(
-        &self,
-        request: &SynthesizeRequest,
-    ) -> BoxFuture<'_, Result<SynthesizeResponse, ModelError>>;
+    fn synthesize(&self, request: &SynthesizeRequest)
+        -> Pin<Box<dyn Future<Output = Result<SynthesizeResponse, ModelError>> + Send + '_>>;
 }
 ```
+
+All methods have default implementations returning `NotLoaded` errors,
+so backends only implement the methods they support.
 
 #### Backend Implementations
 
@@ -878,63 +878,63 @@ Requires a llama-server build with TurboQuant support (PR #21089).
 # --- CPU Tier (in-process, always available) ---
 
 [models.guardian-hap]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m/tokenizer.json"
 device = "cpu"                           # "cpu", "cuda", "openvino"
 
 [models.embeddings]
-backend = "onnx"
+task = "embedding"
 model_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
 
 [models.tts]
-backend = "onnx"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/kokoro-82m-q8.onnx"
 voice = "af_heart"                       # default voice preset
 device = "cpu"
 
 [models.asr]
-backend = "whisper"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/ggml-large-v3-turbo.bin"
 language = "auto"
 
 [models.vad]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/silero-vad.onnx"
 device = "cpu"
 
 # --- GPU Tier (external, optional upgrades) ---
 
 [models.asr-gpu]
-backend = "openai"
+task = "generate"
 base_url = "http://localhost:8001/v1"
-model = "ibm-granite/granite-4.0-1b-speech"
+model_name = "ibm-granite/granite-4.0-1b-speech"
 locality = "local"
 
 [models.tts-gpu]
-backend = "openai"
+task = "generate"
 base_url = "http://localhost:8002/v1"
-model = "mistralai/Voxtral-4B-TTS-2603"
+model_name = "mistralai/Voxtral-4B-TTS-2603"
 locality = "local"
 
 [models.guardian-deep]
-backend = "openai"
+task = "classification"
 base_url = "http://localhost:8000/v1"
-model = "ibm-granite/granite-guardian-3.3-8b"
+model_name = "ibm-granite/granite-guardian-3.3-8b"
 locality = "local"
 
 [models.vision]
-backend = "openai"
+task = "chat"
 base_url = "http://localhost:11434/v1"    # ollama
-model = "ibm/granite3.3-vision"
+model_name = "ibm/granite3.3-vision"
 locality = "local"
 
 [models.vision-embedding]
-backend = "openai"
+task = "embedding"
 base_url = "http://localhost:8003/v1"     # custom FastAPI wrapper
-model = "ibm-granite/granite-vision-3.3-2b-embedding"
+model_name = "ibm-granite/granite-vision-3.3-2b-embedding"
 locality = "local"
 ```
 
@@ -1338,9 +1338,7 @@ Upgrades document search from keyword-only (FTS5) to semantic
 similarity + visual document understanding.
 
 ```
-navra-tools-docs (FTS5, keyword)
-        +
-navra-rag (vector, semantic)
+navra-rag (FTS5 keyword + vector semantic)
         =
 Hybrid search: keyword recall + semantic precision
 ```
@@ -1427,7 +1425,7 @@ CREATE VIRTUAL TABLE page_vectors USING vec0(
 ```
 User query
     │
-    ├──► FTS5 keyword search (navra-tools-docs) ──► candidates_keyword
+    ├──► FTS5 keyword search (navra-rag) ──► candidates_keyword
     │
     ├──► Embed query (Granite R2 149M, in-process ONNX)
     │    └──► sqlite-vec KNN search ──► candidates_semantic
@@ -1550,11 +1548,9 @@ navra/
 ├── navra-model          Model backend trait + ONNX/OpenAI impls
 ├── navra-model-hub      Pull/cache models (OCI, HuggingFace, Ollama)
 ├── navra-model-runtime  Serve models (Podman, direct, libkrun)
-├── navra-security       Auth, permissions, IFC, safety filters, hooks
+├── navra-security       Facade re-exporting navra-auth + navra-safety-hooks
 ├── navra-core           Server, module trait, session, transport
-├── navra-tools-docs     Document tools (FTS5, file I/O)
-├── navra-tools-git      Git tools (status, diff, log, branch, commit)
-├── navra-rag            Vector search, sqlite-vec, semantic chunking
+├── navra-rag            Vector search, FTS5, sqlite-vec, semantic chunking
 ├── navra-modal-voice    Speech I/O (ASR + TTS via ONNX models)
 ├── navra-modal-vision   Image/screen understanding (GPU tier)
 └── navra-server         Binary: CLI, config, module wiring (navra)
@@ -1618,69 +1614,69 @@ reasoning_model = "reasoning"           # Gemma 4 26B-A4B for visual QA
 # --- CPU Tier Models (in-process) ---
 
 [models.guardian-hap]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m/tokenizer.json"
 device = "cpu"
 
 [models.embeddings]
-backend = "onnx"
+task = "embedding"
 model_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2/tokenizer.json"
 device = "cpu"
 
 [models.tts]
-backend = "onnx"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/kokoro-82m-q8.onnx"
 voice = "af_heart"
 device = "cpu"
 
 [models.asr]
-backend = "whisper"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/ggml-large-v3-turbo.bin"
 language = "auto"
 
 [models.vad]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/silero-vad.onnx"
 device = "cpu"
 
 # --- GPU Tier Models (RTX 5090 FE, NVFP4) ---
 
 [models.reasoning]
-backend = "openai"
+task = "chat"
 base_url = "http://localhost:8000/v1"
-model = "google/gemma-4-26b-a4b-it"
+model_name = "google/gemma-4-26b-a4b-it"
 locality = "local"
 
 [models.asr-gpu]
-backend = "openai"
+task = "generate"
 base_url = "http://localhost:8002/v1"
-model = "ibm-granite/granite-4.0-1b-speech"
+model_name = "ibm-granite/granite-4.0-1b-speech"
 locality = "local"
 
 [models.tts-gpu]
-backend = "openai"
+task = "generate"
 base_url = "http://localhost:8003/v1"
-model = "mistralai/Voxtral-4B-TTS-2603"
+model_name = "mistralai/Voxtral-4B-TTS-2603"
 locality = "local"
 
 [models.guardian-deep]
-backend = "openai"
+task = "classification"
 base_url = "http://localhost:8001/v1"
-model = "ibm-granite/granite-guardian-3.3-8b"
+model_name = "ibm-granite/granite-guardian-3.3-8b"
 locality = "local"
 
 [models.vision]
-backend = "openai"
+task = "chat"
 base_url = "http://localhost:11434/v1"
-model = "ibm/granite3.3-vision"
+model_name = "ibm/granite3.3-vision"
 locality = "local"
 
 # [models.vision-embedding]
-# backend = "openai"
+# task = "embedding"
 # base_url = "http://localhost:8004/v1"
-# model = "ibm-granite/granite-vision-3.3-2b-embedding"
+# model_name = "ibm-granite/granite-vision-3.3-2b-embedding"
 # locality = "local"
 
 # --- Agents ---
@@ -1966,42 +1962,41 @@ reasoning + vision (iGPU with Gemma 4 E4B). No deep safety
 ```toml
 # CPU tier models with OpenVINO NPU acceleration
 [models.guardian-hap]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-guardian-hap-38m/tokenizer.json"
 device = "openvino:AUTO"          # NPU > iGPU > CPU
 
 [models.embeddings]
-backend = "onnx"
+task = "embedding"
 model_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2-int8.onnx"
 tokenizer_path = "$XDG_DATA_HOME/navra/models/granite-embedding-r2/tokenizer.json"
 device = "openvino:NPU"           # force NPU for embeddings
 
 [models.tts]
-backend = "onnx"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/kokoro-82m-fp16.onnx"
 voice = "af_heart"
 device = "openvino:AUTO"
 
 [models.asr]
-backend = "whisper"
+task = "generate"
 model_path = "$XDG_DATA_HOME/navra/models/ggml-large-v3-turbo.bin"
 language = "auto"
 # Alternative: OpenVINO GenAI on NPU (faster, lower power)
-# backend = "openvino-genai"
 # model_path = "$XDG_DATA_HOME/navra/models/whisper-large-v3-turbo-int4-ov"
 # device = "NPU"
 
 [models.vad]
-backend = "onnx"
+task = "classification"
 model_path = "$XDG_DATA_HOME/navra/models/silero-vad.onnx"
 device = "cpu"                    # too small for NPU, <1ms on CPU
 
 # Optional: Gemma 4 E4B on iGPU for local reasoning
 # [models.reasoning-local]
-# backend = "openai"
+# task = "chat"
 # base_url = "http://localhost:11434/v1"  # ollama with SYCL
-# model = "gemma4:e4b"
+# model_name = "gemma4:e4b"
 # locality = "local"
 ```
 
