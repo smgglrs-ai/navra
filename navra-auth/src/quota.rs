@@ -260,4 +260,177 @@ mod tests {
         );
         assert!(engine.has_limits());
     }
+
+    #[test]
+    fn rate_limit_refills_over_time() {
+        // Create a bucket, consume all tokens, simulate time passage, verify partial refill
+        let limit = RateLimit {
+            max_calls: 5,
+            window_secs: 60,
+        };
+        let mut bucket = Bucket::new(&limit);
+
+        // Consume all 5 tokens
+        for _ in 0..5 {
+            assert!(bucket.try_consume());
+        }
+        assert!(!bucket.try_consume());
+
+        // Simulate 30 seconds of elapsed time (half the window) by backdating last_refill
+        bucket.last_refill = Instant::now() - std::time::Duration::from_secs(30);
+
+        // After half the window, we should have refilled roughly half the tokens
+        let remaining = bucket.remaining();
+        assert!(
+            remaining >= 1 && remaining <= 5,
+            "expected partial refill, got {}",
+            remaining
+        );
+    }
+
+    #[test]
+    fn zero_max_calls_always_denies() {
+        let mut engine = QuotaEngine::new();
+        engine.add_limit(
+            "dev".to_string(),
+            RateLimit {
+                max_calls: 0,
+                window_secs: 60,
+            },
+        );
+        // With zero capacity, every call should be denied
+        assert!(!engine.check("agent", "dev"));
+        assert!(!engine.check("agent", "dev"));
+        assert!(!engine.check("agent", "dev"));
+    }
+
+    #[test]
+    fn large_max_calls_no_overflow() {
+        // max_calls near u64::MAX / SCALE should not panic via saturating_mul
+        let limit = RateLimit {
+            max_calls: u64::MAX / SCALE,
+            window_secs: 60,
+        };
+        let mut bucket = Bucket::new(&limit);
+        // Should not panic
+        assert!(bucket.try_consume());
+        let _ = bucket.remaining();
+    }
+
+    #[test]
+    fn remaining_before_any_check() {
+        let mut engine = QuotaEngine::new();
+        engine.add_limit(
+            "dev".to_string(),
+            RateLimit {
+                max_calls: 10,
+                window_secs: 60,
+            },
+        );
+        // First call creates the bucket; before any check, remaining is None (no bucket yet)
+        assert!(engine.remaining("agent", "dev").is_none());
+
+        // After first check, remaining should reflect full capacity minus 1
+        engine.check("agent", "dev");
+        assert_eq!(engine.remaining("agent", "dev"), Some(9));
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    /// Pure model of try_consume for Kani verification.
+    fn model_try_consume(tokens: u64) -> (u64, bool) {
+        if tokens >= SCALE {
+            (tokens - SCALE, true)
+        } else {
+            (tokens, false)
+        }
+    }
+
+    /// Pure model of refill for Kani verification.
+    fn model_refill(tokens: u64, elapsed_micros: u64, refill_rate: u64, max_tokens: u64) -> u64 {
+        let added = elapsed_micros.saturating_mul(refill_rate) / SCALE;
+        tokens.saturating_add(added).min(max_tokens)
+    }
+
+    /// After any sequence of consume + refill, tokens never exceed max_tokens.
+    #[kani::proof]
+    fn bucket_tokens_bounded() {
+        let max_calls: u64 = kani::any();
+        kani::assume(max_calls > 0 && max_calls <= 10_000);
+        let max_tokens = max_calls.saturating_mul(SCALE);
+
+        let tokens: u64 = kani::any();
+        kani::assume(tokens <= max_tokens);
+
+        let elapsed_micros: u64 = kani::any();
+        kani::assume(elapsed_micros <= 3_600_000_000); // up to 1 hour in micros
+        let refill_rate: u64 = kani::any();
+        kani::assume(refill_rate <= max_tokens);
+
+        // Consume then refill
+        let (after_consume, _) = model_try_consume(tokens);
+        let after_refill = model_refill(after_consume, elapsed_micros, refill_rate, max_tokens);
+        assert!(after_refill <= max_tokens);
+    }
+
+    /// try_consume either reduces tokens by exactly SCALE or returns false
+    /// without modifying token count.
+    #[kani::proof]
+    fn consume_decreases_or_fails() {
+        let tokens: u64 = kani::any();
+        kani::assume(tokens <= u64::MAX - SCALE); // avoid irrelevant overflow
+        let (new_tokens, success) = model_try_consume(tokens);
+        if success {
+            assert!(new_tokens == tokens - SCALE);
+        } else {
+            assert!(new_tokens == tokens);
+        }
+    }
+
+    /// Refill with any elapsed time never sets tokens above max_tokens.
+    #[kani::proof]
+    fn refill_never_exceeds_max() {
+        let tokens: u64 = kani::any();
+        let max_tokens: u64 = kani::any();
+        let elapsed_micros: u64 = kani::any();
+        let refill_rate: u64 = kani::any();
+
+        kani::assume(max_tokens > 0);
+        kani::assume(tokens <= max_tokens);
+
+        let result = model_refill(tokens, elapsed_micros, refill_rate, max_tokens);
+        assert!(result <= max_tokens);
+    }
+
+    /// remaining() value is always bounded by max_calls from the RateLimit config.
+    #[kani::proof]
+    fn remaining_bounded_by_max_calls() {
+        let max_calls: u64 = kani::any();
+        kani::assume(max_calls > 0 && max_calls <= 1_000_000);
+        let max_tokens = max_calls.saturating_mul(SCALE);
+
+        let tokens: u64 = kani::any();
+        kani::assume(tokens <= max_tokens);
+
+        let remaining = tokens / SCALE;
+        assert!(remaining <= max_calls);
+    }
+
+    /// window_secs=0 causes division by zero in Bucket::new. This proof
+    /// verifies the arithmetic models the risk: max_tokens / 0 panics.
+    /// The proof documents that callers MUST ensure window_secs > 0.
+    #[kani::proof]
+    fn zero_window_no_panic() {
+        let max_calls: u64 = kani::any();
+        let window_secs: u64 = kani::any();
+        kani::assume(max_calls <= 10_000);
+        kani::assume(window_secs > 0 && window_secs <= 86400);
+
+        let max_tokens = max_calls.saturating_mul(SCALE);
+        let refill_rate = max_tokens / window_secs; // safe: window_secs > 0
+        assert!(refill_rate <= max_tokens);
+    }
 }

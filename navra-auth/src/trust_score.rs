@@ -80,30 +80,30 @@ impl TrustScore {
             gain.1 += self.config.positive_delta;
         }
 
-        let current = self.score.load(Ordering::Relaxed);
+        let current = self.score.load(Ordering::Acquire);
         let new = current
             .saturating_add(self.config.positive_delta)
             .min(self.config.max_score);
-        self.score.store(new, Ordering::Relaxed);
+        self.score.store(new, Ordering::Release);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 
     pub fn record_denial(&self) {
-        let current = self.score.load(Ordering::Relaxed);
+        let current = self.score.load(Ordering::Acquire);
         let new = current.saturating_sub(self.config.denial_penalty).max(0);
-        self.score.store(new, Ordering::Relaxed);
+        self.score.store(new, Ordering::Release);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 
     pub fn record_safety_trigger(&self) {
-        let current = self.score.load(Ordering::Relaxed);
+        let current = self.score.load(Ordering::Acquire);
         let new = current.saturating_sub(self.config.safety_penalty).max(0);
-        self.score.store(new, Ordering::Relaxed);
+        self.score.store(new, Ordering::Release);
         *self.last_activity.lock().unwrap() = Instant::now();
     }
 
     pub fn current_score(&self) -> i64 {
-        let raw = self.score.load(Ordering::Relaxed);
+        let raw = self.score.load(Ordering::Acquire);
         let elapsed = self.last_activity.lock().unwrap().elapsed().as_secs() as i64 / 60;
         let decay = elapsed * self.config.decay_per_minute;
         (raw - decay).max(0)
