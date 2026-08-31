@@ -22,6 +22,7 @@ mod safety_hook;
 mod sandbox_hook;
 pub mod skill_hook;
 pub mod statistical;
+mod supply_chain_guard;
 pub mod temporal_contract;
 mod tool_guard;
 pub mod verifier;
@@ -51,6 +52,7 @@ pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
 pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
+pub use supply_chain_guard::SupplyChainGuardHook;
 pub use tool_guard::ToolGuardHook;
 pub use verifier::{VerifierConfig, VerifierHook, VerifierStats};
 

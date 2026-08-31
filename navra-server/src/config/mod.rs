@@ -23,7 +23,9 @@ pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
 pub use libraries::LibraryConfig;
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
-pub use permissions::{DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig};
+pub use permissions::{
+    CanaryTokenConfig, DomainRuleConfig, PermissionSet, PiiPatternConfig, ToolRuleConfig,
+};
 pub use server::{RegistryEntry, ServerConfig};
 
 pub use security::{
@@ -90,6 +92,10 @@ pub struct Config {
     /// Categories defined here are treated as PII for IFC labeling.
     #[serde(default)]
     pub pii_patterns: Vec<PiiPatternConfig>,
+    /// User-defined canary tokens for exfiltration detection.
+    /// If an AI outputs any of these values, it indicates data exfiltration.
+    #[serde(default)]
+    pub canary_tokens: Vec<CanaryTokenConfig>,
     /// Out-of-process gRPC modules.
     #[serde(default)]
     pub grpc_modules: Vec<GrpcModuleConfig>,
@@ -435,6 +441,7 @@ impl Default for Config {
             registry: Vec::new(),
             budget: BudgetConfig::default(),
             pii_patterns: Vec::new(),
+            canary_tokens: Vec::new(),
             grpc_modules: Vec::new(),
             monitoring: MonitoringServerConfig::default(),
             statistical: StatisticalGuardrailServerConfig::default(),

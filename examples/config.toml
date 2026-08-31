@@ -191,6 +191,21 @@ notify = "dbus"
 # debounce_ms = 500
 
 # ---------------------------------------------------------------------------
+# Canary tokens (exfiltration detection)
+# ---------------------------------------------------------------------------
+# Plant these values in sensitive files. If an AI outputs them, it
+# indicates data exfiltration.
+
+# [[canary_tokens]]
+# name = "db-password-canary"
+# value = "CANARY_xK9mP2qR7vL4nQ8"
+#
+# [[canary_tokens]]
+# name = "api-key-pattern"
+# value = "TRAP_[A-Z0-9]{16}"
+# is_regex = true
+
+# ---------------------------------------------------------------------------
 # Cognitive core (personas, directives, heuristics)
 # ---------------------------------------------------------------------------
 

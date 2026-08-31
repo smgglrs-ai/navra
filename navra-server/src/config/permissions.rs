@@ -215,6 +215,18 @@ pub struct PiiPatternConfig {
     pub category: String,
 }
 
+/// A canary token configuration entry.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct CanaryTokenConfig {
+    /// Human-readable name for this canary (e.g., "db-password-canary").
+    pub name: String,
+    /// The canary value (exact string or regex pattern).
+    pub value: String,
+    /// Whether `value` is a regex pattern (default: false = exact match).
+    #[serde(default)]
+    pub is_regex: bool,
+}
+
 fn default_tool_policy() -> String {
     "allow".to_string()
 }
