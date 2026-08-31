@@ -221,10 +221,14 @@ Choose a safety level per permission set:
 
 | Profile | Behavior |
 |---------|----------|
-| `standard` | All regex + ML filters, redact matches |
-| `secrets-only` | Only secret patterns, allow PII |
-| `block` | Block the entire response on any match |
-| `none` | No filtering (full trust) |
+| `standard` | Regex-based secret and PII detection |
+| `secrets-only` | Only detect secrets (API keys, passwords) |
+| `pseudonymize` | Replace PII with pseudonyms |
+| `block` | Block content containing PII or secrets |
+| `multi-label` | Multi-label classifier with per-category thresholds |
+| `guardian` | Guardian HAP safety model |
+| `guardian-deep` | Guardian with deeper analysis |
+| `none` | No content filtering |
 
 Add custom patterns for domain-specific sensitive data:
 
