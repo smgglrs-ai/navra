@@ -76,8 +76,8 @@ Add to `~/.config/goose/config.yaml`:
 ```yaml
 extensions:
   navra:
-    type: sse
-    uri: http://localhost:9315/mcp
+    transport: streamable-http
+    url: http://localhost:9315/mcp
     headers:
       Authorization: "Bearer mcd_your_token_here"
 ```
