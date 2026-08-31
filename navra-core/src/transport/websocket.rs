@@ -243,4 +243,145 @@ mod tests {
             0
         );
     }
+
+    #[test]
+    fn metrics_increment_decrement() {
+        let state = make_state();
+        state
+            .metrics
+            .sessions
+            .websocket_connections
+            .fetch_add(1, Ordering::Relaxed);
+        state
+            .metrics
+            .sessions
+            .websocket_connections
+            .fetch_add(1, Ordering::Relaxed);
+        assert_eq!(
+            state.metrics.sessions.websocket_connections.load(Ordering::Relaxed),
+            2
+        );
+        state
+            .metrics
+            .sessions
+            .websocket_connections
+            .fetch_sub(1, Ordering::Relaxed);
+        assert_eq!(
+            state.metrics.sessions.websocket_connections.load(Ordering::Relaxed),
+            1
+        );
+    }
+
+    #[test]
+    fn ws_config_custom_values() {
+        let server = Arc::new(
+            McpServer::builder()
+                .name("ws-custom")
+                .allow_anonymous()
+                .build(),
+        );
+        let state = AppState {
+            server,
+            broadcaster: SseBroadcaster::new(),
+            aid_record: None,
+            registry_entries: Vec::new(),
+            a2a_endpoint: None,
+            root_did: None,
+            oauth: None,
+            metrics: Arc::new(crate::metrics::Metrics::new()),
+            ws_ping_interval_secs: 15,
+            ws_idle_timeout_secs: 120,
+        };
+        assert_eq!(state.ws_ping_interval_secs, 15);
+        assert_eq!(state.ws_idle_timeout_secs, 120);
+    }
+
+    #[test]
+    fn state_with_oauth() {
+        let server = Arc::new(
+            McpServer::builder()
+                .name("ws-oauth")
+                .allow_anonymous()
+                .build(),
+        );
+        let signer = navra_auth::identity::Ed25519Signer::generate();
+        let config = navra_auth::auth::oauth::OAuthConfig {
+            issuer: "http://localhost:9315".to_string(),
+            token_ttl_secs: 3600,
+            scopes: vec!["mcp".to_string()],
+            exchange_cap: None,
+            exchange_ring: 0,
+        };
+        let oauth = Arc::new(navra_auth::auth::oauth::OAuthProvider::new(
+            config,
+            Box::new(signer),
+        ));
+        let state = AppState {
+            server,
+            broadcaster: SseBroadcaster::new(),
+            aid_record: None,
+            registry_entries: Vec::new(),
+            a2a_endpoint: None,
+            root_did: None,
+            oauth: Some(oauth),
+            metrics: Arc::new(crate::metrics::Metrics::new()),
+            ws_ping_interval_secs: 30,
+            ws_idle_timeout_secs: 600,
+        };
+        assert!(state.oauth.is_some());
+    }
+
+    #[test]
+    fn state_with_a2a_endpoint() {
+        let server = Arc::new(
+            McpServer::builder()
+                .name("ws-a2a")
+                .allow_anonymous()
+                .build(),
+        );
+        let state = AppState {
+            server,
+            broadcaster: SseBroadcaster::new(),
+            aid_record: None,
+            registry_entries: Vec::new(),
+            a2a_endpoint: Some("http://localhost:9315/acp".to_string()),
+            root_did: None,
+            oauth: None,
+            metrics: Arc::new(crate::metrics::Metrics::new()),
+            ws_ping_interval_secs: 30,
+            ws_idle_timeout_secs: 600,
+        };
+        assert_eq!(
+            state.a2a_endpoint.as_deref(),
+            Some("http://localhost:9315/acp")
+        );
+    }
+
+    #[test]
+    fn state_with_registry_entries() {
+        let server = Arc::new(
+            McpServer::builder()
+                .name("ws-registry")
+                .allow_anonymous()
+                .build(),
+        );
+        let entries = vec![
+            serde_json::json!({"name": "server-a", "url": "http://localhost:3001"}),
+            serde_json::json!({"name": "server-b", "url": "http://localhost:3002"}),
+        ];
+        let state = AppState {
+            server,
+            broadcaster: SseBroadcaster::new(),
+            aid_record: None,
+            registry_entries: entries,
+            a2a_endpoint: None,
+            root_did: None,
+            oauth: None,
+            metrics: Arc::new(crate::metrics::Metrics::new()),
+            ws_ping_interval_secs: 30,
+            ws_idle_timeout_secs: 600,
+        };
+        assert_eq!(state.registry_entries.len(), 2);
+        assert_eq!(state.registry_entries[0]["name"], "server-a");
+    }
 }

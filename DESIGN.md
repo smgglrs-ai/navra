@@ -18,7 +18,7 @@ of origin.
 
 ## Crate Structure
 
-23-crate workspace (22 navra-* + benchmarks).
+25-crate workspace (24 navra-* + benchmarks).
 
 | Crate | Category | Role |
 |---|---|---|
@@ -38,12 +38,14 @@ of origin.
 | `navra-memory` | Persistence | Working memory (conversation turns) + knowledge store (FTS5) |
 | `navra-agent` | Client | Agent builder, MCP client, ReAct tool-use loop, deterministic replay, standalone binary (`Dockerfile.agent`) |
 | `navra-flow` | Orchestration | Multi-agent flows: handoff routing, DAG execution, mesh communication (mailbox, blackboard, back-edges), mandate validation, hop limits, provenance tracking |
+| `navra-kv-cache` | Dev tooling | KV cache quantization (WHT rotation, PolarQuant, QJL residual, bit packing) |
 | `navra-core` | Infrastructure | Server, module trait, session, transport, Prometheus metrics, OTel traces, re-exports |
 | `navra-rag` | Context enrichment | Hybrid FTS5+vector search (RRF fusion), breadcrumb chunking, cross-encoder reranking (batched), confidence gating |
 | `navra-modal-voice` | Modality | Speech I/O (ASR + TTS via ONNX models) |
 | `navra-modal-vision` | Modality | Image/screen understanding (GPU tier) |
 | `navra-macros` | Dev tooling | `#[tool]` proc macro for generating tool definitions from functions |
 | `navra-server` | Binary | CLI, config, module wiring, systemd, tray, Prometheus /metrics (binary: `navra`) |
+| `navra-tui` | Binary | Interactive terminal dashboard (agents, audit, flows, models, safety widgets) |
 | `benchmarks` | Dev tooling | Criterion performance benchmarks |
 
 ### Dependency layering
@@ -100,7 +102,7 @@ navra-server            (all + hub + runtime + model-server)
 │  │                       navra-core                              │  │
 │  │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │  │
 │  │  │ JSON-RPC   │ │ MCP Proto  │ │ Streamable │ │   Auth     │   │  │
-│  │  │ 2.0        │ │ 2025-03-26 │ │ HTTP + SSE │ │ (BLAKE3)   │   │  │
+│  │  │ 2.0        │ │ 2026-07-28 │ │ HTTP + SSE │ │ (BLAKE3)   │   │  │
 │  │  │            │ │ tools +    │ │ (axum)     │ │            │   │  │
 │  │  │            │ │ prompts +  │ │            │ │            │   │  │
 │  │  │            │ │ resources  │ │            │ │            │   │  │
@@ -288,7 +290,7 @@ enabled = true
 - `Notification` — method + params (no id)
 - Standard error codes (-32700, -32600, -32601, -32602, -32603)
 
-### MCP Lifecycle (2025-03-26 spec)
+### MCP Lifecycle (2026-07-28 spec)
 
 1. Client sends `initialize` with capabilities and `clientInfo`
 2. Server responds with `serverInfo`, capabilities, and
@@ -684,7 +686,7 @@ Operations that interact with forge/platform APIs use
 
 ### Rules
 
-1. **Module prefix = crate suffix.** `navra-tools-git` → `git_*`.
+1. **Module prefix = crate suffix.** e.g., upstream git tools → `git_*`.
 2. **Resource = noun from the MCP resource URI.** `pr`, `issue`, `mr`, `board`.
 3. **Action = verb.** `create`, `list`, `get`, `update`, `delete`,
    `comment`, `review`, `approve`, `transition`.
@@ -695,43 +697,16 @@ Operations that interact with forge/platform APIs use
 
 ### Crate mapping
 
-| Crate | Tool prefix | Scope |
-|-------|-------------|-------|
-| `navra-tools-file` | `file_` | Local filesystem |
-| `navra-tools-git` | `git_` | Local + transport (push/pull/fetch) |
-| `navra-tools-gitlab` | `gitlab_` | GitLab API (MRs, issues, projects) |
-| `navra-tools-jira` | `jira_` | Jira API (issues, boards, sprints) |
+Tool crates have been removed. File, git, GitLab, and Jira tools
+are now provided by upstream MCP servers, not built-in crates.
+The naming convention above still applies to upstream tool names
+for permission glob matching.
 
 ## MCP Tools
 
-### File Module (`navra-tools-file`)
-
-| Tool | Permission | Description |
-|------|-----------|-------------|
-| `file_search` | search | Full-text search via FTS5 |
-| `file_read` | read | Read file with optional offset/limit (line-based partial reads) |
-| `file_write` | write | Create or overwrite file, auto-indexes |
-| `file_edit` | write | Surgical string replacement (old_string → new_string, must be unique) |
-| `file_delete` | write | Delete file, removes from index |
-| `file_list` | list | List directory (filters entries by path ACL) |
-| `file_info` | read | File metadata (size, lines, mime, modified, indexed) without content |
-| `file_approve` | — | Approve a pending request by ID |
-| `file_deny` | — | Deny a pending request by ID |
-
-Read-only access is also available via MCP resources with `file://` URIs.
-
-### Git Module (`navra-tools-git`)
-
-| Tool | Permission | Description |
-|------|-----------|-------------|
-| `git_status` | git.status | Working tree status (short format with branch) |
-| `git_diff` | git.diff | Unstaged, staged (`--cached`), or ref-based diffs |
-| `git_log` | git.log | Commit history with limit and oneline options |
-| `git_branch` | git.branch | List branches, optionally including remotes |
-| `git_commit` | git.commit | Create a commit (requires approval) |
-
-Uses `tokio::process::Command` to run git. Path validation with
-tilde expansion, canonicalization, and `.git` directory check.
+File, git, GitLab, and Jira tools are provided by upstream MCP servers.
+The gateway applies auth, ACLs, per-tool rules, and content safety
+filters uniformly to all upstream tool calls.
 
 ### Path Security
 
@@ -1048,7 +1023,8 @@ safety = "secrets-only" # only secrets, allow PII
 safety = "none"         # no filtering (full trust)
 ```
 
-Profiles: `"standard"` (default), `"secrets-only"`, `"block"`, `"none"`.
+Profiles: `"standard"` (default), `"secrets-only"`, `"pseudonymize"`,
+`"multi-label"`, `"guardian"`, `"guardian-deep"`, `"block"`, `"none"`.
 
 ### Redaction
 
@@ -1496,7 +1472,7 @@ Six core components identified for effective agent harnesses:
 
 1. **Live repository context** — Collect workspace metadata upfront
    (git status, project structure, conventions). navra already provides
-   this via navra-tools-git and navra-tools-file.
+   this via upstream MCP servers for git and file tools.
 2. **Prompt cache separation** — Separate stable content (tool
    descriptions, system prompt) from dynamic state (conversation
    history). Enables prompt cache reuse across turns.
