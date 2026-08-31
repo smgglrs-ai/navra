@@ -569,4 +569,195 @@ mod tests {
         let b = vec![0.0, 1.0];
         assert!(cosine_similarity(&a, &b).abs() < 1e-6);
     }
+
+    // --- Edge-case tests ---
+
+    #[tokio::test]
+    async fn leakage_l3_judge_isolated() {
+        // L3 semantic judge should run independently of L2 similarity.
+        // Here we test that the SemanticLeakageJudge blocks based on
+        // its own judge function, not on embedding similarity.
+        let stores = Arc::new(ValueStoreMap::new());
+        let store = stores.get_or_create("sess-judge");
+        store.store(StoredValue {
+            id: "v-secret".to_string(),
+            content: vec![navra_protocol::Content::text("The password is hunter2")],
+            label: DataLabel {
+                integrity: Integrity::Untrusted,
+                confidentiality: Confidentiality::Secret,
+            },
+            source_tool: "file_read".to_string(),
+            created_at: std::time::Instant::now(),
+            is_error: false,
+        });
+
+        // Judge always returns high confidence (simulating leakage detection)
+        let judge_fn: JudgeFn = Arc::new(|_outgoing, _tainted| {
+            Box::pin(async { Some(0.95) })
+        });
+
+        let hook = SemanticLeakageJudge::new(
+            stores,
+            judge_fn,
+            SemanticLeakageConfig::default(),
+        );
+        let ctx = test_ctx("sess-judge");
+
+        let decision = hook
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/tmp/out", "content": "The password starts with h"}),
+                &ctx,
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "L3 judge should block leakage independently: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leakage_cross_session_no_bleed() {
+        // Data tainted in session A should not be visible when checking session B.
+        let stores = Arc::new(ValueStoreMap::new());
+        store_tainted_value(&stores, "session-A", "API_KEY=sk-secret-abc123");
+
+        let hook = make_hook(stores);
+
+        // Session B has no tainted values — should pass
+        let ctx_b = test_ctx("session-B");
+        let decision = hook
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
+                &ctx_b,
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(decision, HookDecision::Continue),
+            "Session B should not see session A's tainted data: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leakage_empty_content() {
+        // Empty tool result text should not trigger leakage detection.
+        let stores = Arc::new(ValueStoreMap::new());
+        store_tainted_value(&stores, "sess-empty", "API_KEY=sk-secret-abc123");
+
+        let hook = make_hook(stores);
+        let ctx = test_ctx("sess-empty");
+
+        let decision = hook
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/tmp/out", "content": ""}),
+                &ctx,
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(decision, HookDecision::Continue),
+            "Empty content should not trigger leakage: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leakage_large_payload() {
+        // 1MB payload should not OOM or timeout — the mock embed function
+        // and cosine similarity are O(n) in text length, not quadratic.
+        let stores = Arc::new(ValueStoreMap::new());
+        store_tainted_value(&stores, "sess-large", "short secret value here");
+
+        let hook = make_hook(stores);
+        let ctx = test_ctx("sess-large");
+
+        let large_content = "x".repeat(1_000_000);
+        let decision = hook
+            .pre_tool_use(
+                "file_write",
+                &json!({"path": "/tmp/out", "content": large_content}),
+                &ctx,
+                None,
+            )
+            .await;
+
+        // The large payload is unrelated to the tainted value, so it should pass.
+        // The key assertion is that we get here without OOM or timeout.
+        assert!(
+            matches!(decision, HookDecision::Continue),
+            "Large unrelated payload should pass: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn leakage_concurrent_sessions() {
+        // Two sessions checked simultaneously should get correct per-session results.
+        let stores = Arc::new(ValueStoreMap::new());
+        store_tainted_value(&stores, "concurrent-A", "API_KEY=sk-secret-abc123");
+        // Session B has different tainted content
+        let store_b = stores.get_or_create("concurrent-B");
+        store_b.store(StoredValue {
+            id: "v-different".to_string(),
+            content: vec![navra_protocol::Content::text(
+                "database password is correcthorsebatterystaple",
+            )],
+            label: DataLabel {
+                integrity: Integrity::Untrusted,
+                confidentiality: Confidentiality::Secret,
+            },
+            source_tool: "db_read".to_string(),
+            created_at: std::time::Instant::now(),
+            is_error: false,
+        });
+
+        let hook = Arc::new(make_hook(stores));
+
+        let hook_a = Arc::clone(&hook);
+        let handle_a = tokio::spawn(async move {
+            let ctx = test_ctx("concurrent-A");
+            hook_a
+                .pre_tool_use(
+                    "file_write",
+                    &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
+                    &ctx,
+                    None,
+                )
+                .await
+        });
+
+        let hook_b = Arc::clone(&hook);
+        let handle_b = tokio::spawn(async move {
+            let ctx = test_ctx("concurrent-B");
+            hook_b
+                .pre_tool_use(
+                    "file_write",
+                    &json!({"path": "/tmp/out", "content": "API_KEY=sk-secret-abc123"}),
+                    &ctx,
+                    None,
+                )
+                .await
+        });
+
+        let (result_a, result_b) = tokio::join!(handle_a, handle_b);
+        let decision_a = result_a.unwrap();
+        let decision_b = result_b.unwrap();
+
+        // Session A should block (identical content to its tainted value)
+        assert!(
+            matches!(decision_a, HookDecision::Block(_)),
+            "Session A should block its own tainted content: {decision_a:?}"
+        );
+
+        // Session B should pass (API key content is unrelated to "database password...")
+        assert!(
+            matches!(decision_b, HookDecision::Continue),
+            "Session B should not be affected by session A's tainted data: {decision_b:?}"
+        );
+    }
 }
