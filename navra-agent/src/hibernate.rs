@@ -453,4 +453,233 @@ mod tests {
         // Second take returns None
         assert!(kv.take().is_none());
     }
+
+    #[test]
+    fn store_save_overwrite() {
+        let store = HibernationStore::open_memory().unwrap();
+
+        let snap1 = ConversationSnapshot::capture(
+            "agent-ow",
+            "run-1",
+            Some("first prompt"),
+            vec![],
+            1,
+            10,
+            20,
+            DataLabel::TRUSTED_PUBLIC,
+            "model-a",
+            "endpoint",
+            10,
+            None,
+            None,
+            None,
+        );
+        store
+            .save(HibernationState {
+                conversation: snap1,
+                kv_cache: None,
+            })
+            .unwrap();
+
+        let snap2 = ConversationSnapshot::capture(
+            "agent-ow",
+            "run-2",
+            Some("second prompt"),
+            vec![],
+            5,
+            50,
+            100,
+            DataLabel::TRUSTED_PUBLIC,
+            "model-b",
+            "endpoint",
+            20,
+            None,
+            None,
+            None,
+        );
+        store
+            .save(HibernationState {
+                conversation: snap2,
+                kv_cache: None,
+            })
+            .unwrap();
+
+        // Only one entry should exist (overwritten)
+        let list = store.list().unwrap();
+        assert_eq!(list.len(), 1);
+
+        // The loaded snapshot should be the second one
+        let loaded = store.load("agent-ow").unwrap().unwrap();
+        assert_eq!(loaded.conversation.run_id, "run-2");
+        assert_eq!(loaded.conversation.iteration_count, 5);
+        assert_eq!(loaded.conversation.model_name, "model-b");
+    }
+
+    #[test]
+    fn store_concurrent_save_load() {
+        use std::sync::Arc;
+
+        let store = Arc::new(HibernationStore::open_memory().unwrap());
+
+        // Save from a spawned thread
+        let store_w = store.clone();
+        let writer = std::thread::spawn(move || {
+            for i in 0..10 {
+                let snap = ConversationSnapshot::capture(
+                    &format!("concurrent-{i}"),
+                    "run",
+                    None,
+                    vec![],
+                    i,
+                    0,
+                    0,
+                    DataLabel::TRUSTED_PUBLIC,
+                    "m",
+                    "e",
+                    10,
+                    None,
+                    None,
+                    None,
+                );
+                store_w
+                    .save(HibernationState {
+                        conversation: snap,
+                        kv_cache: None,
+                    })
+                    .unwrap();
+            }
+        });
+
+        writer.join().unwrap();
+
+        // Load from another thread
+        let store_r = store.clone();
+        let reader = std::thread::spawn(move || {
+            let mut loaded = 0;
+            for i in 0..10 {
+                if store_r.load(&format!("concurrent-{i}")).unwrap().is_some() {
+                    loaded += 1;
+                }
+            }
+            loaded
+        });
+
+        let count = reader.join().unwrap();
+        assert_eq!(count, 10);
+    }
+
+    #[test]
+    fn snapshot_with_conversation_items() {
+        let items = vec![
+            InputItem::user("Hello, how can I help?"),
+            InputItem::user("Please read file.txt"),
+        ];
+
+        let snap = ConversationSnapshot::capture(
+            "agent-conv",
+            "run-1",
+            Some("system prompt"),
+            items.clone(),
+            2,
+            50,
+            80,
+            DataLabel::TRUSTED_PUBLIC,
+            "granite3.3:8b",
+            "http://localhost:3000/mcp",
+            20,
+            Some(0.7),
+            Some(4096),
+            None,
+        );
+
+        let json = serde_json::to_vec(&snap).unwrap();
+        let restored: ConversationSnapshot = serde_json::from_slice(&json).unwrap();
+        assert_eq!(restored.conversation.len(), 2);
+        assert_eq!(restored.agent_id, "agent-conv");
+    }
+
+    #[test]
+    fn snapshot_with_allowed_tools() {
+        let tools = vec![
+            "file_read".to_string(),
+            "file_write".to_string(),
+            "git_status".to_string(),
+        ];
+
+        let snap = ConversationSnapshot::capture(
+            "agent-tools",
+            "run-1",
+            None,
+            vec![],
+            0,
+            0,
+            0,
+            DataLabel::TRUSTED_PUBLIC,
+            "model",
+            "endpoint",
+            10,
+            None,
+            None,
+            Some(tools.clone()),
+        );
+
+        let json = serde_json::to_vec(&snap).unwrap();
+        let restored: ConversationSnapshot = serde_json::from_slice(&json).unwrap();
+        let restored_tools = restored.allowed_tools.unwrap();
+        assert_eq!(restored_tools.len(), 3);
+        assert_eq!(restored_tools[0], "file_read");
+        assert_eq!(restored_tools[1], "file_write");
+        assert_eq!(restored_tools[2], "git_status");
+    }
+
+    #[test]
+    fn kv_checkpoint_drop_cleans_file() {
+        let dir = std::env::temp_dir().join("navra-test-kv-drop");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test-cache.bin");
+        std::fs::write(&path, b"fake kv cache data").unwrap();
+        assert!(path.exists());
+
+        // Drop without calling take() — file should be cleaned up
+        {
+            let _kv = KvCacheCheckpoint::new(path.clone(), "fp-abc".to_string());
+            // _kv drops here
+        }
+
+        assert!(!path.exists(), "KV cache file should be deleted on drop without take()");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn store_corrupted_snapshot_returns_error() {
+        let store = HibernationStore::open_memory().unwrap();
+
+        // Manually insert invalid JSON blob into the database
+        {
+            let db = store.db.lock().unwrap();
+            db.execute(
+                "INSERT INTO hibernations (agent_id, snapshot, kv_path, kv_model_fp, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    "corrupted-agent",
+                    b"this is not valid json at all {{{",
+                    Option::<String>::None,
+                    Option::<String>::None,
+                    0i64,
+                ],
+            )
+            .unwrap();
+        }
+
+        let result = store.load("corrupted-agent");
+        match result {
+            Err(err_msg) => {
+                assert!(
+                    err_msg.contains("deserialization failed"),
+                    "Error should mention deserialization: {err_msg}"
+                );
+            }
+            Ok(_) => panic!("Loading corrupted snapshot should return error"),
+        }
+    }
 }
