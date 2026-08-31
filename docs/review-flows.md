@@ -14,7 +14,7 @@ using DAG-based multi-agent flows. Four flow templates are available:
 
 ```bash
 # Start the server
-navra serve
+navra mcp serve
 
 # Run a review via MCP (from any MCP client)
 flow_start(flow_name="review", prompt="Review the project",
