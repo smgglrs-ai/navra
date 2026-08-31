@@ -504,6 +504,316 @@ proof fn backoff_bounded(attempt: u64)
 
 } // verus!
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use navra_responses::{
+        CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent, FunctionCallOutputItem,
+        FunctionTool, InputContent, InputItem, ItemStatus, MessageItem, MessageRole,
+        request::{ResponseFormat, TextConfig},
+    };
+
+    // --- responses_to_chat tests ---
+
+    #[test]
+    fn responses_to_chat_empty_input() {
+        // Empty input with instructions -> only system message
+        let mut req = CreateResponseRequest::new("m".to_string(), vec![]);
+        req.instructions = Some("Be helpful".into());
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::System);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("Be helpful"));
+    }
+
+    #[test]
+    fn responses_to_chat_empty_input_no_instructions() {
+        // Empty input, no instructions -> no messages
+        let req = CreateResponseRequest::new("m".to_string(), vec![]);
+        let chat = responses_to_chat(&req);
+        assert!(chat.messages.is_empty());
+    }
+
+    #[test]
+    fn responses_to_chat_user_message() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![InputItem::user("What is Rust?")],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::User);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("What is Rust?"));
+    }
+
+    #[test]
+    fn responses_to_chat_system_and_developer_roles() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![
+                InputItem::system("System prompt"),
+                InputItem::developer("Dev prompt"),
+            ],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 2);
+        // Both system and developer map to ChatRole::System
+        assert_eq!(chat.messages[0].role, chat::ChatRole::System);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("System prompt"));
+        assert_eq!(chat.messages[1].role, chat::ChatRole::System);
+        assert_eq!(chat.messages[1].content.as_deref(), Some("Dev prompt"));
+    }
+
+    #[test]
+    fn responses_to_chat_assistant_message() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![InputItem::Message(MessageItem::assistant("I can help"))],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::Assistant);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("I can help"));
+    }
+
+    #[test]
+    fn responses_to_chat_function_call_to_tool_call() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![InputItem::FunctionCall(FunctionCallItem {
+                id: None,
+                call_id: "call_123".into(),
+                name: "get_weather".into(),
+                arguments: r#"{"city":"Paris"}"#.into(),
+                status: Some(ItemStatus::Completed),
+            })],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::Assistant);
+        assert_eq!(chat.messages[0].tool_calls.len(), 1);
+        assert_eq!(chat.messages[0].tool_calls[0].id, "call_123");
+        assert_eq!(chat.messages[0].tool_calls[0].call_type, "function");
+        assert_eq!(chat.messages[0].tool_calls[0].function.name, "get_weather");
+        assert_eq!(
+            chat.messages[0].tool_calls[0].function.arguments,
+            r#"{"city":"Paris"}"#
+        );
+    }
+
+    #[test]
+    fn responses_to_chat_function_output_text() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None,
+                call_id: "call_abc".into(),
+                output: FunctionCallOutputContent::Text("Sunny, 22C".into()),
+                status: Some(ItemStatus::Completed),
+            })],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::Tool);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("Sunny, 22C"));
+        assert_eq!(chat.messages[0].tool_call_id.as_deref(), Some("call_abc"));
+    }
+
+    #[test]
+    fn responses_to_chat_function_output_parts() {
+        let req = CreateResponseRequest::new(
+            "m".to_string(),
+            vec![InputItem::FunctionCallOutput(FunctionCallOutputItem {
+                id: None,
+                call_id: "call_xyz".into(),
+                output: FunctionCallOutputContent::Parts(vec![
+                    InputContent::text("part1"),
+                    InputContent::text("part2"),
+                ]),
+                status: None,
+            })],
+        );
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, chat::ChatRole::Tool);
+        assert_eq!(chat.messages[0].content.as_deref(), Some("part1part2"));
+    }
+
+    #[test]
+    fn responses_to_chat_tools_converted() {
+        let mut req = CreateResponseRequest::new("m".to_string(), vec![]);
+        req.tools = vec![
+            FunctionTool::new("search", "Search the web")
+                .with_parameters(serde_json::json!({"type": "object"})),
+        ];
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.tools.len(), 1);
+        assert_eq!(chat.tools[0].name, "search");
+        assert_eq!(chat.tools[0].description, "Search the web");
+        assert_eq!(chat.tools[0].parameters, serde_json::json!({"type": "object"}));
+    }
+
+    #[test]
+    fn responses_to_chat_tool_choice_modes() {
+        // Auto
+        let mut req = CreateResponseRequest::new("m".to_string(), vec![]);
+        req.tool_choice = Some(navra_responses::ToolChoice::auto());
+        let chat = responses_to_chat(&req);
+        assert!(matches!(chat.tool_choice, Some(chat::ToolChoice::Auto)));
+
+        // None
+        req.tool_choice = Some(navra_responses::ToolChoice::none());
+        let chat = responses_to_chat(&req);
+        assert!(matches!(chat.tool_choice, Some(chat::ToolChoice::None)));
+
+        // Required
+        req.tool_choice = Some(navra_responses::ToolChoice::required());
+        let chat = responses_to_chat(&req);
+        assert!(matches!(chat.tool_choice, Some(chat::ToolChoice::Required)));
+    }
+
+    #[test]
+    fn responses_to_chat_response_format_json() {
+        let mut req = CreateResponseRequest::new("m".to_string(), vec![]);
+        req.text = Some(TextConfig {
+            format: Some(ResponseFormat::JsonObject),
+            verbosity: None,
+        });
+        let chat = responses_to_chat(&req);
+        assert_eq!(chat.response_format, Some(serde_json::json!("json")));
+    }
+
+    #[test]
+    fn responses_to_chat_response_format_text_filtered() {
+        // Text format maps to Value::Null, which is filtered out
+        let mut req = CreateResponseRequest::new("m".to_string(), vec![]);
+        req.text = Some(TextConfig {
+            format: Some(ResponseFormat::Text),
+            verbosity: None,
+        });
+        let chat = responses_to_chat(&req);
+        assert!(chat.response_format.is_none());
+    }
+
+    // --- chat_to_responses tests ---
+
+    #[test]
+    fn chat_to_responses_text_content() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant("Hello there"),
+            finish_reason: chat::FinishReason::Stop,
+            prompt_tokens: Some(10),
+            completion_tokens: Some(3),
+        };
+        let model_resp = chat_to_responses("test-model", &resp);
+        assert_eq!(model_resp.output.len(), 1);
+        match &model_resp.output[0] {
+            OutputItem::Message(msg) => {
+                assert_eq!(msg.role, MessageRole::Assistant);
+                assert_eq!(msg.text(), "Hello there");
+            }
+            _ => panic!("expected Message output"),
+        }
+    }
+
+    #[test]
+    fn chat_to_responses_tool_calls() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant_tool_calls(vec![chat::ToolCall {
+                id: "call_1".into(),
+                call_type: "function".into(),
+                function: chat::FunctionCall {
+                    name: "read_file".into(),
+                    arguments: r#"{"path":"/tmp"}"#.into(),
+                },
+            }]),
+            finish_reason: chat::FinishReason::ToolCalls,
+            prompt_tokens: Some(5),
+            completion_tokens: Some(10),
+        };
+        let model_resp = chat_to_responses("test-model", &resp);
+        assert_eq!(model_resp.output.len(), 1);
+        match &model_resp.output[0] {
+            OutputItem::FunctionCall(fc) => {
+                assert_eq!(fc.call_id, "call_1");
+                assert_eq!(fc.name, "read_file");
+                assert_eq!(fc.arguments, r#"{"path":"/tmp"}"#);
+                assert_eq!(fc.status, Some(ItemStatus::Completed));
+            }
+            _ => panic!("expected FunctionCall output"),
+        }
+    }
+
+    #[test]
+    fn chat_to_responses_stop_status() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant("done"),
+            finish_reason: chat::FinishReason::Stop,
+            prompt_tokens: None,
+            completion_tokens: None,
+        };
+        let model_resp = chat_to_responses("m", &resp);
+        assert_eq!(model_resp.status, ResponseStatus::Completed);
+    }
+
+    #[test]
+    fn chat_to_responses_length_status() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant("truncated..."),
+            finish_reason: chat::FinishReason::Length,
+            prompt_tokens: None,
+            completion_tokens: None,
+        };
+        let model_resp = chat_to_responses("m", &resp);
+        assert_eq!(model_resp.status, ResponseStatus::Incomplete);
+    }
+
+    #[test]
+    fn chat_to_responses_usage_populated() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant("hi"),
+            finish_reason: chat::FinishReason::Stop,
+            prompt_tokens: Some(42),
+            completion_tokens: Some(7),
+        };
+        let model_resp = chat_to_responses("m", &resp);
+        let usage = model_resp.usage.unwrap();
+        assert_eq!(usage.input_tokens, 42);
+        assert_eq!(usage.output_tokens, 7);
+        assert_eq!(usage.total_tokens, 49);
+    }
+
+    #[test]
+    fn chat_to_responses_no_content_no_tools() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage {
+                role: chat::ChatRole::Assistant,
+                content: None,
+                images: Vec::new(),
+                tool_calls: Vec::new(),
+                tool_call_id: None,
+            },
+            finish_reason: chat::FinishReason::Stop,
+            prompt_tokens: None,
+            completion_tokens: None,
+        };
+        let model_resp = chat_to_responses("m", &resp);
+        assert!(model_resp.output.is_empty());
+    }
+
+    #[test]
+    fn chat_to_responses_model_field() {
+        let resp = chat::ChatResponse {
+            message: chat::ChatMessage::assistant("x"),
+            finish_reason: chat::FinishReason::Stop,
+            prompt_tokens: None,
+            completion_tokens: None,
+        };
+        let model_resp = chat_to_responses("granite3.3:8b", &resp);
+        assert_eq!(model_resp.model.as_deref(), Some("granite3.3:8b"));
+    }
+}
+
 #[cfg(kani)]
 mod kani_proofs {
     use super::*;
