@@ -17,7 +17,7 @@ cargo run -- serve
 
 ## Workspace
 
-23-crate Rust workspace. See `DESIGN.md` for the full crate table,
+25-crate Rust workspace. See `DESIGN.md` for the full crate table,
 dependency layering, architecture diagrams, and design decisions.
 
 ## Agent Workflow (MANDATORY)
