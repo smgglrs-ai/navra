@@ -37,7 +37,7 @@ pub use error::RuntimeError;
 pub use format::ModelFormat;
 pub use gpu::{GpuDevice, GpuKind, detect_gpus};
 pub use hardware::HardwareTarget;
-pub use npu::{NpuDevice, detect_npus};
+pub use npu::{NpuDevice, detect_npus, detect_npus_from};
 
 use serde::{Deserialize, Serialize};
 use std::fmt;

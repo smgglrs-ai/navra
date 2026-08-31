@@ -39,6 +39,53 @@ impl PodmanRuntime {
         }
         true
     }
+
+    /// Build the `podman run` argument list.
+    ///
+    /// Extracted from [`serve()`] so the security-critical flags can be
+    /// unit-tested without spawning a real container.
+    pub(crate) fn build_podman_args(
+        &self,
+        config: &ServeConfig,
+        port: u16,
+        image: &str,
+        container_name: &str,
+        model_path: &str,
+    ) -> Vec<String> {
+        let container_args = self.engine.build_container_args(config);
+        let serve_port = self.engine.default_serve_port();
+
+        let mut podman_args = vec![
+            "run".to_string(),
+            "--detach".to_string(),
+            "--name".to_string(),
+            container_name.to_string(),
+            "--rm".to_string(),
+            "--network=none".to_string(),
+            "--no-new-privileges".to_string(),
+            "--read-only".to_string(),
+        ];
+
+        if self.engine.needs_ipc_host() {
+            podman_args.push("--ipc=host".to_string());
+        }
+
+        podman_args.extend_from_slice(&[
+            "-v".to_string(),
+            format!("{model_path}:/model:ro"),
+            "-p".to_string(),
+            format!("{}:{port}:{serve_port}", config.host),
+        ]);
+
+        for gpu in &config.gpus {
+            podman_args.extend(config.target.podman_device_args(gpu.index));
+        }
+
+        podman_args.push(image.to_string());
+        podman_args.extend(container_args);
+
+        podman_args
+    }
 }
 
 impl ModelRuntime for PodmanRuntime {
@@ -61,37 +108,8 @@ impl ModelRuntime for PodmanRuntime {
                 .to_str()
                 .ok_or_else(|| RuntimeError::Start("invalid model path".to_string()))?;
 
-            let container_args = self.engine.build_container_args(&config);
-            let serve_port = self.engine.default_serve_port();
-
-            let mut podman_args = vec![
-                "run".to_string(),
-                "--detach".to_string(),
-                "--name".to_string(),
-                container_name.clone(),
-                "--rm".to_string(),
-                "--network=none".to_string(),
-                "--no-new-privileges".to_string(),
-                "--read-only".to_string(),
-            ];
-
-            if self.engine.needs_ipc_host() {
-                podman_args.push("--ipc=host".to_string());
-            }
-
-            podman_args.extend_from_slice(&[
-                "-v".to_string(),
-                format!("{model_path}:/model:ro"),
-                "-p".to_string(),
-                format!("{}:{port}:{serve_port}", config.host),
-            ]);
-
-            for gpu in &config.gpus {
-                podman_args.extend(config.target.podman_device_args(gpu.index));
-            }
-
-            podman_args.push(image.to_string());
-            podman_args.extend(container_args);
+            let podman_args =
+                self.build_podman_args(&config, port, image, &container_name, model_path);
 
             tracing::info!(
                 image = image,
@@ -191,5 +209,141 @@ impl ModelRuntime for PodmanRuntime {
         RuntimeCapabilities {
             supports_kv_checkpoint: self.engine.supports_kv_checkpoint(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::HardwareTarget;
+    use std::path::PathBuf;
+
+    fn default_config() -> ServeConfig {
+        ServeConfig {
+            model_path: PathBuf::from("/models/test.gguf"),
+            host: "127.0.0.1".to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn podman_new_stores_engine() {
+        let rt = PodmanRuntime::new(Engine::LlamaCpp);
+        assert_eq!(rt.engine, Engine::LlamaCpp);
+
+        let rt2 = PodmanRuntime::new(Engine::Vllm);
+        assert_eq!(rt2.engine, Engine::Vllm);
+    }
+
+    #[test]
+    fn podman_backend_returns_podman_isolation() {
+        let rt = PodmanRuntime::new(Engine::LlamaCpp);
+        let backend = rt.backend();
+        assert_eq!(backend.engine, Engine::LlamaCpp);
+        assert_eq!(backend.isolation, Isolation::Podman);
+
+        let rt2 = PodmanRuntime::new(Engine::Vllm);
+        let backend2 = rt2.backend();
+        assert_eq!(backend2.engine, Engine::Vllm);
+        assert_eq!(backend2.isolation, Isolation::Podman);
+    }
+
+    #[test]
+    fn podman_capabilities_reflect_engine() {
+        let llama_rt = PodmanRuntime::new(Engine::LlamaCpp);
+        assert!(llama_rt.capabilities().supports_kv_checkpoint);
+
+        let vllm_rt = PodmanRuntime::new(Engine::Vllm);
+        assert!(!vllm_rt.capabilities().supports_kv_checkpoint);
+    }
+
+    #[tokio::test]
+    async fn podman_is_available_no_socket() {
+        // In CI there's typically no Podman socket.
+        // If Podman happens to be running, this test still passes
+        // — it just returns true instead of false.
+        let result = PodmanRuntime::is_available(&Engine::LlamaCpp).await;
+        // Can't assert false (Podman might be running), but assert no panic.
+        let _ = result;
+    }
+
+    #[test]
+    fn podman_serve_includes_security_flags() {
+        let rt = PodmanRuntime::new(Engine::LlamaCpp);
+        let config = default_config();
+        let args = rt.build_podman_args(
+            &config,
+            8080,
+            "ghcr.io/ggml-org/llama.cpp:server",
+            "navra-llama-cpp-8080",
+            "/models/test.gguf",
+        );
+
+        assert!(args.contains(&"--network=none".to_string()));
+        assert!(args.contains(&"--no-new-privileges".to_string()));
+        assert!(args.contains(&"--read-only".to_string()));
+    }
+
+    #[test]
+    fn podman_serve_adds_ipc_host_when_needed() {
+        // vLLM needs --ipc=host for NCCL shared memory
+        let rt = PodmanRuntime::new(Engine::Vllm);
+        let config = default_config();
+        let args = rt.build_podman_args(
+            &config,
+            8000,
+            "vllm/vllm-openai:latest",
+            "navra-vllm-8000",
+            "/models/test",
+        );
+        assert!(args.contains(&"--ipc=host".to_string()));
+
+        // llama.cpp does not need --ipc=host
+        let rt2 = PodmanRuntime::new(Engine::LlamaCpp);
+        let args2 = rt2.build_podman_args(
+            &config,
+            8080,
+            "ghcr.io/ggml-org/llama.cpp:server",
+            "navra-llama-cpp-8080",
+            "/models/test.gguf",
+        );
+        assert!(!args2.contains(&"--ipc=host".to_string()));
+    }
+
+    #[test]
+    fn podman_serve_mounts_model_readonly() {
+        let rt = PodmanRuntime::new(Engine::LlamaCpp);
+        let config = default_config();
+        let args = rt.build_podman_args(
+            &config,
+            8080,
+            "ghcr.io/ggml-org/llama.cpp:server",
+            "navra-llama-cpp-8080",
+            "/models/test.gguf",
+        );
+
+        // Find the -v flag and check its value includes :ro
+        let v_idx = args.iter().position(|a| a == "-v").unwrap();
+        assert_eq!(args[v_idx + 1], "/models/test.gguf:/model:ro");
+    }
+
+    #[tokio::test]
+    async fn podman_serve_fails_on_podman_error() {
+        // Attempting to serve when Podman isn't available (or with
+        // an invalid config) should produce a container error.
+        // On CI without Podman, `podman run` itself fails to spawn.
+        let rt = PodmanRuntime::new(Engine::LlamaCpp);
+        let config = ServeConfig {
+            model_path: PathBuf::from("/nonexistent/model.gguf"),
+            target: HardwareTarget::Cpu,
+            ..Default::default()
+        };
+        let result = rt.serve(&config).await;
+        // Should fail — either Container (podman not found or exit 1)
+        // or Health (container started but model didn't load).
+        assert!(
+            result.is_err(),
+            "serve should fail without a valid model and container setup"
+        );
     }
 }
