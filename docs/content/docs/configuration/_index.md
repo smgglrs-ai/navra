@@ -1,6 +1,6 @@
 +++
 title = "Configuration"
-description = "config.toml reference — server, permissions, modules, agents, upstream."
+description = "Configuration reference — server, permissions, modules, agents, upstream, triggers."
 weight = 20
 template = "docs/section.html"
 
@@ -8,7 +8,11 @@ template = "docs/section.html"
 toc = true
 +++
 
-Default path: `~/.config/navra/config.toml`
+Default path: `~/.config/navra/config.json` (preferred) or
+`~/.config/navra/config.toml` (deprecated). The loader checks for
+`config.json` first; if absent, falls back to `config.toml`. TOML
+configs emit a deprecation warning — run `navra config export` to
+convert to JSON.
 
 ## Server
 
@@ -32,6 +36,8 @@ config_watch_debounce_ms = 50
 | `agent_signature_policy` | string | `"warn"` | Bundle signature policy: `enforce`, `warn`, `skip` |
 | `ws_ping_interval_secs` | u64 | `30` | WebSocket ping interval |
 | `ws_idle_timeout_secs` | u64 | `600` | WebSocket idle timeout (10 min) |
+| `max_sessions` | usize | `10000` | Maximum concurrent sessions |
+| `session_ttl_secs` | u64 | `3600` | Session idle TTL in seconds (stale sessions expired on new connection) |
 | `config_watch` | bool | `false` | Watch config file for changes and hot-reload |
 | `config_watch_debounce_ms` | u64 | `50` | Debounce interval for config file watch events |
 
@@ -79,22 +85,48 @@ timeout_secs = 10
 mdns_browse_secs = 3
 ```
 
+### Federated authentication
+
+```toml
+# OpenShell identity federation
+[server.openshell_auth]
+# Fields defined by navra_core::auth::openshell::OpenShellAuthConfig
+
+# WIMSE/SPIFFE identity federation
+[server.wimse_auth]
+# Fields defined by navra_core::auth::wimse::WimseAuthConfig
+```
+
+When set, the corresponding authenticator is inserted into the
+authentication chain alongside BLAKE3 token auth.
+
 ## Permissions
 
 Permission sets define what agents can do. Each set specifies allowed
-operations, tools, paths, and safety profiles.
+operations, path globs, tool rules, and safety profiles.
 
 ```toml
 [permissions.default]
 operations = ["read", "search", "list"]
-tools = ["file_tree", "file_read", "file_grep"]
+allow = ["~/Code/**"]
+deny = ["**/.env", "**/.ssh/**"]
+default_tool_policy = "deny"
+tool_rules = [
+  { tool = "file_read", policy = "allow" },
+  { tool = "file_tree", policy = "allow" },
+  { tool = "file_grep", policy = "allow" },
+]
 
 [permissions.developer]
 operations = ["read", "write", "search", "list"]
-tools = ["file_tree", "file_read", "file_write", "file_edit", "file_grep"]
-paths = ["/home/user/projects"]
+allow = ["/home/user/projects/**"]
+deny = ["**/.env"]
 safety = "standard"
 ```
+
+Tool access is controlled via `tool_rules` (per-tool glob patterns)
+and `default_tool_policy`, not a flat `tools` list. Path access uses
+`allow` and `deny` glob arrays.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -106,6 +138,11 @@ safety = "standard"
 | `safety` | string | `"standard"` | Safety profile (see below) |
 | `default_tool_policy` | string | `"allow"` | Default for unmatched tools: `allow`, `deny`, `approve` |
 | `can_delegate` | bool | `false` | Whether agents can delegate capabilities |
+| `model` | string | -- | Default model for agents in this set (key from `[models]`) |
+| `upstream` | string[] | `[]` | Visible upstream MCP servers (by name). Empty = all visible |
+| `max_concurrent` | u32 | -- | Maximum concurrent tool calls per agent session |
+| `max_context` | u32 | -- | Context window cap passed to the model |
+| `chain_policy` | object | -- | Actor-chain delegation policy (see below) |
 
 ### Safety profiles
 
@@ -233,6 +270,21 @@ using any DMN 1.3+ editor (Camunda Modeler, Trisotech, etc.).
 See the [DMN guardrails guide]({{< relref "/docs/guides/dmn-guardrails" >}})
 for details on authoring decision tables.
 
+### Chain policy
+
+Actor-chain delegation enforcement for multi-hop agent scenarios:
+
+```toml
+[permissions.regulated.chain_policy]
+max_depth = 3
+require_wimse_root = true
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max_depth` | u8 | `5` | Maximum delegation chain depth |
+| `require_wimse_root` | bool | `false` | Require chain to originate from a WIMSE-identified agent |
+
 ### Compliance tags
 
 ```toml
@@ -262,7 +314,7 @@ Agent definitions bind a name and permission set to an identity.
 ```toml
 [[agents]]
 name = "claude"
-token_hash = "sha256_hash_of_token"
+token_hash = "e35f..."   # BLAKE3 hash of the agent's bearer token
 permissions = "developer"
 ```
 
@@ -276,7 +328,10 @@ permissions = "developer"
 | `did` | string | -- | DID:key identifier (alternative to pubkey) |
 | `capability_token` | bool | `false` | Enable capability token issuance |
 | `token_ttl` | u64 | -- | Override token TTL for this agent (seconds) |
-| `model` | string | -- | Model config key for per-agent routing on `/v1` proxy |
+| `model` | string | -- | Model config key (overrides permission set default) |
+| `upstream` | string[] | `[]` | Visible upstream servers (overrides permission set default) |
+| `max_concurrent` | u32 | -- | Maximum concurrent tool calls (overrides permission set) |
+| `max_context` | u32 | -- | Context window cap (overrides permission set) |
 
 Generate a token:
 
@@ -688,6 +743,7 @@ checkpoint_db = "~/.local/share/navra/checkpoints.db"
 | `compression_start_ratio` | f32 | -- | Context fill ratio to start compressing tool output |
 | `compaction_keep_recent` | usize | -- | Recent items kept verbatim during compaction |
 | `compaction_trigger_ratio` | f32 | -- | Context fill ratio to trigger conversation compaction |
+| `compression_policy` | bool | `false` | Enable SelfCompact flow-driven compression at node boundaries |
 | `checkpoint` | bool | `false` | Enable SQLite checkpointing for crash recovery |
 | `checkpoint_db` | string | `~/.local/share/navra/checkpoints.db` | Checkpoint database path |
 
@@ -856,6 +912,52 @@ Out-of-process gRPC modules:
 name = "custom-tool"
 address = "unix:///run/navra/custom.sock"
 ```
+
+## Triggers
+
+Event-driven triggers that start flows automatically. Three types
+are supported: webhook, cron, and file watch.
+
+### Webhook
+
+```toml
+[[triggers]]
+type = "webhook"
+path = "/hook/deploy"
+secret = "hmac-shared-secret"    # optional HMAC-SHA256 verification
+flow_name = "deploy-review"
+```
+
+Registers an HTTP POST endpoint at the given path. When `secret` is
+set, the request must include an `x-signature-256` (or
+`x-hub-signature-256`) header with a valid HMAC-SHA256 signature.
+
+### Cron
+
+```toml
+[[triggers]]
+type = "cron"
+schedule = "0 9 * * 1-5"        # minute hour dom month dow
+flow_name = "daily-review"
+```
+
+Standard 5-field cron expressions. Supports wildcards (`*`), ranges
+(`1-5`), lists (`1,3,5`), and steps (`*/5`).
+
+### File watch
+
+```toml
+[[triggers]]
+type = "file_watch"
+path = "~/Documents/inbox"
+pattern = "*.pdf"                # optional glob filter
+flow_name = "process-document"
+debounce_ms = 1000               # default: 500
+```
+
+Watches a directory recursively for create/modify events. The
+optional `pattern` filters by filename glob. Events are debounced
+to avoid duplicate triggers.
 
 ## Enterprise Auth
 

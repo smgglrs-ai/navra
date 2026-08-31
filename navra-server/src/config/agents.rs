@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct AgentConfig {
     /// Unique agent identifier used in logging and auth.
     pub name: String,
-    /// SHA-256 hash of the agent's bearer token.
+    /// BLAKE3 hash of the agent's bearer token.
     pub token_hash: String,
     /// Name of the permission set to apply (must match a key in `[permissions]`).
     pub permissions: String,
