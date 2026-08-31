@@ -638,4 +638,87 @@ mod tests {
         assert_eq!(labels[1], "B-account_number");
         assert_eq!(labels[2], "S-secret");
     }
+
+    // --- Adversarial input tests ---
+
+    #[test]
+    fn filter_unicode_homoglyph_email() {
+        // "user@ex\u{0430}mple.com" contains Cyrillic 'а' (U+0430) instead of Latin 'a'.
+        // The BIOES tagger works at token level, so the homoglyph may or may not
+        // be detected. The key requirement is that it does not panic.
+        let email_with_homoglyph = "user@ex\u{0430}mple.com";
+        assert!(email_with_homoglyph.contains('\u{0430}'));
+
+        // Verify BIOES parsing handles this without panic
+        let tokens = vec![
+            ("S-private_email".to_string(), 0.99, Some((0, email_with_homoglyph.len()))),
+        ];
+        let spans = group_bioes_tags(&tokens);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].category, "private_email");
+    }
+
+    #[test]
+    fn filter_encoded_pii() {
+        // Base64-encoded email "dXNlckBleGFtcGxlLmNvbQ==" (user@example.com)
+        // The privacy filter operates on raw text tokens, not decoded content.
+        // Base64 text should either be detected as a secret or pass through
+        // without panic.
+        let encoded = "Contact info: dXNlckBleGFtcGxlLmNvbQ==";
+
+        // Verify BIOES grouping handles tokens that span the encoded content
+        let tokens = vec![
+            ("O".to_string(), 0.99, Some((0, 14))),
+            ("S-secret".to_string(), 0.88, Some((15, encoded.len()))),
+        ];
+        let spans = group_bioes_tags(&tokens);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].category, "secret");
+        assert_eq!(spans[0].start, 15);
+    }
+
+    #[test]
+    fn filter_pii_in_json_values() {
+        // PII buried inside JSON string values should still produce
+        // valid spans when the model detects them.
+        let json_text = r#"{"name": "John Doe", "email": "john@example.com", "notes": "safe text"}"#;
+
+        let tokens = vec![
+            ("O".to_string(), 0.99, Some((0, 9))),
+            ("S-private_person".to_string(), 0.95, Some((10, 18))),
+            ("O".to_string(), 0.99, Some((19, 31))),
+            ("S-private_email".to_string(), 0.97, Some((32, 48))),
+            ("O".to_string(), 0.99, Some((49, json_text.len()))),
+        ];
+        let spans = group_bioes_tags(&tokens);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].category, "private_person");
+        assert_eq!(spans[1].category, "private_email");
+
+        // Verify the privacy_category mapping works for both
+        assert_eq!(privacy_category("private_person"), Some("person"));
+        assert_eq!(privacy_category("private_email"), Some("email"));
+    }
+
+    #[test]
+    fn filter_mixed_content_preserves_non_pii() {
+        // When PII is interspersed with safe text, the BIOES grouping
+        // should only produce spans for the PII portions, leaving
+        // gaps (O tags) for the safe text.
+        let tokens = vec![
+            ("O".to_string(), 0.99, Some((0, 6))),     // "Hello "
+            ("S-private_person".to_string(), 0.95, Some((6, 14))),  // "John Doe"
+            ("O".to_string(), 0.99, Some((14, 26))),    // ", your order"
+            ("S-account_number".to_string(), 0.90, Some((27, 37))), // "1234567890"
+            ("O".to_string(), 0.99, Some((37, 51))),    // " is confirmed"
+        ];
+        let spans = group_bioes_tags(&tokens);
+        assert_eq!(spans.len(), 2);
+
+        // Verify non-PII gaps are preserved (no spans cover positions 0-6, 14-26, 37-51)
+        assert_eq!(spans[0].start, 6);
+        assert_eq!(spans[0].end, 14);
+        assert_eq!(spans[1].start, 27);
+        assert_eq!(spans[1].end, 37);
+    }
 }
