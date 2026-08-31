@@ -104,12 +104,16 @@ impl ModelHub {
             }
         }
 
-        // Pull via appropriate transport
+        // Pull via appropriate transport — stream to a temp file
+        // to avoid loading multi-GB models into memory.
         tracing::info!(uri = %uri, "Pulling model");
         let transport = self.transport_for(uri);
 
-        let blob = transport.pull(uri).await?;
-        let path = self.cache.store(uri, &blob)?;
+        let tmp = tempfile::NamedTempFile::new()?;
+        let tmp_path = tmp.path().to_path_buf();
+        transport.pull_to_file(uri, &tmp_path, None).await?;
+
+        let path = self.cache.store_from_path(uri, &tmp_path)?;
         tracing::info!(uri = %uri, path = %path.display(), "Model cached");
 
         // Auto-populate model card from vendor metadata
