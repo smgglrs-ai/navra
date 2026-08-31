@@ -205,6 +205,9 @@ short-circuits the pipeline — later hooks do not run.
 | **ProvenanceHook** | Post | Records causal relationships between tool calls (observation only) |
 | **VerifierHook** | Post | Checks results against rubrics and tracks false-pass rates |
 | **MonitoringHook** | Post | Observes outcomes and escalates anomalies to the audit trail |
+| **HtmlToMarkdownHook** | Post | Converts HTML content in tool results to clean markdown, reducing token consumption |
+| **JsonCompressHook** | Post | Compresses large JSON tool responses via key stripping, array truncation, and depth flattening |
+| **PolicyYamlHook** | Pre/Post | Ingests ACS-compatible YAML policy files and maps rules into the hook pipeline |
 
 ### Model-call hooks
 

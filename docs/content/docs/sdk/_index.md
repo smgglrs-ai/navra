@@ -194,9 +194,10 @@ use navra_agent::{SignalHandle, AgentSignal};
 let handle = agent.signal_handle();
 
 // From another task:
-handle.send(AgentSignal::Pause);   // pause the loop
-handle.send(AgentSignal::Resume);  // resume
-handle.send(AgentSignal::Stop);    // graceful stop
+handle.send(AgentSignal::Pause);       // pause the loop
+handle.send(AgentSignal::Resume);      // resume after pause
+handle.send(AgentSignal::Interrupt);   // cancel, return partial result
+handle.send(AgentSignal::Terminate);   // graceful shutdown after current iteration
 ```
 
 ## Hibernation

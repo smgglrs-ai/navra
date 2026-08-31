@@ -30,24 +30,28 @@ tests, and end-to-end tests that spawn a real server process.
 ## Running tests
 
 ```bash
-# Full workspace
-cargo test --workspace
+# Full workspace (recommended — uses just for proper serialization)
+just test
 
-# Full workspace (don't stop on first failure)
-cargo test --workspace --no-fail-fast
+# Workspace only (excludes navra-server)
+just test-workspace
+
+# navra-server only (serialized, one binary at a time)
+just test-server
 
 # Single crate
-cargo test -p navra-core
+just test-crate navra-core
 
-# Single test
-cargo test -p navra-server v1_chat_completions
-
-# E2e tests only
-cargo test -p navra-server --test e2e
+# Single test (non-server crates only)
+cargo test -p navra-core test_name
 
 # Benchmarks (Criterion, not counted in test totals)
 cargo bench -p benchmarks
 ```
+
+> **WARNING**: Never run raw `cargo test -p navra-server` — it spawns
+> multiple server processes that OOM the machine. Always use
+> `just test-server` instead. See `CLAUDE.md` for details.
 
 ## Test structure
 
