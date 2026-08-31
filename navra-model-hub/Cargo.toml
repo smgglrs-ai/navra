@@ -19,10 +19,12 @@ sha2 = "0.10"
 hex = "0.4"
 dirs = "6"
 futures-util = "0.3"
+tempfile = "3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tempfile = "3"
+wiremock = "0.6"
 
 [lints]
 workspace = true
