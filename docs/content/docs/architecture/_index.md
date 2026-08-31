@@ -51,14 +51,16 @@ public API) but cannot access kernel internals marked `pub(crate)`.
 All tool functionality is implemented behind the `Module` trait:
 
 ```rust
-#[async_trait]
-pub trait Module: Send + Sync {
+pub trait Module: Send + Sync + 'static {
     fn name(&self) -> &str;
-    fn tools(&self) -> Vec<ToolDef>;
-    async fn call(&self, ctx: CallContext, name: &str, args: Value)
-        -> CallToolResult;
+    fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)>;
+    fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> { Vec::new() }
+    fn resources(&self) -> Vec<(ResourceDefinition, ResourceHandler)> { Vec::new() }
 }
 ```
+
+There is no `call()` method — each tool is returned as a `(definition, handler)`
+pair, and the server dispatches directly to the handler closure.
 
 Modules can run:
 - **In-process** — compiled into the navra binary, zero-overhead
