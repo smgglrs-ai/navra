@@ -62,7 +62,7 @@ tcp = "127.0.0.1:9315"
 # Auth: tunnel client authenticates with a capability token
 [[agents]]
 name = "claude-tunnel"
-token = "your-blake3-token"
+token_hash = "..."  # BLAKE3 hash from: navra token generate --name tunnel --permissions dev
 permissions = "developer"
 ```
 

@@ -88,7 +88,7 @@ Sandbox boundary failures enabling arbitrary code.
 
 | Defense | Crate | Module | How |
 |---------|-------|--------|-----|
-| OpenShell sandboxes | navra-tools-exec | `tools.rs` | Command execution inside OpenShell sandboxes with resource limits |
+| OpenShell sandboxes | navra-server | `exec_tools.rs` | Command execution inside OpenShell sandboxes with resource limits |
 | Sandbox profiles | navra-safety-hooks | `hooks/sandbox_hook.rs` | `SandboxHook` enforces Simulate/Redact/RateLimit/PathRewrite |
 | Model-runtime isolation | navra-model-runtime | `lib.rs` | Pluggable isolation: direct, Podman, OpenShell |
 | Skill hook | navra-safety-hooks | `hooks/skill_hook.rs` | Validates executable guardrails before execution |
@@ -99,7 +99,7 @@ Poisoned memory reshapes behavior after initial interaction.
 
 | Defense | Crate | Module | How |
 |---------|-------|--------|-----|
-| Cognitive file integrity | navra-safety-hooks | `hooks/integrity_monitor.rs` | SHA-256 baselines + semantic drift detection on persona/directive files |
+| Cognitive file integrity | navra-cognitive | `forge.rs` | SHA-256 baselines + semantic drift detection on persona/directive files |
 | IFC value store | navra-auth | `ifc/value_store.rs` | Per-value taint labels track data provenance |
 | Memory decay | navra-memory | `decay.rs` | Exponential decay with importance modulation prevents stale poisoned entries |
 | Content-addressed storage | navra-memory | `knowledge.rs` | SHA-256 hash of kind+title enables supersession semantics |
