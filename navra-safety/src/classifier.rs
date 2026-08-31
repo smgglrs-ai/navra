@@ -120,6 +120,124 @@ mod tests {
         let triggered = output.exceeds_thresholds(&thresholds);
         assert_eq!(triggered.len(), 1);
     }
+
+    #[test]
+    fn classify_safe_content() {
+        let output = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "safe".into(),
+                score: 0.95,
+            }],
+        };
+        assert!(!output.is_unsafe(0.5));
+        let top = output.top_label().unwrap();
+        assert_eq!(top.label, "safe");
+        assert!(top.score > 0.9);
+    }
+
+    #[test]
+    fn classify_violence_content() {
+        let output = ClassifyOutput {
+            labels: vec![
+                ClassifyLabel {
+                    label: "violence".into(),
+                    score: 0.85,
+                },
+                ClassifyLabel {
+                    label: "safe".into(),
+                    score: 0.15,
+                },
+            ],
+        };
+        assert!(output.is_unsafe(0.5));
+        let top = output.top_label().unwrap();
+        assert_eq!(top.label, "violence");
+    }
+
+    #[test]
+    fn classify_empty_input() {
+        let output = ClassifyOutput { labels: vec![] };
+        assert!(!output.is_unsafe(0.5));
+        assert!(output.top_label().is_none());
+    }
+
+    #[test]
+    fn classify_threshold_boundary() {
+        // Score exactly at threshold should be flagged (>= comparison)
+        let output = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "harm".into(),
+                score: 0.5,
+            }],
+        };
+        assert!(
+            output.is_unsafe(0.5),
+            "Score exactly at threshold should be flagged"
+        );
+
+        // Score just below threshold should not be flagged
+        let output_below = ClassifyOutput {
+            labels: vec![ClassifyLabel {
+                label: "harm".into(),
+                score: 0.4999,
+            }],
+        };
+        assert!(
+            !output_below.is_unsafe(0.5),
+            "Score below threshold should not be flagged"
+        );
+    }
+
+    #[test]
+    fn classify_multiple_labels() {
+        let output = ClassifyOutput {
+            labels: vec![
+                ClassifyLabel {
+                    label: "violence".into(),
+                    score: 0.7,
+                },
+                ClassifyLabel {
+                    label: "hate".into(),
+                    score: 0.6,
+                },
+                ClassifyLabel {
+                    label: "safe".into(),
+                    score: 0.1,
+                },
+            ],
+        };
+        let mut thresholds = HashMap::new();
+        thresholds.insert("violence".into(), 0.5);
+        thresholds.insert("hate".into(), 0.5);
+        thresholds.insert("safe".into(), 0.5);
+
+        let triggered = output.exceeds_thresholds(&thresholds);
+        assert_eq!(triggered.len(), 2);
+        // Should be sorted by score descending
+        assert_eq!(triggered[0].label, "violence");
+        assert_eq!(triggered[1].label, "hate");
+    }
+
+    #[test]
+    fn classify_long_input() {
+        // Verify ClassifyOutput handles large label sets without panic
+        let labels: Vec<ClassifyLabel> = (0..1000)
+            .map(|i| ClassifyLabel {
+                label: format!("category_{i}"),
+                score: (i as f32) / 1000.0,
+            })
+            .collect();
+        let output = ClassifyOutput { labels };
+        assert!(output.is_unsafe(0.5));
+        let top = output.top_label().unwrap();
+        assert_eq!(top.label, "category_0");
+
+        let mut thresholds = HashMap::new();
+        thresholds.insert("category_999".into(), 0.99);
+        let triggered = output.exceeds_thresholds(&thresholds);
+        assert_eq!(triggered.len(), 1);
+        assert_eq!(triggered[0].label, "category_999");
+    }
 }
 
 #[cfg(kani)]
