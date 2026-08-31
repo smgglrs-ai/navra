@@ -108,6 +108,49 @@ impl ModelCache {
         Ok(blob_path)
     }
 
+    /// Store a model file already on disk, returning the blob path.
+    ///
+    /// Like [`store`](Self::store) but hashes and copies from a file
+    /// instead of an in-memory buffer, avoiding OOM for multi-GB models.
+    pub fn store_from_path(&self, uri: &ModelUri, src: &Path) -> Result<PathBuf, HubError> {
+        let hash = sha256_hex_file(src)?;
+
+        if let Some(ref expected) = uri.digest {
+            if hash != *expected {
+                return Err(HubError::HashMismatch {
+                    expected: expected.clone(),
+                    actual: hash,
+                });
+            }
+            tracing::info!(digest = %hash, "Model digest verified");
+        } else {
+            tracing::warn!(
+                uri = %uri,
+                digest = %hash,
+                "Model pulled without digest verification — pin with @sha256:{hash}"
+            );
+        }
+
+        let blob_name = format!("sha256-{hash}");
+        let blob_path = self.blobs.join(&blob_name);
+
+        if !blob_path.exists() {
+            // Copy to temp then rename for atomicity
+            let tmp_path = self.blobs.join(format!(".tmp-{blob_name}"));
+            fs::copy(src, &tmp_path)?;
+            fs::rename(&tmp_path, &blob_path)?;
+            tracing::debug!(hash = %hash, "Stored blob from file");
+        }
+
+        // Create/update ref symlink
+        let ref_path = self.refs.join(uri.cache_key());
+        let _ = fs::remove_file(&ref_path);
+        let relative_target = PathBuf::from("..").join("blobs").join(&blob_name);
+        std::os::unix::fs::symlink(&relative_target, &ref_path)?;
+
+        Ok(blob_path)
+    }
+
     /// List all cached models.
     pub fn list(&self) -> Result<Vec<CachedModel>, HubError> {
         let mut models = Vec::new();
@@ -238,6 +281,22 @@ fn sha256_hex(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hex::encode(hasher.finalize())
+}
+
+/// Hash a file on disk in 64KB chunks without loading it fully into memory.
+fn sha256_hex_file(path: &Path) -> Result<String, HubError> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]
