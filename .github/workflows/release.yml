@@ -50,7 +50,7 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             archive_suffix: linux-x86_64
-            embedded_feature: embedded-cuda
+            embedded_feature: embedded
           - target: aarch64-unknown-linux-gnu
             archive_suffix: linux-aarch64
             use_cross: true
@@ -64,7 +64,9 @@ jobs:
 
       - name: Install cross
         if: matrix.use_cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        run: |
+          cargo install cross --git https://github.com/cross-rs/cross
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Build binaries
         run: |
