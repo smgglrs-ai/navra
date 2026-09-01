@@ -36,7 +36,7 @@ pub(crate) async fn wire_upstream(
                 wire_stdio_upstream(upstream_cfg, credential_store).await
             }
             "http" | "streamable-http" | "sse" => {
-                wire_http_upstream(upstream_cfg).await
+                wire_http_upstream(upstream_cfg, upstream_cfg.tls.as_ref()).await
             }
             other => {
                 tracing::error!(
@@ -307,6 +307,7 @@ async fn wire_stdio_upstream(
 /// Connect an HTTP/SSE/streamable-HTTP upstream.
 async fn wire_http_upstream(
     upstream_cfg: &config::UpstreamConfig,
+    tls_config: Option<&navra_protocol::TlsConfig>,
 ) -> Result<navra_core::UpstreamModule, String> {
     let url = match &upstream_cfg.url {
         Some(u) => u.as_str(),
@@ -317,7 +318,15 @@ async fn wire_http_upstream(
             ));
         }
     };
-    let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url);
+
+    let transport = if let Some(tls) = tls_config {
+        let client = build_tls_client(tls, &upstream_cfg.name)?;
+        let config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url);
+        rmcp::transport::StreamableHttpClientTransport::with_client(client, config)
+    } else {
+        rmcp::transport::StreamableHttpClientTransport::from_uri(url)
+    };
+
     match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
         Ok(client) => {
             let peer = client.peer().clone();
@@ -333,5 +342,105 @@ async fn wire_http_upstream(
             .await)
         }
         Err(e) => Err(format!("rmcp init failed: {e}")),
+    }
+}
+
+/// Build a reqwest client with custom TLS settings.
+fn build_tls_client(
+    tls: &navra_protocol::TlsConfig,
+    upstream_name: &str,
+) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::ClientBuilder::new();
+
+    if let Some(ca_path) = &tls.ca_cert {
+        let pem = std::fs::read(ca_path)
+            .map_err(|e| format!("upstream '{upstream_name}': failed to read CA cert {ca_path}: {e}"))?;
+        let cert = reqwest::tls::Certificate::from_pem(&pem)
+            .map_err(|e| format!("upstream '{upstream_name}': invalid CA cert PEM: {e}"))?;
+        builder = builder.add_root_certificate(cert);
+        tracing::info!(upstream = %upstream_name, ca = %ca_path, "Custom CA certificate loaded");
+    }
+
+    if let (Some(cert_path), Some(key_path)) = (&tls.client_cert, &tls.client_key) {
+        let cert_pem = std::fs::read(cert_path)
+            .map_err(|e| format!("upstream '{upstream_name}': failed to read client cert {cert_path}: {e}"))?;
+        let key_pem = std::fs::read(key_path)
+            .map_err(|e| format!("upstream '{upstream_name}': failed to read client key {key_path}: {e}"))?;
+        let mut combined = cert_pem;
+        combined.extend_from_slice(b"\n");
+        combined.extend_from_slice(&key_pem);
+        let identity = reqwest::tls::Identity::from_pem(&combined)
+            .map_err(|e| format!("upstream '{upstream_name}': invalid client certificate/key: {e}"))?;
+        builder = builder.identity(identity);
+        tracing::info!(upstream = %upstream_name, "Mutual TLS client certificate loaded");
+    }
+
+    if tls.danger_skip_verify {
+        tracing::warn!(upstream = %upstream_name, "TLS certificate verification DISABLED — development only");
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    builder
+        .build()
+        .map_err(|e| format!("upstream '{upstream_name}': failed to build TLS client: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_tls_client_default_succeeds() {
+        let tls = navra_protocol::TlsConfig::default();
+        let client = build_tls_client(&tls, "test");
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn build_tls_client_skip_verify_succeeds() {
+        let tls = navra_protocol::TlsConfig {
+            danger_skip_verify: true,
+            ..Default::default()
+        };
+        let client = build_tls_client(&tls, "test");
+        assert!(client.is_ok());
+    }
+
+    #[test]
+    fn build_tls_client_missing_ca_cert_fails() {
+        let tls = navra_protocol::TlsConfig {
+            ca_cert: Some("/nonexistent/ca.pem".to_string()),
+            ..Default::default()
+        };
+        let result = build_tls_client(&tls, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to read CA cert"));
+    }
+
+    #[test]
+    fn build_tls_client_missing_client_cert_fails() {
+        let tls = navra_protocol::TlsConfig {
+            client_cert: Some("/nonexistent/client.pem".to_string()),
+            client_key: Some("/nonexistent/key.pem".to_string()),
+            ..Default::default()
+        };
+        let result = build_tls_client(&tls, "test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed to read client cert"));
+    }
+
+    #[test]
+    fn tls_config_deserializes_from_toml() {
+        let toml_str = r#"
+            ca_cert = "/etc/pki/ca.pem"
+            client_cert = "/etc/pki/client.pem"
+            client_key = "/etc/pki/key.pem"
+            danger_skip_verify = false
+        "#;
+        let tls: navra_protocol::TlsConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(tls.ca_cert.as_deref(), Some("/etc/pki/ca.pem"));
+        assert_eq!(tls.client_cert.as_deref(), Some("/etc/pki/client.pem"));
+        assert_eq!(tls.client_key.as_deref(), Some("/etc/pki/key.pem"));
+        assert!(!tls.danger_skip_verify);
     }
 }
