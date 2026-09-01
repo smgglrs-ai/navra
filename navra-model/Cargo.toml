@@ -11,6 +11,8 @@ rust-version.workspace = true
 [features]
 default = ["onnx"]
 onnx = ["dep:ort", "dep:ndarray", "dep:tokenizers"]
+cuda = ["onnx", "ort/cuda"]
+openvino = ["onnx", "ort/openvino"]
 
 [dependencies]
 navra-responses = { path = "../navra-responses" }
