@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.4.0] - 2026-09-01
+## [Unreleased]
 
 ### Added
 
@@ -111,6 +111,7 @@ All notable changes to navra are documented here.
 - Mark supply chain scanning gap as closed in ecosystem positioning
 - Update crate count 25→24 after navra-security removal
 - Update CHANGELOG.md for v0.4.0
+- Update CHANGELOG.md for v0.4.0
 
 ### Fixed
 
@@ -141,6 +142,7 @@ All notable changes to navra are documented here.
 - Transparent background on armored narwhal logo PNG
 - **security**: UTF-8 panic in truncate_value, deny-wins enforcement, mTLS warning
 - P2 hardening — persist rug-pull hashes, verify-on-start, reduce false positives
+- **model**: Gate CUDA and OpenVINO execution providers behind features
 
 ### Maintenance
 
