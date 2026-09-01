@@ -42,7 +42,16 @@ The wizard walks you through:
 It generates a config file, a bearer token, and prints connection
 instructions for your agent.
 
-For scripted/CI use:
+## Start the gateway
+
+```bash
+navra mcp serve
+```
+
+The server listens on `http://localhost:9315/mcp` by default. Leave it
+running and connect your agent in the next step.
+
+For scripted/CI use of `navra init`:
 
 ```bash
 navra init --quiet --agent-name claude --project dev --safety standard
