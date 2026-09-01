@@ -725,26 +725,12 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
     match profile {
         "standard" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Redact);
-            pipeline.add_filter(SecretFilter::new());
-            pipeline.add_filter(PiiFilter::new());
-            pipeline.add_filter(PathPiiFilter::new());
-            pipeline.add_filter(SsrfFilter::new());
-            pipeline.add_filter(ExfilDetectionFilter::new());
-            pipeline.add_filter(ContextPoisoningFilter::new());
-            pipeline.add_filter(PromptInjectionFilter::new());
-            pipeline.add_filter(TieredInjectionFilter::new());
+            add_all_regex_filters(&mut pipeline);
             pipeline
         }
         "pseudonymize" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Pseudonymize);
-            pipeline.add_filter(SecretFilter::new());
-            pipeline.add_filter(PiiFilter::new());
-            pipeline.add_filter(PathPiiFilter::new());
-            pipeline.add_filter(SsrfFilter::new());
-            pipeline.add_filter(ExfilDetectionFilter::new());
-            pipeline.add_filter(ContextPoisoningFilter::new());
-            pipeline.add_filter(PromptInjectionFilter::new());
-            pipeline.add_filter(TieredInjectionFilter::new());
+            add_all_regex_filters(&mut pipeline);
             pipeline
         }
         "secrets-only" => {
@@ -754,38 +740,17 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
         }
         "block" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Block);
-            pipeline.add_filter(SecretFilter::new());
-            pipeline.add_filter(PiiFilter::new());
-            pipeline.add_filter(PathPiiFilter::new());
-            pipeline.add_filter(SsrfFilter::new());
-            pipeline.add_filter(ExfilDetectionFilter::new());
-            pipeline.add_filter(ContextPoisoningFilter::new());
-            pipeline.add_filter(PromptInjectionFilter::new());
-            pipeline.add_filter(TieredInjectionFilter::new());
+            add_all_regex_filters(&mut pipeline);
             pipeline
         }
         "guardian" | "guardian-deep" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Redact);
-            pipeline.add_filter(SecretFilter::new());
-            pipeline.add_filter(PiiFilter::new());
-            pipeline.add_filter(PathPiiFilter::new());
-            pipeline.add_filter(SsrfFilter::new());
-            pipeline.add_filter(ExfilDetectionFilter::new());
-            pipeline.add_filter(ContextPoisoningFilter::new());
-            pipeline.add_filter(PromptInjectionFilter::new());
-            pipeline.add_filter(TieredInjectionFilter::new());
+            add_all_regex_filters(&mut pipeline);
             pipeline
         }
         "multi-label" => {
             let mut pipeline = FilterPipeline::new(FilterAction::Block);
-            pipeline.add_filter(SecretFilter::new());
-            pipeline.add_filter(PiiFilter::new());
-            pipeline.add_filter(PathPiiFilter::new());
-            pipeline.add_filter(SsrfFilter::new());
-            pipeline.add_filter(ExfilDetectionFilter::new());
-            pipeline.add_filter(ContextPoisoningFilter::new());
-            pipeline.add_filter(PromptInjectionFilter::new());
-            pipeline.add_filter(TieredInjectionFilter::new());
+            add_all_regex_filters(&mut pipeline);
             pipeline
         }
         "none" | "" => FilterPipeline::new(FilterAction::Pass),
@@ -794,6 +759,22 @@ pub fn build_pipeline(profile: &str) -> FilterPipeline {
             build_pipeline("standard")
         }
     }
+}
+
+/// Add the standard set of regex-based content filters to a pipeline.
+///
+/// This includes PII/secret detection and all threat-detection filters
+/// (SSRF, exfiltration, context poisoning, prompt injection). Called by
+/// every profile except `"secrets-only"` and `"none"`.
+fn add_all_regex_filters(pipeline: &mut FilterPipeline) {
+    pipeline.add_filter(SecretFilter::new());
+    pipeline.add_filter(PiiFilter::new());
+    pipeline.add_filter(PathPiiFilter::new());
+    pipeline.add_filter(SsrfFilter::new());
+    pipeline.add_filter(ExfilDetectionFilter::new());
+    pipeline.add_filter(ContextPoisoningFilter::new());
+    pipeline.add_filter(PromptInjectionFilter::new());
+    pipeline.add_filter(TieredInjectionFilter::new());
 }
 
 #[cfg(test)]

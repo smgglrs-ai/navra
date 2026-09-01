@@ -946,7 +946,7 @@ pub(crate) async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) ->
 }
 
 async fn serve_inner(
-    cfg: config::Config,
+    mut cfg: config::Config,
     mode: TransportMode,
     dev_mode: bool,
 ) -> anyhow::Result<()> {
@@ -1162,7 +1162,7 @@ async fn serve_inner(
     }
 
     // --- Authentication ---
-    builder = setup::auth::wire_auth(builder, &cfg, &root_signer, dev_mode)?;
+    builder = setup::auth::wire_auth(builder, &mut cfg, &root_signer, dev_mode)?;
 
     // --- Models and safety filters ---
     let mf = setup::models::load_models_and_filters(&cfg).await?;
