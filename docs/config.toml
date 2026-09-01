@@ -1,6 +1,6 @@
 base_url = "https://navra.smgglrs.ai"
 title = "navra"
-description = "Secure MCP gateway daemon for Linux desktops"
+description = "Secure agentic AI platform — MCP gateway, agent SDK, multi-agent flows, model server"
 theme = "adidoks"
 
 compile_sass = true
@@ -24,7 +24,7 @@ theme = "catppuccin-frappe"
 
 [extra]
 title_separator = "|"
-title_addition = "Secure MCP Gateway"
+title_addition = "Secure Agentic AI Platform"
 timeformat = "%B %e, %Y"
 timezone = "UTC"
 

