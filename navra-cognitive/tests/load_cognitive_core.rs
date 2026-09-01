@@ -1,5 +1,6 @@
 //! Integration test: load the full cognitive_core directory
-//! (38 personas, 36 heuristics, 7 directives, 3 specializations).
+//! (25 system personas, 36 heuristics, 7 directives, 3 specializations).
+//! 18 generic personas live in examples/personas/ as starter templates.
 
 use navra_cognitive::{ForgeService, assemble};
 use std::path::Path;
@@ -22,8 +23,8 @@ fn cognitive_core_path() -> std::path::PathBuf {
 fn load_all_artifacts() {
     let forge = ForgeService::load(&cognitive_core_path()).unwrap();
     assert!(
-        forge.persona_count() >= 43,
-        "expected ≥43 personas, got {}",
+        forge.persona_count() >= 25,
+        "expected ≥25 system personas, got {}",
         forge.persona_count()
     );
     assert!(
