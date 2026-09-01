@@ -39,11 +39,21 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
 
-  build-linux-x86_64:
-    name: Build linux-x86_64
+  build-linux:
+    name: Build ${{ matrix.archive_suffix }}
     needs: create-release
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     container: registry.fedoraproject.org/fedora:44
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_suffix: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive_suffix: linux-aarch64
     steps:
       - name: Install build dependencies
         run: dnf install -y gcc gcc-c++ make rust cargo alsa-lib-devel pkg-config protobuf-compiler git-core clang-devel cmake
@@ -53,64 +63,18 @@ jobs:
 
       - name: Build binaries
         run: |
-          cargo build --release --target x86_64-unknown-linux-gnu --bin navra --features embedded
-          cargo build --release --target x86_64-unknown-linux-gnu --bin navra-agent
+          cargo build --release --bin navra --features embedded
+          cargo build --release --bin navra-agent
 
       - name: Package
         run: |
           VERSION="${{ github.ref_name }}"
-          TARGET_DIR="target/x86_64-unknown-linux-gnu/release"
+          TARGET_DIR="target/release"
           for bin in navra navra-agent; do
             mkdir -p "dist-${bin}"
             cp "${TARGET_DIR}/${bin}" "dist-${bin}/"
             cp LICENSE README.md "dist-${bin}/"
-            ARCHIVE="${bin}-${VERSION}-linux-x86_64.tar.gz"
-            tar czf "${ARCHIVE}" -C "dist-${bin}" .
-            sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
-          done
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            navra-*.tar.gz
-            navra-*.tar.gz.sha256
-
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: "navra-*.tar.gz"
-
-  build-linux-aarch64:
-    name: Build linux-aarch64
-    needs: create-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
-
-      - name: Install cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build binaries
-        run: |
-          cross build --release --target aarch64-unknown-linux-gnu --bin navra --features embedded
-          cross build --release --target aarch64-unknown-linux-gnu --bin navra-agent
-
-      - name: Package
-        run: |
-          VERSION="${{ github.ref_name }}"
-          TARGET_DIR="target/aarch64-unknown-linux-gnu/release"
-          for bin in navra navra-agent; do
-            mkdir -p "dist-${bin}"
-            cp "${TARGET_DIR}/${bin}" "dist-${bin}/"
-            cp LICENSE README.md "dist-${bin}/"
-            ARCHIVE="${bin}-${VERSION}-linux-aarch64.tar.gz"
+            ARCHIVE="${bin}-${VERSION}-${{ matrix.archive_suffix }}.tar.gz"
             tar czf "${ARCHIVE}" -C "dist-${bin}" .
             sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
           done
