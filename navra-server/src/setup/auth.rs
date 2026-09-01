@@ -14,9 +14,13 @@ use std::sync::Arc;
 /// - Agents configured with capability tokens: chain = cap + OpenShell? + BLAKE3
 /// - Agents configured without cap tokens: BLAKE3 only (+ OpenShell?)
 /// - No agents: cap-only chain for flow/team tokens, with dev-mode fallback
+///
+/// In dev-mode, if the "readonly" permission set does not exist in the
+/// config, a minimal deny-all set is registered so anonymous agents hit
+/// explicit tool-level enforcement instead of bypassing ACLs.
 pub(crate) fn wire_auth(
     mut builder: navra_core::McpServerBuilder,
-    cfg: &config::Config,
+    cfg: &mut config::Config,
     root_signer: &Arc<Ed25519Signer>,
     dev_mode: bool,
 ) -> anyhow::Result<navra_core::McpServerBuilder> {
@@ -113,6 +117,20 @@ pub(crate) fn wire_auth(
         }
 
         if dev_mode {
+            // Ensure the "readonly" permission set exists so anonymous
+            // agents get explicit deny-all tool enforcement instead of
+            // silently matching no ACLs.
+            if !cfg.permissions.contains_key("readonly") {
+                tracing::warn!(
+                    "DEV MODE: No [permissions.readonly] configured — \
+                     registering deny-all fallback so anonymous access \
+                     is restricted by default."
+                );
+                let mut fallback = config::PermissionSet::default();
+                fallback.default_tool_policy = "deny".to_string();
+                cfg.permissions.insert("readonly".to_string(), fallback);
+            }
+
             let no_auth = navra_core::auth::NoAuthenticator {
                 default_identity: AgentIdentity::new("anonymous", "readonly"),
             };

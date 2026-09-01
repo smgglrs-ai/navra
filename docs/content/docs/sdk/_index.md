@@ -15,6 +15,13 @@ in a single crate with a builder API.
 
 ## Quick start
 
+Add the dependency to your `Cargo.toml`:
+
+```toml
+[dependencies]
+navra-agent = { version = "0.3" }
+```
+
 ```rust
 use navra_agent::{Agent, OpenAiBackend, Locality};
 
@@ -44,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## Model backends
 
-navra-agent supports any model through four backends:
+navra-agent supports any model through six backends:
 
 | Backend | Use case | Example |
 |---------|----------|---------|
@@ -52,6 +59,8 @@ navra-agent supports any model through four backends:
 | `AnthropicBackend` | Claude models | Anthropic API directly |
 | `OgxBackend` | OGX / Llama Stack | Red Hat AI inference servers |
 | `CliBackend` | Any CLI command | Pipe prompt to a local binary |
+| `OnnxBackend` | In-process ONNX models | Embeddings, classification without external services |
+| `SafeModelBackend` | Safety-wrapped backend | Wraps any backend with content filtering |
 
 All backends implement the `ModelBackend` trait, so agents are
 model-agnostic. Switch from Ollama to Mistral API by changing one

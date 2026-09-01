@@ -14,7 +14,57 @@ use navra_protocol::ToolDefinition;
 use regex_lite::Regex;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use vstd::prelude::*;
+
+/// Pre-compiled regexes for supply-chain argument scanning.
+///
+/// These patterns are compiled once on first use and reused across all
+/// tool calls. Previously they were compiled from scratch on every
+/// `scan_tool_arguments()` invocation (15 regex compiles per call).
+struct ArgumentScanRegexes {
+    // download-and-execute
+    pipe_to_shell: Regex,
+    curl_o_pipe: Regex,
+    eval_download: Regex,
+    python_urllib: Regex,
+    // reverse shell
+    nc_exec: Regex,
+    bash_tcp: Regex,
+    dev_tcp: Regex,
+    python_socket: Regex,
+    mkfifo_nc: Regex,
+    // env hijacking
+    node_options: Regex,
+    editor_hijack: Regex,
+    // suspicious MCP install
+    npx_auto: Regex,
+    uvx_url: Regex,
+    pip_url: Regex,
+    npm_git: Regex,
+}
+
+static ARG_SCAN_RE: LazyLock<ArgumentScanRegexes> = LazyLock::new(|| ArgumentScanRegexes {
+    // download-and-execute
+    pipe_to_shell: Regex::new(r"(?i)(curl|wget)\s+.*\|\s*(sh|bash|zsh|dash)").unwrap(),
+    curl_o_pipe: Regex::new(r"(?i)curl\s+.*-o-?\s+.*\|\s*(sh|bash|zsh|dash)").unwrap(),
+    eval_download: Regex::new(r"(?i)eval\s+\$\(\s*(curl|wget)\s").unwrap(),
+    python_urllib: Regex::new(r"(?i)python[23]?\s+-c\s+.*import\s+urllib").unwrap(),
+    // reverse shell
+    nc_exec: Regex::new(r"(?i)nc\s+.*-e\s+/bin/(sh|bash)").unwrap(),
+    bash_tcp: Regex::new(r"(?i)bash\s+-i\s+>&\s*/dev/tcp/").unwrap(),
+    dev_tcp: Regex::new(r"/dev/tcp/").unwrap(),
+    python_socket: Regex::new(r"(?i)python[23]?\s+-c\s+.*import\s+socket.*subprocess").unwrap(),
+    mkfifo_nc: Regex::new(r"(?i)mkfifo\s+.*;\s*nc\s").unwrap(),
+    // env hijacking
+    node_options: Regex::new(r"(?i)NODE_OPTIONS\s*=\s*--(require|import)\b").unwrap(),
+    editor_hijack: Regex::new(r"(?i)(EDITOR|VISUAL)\s*=\s*\S").unwrap(),
+    // suspicious MCP install
+    npx_auto: Regex::new(r"(?i)npx\s+(-y|--yes)\s+@").unwrap(),
+    uvx_url: Regex::new(r"(?i)uvx\s+https?://").unwrap(),
+    pip_url: Regex::new(r"(?i)pip[23]?\s+install\s+.*https?://").unwrap(),
+    npm_git: Regex::new(r"(?i)npm\s+install\s+.*(?:git\+|github:|https?://github\.com/)").unwrap(),
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScanVerdict {
@@ -484,29 +534,17 @@ fn extract_string_values(value: &serde_json::Value) -> Vec<(String, usize)> {
 
 fn check_download_and_execute(tool_name: &str, value: &str) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
-
-    // curl/wget piped to shell
-    let pipe_to_shell =
-        Regex::new(r"(?i)(curl|wget)\s+.*\|\s*(sh|bash|zsh|dash)").unwrap();
-    // curl -o- piped to shell
-    let curl_o_pipe =
-        Regex::new(r"(?i)curl\s+.*-o-?\s+.*\|\s*(sh|bash|zsh|dash)").unwrap();
-    // eval $(curl ...) or eval $(wget ...)
-    let eval_download =
-        Regex::new(r"(?i)eval\s+\$\(\s*(curl|wget)\s").unwrap();
-    // python urllib + exec
-    let python_urllib =
-        Regex::new(r"(?i)python[23]?\s+-c\s+.*import\s+urllib").unwrap();
+    let re = &*ARG_SCAN_RE;
 
     let patterns: &[(&Regex, &str)] = &[
-        (&pipe_to_shell, "download piped to shell interpreter"),
-        (&curl_o_pipe, "curl output piped to shell interpreter"),
-        (&eval_download, "eval of downloaded content"),
-        (&python_urllib, "Python urllib execution pattern"),
+        (&re.pipe_to_shell, "download piped to shell interpreter"),
+        (&re.curl_o_pipe, "curl output piped to shell interpreter"),
+        (&re.eval_download, "eval of downloaded content"),
+        (&re.python_urllib, "Python urllib execution pattern"),
     ];
 
-    for (re, desc) in patterns {
-        if re.is_match(value) {
+    for (regex, desc) in patterns {
+        if regex.is_match(value) {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::DownloadAndExecute,
                 severity: FindingSeverity::Critical,
@@ -523,28 +561,18 @@ fn check_download_and_execute(tool_name: &str, value: &str) -> Vec<ToolFinding> 
 
 fn check_reverse_shell(tool_name: &str, value: &str) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
-
-    let nc_exec =
-        Regex::new(r"(?i)nc\s+.*-e\s+/bin/(sh|bash)").unwrap();
-    let bash_tcp =
-        Regex::new(r"(?i)bash\s+-i\s+>&\s*/dev/tcp/").unwrap();
-    let dev_tcp =
-        Regex::new(r"/dev/tcp/").unwrap();
-    let python_socket =
-        Regex::new(r"(?i)python[23]?\s+-c\s+.*import\s+socket.*subprocess").unwrap();
-    let mkfifo_nc =
-        Regex::new(r"(?i)mkfifo\s+.*;\s*nc\s").unwrap();
+    let re = &*ARG_SCAN_RE;
 
     let patterns: &[(&Regex, &str)] = &[
-        (&nc_exec, "netcat reverse shell (nc -e)"),
-        (&bash_tcp, "bash reverse shell via /dev/tcp"),
-        (&dev_tcp, "/dev/tcp reverse shell reference"),
-        (&python_socket, "Python socket/subprocess reverse shell"),
-        (&mkfifo_nc, "mkfifo+netcat reverse shell"),
+        (&re.nc_exec, "netcat reverse shell (nc -e)"),
+        (&re.bash_tcp, "bash reverse shell via /dev/tcp"),
+        (&re.dev_tcp, "/dev/tcp reverse shell reference"),
+        (&re.python_socket, "Python socket/subprocess reverse shell"),
+        (&re.mkfifo_nc, "mkfifo+netcat reverse shell"),
     ];
 
-    for (re, desc) in patterns {
-        if re.is_match(value) {
+    for (regex, desc) in patterns {
+        if regex.is_match(value) {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::ReverseShell,
                 severity: FindingSeverity::Critical,
@@ -561,8 +589,9 @@ fn check_reverse_shell(tool_name: &str, value: &str) -> Vec<ToolFinding> {
 
 fn check_env_hijacking(tool_name: &str, value: &str) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
+    let re = &*ARG_SCAN_RE;
 
-    let patterns: &[(&str, &str)] = &[
+    let string_patterns: &[(&str, &str)] = &[
         ("LD_PRELOAD=", "LD_PRELOAD library injection"),
         ("LD_LIBRARY_PATH=", "LD_LIBRARY_PATH manipulation"),
         ("PYTHONSTARTUP=", "PYTHONSTARTUP code injection"),
@@ -570,12 +599,7 @@ fn check_env_hijacking(tool_name: &str, value: &str) -> Vec<ToolFinding> {
         ("GIT_SSH_COMMAND=", "GIT_SSH_COMMAND override"),
     ];
 
-    let node_options =
-        Regex::new(r"(?i)NODE_OPTIONS\s*=\s*--(require|import)\b").unwrap();
-    let editor_hijack =
-        Regex::new(r"(?i)(EDITOR|VISUAL)\s*=\s*\S").unwrap();
-
-    for (pat, desc) in patterns {
+    for (pat, desc) in string_patterns {
         if value.contains(pat) {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::EnvHijacking,
@@ -588,7 +612,7 @@ fn check_env_hijacking(tool_name: &str, value: &str) -> Vec<ToolFinding> {
         }
     }
 
-    if node_options.is_match(value) {
+    if re.node_options.is_match(value) {
         findings.push(ToolFinding {
             category: ToolThreatCategory::EnvHijacking,
             severity: FindingSeverity::High,
@@ -599,7 +623,7 @@ fn check_env_hijacking(tool_name: &str, value: &str) -> Vec<ToolFinding> {
         });
     }
 
-    if editor_hijack.is_match(value) {
+    if re.editor_hijack.is_match(value) {
         findings.push(ToolFinding {
             category: ToolThreatCategory::EnvHijacking,
             severity: FindingSeverity::High,
@@ -615,29 +639,17 @@ fn check_env_hijacking(tool_name: &str, value: &str) -> Vec<ToolFinding> {
 
 fn check_suspicious_mcp_install(tool_name: &str, value: &str) -> Vec<ToolFinding> {
     let mut findings = Vec::new();
-
-    // npx -y @anything (auto-install without confirmation)
-    let npx_auto =
-        Regex::new(r"(?i)npx\s+(-y|--yes)\s+@").unwrap();
-    // uvx from URL
-    let uvx_url =
-        Regex::new(r"(?i)uvx\s+https?://").unwrap();
-    // pip install from URL (not a bare package name)
-    let pip_url =
-        Regex::new(r"(?i)pip[23]?\s+install\s+.*https?://").unwrap();
-    // npm install from git URL
-    let npm_git =
-        Regex::new(r"(?i)npm\s+install\s+.*(?:git\+|github:|https?://github\.com/)").unwrap();
+    let re = &*ARG_SCAN_RE;
 
     let patterns: &[(&Regex, &str)] = &[
-        (&npx_auto, "npx auto-install (@-scoped package)"),
-        (&uvx_url, "uvx execution from URL"),
-        (&pip_url, "pip install from URL"),
-        (&npm_git, "npm install from git URL"),
+        (&re.npx_auto, "npx auto-install (@-scoped package)"),
+        (&re.uvx_url, "uvx execution from URL"),
+        (&re.pip_url, "pip install from URL"),
+        (&re.npm_git, "npm install from git URL"),
     ];
 
-    for (re, desc) in patterns {
-        if re.is_match(value) {
+    for (regex, desc) in patterns {
+        if regex.is_match(value) {
             findings.push(ToolFinding {
                 category: ToolThreatCategory::SuspiciousMcpInstall,
                 severity: FindingSeverity::High,
