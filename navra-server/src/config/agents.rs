@@ -132,6 +132,14 @@ pub struct UpstreamConfig {
     /// Credentials are zeroized in navra's memory after injection.
     #[serde(default)]
     pub credentials: std::collections::HashMap<String, String>,
+    /// TLS configuration for HTTPS upstream connections.
+    /// When absent, standard HTTPS works via rustls with platform
+    /// certificate verification. Set this for custom CA bundles,
+    /// mutual TLS (client certificates), or to skip verification
+    /// in development.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub tls: Option<navra_protocol::TlsConfig>,
 }
 
 /// Network egress policy controlling which external endpoints a sandboxed

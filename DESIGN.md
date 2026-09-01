@@ -1266,79 +1266,42 @@ Both transports carry MCP Streamable HTTP + SSE over plain HTTP.
 Because they are local-only (Unix socket or loopback TCP), encryption
 is not required — the traffic never traverses a network.
 
-### Current gap: upstream HTTP connections have no TLS
+### Upstream HTTPS (rustls)
 
-Upstream MCP server connections configured with `transport = "http"`
-or `transport = "sse"` use plain HTTP. There is no TLS certificate
-validation or encryption on these connections.
-
-This is acceptable when the upstream server is on `localhost` (e.g.,
-a subprocess-managed MCP server, or a local service). The traffic
-stays on the loopback interface and is not observable to other
-machines.
-
-**This is not acceptable for remote upstream servers.** An upstream
-configured as `url = "http://remote-host:8080/mcp"` sends requests
-and responses — including tool arguments, file contents, and any
-data returned by the upstream — in cleartext over the network. A
-network observer can read and modify this traffic.
-
-### Production recommendation: reverse proxy with TLS
-
-For any upstream MCP server that is not on localhost, place a TLS-
-terminating reverse proxy in front of it. The proxy handles
-certificate management and encryption; navra connects to it over
-localhost or Unix socket.
-
-**Example: nginx proxying a remote upstream MCP server**
-
-```nginx
-# /etc/nginx/conf.d/mcp-upstream.conf
-#
-# navra connects to http://127.0.0.1:9400/mcp (plain HTTP, loopback).
-# nginx forwards to the remote upstream over TLS.
-
-server {
-    listen 127.0.0.1:9400;
-
-    location /mcp {
-        proxy_pass https://remote-mcp-server.example.com:443/mcp;
-        proxy_ssl_verify on;
-        proxy_ssl_trusted_certificate /etc/pki/tls/certs/ca-bundle.crt;
-        proxy_ssl_server_name on;
-
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host remote-mcp-server.example.com;
-
-        # SSE support: disable buffering for streaming responses
-        proxy_buffering off;
-        proxy_cache off;
-    }
-}
-```
-
-Then configure the upstream in navra to point at the local proxy:
+Upstream MCP server connections support HTTPS out of the box via
+`rustls` with platform certificate verification. Use `https://`
+URLs directly:
 
 ```toml
 [[upstream]]
 name = "remote-tools"
 transport = "http"
-url = "http://127.0.0.1:9400/mcp"
+url = "https://remote-mcp-server.example.com/mcp"
 ```
 
-The same pattern works with Caddy (`reverse_proxy` with automatic
-HTTPS) or Envoy (`transport_socket` with TLS context). The key
-point: navra talks plain HTTP to localhost; the proxy handles
-TLS to the remote server.
+For enterprise environments requiring custom CA bundles or mutual
+TLS (client certificates), configure the `[upstream.tls]` section:
 
-### Future: native TLS via rustls
+```toml
+[[upstream]]
+name = "corporate-server"
+transport = "http"
+url = "https://mcp.corp.internal/mcp"
 
-Native TLS support for upstream HTTP transports is planned, using
-`rustls` with `webpki-roots` for certificate validation. This will
-allow direct `https://` URLs in upstream configuration without
-requiring a reverse proxy. Until then, the reverse proxy approach
-above is the recommended production pattern.
+[upstream.tls]
+ca_cert = "/etc/pki/tls/certs/corporate-ca.pem"
+client_cert = "/etc/pki/tls/certs/navra-client.pem"
+client_key = "/etc/pki/tls/private/navra-client-key.pem"
+```
+
+When `[upstream.tls]` is absent, the default reqwest client handles
+TLS with standard platform-trusted CAs. The `danger_skip_verify`
+flag disables certificate validation for development only.
+
+A reverse proxy (nginx, Caddy, Envoy) is still useful for advanced
+scenarios like rate limiting, WAF, or when the upstream requires
+protocol translation — but it is no longer required for basic
+HTTPS connectivity.
 
 ## Configuration
 
