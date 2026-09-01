@@ -59,6 +59,10 @@ All notable changes to navra are documented here.
 - **model-runtime**: Wire KV cache type into embedded llama.cpp runtime
 - **cli**: Add navra persona new/list, move 18 generic personas to examples
 
+### CI
+
+- **release**: Remove darwin builds — navra is Linux-only (systemd, D-Bus, ksni)
+
 ### Changed
 
 - Extract wrap, run, misc commands and utils from main.rs
@@ -110,6 +114,7 @@ All notable changes to navra are documented here.
 - Use armored narwhal logo in README to match docs site
 - Mark supply chain scanning gap as closed in ecosystem positioning
 - Update crate count 25→24 after navra-security removal
+- Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
