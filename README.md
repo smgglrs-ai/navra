@@ -160,7 +160,7 @@ Included flows: [review](examples/flows/review.yaml),
 
 ## Architecture
 
-22-crate Rust workspace organized in strict dependency layers:
+25-crate Rust workspace organized in strict dependency layers:
 
 ```
 navra-protocol          (no internal deps)
@@ -183,9 +183,9 @@ and security model.
   outputs (Bell-LaPadula no-write-down).
 - **Deny-wins ACLs** — deny rules always beat allow rules. Path
   canonicalization prevents traversal.
-- **34 adversarial tests** — covering ACL bypass, IFC laundering,
+- **Adversarial security tests** — covering ACL bypass, IFC laundering,
   prompt injection, hook pipeline abuse, approval replay, and
-  cross-session isolation.
+  cross-session isolation. 200+ IFC benchmark vectors.
 - **Cedar policies** — OWASP Agentic Security Top 10 baseline.
 - **PII detection** — regex + NER (English + multilingual ONNX) with
   redaction, pseudonymization, or blocking.

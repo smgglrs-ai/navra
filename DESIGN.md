@@ -1298,7 +1298,7 @@ for the full config spec, or `examples/config.toml` for a commented example.
 ## CLI
 
 ```
-navra serve [--config path] [--no-tray]   Start the server
+navra mcp serve [--config path] [--no-tray]  Start the server
 navra token generate --name N --perms P   Generate agent token (prints BLAKE3 hash)
 navra token list                          List registered agents from config
 navra approve <request-id>                Approve a pending request (via server)
@@ -1367,7 +1367,7 @@ After=default.target
 
 [Service]
 Type=simple
-ExecStart=%h/.cargo/bin/navra serve --no-tray
+ExecStart=%h/.cargo/bin/navra mcp serve --no-tray
 Restart=on-failure
 RestartSec=5
 RuntimeDirectory=navra
