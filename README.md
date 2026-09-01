@@ -23,7 +23,7 @@
 
 ---
 
-**navra** is a 25-crate Rust workspace that combines an MCP gateway,
+**navra** is a 24-crate Rust workspace that combines an MCP gateway,
 an agent SDK, and a multi-agent flow engine behind a unified security
 layer. Information Flow Control, deny-wins ACLs, content safety
 filters, credential brokering, and human-in-the-loop approval are
@@ -251,7 +251,7 @@ navra mcp serve   # models configured in config.toml are served automatically
 
 ## Architecture
 
-25-crate Rust workspace organized in strict dependency layers:
+24-crate Rust workspace organized in strict dependency layers:
 
 ```
 navra-protocol          (no internal deps)
