@@ -27,92 +27,6 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     ToolOperation::Read
 }
 
-/// Classify a tool's domain using embedding similarity against domain exemplars.
-///
-/// Returns the best-matching domain if cosine similarity exceeds the threshold,
-/// otherwise returns `None` (caller falls back to heuristic).
-/// Runs at discovery time only — results are cached.
-#[allow(dead_code)]
-async fn classify_domain_semantic(
-    tool: &ToolDefinition,
-    embed_backend: &dyn navra_model::ModelBackend,
-    exemplar_embeddings: &[(navra_auth::permissions::Domain, Vec<f32>)],
-    threshold: f32,
-) -> Option<navra_auth::permissions::Domain> {
-    let text = format!(
-        "{}: {}",
-        tool.name,
-        tool.description.as_deref().unwrap_or("")
-    );
-    let req = navra_model::EmbedRequest { text };
-    let resp = match embed_backend.embed(&req).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::debug!(tool = %tool.name, error = %e, "Embedding failed, using heuristic");
-            return None;
-        }
-    };
-
-    let mut best_domain = None;
-    let mut best_score = threshold;
-    for (domain, exemplar_emb) in exemplar_embeddings {
-        let score = cosine_similarity(&resp.embedding, exemplar_emb);
-        if score > best_score {
-            best_score = score;
-            best_domain = Some(*domain);
-        }
-    }
-    if let Some(domain) = best_domain {
-        tracing::debug!(
-            tool = %tool.name,
-            domain = %domain,
-            score = best_score,
-            "Semantic domain classification"
-        );
-    }
-    best_domain
-}
-
-#[allow(dead_code)]
-fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() {
-        return 0.0;
-    }
-    let mut dot = 0.0f32;
-    let mut norm_a = 0.0f32;
-    let mut norm_b = 0.0f32;
-    for (x, y) in a.iter().zip(b.iter()) {
-        dot += x * y;
-        norm_a += x * x;
-        norm_b += y * y;
-    }
-    let denom = norm_a.sqrt() * norm_b.sqrt();
-    if denom == 0.0 { 0.0 } else { dot / denom }
-}
-
-/// Pre-compute embeddings for all domain exemplars.
-///
-/// Returns empty vec if embedding fails (graceful degradation).
-#[allow(dead_code)]
-async fn embed_domain_exemplars(
-    backend: &dyn navra_model::ModelBackend,
-) -> Vec<(navra_auth::permissions::Domain, Vec<f32>)> {
-    let mut result = Vec::new();
-    for (domain, text) in navra_auth::permissions::resource_class::DOMAIN_EXEMPLARS {
-        let req = navra_model::EmbedRequest {
-            text: text.to_string(),
-        };
-        match backend.embed(&req).await {
-            Ok(resp) => result.push((*domain, resp.embedding)),
-            Err(e) => {
-                tracing::warn!(domain = %domain, error = %e, "Failed to embed domain exemplar");
-                return Vec::new();
-            }
-        }
-    }
-    result
-}
-
 /// A module backed by an upstream MCP server via rmcp.
 pub struct UpstreamModule {
     name: String,
@@ -357,39 +271,6 @@ impl Module for UpstreamModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cosine_identical_vectors() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        assert!((cosine_similarity(&a, &b) - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn cosine_orthogonal_vectors() {
-        let a = vec![1.0, 0.0, 0.0];
-        let b = vec![0.0, 1.0, 0.0];
-        assert!(cosine_similarity(&a, &b).abs() < 1e-6);
-    }
-
-    #[test]
-    fn cosine_opposite_vectors() {
-        let a = vec![1.0, 0.0];
-        let b = vec![-1.0, 0.0];
-        assert!((cosine_similarity(&a, &b) + 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn cosine_empty_vectors() {
-        assert_eq!(cosine_similarity(&[], &[]), 0.0);
-    }
-
-    #[test]
-    fn cosine_mismatched_lengths() {
-        let a = vec![1.0, 0.0];
-        let b = vec![1.0, 0.0, 0.0];
-        assert_eq!(cosine_similarity(&a, &b), 0.0);
-    }
 
     #[test]
     fn classify_tool_read_write() {

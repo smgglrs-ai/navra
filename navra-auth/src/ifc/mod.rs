@@ -127,7 +127,7 @@ impl TaintTracker {
                 declassifier: authority.name.clone(),
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
+                    .unwrap_or(std::time::Duration::ZERO)
                     .as_secs() as i64,
                 justification: justification.to_string(),
                 signature: None,

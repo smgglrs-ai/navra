@@ -1,5 +1,5 @@
 +++
-title = "28. Supply Chain Defense"
+title = "32. Supply Chain Defense"
 description = "How navra scans upstream MCP tool definitions and tool call arguments for supply-chain attacks before exposing them to agents."
 weight = 275
 template = "docs/page.html"

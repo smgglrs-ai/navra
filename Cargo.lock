@@ -3961,21 +3961,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "navra-security"
-version = "0.3.0"
-dependencies = [
- "async-trait",
- "axum",
- "navra-auth",
- "navra-core",
- "navra-protocol",
- "navra-safety-hooks",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "navra-server"
 version = "0.3.0"
 dependencies = [

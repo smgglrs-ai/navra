@@ -261,12 +261,12 @@ calls only return new entries.
 
 ### IFC labels on blackboard entries
 
-Each blackboard entry carries the IFC data label of the context in
-which it was published. When another agent reads the entry, the label
-propagates via taint-on-read — if the entry was published from a
-context handling sensitive data, reading agents inherit that taint.
-This prevents sensitive findings from being exfiltrated through the
-blackboard to a remote model.
+Each blackboard entry carries the [IFC data label](@/docs/learn/information-flow-control.md)
+of the context in which it was published. When another agent reads
+the entry, the label propagates via taint-on-read — if the entry was
+published from a context handling sensitive data, reading agents
+inherit that taint. This prevents sensitive findings from being
+exfiltrated through the blackboard to a remote model.
 
 ## Agent signals
 

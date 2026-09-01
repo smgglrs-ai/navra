@@ -40,8 +40,8 @@ impl ContextPoisoningFilter {
             r"(?i)\bsend to https?://",
             r"(?i)\bupload to\b",
             r"(?i)\bpost to\b",
-            r"(?i)\bcurl\b",
-            r"(?i)\bwget\b",
+            r"(?i)\bcurl\s+(?:.*\||.*https?://|.*\$)",
+            r"(?i)\bwget\s+(?:.*\||.*https?://|.*\$)",
             r"(?i)\bDROP TABLE\b",
             r"(?i)\bDELETE FROM\b",
             r"(?i)\brm -rf\b",
@@ -192,15 +192,15 @@ mod tests {
     #[test]
     fn no_false_positive_technical_curl() {
         let filter = ContextPoisoningFilter::new();
-        let findings = filter.scan(
-            "Use curl to test the endpoint: curl http://localhost:8080/health",
-            &ctx(),
-        );
-        assert_eq!(findings.len(), 2);
-        for f in &findings {
-            assert_eq!(f.category, "dangerous-action");
-            assert!((f.confidence - 0.6).abs() < f32::EPSILON);
-        }
+        // Prose mention of curl without URL/pipe should not trigger
+        let findings = filter.scan("Use curl to test the endpoint.", &ctx());
+        assert!(findings.is_empty());
+
+        // curl with a URL should still trigger (legitimate detection)
+        let findings = filter.scan("curl http://localhost:8080/health", &ctx());
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].category, "dangerous-action");
+        assert!((findings[0].confidence - 0.6).abs() < f32::EPSILON);
     }
 
     #[test]
