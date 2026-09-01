@@ -361,18 +361,33 @@ fn build_tls_client(
         tracing::info!(upstream = %upstream_name, ca = %ca_path, "Custom CA certificate loaded");
     }
 
-    if let (Some(cert_path), Some(key_path)) = (&tls.client_cert, &tls.client_key) {
-        let cert_pem = std::fs::read(cert_path)
-            .map_err(|e| format!("upstream '{upstream_name}': failed to read client cert {cert_path}: {e}"))?;
-        let key_pem = std::fs::read(key_path)
-            .map_err(|e| format!("upstream '{upstream_name}': failed to read client key {key_path}: {e}"))?;
-        let mut combined = cert_pem;
-        combined.extend_from_slice(b"\n");
-        combined.extend_from_slice(&key_pem);
-        let identity = reqwest::tls::Identity::from_pem(&combined)
-            .map_err(|e| format!("upstream '{upstream_name}': invalid client certificate/key: {e}"))?;
-        builder = builder.identity(identity);
-        tracing::info!(upstream = %upstream_name, "Mutual TLS client certificate loaded");
+    match (&tls.client_cert, &tls.client_key) {
+        (Some(cert_path), Some(key_path)) => {
+            let cert_pem = std::fs::read(cert_path)
+                .map_err(|e| format!("upstream '{upstream_name}': failed to read client cert {cert_path}: {e}"))?;
+            let key_pem = std::fs::read(key_path)
+                .map_err(|e| format!("upstream '{upstream_name}': failed to read client key {key_path}: {e}"))?;
+            let mut combined = cert_pem;
+            combined.extend_from_slice(b"\n");
+            combined.extend_from_slice(&key_pem);
+            let identity = reqwest::tls::Identity::from_pem(&combined)
+                .map_err(|e| format!("upstream '{upstream_name}': invalid client certificate/key: {e}"))?;
+            builder = builder.identity(identity);
+            tracing::info!(upstream = %upstream_name, "Mutual TLS client certificate loaded");
+        }
+        (Some(_), None) => {
+            tracing::warn!(
+                upstream = %upstream_name,
+                "mTLS not configured: client_cert is set but client_key is missing — both are required"
+            );
+        }
+        (None, Some(_)) => {
+            tracing::warn!(
+                upstream = %upstream_name,
+                "mTLS not configured: client_key is set but client_cert is missing — both are required"
+            );
+        }
+        (None, None) => {}
     }
 
     if tls.danger_skip_verify {
@@ -427,6 +442,32 @@ mod tests {
         let result = build_tls_client(&tls, "test");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("failed to read client cert"));
+    }
+
+    #[test]
+    fn mtls_half_config_cert_without_key_warns() {
+        // When client_cert is set but client_key is missing, the function
+        // should succeed (no mTLS configured) but log a warning.
+        // We verify it doesn't panic and the client is still usable.
+        let tls = navra_protocol::TlsConfig {
+            client_cert: Some("/some/cert.pem".to_string()),
+            client_key: None,
+            ..Default::default()
+        };
+        let result = build_tls_client(&tls, "half-config");
+        assert!(result.is_ok(), "half-configured mTLS should not error");
+    }
+
+    #[test]
+    fn mtls_half_config_key_without_cert_warns() {
+        // When client_key is set but client_cert is missing, same behavior.
+        let tls = navra_protocol::TlsConfig {
+            client_cert: None,
+            client_key: Some("/some/key.pem".to_string()),
+            ..Default::default()
+        };
+        let result = build_tls_client(&tls, "half-config");
+        assert!(result.is_ok(), "half-configured mTLS should not error");
     }
 
     #[test]
