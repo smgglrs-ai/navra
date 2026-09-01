@@ -456,10 +456,7 @@ fn tainted_dag_node_write_blocked_by_ifc() {
     assert_eq!(agent_b_taint.level(), DataLabel::UNTRUSTED_SENSITIVE);
 
     // Step 3: Agent B attempts to post to Agent C's Public mailbox
-    let ids = vec![
-        "agent_b".to_string(),
-        "agent_c_public".to_string(),
-    ];
+    let ids = vec!["agent_b".to_string(), "agent_c_public".to_string()];
     let reg = MailboxRegistry::new(&ids, 16);
     // agent_c_public has default Public clearance
 
@@ -521,10 +518,7 @@ fn taint_propagation_through_blackboard_chain() {
 
     // Step 4: Verify Agent C cannot post to a Public-clearance mailbox
     // The Sensitive confidentiality cannot write down to Public clearance.
-    let ids = vec![
-        "agent_c".to_string(),
-        "clean_agent".to_string(),
-    ];
+    let ids = vec!["agent_c".to_string(), "clean_agent".to_string()];
     let reg = MailboxRegistry::new(&ids, 16);
 
     let err = reg

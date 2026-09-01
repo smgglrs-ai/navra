@@ -536,10 +536,8 @@ mod tests {
 
     #[test]
     fn responses_to_chat_user_message() {
-        let req = CreateResponseRequest::new(
-            "m".to_string(),
-            vec![InputItem::user("What is Rust?")],
-        );
+        let req =
+            CreateResponseRequest::new("m".to_string(), vec![InputItem::user("What is Rust?")]);
         let chat = responses_to_chat(&req);
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].role, chat::ChatRole::User);
@@ -650,7 +648,10 @@ mod tests {
         assert_eq!(chat.tools.len(), 1);
         assert_eq!(chat.tools[0].name, "search");
         assert_eq!(chat.tools[0].description, "Search the web");
-        assert_eq!(chat.tools[0].parameters, serde_json::json!({"type": "object"}));
+        assert_eq!(
+            chat.tools[0].parameters,
+            serde_json::json!({"type": "object"})
+        );
     }
 
     #[test]

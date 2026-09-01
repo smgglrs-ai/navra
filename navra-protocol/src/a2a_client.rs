@@ -302,8 +302,7 @@ pub enum A2aError {
 mod tests {
     use super::*;
     use crate::a2a::{
-        Message, MessageKind,
-        MessageRole, Part, Task, TaskKind, TaskState, TaskStatus,
+        Message, MessageKind, MessageRole, Part, Task, TaskKind, TaskState, TaskStatus,
     };
 
     #[test]

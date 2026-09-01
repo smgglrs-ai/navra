@@ -82,10 +82,7 @@ pub(crate) fn self_harness_command(
                 ValidationOutcome::Regression => "REGRESSION",
                 ValidationOutcome::InsufficientData => "NO DATA",
             };
-            println!(
-                "  {} [{}] {:?}: {}",
-                p.id, status, p.kind, p.description
-            );
+            println!("  {} [{}] {:?}: {}", p.id, status, p.kind, p.description);
             if v.outcome == ValidationOutcome::Regression {
                 println!(
                     "    Regression in {} of {} traces: {}",
@@ -115,14 +112,16 @@ fn discover_flow_ids(_log: &EventLog) -> anyhow::Result<Vec<&'static str>> {
         .join("flow_events.db");
 
     let db = rusqlite::Connection::open(&db_path)?;
-    let mut stmt = db.prepare(
-        "SELECT DISTINCT flow_id FROM flow_events ORDER BY MAX(seq) DESC LIMIT 20",
-    )?;
+    let mut stmt =
+        db.prepare("SELECT DISTINCT flow_id FROM flow_events ORDER BY MAX(seq) DESC LIMIT 20")?;
 
     let ids: Vec<String> = stmt
         .query_map([], |row| row.get::<_, String>(0))?
         .filter_map(|r| r.ok())
         .collect();
 
-    Ok(ids.into_iter().map(|s| Box::leak(s.into_boxed_str()) as &str).collect())
+    Ok(ids
+        .into_iter()
+        .map(|s| Box::leak(s.into_boxed_str()) as &str)
+        .collect())
 }

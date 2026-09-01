@@ -319,7 +319,10 @@ mod tests {
         ] {
             let low = DistilledEntry::importance_heuristic(&kind, 0.3);
             let high = DistilledEntry::importance_heuristic(&kind, 0.9);
-            assert!(high >= low, "{kind:?}: conf=0.9 ({high}) < conf=0.3 ({low})");
+            assert!(
+                high >= low,
+                "{kind:?}: conf=0.9 ({high}) < conf=0.3 ({low})"
+            );
         }
     }
 

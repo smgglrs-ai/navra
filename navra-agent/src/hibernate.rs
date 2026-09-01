@@ -646,7 +646,10 @@ mod tests {
             // _kv drops here
         }
 
-        assert!(!path.exists(), "KV cache file should be deleted on drop without take()");
+        assert!(
+            !path.exists(),
+            "KV cache file should be deleted on drop without take()"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

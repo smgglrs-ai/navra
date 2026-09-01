@@ -8,6 +8,7 @@ use anyhow::Context as _;
 
 mod acp_agent;
 mod agent_bundle;
+mod agent_spawn;
 mod build_tools;
 mod cli;
 mod cmd_agent;
@@ -20,12 +21,12 @@ mod cmd_pii;
 mod cmd_run;
 mod cmd_self_harness;
 mod cmd_wrap;
-mod eval;
 mod config;
 mod config_watcher;
 mod demo;
 mod direct_transport;
 mod discover;
+mod eval;
 mod exec_tools;
 mod flow_api;
 mod flow_escalation;
@@ -35,14 +36,14 @@ mod grpc_manager;
 mod init;
 mod mdns;
 mod memory_tools;
+mod model_selection;
 mod network_discovery;
 mod plan_execute;
 mod policy_sync;
 mod rag_retriever;
 mod registry_tools;
 mod session_distillation;
-mod agent_spawn;
-mod model_selection;
+pub(crate) mod setup;
 mod team_tools;
 mod tray;
 mod triggers;
@@ -50,7 +51,6 @@ mod ui;
 mod ui_agent;
 mod ui_events;
 pub(crate) mod util;
-pub(crate) mod setup;
 pub(crate) mod workspace;
 
 use clap::Parser;
@@ -63,7 +63,6 @@ use cli::{
     AgentAction, Cli, Commands, ConfigAction, FlowAction, McpAction, ModelAction, PersonaAction,
     PiiAction, TokenAction, TriggerAction,
 };
-
 
 fn init_tracing() -> anyhow::Result<()> {
     use tracing_subscriber::layer::SubscriberExt;
@@ -93,8 +92,7 @@ fn init_tracing() -> anyhow::Result<()> {
                 .build();
             use opentelemetry::trace::TracerProvider as _;
             let tracer = provider.tracer("navra");
-            let otel_layer = tracing_opentelemetry::layer()
-                .with_tracer(tracer);
+            let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
             registry.with(otel_layer).init();
             return Ok(());
         }
@@ -250,8 +248,13 @@ async fn main() -> anyhow::Result<()> {
                 max_permissions,
             } => {
                 let cfg = config::Config::load(None)?;
-                cmd_agent::agent_install(&oci_ref, allow_unsigned, max_permissions.as_deref(), &cfg)
-                    .await?;
+                cmd_agent::agent_install(
+                    &oci_ref,
+                    allow_unsigned,
+                    max_permissions.as_deref(),
+                    &cfg,
+                )
+                .await?;
             }
             AgentAction::Inspect { oci_ref } => {
                 cmd_agent::agent_inspect(&oci_ref).await?;
@@ -346,8 +349,14 @@ async fn main() -> anyhow::Result<()> {
                 token,
                 model,
             } => {
-                cmd_flow::flow_run(&file, &prompt, &endpoint, token.as_deref(), model.as_deref())
-                    .await?;
+                cmd_flow::flow_run(
+                    &file,
+                    &prompt,
+                    &endpoint,
+                    token.as_deref(),
+                    model.as_deref(),
+                )
+                .await?;
             }
             FlowAction::List {
                 config: config_path,
@@ -567,11 +576,16 @@ async fn main() -> anyhow::Result<()> {
             no_embedded,
             dry_run,
         } => {
-            eprintln!(
-                "hint: `navra run` is deprecated, use `navra agent run` or `navra flow run`"
-            );
+            eprintln!("hint: `navra run` is deprecated, use `navra agent run` or `navra flow run`");
             if let Some(ref flow_file) = flow {
-                cmd_run::run_flow_file(flow_file, &prompt, &endpoint, token.as_deref(), model.as_deref()).await?;
+                cmd_run::run_flow_file(
+                    flow_file,
+                    &prompt,
+                    &endpoint,
+                    token.as_deref(),
+                    model.as_deref(),
+                )
+                .await?;
                 return Ok(());
             }
             // If prompt looks like instance/workflow, treat as workflow run
@@ -645,7 +659,13 @@ async fn main() -> anyhow::Result<()> {
                 agent,
                 min_count,
             } => {
-                cmd_misc::policy_suggest(hours, &format, db.as_deref(), agent.as_deref(), min_count)?;
+                cmd_misc::policy_suggest(
+                    hours,
+                    &format,
+                    db.as_deref(),
+                    agent.as_deref(),
+                    min_count,
+                )?;
             }
         },
         Commands::Wrap {
@@ -941,7 +961,11 @@ async fn model_serve(
     server.serve(&bind).await
 }
 
-pub(crate) async fn serve(cfg: config::Config, no_tray: bool, dev_mode: bool) -> anyhow::Result<()> {
+pub(crate) async fn serve(
+    cfg: config::Config,
+    no_tray: bool,
+    dev_mode: bool,
+) -> anyhow::Result<()> {
     serve_inner(cfg, TransportMode::Http { no_tray }, dev_mode).await
 }
 
@@ -1266,7 +1290,9 @@ async fn serve_inner(
         };
     if let Some(days) = cfg.memory_audit_retention_days() {
         match audit_log.expire_older_than(days) {
-            Ok(n) if n > 0 => tracing::info!(deleted = n, days, "Retention: expired old audit entries"),
+            Ok(n) if n > 0 => {
+                tracing::info!(deleted = n, days, "Retention: expired old audit entries")
+            }
             _ => {}
         }
     }

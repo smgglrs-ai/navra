@@ -25,10 +25,7 @@ pub(crate) struct TransportState {
 /// Run the HTTP transport: build router, bind sockets, run until shutdown.
 ///
 /// Returns when the server shuts down (SIGINT/SIGTERM).
-pub(crate) async fn run_http_transport(
-    state: TransportState,
-    no_tray: bool,
-) -> anyhow::Result<()> {
+pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> anyhow::Result<()> {
     // Keep the mDNS daemon alive for advertising — drop stops it.
     let mut _mdns_daemon: Option<mdns_sd::ServiceDaemon> = None;
 
@@ -171,10 +168,8 @@ pub(crate) async fn run_http_transport(
         (router, api_server_ref)
     } else {
         let api_server_ref = Arc::clone(&state.server);
-        let router = navra_core::transport::build_router_with_broadcaster(
-            state.server,
-            state.broadcaster,
-        );
+        let router =
+            navra_core::transport::build_router_with_broadcaster(state.server, state.broadcaster);
         (router, api_server_ref)
     };
 
@@ -239,8 +234,11 @@ pub(crate) async fn run_http_transport(
     };
 
     // --- Flow graph API ---
-    let flow_api =
-        flow_api::flow_api_router(Arc::clone(&state.flow_registry), flow_event_log.clone(), Some(Arc::clone(&server)));
+    let flow_api = flow_api::flow_api_router(
+        Arc::clone(&state.flow_registry),
+        flow_event_log.clone(),
+        Some(Arc::clone(&server)),
+    );
     let router = router.merge(flow_api);
     tracing::info!("Flow graph API at /flows/{{id}}/graph, /graph/dot, /graph/bpmn, /events");
 
@@ -340,9 +338,7 @@ pub(crate) async fn run_http_transport(
 }
 
 /// Build ACP flow summaries from flow directories.
-fn build_acp_flow_summaries(
-    flow_dirs: &[String],
-) -> Vec<navra_core::acp::types::FlowSummary> {
+fn build_acp_flow_summaries(flow_dirs: &[String]) -> Vec<navra_core::acp::types::FlowSummary> {
     let mut summaries = Vec::new();
     for dir in flow_dirs {
         let expanded = if dir.starts_with('~') {
@@ -361,8 +357,7 @@ fn build_acp_flow_summaries(
                 }
                 if let Ok(content) = std::fs::read_to_string(&p) {
                     if ext == Some("bpmn") {
-                        if let Ok(dag) =
-                            navra_flow::load_bpmn_file(p.to_str().unwrap_or_default())
+                        if let Ok(dag) = navra_flow::load_bpmn_file(p.to_str().unwrap_or_default())
                         {
                             summaries.push(navra_core::acp::types::FlowSummary {
                                 name: dag.name.clone(),
@@ -380,15 +375,12 @@ fn build_acp_flow_summaries(
                                     .collect(),
                             });
                         }
-                    } else if let Ok(flow) = serde_yaml::from_str::<
-                        navra_flow::yaml_loader::FlowFile,
-                    >(&content)
+                    } else if let Ok(flow) =
+                        serde_yaml::from_str::<navra_flow::yaml_loader::FlowFile>(&content)
                     {
                         summaries.push(navra_core::acp::types::FlowSummary {
                             name: flow.name.clone(),
-                            description: flow
-                                .description
-                                .unwrap_or_else(|| flow.name.clone()),
+                            description: flow.description.unwrap_or_else(|| flow.name.clone()),
                             nodes: flow
                                 .tasks
                                 .iter()
@@ -410,9 +402,8 @@ fn build_acp_flow_summaries(
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
     #[cfg(unix)]
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to install SIGTERM handler");
     #[cfg(unix)]
     tokio::select! {
         _ = ctrl_c => tracing::info!("Received SIGINT, shutting down"),

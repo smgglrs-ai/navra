@@ -156,8 +156,8 @@ impl Config {
                     if libs.is_empty() {
                         serde_json::from_value(json_val)?
                     } else {
-                        let mut toml_val: toml::Value =
-                            toml::Value::try_from(json_val).unwrap_or(toml::Value::Table(Default::default()));
+                        let mut toml_val: toml::Value = toml::Value::try_from(json_val)
+                            .unwrap_or(toml::Value::Table(Default::default()));
                         libraries::merge_libraries(&mut toml_val, libs)?;
                         toml_val.try_into()?
                     }

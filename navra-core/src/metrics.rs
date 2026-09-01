@@ -411,9 +411,7 @@ impl Metrics {
             &mut out,
             "navra_leakage_semantic_blocks_total",
             "L3 inline semantic leakage detections (write blocked)",
-            self.safety
-                .leakage_semantic_blocks
-                .load(Ordering::Relaxed),
+            self.safety.leakage_semantic_blocks.load(Ordering::Relaxed),
         );
         prom_counter(
             &mut out,

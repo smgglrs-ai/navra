@@ -1,7 +1,7 @@
 use navra_macros::tool;
 use navra_mcp::auth::CallContext;
-use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::CallToolResult;
+use navra_protocol::compat::CallToolResultExt;
 
 // --- Basic tool: single required arg ---
 

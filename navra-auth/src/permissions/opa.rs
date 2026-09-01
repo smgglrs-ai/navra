@@ -81,9 +81,8 @@ impl OpaEngine {
             input.insert(k.clone(), serde_json::Value::String(v.clone()));
         }
 
-        let input_value = regorus::Value::from_json_str(
-            &serde_json::to_string(&input).unwrap_or_default(),
-        );
+        let input_value =
+            regorus::Value::from_json_str(&serde_json::to_string(&input).unwrap_or_default());
         let input_value = match input_value {
             Ok(v) => v,
             Err(e) => return OpaDecision::Deny(format!("Invalid input: {e}")),
@@ -310,7 +309,12 @@ deny if {
         ctx_internal.insert("ifc_confidentiality".into(), "pii".into());
         ctx_internal.insert("destination_trust".into(), "internal".into());
         assert_eq!(
-            engine.is_authorized("agent", "http_request", "https://internal.corp", &ctx_internal),
+            engine.is_authorized(
+                "agent",
+                "http_request",
+                "https://internal.corp",
+                &ctx_internal
+            ),
             OpaDecision::Allow,
         );
     }

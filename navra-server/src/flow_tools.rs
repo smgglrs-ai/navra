@@ -839,10 +839,6 @@ pub(crate) fn current_bb_seq() -> i64 {
         .unwrap_or(0)
 }
 
-
-
-
-
 // --- Tool definitions ---
 
 pub fn flow_start_tool_def() -> ToolDefinition {
@@ -1134,4 +1130,3 @@ mod tests {
         assert_eq!(result["output"], "result");
     }
 }
-

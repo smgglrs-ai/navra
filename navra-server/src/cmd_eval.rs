@@ -13,14 +13,16 @@ pub(crate) fn run(action: EvalAction) -> anyhow::Result<()> {
             attack,
             output,
             python,
-        } => {
-            eval::run_agentdojo(tasks, &suite, &model, &defense, &attack, output.as_deref(), &python)
-        }
-        EvalAction::McpTox { dataset, output } => {
-            eval::run_mcptox(&dataset, output.as_deref())
-        }
-        EvalAction::Report { files, output } => {
-            eval::run_report(&files, output.as_deref())
-        }
+        } => eval::run_agentdojo(
+            tasks,
+            &suite,
+            &model,
+            &defense,
+            &attack,
+            output.as_deref(),
+            &python,
+        ),
+        EvalAction::McpTox { dataset, output } => eval::run_mcptox(&dataset, output.as_deref()),
+        EvalAction::Report { files, output } => eval::run_report(&files, output.as_deref()),
     }
 }

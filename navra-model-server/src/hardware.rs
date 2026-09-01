@@ -717,10 +717,19 @@ mod tests {
         ] {
             let cfg = generate_config(&profile);
             assert!(cfg.contains("[server]"), "{profile} missing [server]");
-            assert!(cfg.contains("[models.safety]"), "{profile} missing safety model");
-            assert!(cfg.contains("[models.embeddings]"), "{profile} missing embeddings");
+            assert!(
+                cfg.contains("[models.safety]"),
+                "{profile} missing safety model"
+            );
+            assert!(
+                cfg.contains("[models.embeddings]"),
+                "{profile} missing embeddings"
+            );
             assert!(cfg.contains("[[agents]]"), "{profile} missing agents");
-            assert!(cfg.contains("[permissions.dev]"), "{profile} missing permissions");
+            assert!(
+                cfg.contains("[permissions.dev]"),
+                "{profile} missing permissions"
+            );
             assert!(cfg.contains("[budget]"), "{profile} missing budget");
         }
     }

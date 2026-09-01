@@ -247,7 +247,8 @@ impl McpServer {
         };
         self.sessions.create(session);
         self.metrics
-            .sessions.created
+            .sessions
+            .created
             .fetch_add(1, Ordering::Relaxed);
 
         let navra_caps = self.capabilities();
@@ -325,7 +326,8 @@ impl McpServer {
         mut ctx: CallContext,
     ) -> CallToolResult {
         self.metrics
-            .tools.calls_total
+            .tools
+            .calls_total
             .fetch_add(1, Ordering::Relaxed);
 
         // Wire sandbox profile from capability token into CallContext
@@ -397,7 +399,8 @@ impl McpServer {
                     agent_ring,
                 );
                 self.metrics
-                    .tools.calls_denied
+                    .tools
+                    .calls_denied
                     .fetch_add(1, Ordering::Relaxed);
                 if let Some(ref bb) = self.blackbox {
                     bb.record(
@@ -514,7 +517,8 @@ impl McpServer {
                 agent_ring,
             );
             self.metrics
-                .tools.calls_denied
+                .tools
+                .calls_denied
                 .fetch_add(1, Ordering::Relaxed);
             tracing::warn!(
                 tool = %params.name,
@@ -669,7 +673,8 @@ impl McpServer {
                         agent_ring,
                     );
                     self.metrics
-                        .tools.calls_denied
+                        .tools
+                        .calls_denied
                         .fetch_add(1, Ordering::Relaxed);
                     tracing::info!(
                         tool = %params.name,
@@ -698,7 +703,8 @@ impl McpServer {
                         agent_ring,
                     );
                     self.metrics
-                        .tools.calls_denied
+                        .tools
+                        .calls_denied
                         .fetch_add(1, Ordering::Relaxed);
                     return CallToolResult::error_msg(msg);
                 }
@@ -927,11 +933,13 @@ impl McpServer {
         };
         let tool_duration_us = tool_start.elapsed().as_micros() as u64;
         self.metrics
-            .tools.duration_us_sum
+            .tools
+            .duration_us_sum
             .fetch_add(tool_duration_us, Ordering::Relaxed);
         if result.is_error == Some(true) {
             self.metrics
-                .tools.calls_errors
+                .tools
+                .calls_errors
                 .fetch_add(1, Ordering::Relaxed);
         }
         tracing::info!(
@@ -956,7 +964,8 @@ impl McpServer {
             });
             if !is_trusted {
                 self.metrics
-                    .ifc.taint_elevations
+                    .ifc
+                    .taint_elevations
                     .fetch_add(1, Ordering::Relaxed);
                 crate::ifc::DataLabel {
                     integrity: crate::ifc::Integrity::Untrusted,

@@ -118,7 +118,7 @@ pub struct Teammate {
     pub name: String,
     pub persona: Option<String>,
     pub model: String,
-    pub locality: String,        // "local", "remote", "auto"
+    pub locality: String, // "local", "remote", "auto"
     pub operations: Vec<String>,
     pub tools: Vec<String>,
     pub temperature: Option<f32>,
@@ -245,21 +245,24 @@ impl TeamRegistry {
         self
     }
 
-    pub fn set_tool_operations(
-        &self,
-        ops: HashMap<String, navra_mcp::ToolOperation>,
-    ) {
-        *self.tool_operations.lock().unwrap_or_else(|e| e.into_inner()) = ops;
+    pub fn set_tool_operations(&self, ops: HashMap<String, navra_mcp::ToolOperation>) {
+        *self
+            .tool_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = ops;
     }
 
     pub fn default_tools_for_operations(&self, operations: &[String]) -> Vec<String> {
-        let ops = self.tool_operations.lock().unwrap_or_else(|e| e.into_inner());
+        let ops = self
+            .tool_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if ops.is_empty() {
             return DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect();
         }
-        let wants_write = operations.iter().any(|o| {
-            matches!(o.as_str(), "write" | "edit" | "delete")
-        });
+        let wants_write = operations
+            .iter()
+            .any(|o| matches!(o.as_str(), "write" | "edit" | "delete"));
         let mut tools: Vec<String> = ops
             .iter()
             .filter(|(_, op)| match op {
@@ -1358,7 +1361,10 @@ pub async fn handle_models_list(cards: Vec<ModelCard>) -> navra_core::protocol::
         .iter()
         .filter(|c| {
             c.agentic.has_metadata()
-                || c.vendor.tasks.iter().any(|t| t == "chat" || t == "text-generation")
+                || c.vendor
+                    .tasks
+                    .iter()
+                    .any(|t| t == "chat" || t == "text-generation")
         })
         .map(|c| {
             let mut v = serde_json::to_value(c).unwrap_or_default();

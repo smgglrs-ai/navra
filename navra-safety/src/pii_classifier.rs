@@ -251,12 +251,8 @@ mod tests {
         // Verify all safe label variants are recognized and would
         // cause scan() to return empty findings.
         for safe_label in &["no_pii", "safe", "0"] {
-            let is_safe =
-                *safe_label == "no_pii" || *safe_label == "safe" || *safe_label == "0";
-            assert!(
-                is_safe,
-                "Label '{safe_label}' should be treated as safe"
-            );
+            let is_safe = *safe_label == "no_pii" || *safe_label == "safe" || *safe_label == "0";
+            assert!(is_safe, "Label '{safe_label}' should be treated as safe");
         }
     }
 

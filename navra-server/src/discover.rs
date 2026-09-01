@@ -360,9 +360,10 @@ async fn discover_domain(domain: &str, timeout: std::time::Duration) -> Vec<Disc
 
     // 3. HTTP well-known fallback
     if let Some(ep) = lookup_domain_with_timeout(domain, timeout).await
-        && seen_urls.insert(ep.url.clone()) {
-            all.push(ep);
-        }
+        && seen_urls.insert(ep.url.clone())
+    {
+        all.push(ep);
+    }
 
     all
 }
@@ -382,9 +383,9 @@ pub async fn discover_all_with_timeout(
     let mut handles = Vec::with_capacity(domains.len());
     for domain in domains {
         let domain = domain.clone();
-        handles.push(tokio::spawn(
-            async move { discover_domain(&domain, timeout).await },
-        ));
+        handles.push(tokio::spawn(async move {
+            discover_domain(&domain, timeout).await
+        }));
     }
 
     let mut results = Vec::new();
@@ -543,10 +544,7 @@ mod tests {
         let record = parse_svcb_text(text).unwrap();
 
         assert_eq!(record.capabilities, vec!["urn:cap:tools"]);
-        assert_eq!(
-            record.policy.as_deref(),
-            Some("https://example.org/policy")
-        );
+        assert_eq!(record.policy.as_deref(), Some("https://example.org/policy"));
         assert_eq!(record.realm.as_deref(), Some("corp.example.org"));
         assert_eq!(
             record.bap.as_deref(),
@@ -764,9 +762,11 @@ mod tests {
 
     #[tokio::test]
     async fn discover_domain_deduplicates() {
-        let results =
-            discover_domain("this-domain-does-not-exist-navra-test.invalid", std::time::Duration::from_secs(2))
-                .await;
+        let results = discover_domain(
+            "this-domain-does-not-exist-navra-test.invalid",
+            std::time::Duration::from_secs(2),
+        )
+        .await;
         let urls: std::collections::HashSet<&str> =
             results.iter().map(|e| e.url.as_str()).collect();
         assert_eq!(urls.len(), results.len());

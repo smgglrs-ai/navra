@@ -125,7 +125,9 @@ impl ModelEntry {
     /// Resolve the KV cache config from either `kv_cache` (preferred)
     /// or `cache_type` (symmetric shorthand).
     pub fn resolved_kv_cache(&self) -> Option<navra_model_runtime::KvCacheConfig> {
-        self.kv_cache.or(self.cache_type.map(navra_model_runtime::KvCacheConfig::symmetric))
+        self.kv_cache.or(self
+            .cache_type
+            .map(navra_model_runtime::KvCacheConfig::symmetric))
     }
 }
 

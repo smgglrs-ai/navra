@@ -100,9 +100,7 @@ impl Blackbox {
             }
         }
         // Ensure trace_id index exists (idempotent).
-        let _ = db.execute_batch(
-            "CREATE INDEX IF NOT EXISTS idx_bb_trace ON blackbox(trace_id);",
-        );
+        let _ = db.execute_batch("CREATE INDEX IF NOT EXISTS idx_bb_trace ON blackbox(trace_id);");
 
         // Resume from last entry
         let (last_seq, last_hash) = db

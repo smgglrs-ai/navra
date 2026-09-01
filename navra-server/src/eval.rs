@@ -98,7 +98,9 @@ pub(crate) fn run_agentdojo(
     let default_output = format!("eval_agentdojo_{suite}_{tasks}tasks.json");
     let out_relative = output_path.unwrap_or(&default_output);
     let out_path = cwd.join(out_relative);
-    let out = out_path.to_str().ok_or_else(|| anyhow::anyhow!("invalid output path"))?;
+    let out = out_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("invalid output path"))?;
 
     println!("navra eval agentdojo — IFC defense benchmark");
     println!("{}", "=".repeat(60));
@@ -133,9 +135,9 @@ pub(crate) fn run_agentdojo(
         .stdout(std::process::Stdio::inherit())
         .stderr(std::process::Stdio::inherit());
 
-    let status = cmd.status().map_err(|e| {
-        anyhow::anyhow!("Failed to run AgentDojo eval: {e}")
-    })?;
+    let status = cmd
+        .status()
+        .map_err(|e| anyhow::anyhow!("Failed to run AgentDojo eval: {e}"))?;
 
     if !status.success() {
         anyhow::bail!("AgentDojo eval exited with {status}");
@@ -143,8 +145,7 @@ pub(crate) fn run_agentdojo(
 
     // Wrap the Python output in our standard EvalResults format
     if Path::new(out).exists() {
-        let raw: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(out)?)?;
+        let raw: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(out)?)?;
         wrap_agentdojo_results(&raw, out)?;
     }
 
@@ -285,8 +286,7 @@ pub(crate) fn run_mcptox(dataset_dir: &str, output_path: Option<&str>) -> anyhow
 
     // Load clean tools for false positive measurement
     let clean_tools: Vec<(String, String, String)> = if response_path.exists() {
-        let resp: McpToxResponse =
-            serde_json::from_str(&std::fs::read_to_string(&response_path)?)?;
+        let resp: McpToxResponse = serde_json::from_str(&std::fs::read_to_string(&response_path)?)?;
         resp.servers
             .iter()
             .filter(|(_, s)| !s.clean_system_prompt.is_empty())
@@ -302,8 +302,10 @@ pub(crate) fn run_mcptox(dataset_dir: &str, output_path: Option<&str>) -> anyhow
         Vec::new()
     };
 
-    let servers: std::collections::HashSet<&str> =
-        poisoned_tools.iter().map(|(_, t)| t.server_name.as_str()).collect();
+    let servers: std::collections::HashSet<&str> = poisoned_tools
+        .iter()
+        .map(|(_, t)| t.server_name.as_str())
+        .collect();
     println!(
         "Poisoned tools: {} (from {} servers)",
         poisoned_tools.len(),
@@ -427,15 +429,28 @@ pub(crate) fn run_mcptox(dataset_dir: &str, output_path: Option<&str>) -> anyhow
 
     println!("{}", "=".repeat(60));
     println!("SUMMARY");
-    println!("  Detection rate:      {:.1}% ({}/{})", detection_rate * 100.0, detected, poisoned_tools.len());
-    println!("  False positive rate: {:.1}% ({}/{})", fpr * 100.0, false_positives, clean_tools.len());
+    println!(
+        "  Detection rate:      {:.1}% ({}/{})",
+        detection_rate * 100.0,
+        detected,
+        poisoned_tools.len()
+    );
+    println!(
+        "  False positive rate: {:.1}% ({}/{})",
+        fpr * 100.0,
+        false_positives,
+        clean_tools.len()
+    );
     println!("  Threat categories:   {}", category_counts.len());
 
     let mut extra = HashMap::new();
     extra.insert("detection_rate".into(), serde_json::json!(detection_rate));
     extra.insert("false_positive_rate".into(), serde_json::json!(fpr));
     extra.insert("false_positives".into(), serde_json::json!(false_positives));
-    extra.insert("clean_tools_total".into(), serde_json::json!(clean_tools.len()));
+    extra.insert(
+        "clean_tools_total".into(),
+        serde_json::json!(clean_tools.len()),
+    );
     extra.insert("categories".into(), serde_json::json!(category_counts));
 
     let eval_results = EvalResults {
@@ -473,7 +488,9 @@ fn make_tool_def(name: &str, description: &str) -> ToolDefinition {
 
 pub(crate) fn run_report(files: &[String], output_path: Option<&str>) -> anyhow::Result<()> {
     if files.is_empty() {
-        anyhow::bail!("No result files specified. Usage: navra eval report <file1.json> [file2.json ...]");
+        anyhow::bail!(
+            "No result files specified. Usage: navra eval report <file1.json> [file2.json ...]"
+        );
     }
 
     let mut all_results: Vec<(String, EvalResults)> = Vec::new();
@@ -485,7 +502,10 @@ pub(crate) fn run_report(files: &[String], output_path: Option<&str>) -> anyhow:
             all_results.push((path.clone(), single));
         } else if let Ok(multi) = serde_json::from_str::<Vec<EvalResults>>(&content) {
             for (i, r) in multi.into_iter().enumerate() {
-                let label = r.summary.extra.get("defense")
+                let label = r
+                    .summary
+                    .extra
+                    .get("defense")
                     .and_then(|v| v.as_str())
                     .map(|d| format!("{path} ({d})"))
                     .unwrap_or_else(|| format!("{path} [{}]", i));
@@ -556,17 +576,9 @@ pub(crate) fn run_report(files: &[String], output_path: Option<&str>) -> anyhow:
             md.push_str("| Category | Count |\n");
             md.push_str("|----------|------:|\n");
             let mut sorted: Vec<_> = obj.iter().collect();
-            sorted.sort_by(|a, b| {
-                b.1.as_u64()
-                    .unwrap_or(0)
-                    .cmp(&a.1.as_u64().unwrap_or(0))
-            });
+            sorted.sort_by(|a, b| b.1.as_u64().unwrap_or(0).cmp(&a.1.as_u64().unwrap_or(0)));
             for (cat, count) in sorted {
-                md.push_str(&format!(
-                    "| {} | {} |\n",
-                    cat,
-                    count.as_u64().unwrap_or(0)
-                ));
+                md.push_str(&format!("| {} | {} |\n", cat, count.as_u64().unwrap_or(0)));
             }
         }
 
@@ -752,8 +764,16 @@ mod tests {
         let tmpdir = tempfile::tempdir().unwrap();
         let f1 = tmpdir.path().join("run1.json");
         let f2 = tmpdir.path().join("run2.json");
-        std::fs::write(&f1, serde_json::to_string(&make_result(0.80, 80, 100)).unwrap()).unwrap();
-        std::fs::write(&f2, serde_json::to_string(&make_result(0.90, 90, 100)).unwrap()).unwrap();
+        std::fs::write(
+            &f1,
+            serde_json::to_string(&make_result(0.80, 80, 100)).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            &f2,
+            serde_json::to_string(&make_result(0.90, 90, 100)).unwrap(),
+        )
+        .unwrap();
 
         let md_path = tmpdir.path().join("comparison.md");
         run_report(

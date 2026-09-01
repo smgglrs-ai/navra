@@ -333,8 +333,7 @@ async fn unified_inference_routing_auth_path() {
         http_timeout_secs: 10,
     };
 
-    let chain = ChainAuthenticator::new()
-        .add(OpenShellAuthenticator::new(config));
+    let chain = ChainAuthenticator::new().add(OpenShellAuthenticator::new(config));
 
     // Unauthenticated request should fail (not return anonymous)
     let headers = axum::http::HeaderMap::new();
@@ -350,7 +349,9 @@ async fn unified_inference_routing_auth_path() {
     let mut headers_with_token = axum::http::HeaderMap::new();
     headers_with_token.insert(
         "authorization",
-        "Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.test.sig".parse().unwrap(),
+        "Bearer eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.test.sig"
+            .parse()
+            .unwrap(),
     );
     let result = chain.authenticate(&headers_with_token);
     assert!(

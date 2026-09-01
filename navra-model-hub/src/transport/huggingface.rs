@@ -116,8 +116,7 @@ impl ModelTransport for HuggingFaceTransport {
             // Stream to a temp file, then read back.
             // This keeps the in-memory pull() API but avoids holding
             // the entire response in reqwest's buffer.
-            let tmp = tempfile::NamedTempFile::new()
-                .map_err(|e| HubError::Io(e))?;
+            let tmp = tempfile::NamedTempFile::new().map_err(|e| HubError::Io(e))?;
             let tmp_path = tmp.path().to_path_buf();
 
             self.pull_to_file(uri, &tmp_path, None).await?;
@@ -148,8 +147,7 @@ impl ModelTransport for HuggingFaceTransport {
                 }
             }
 
-            let download_url =
-                format!("{}/{org}/{repo}/resolve/main/{filename}", self.api_url);
+            let download_url = format!("{}/{org}/{repo}/resolve/main/{filename}", self.api_url);
             tracing::info!(
                 repo = format!("{org}/{repo}"),
                 file = %filename,
@@ -328,10 +326,7 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path("/testorg/testrepo/resolve/main/model.gguf"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_bytes(body.clone()),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
             .mount(&server)
             .await;
 

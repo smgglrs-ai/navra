@@ -804,9 +804,10 @@ mod tests {
 
     #[test]
     fn cli_eval_report() {
-        let cli =
-            Cli::try_parse_from(["navra", "eval", "report", "a.json", "b.json", "-o", "out.md"])
-                .unwrap();
+        let cli = Cli::try_parse_from([
+            "navra", "eval", "report", "a.json", "b.json", "-o", "out.md",
+        ])
+        .unwrap();
         match cli.command {
             Commands::Eval {
                 action: EvalAction::Report { files, output },
@@ -823,7 +824,10 @@ mod tests {
         let cli = Cli::try_parse_from(["navra", "mcp", "serve", "--no-tray"]).unwrap();
         match cli.command {
             Commands::Mcp {
-                action: McpAction::Serve { no_tray, dev_mode, .. },
+                action:
+                    McpAction::Serve {
+                        no_tray, dev_mode, ..
+                    },
             } => {
                 assert!(no_tray);
                 assert!(!dev_mode);
@@ -848,7 +852,13 @@ mod tests {
         let cli = Cli::try_parse_from(["navra", "agent", "run", "hello world"]).unwrap();
         match cli.command {
             Commands::Agent {
-                action: AgentAction::Run { prompt, persona, max_iterations, .. },
+                action:
+                    AgentAction::Run {
+                        prompt,
+                        persona,
+                        max_iterations,
+                        ..
+                    },
             } => {
                 assert_eq!(prompt, "hello world");
                 assert_eq!(persona, "leader");
@@ -860,9 +870,8 @@ mod tests {
 
     #[test]
     fn cli_flow_run() {
-        let cli =
-            Cli::try_parse_from(["navra", "flow", "run", "review.yaml", "-p", "check this"])
-                .unwrap();
+        let cli = Cli::try_parse_from(["navra", "flow", "run", "review.yaml", "-p", "check this"])
+            .unwrap();
         match cli.command {
             Commands::Flow {
                 action: FlowAction::Run { file, prompt, .. },

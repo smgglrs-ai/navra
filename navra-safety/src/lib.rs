@@ -39,9 +39,9 @@ pub mod ml;
 pub mod ner;
 #[cfg(feature = "onnx")]
 pub mod pii_classifier;
+pub mod poisoning;
 #[cfg(feature = "onnx")]
 pub mod privacy_filter;
-pub mod poisoning;
 pub mod privacy_router;
 pub mod projection;
 pub mod pseudonym;
@@ -51,11 +51,14 @@ pub mod ssrf;
 pub use self::canary::{CanaryFilter, CanaryMatch, CanaryToken};
 pub use self::classifier::{Classifier, ClassifyError, ClassifyLabel, ClassifyOutput};
 pub use self::confidentiality::Confidentiality;
+pub use self::exfil::ExfilDetectionFilter;
+pub use self::injection::TieredInjectionFilter;
 pub use self::ml::{CategoryPolicy, MlFilter, MultiLabelFilter};
 #[cfg(feature = "onnx")]
 pub use self::ner::{
     NerFilter, default_pii_ner_model_dir, default_pii_ner_multilingual_model_dir, load_ner_filter,
 };
+pub use self::poisoning::ContextPoisoningFilter;
 #[cfg(feature = "onnx")]
 pub use self::privacy_filter::{
     PrivacyFilterModel, default_privacy_filter_model_dir, load_privacy_filter,
@@ -63,12 +66,9 @@ pub use self::privacy_filter::{
 pub use self::privacy_router::{PrivacyRouter, PrivacyRouterBuilder, PrivacyRouterConfig};
 pub use self::projection::{ProjectionError, SparseProjectionMatrix};
 pub use self::pseudonym::{PseudonymMap, PseudonymReverser};
-pub use self::injection::TieredInjectionFilter;
-pub use self::poisoning::ContextPoisoningFilter;
 pub use self::regex::{
     CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter,
 };
-pub use self::exfil::ExfilDetectionFilter;
 pub use self::ssrf::SsrfFilter;
 
 use serde::Serialize;

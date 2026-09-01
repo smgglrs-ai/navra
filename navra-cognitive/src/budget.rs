@@ -202,8 +202,7 @@ pub fn compact_history(turns: &[String], keep_recent: usize) -> Vec<String> {
 /// Based on the SelfCompact rubric (arxiv 2606.23525): agents cannot
 /// reliably detect their own context degradation, so the gateway
 /// enforces compression timing based on flow execution state.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum FlowPhase {
     /// Between flow nodes — safe to compact.
     #[default]
@@ -217,7 +216,6 @@ pub enum FlowPhase {
     /// Agent is stuck (errors, retries, no forward progress).
     Stuck,
 }
-
 
 /// SelfCompact 4-condition compression rubric.
 ///

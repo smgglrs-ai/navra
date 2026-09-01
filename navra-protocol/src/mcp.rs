@@ -380,5 +380,4 @@ mod kani_proofs {
         let (page_len, _) = paginate_pure(count as usize, offset as usize, page_size as usize);
         assert!(page_len <= page_size as usize);
     }
-
 }

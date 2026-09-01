@@ -49,10 +49,10 @@ pub use safety_hook::SafetyHook;
 pub use sandbox_hook::SandboxHook;
 pub use skill_hook::{Intervention, SkillHook, SkillRule};
 pub use statistical::{StatisticalConfig, StatisticalGuardrailHook};
+pub use supply_chain_guard::SupplyChainGuardHook;
 pub use temporal_contract::{
     ContractAction, SessionActionLog, TemporalContract, TemporalContractHook, TemporalPredicate,
 };
-pub use supply_chain_guard::SupplyChainGuardHook;
 pub use tool_guard::ToolGuardHook;
 pub use verifier::{VerifierConfig, VerifierHook, VerifierStats};
 

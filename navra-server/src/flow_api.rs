@@ -235,7 +235,11 @@ async fn handle_run_flow(
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let Some(server) = &state.server else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "Flow execution not available").into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Flow execution not available",
+        )
+            .into_response();
     };
 
     let prompt = body
@@ -272,7 +276,11 @@ async fn handle_run_flow(
     let is_error = result.is_error.unwrap_or(false);
 
     if is_error {
-        (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(serde_json::json!({"error": text}))).into_response()
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::Json(serde_json::json!({"error": text})),
+        )
+            .into_response()
     } else {
         axum::Json(serde_json::json!({"ok": true, "output": text})).into_response()
     }
@@ -291,7 +299,10 @@ pub(crate) fn flow_api_router(
 
     axum::Router::new()
         .route("/api/flow-runs", axum::routing::get(handle_list_flows))
-        .route("/api/flows/{name}/run", axum::routing::post(handle_run_flow))
+        .route(
+            "/api/flows/{name}/run",
+            axum::routing::post(handle_run_flow),
+        )
         .route("/flows/{id}/graph", axum::routing::get(handle_flow_graph))
         .route(
             "/flows/{id}/graph/dot",

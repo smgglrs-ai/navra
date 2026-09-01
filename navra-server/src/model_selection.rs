@@ -260,10 +260,32 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
+        reg.add_teammate(
+            &tid,
+            "alice",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.add_teammate(
+            &tid,
+            "bob",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Alice publishes
         reg.bb_publish(
@@ -291,10 +313,32 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
+        reg.add_teammate(
+            &tid,
+            "alice",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.add_teammate(
+            &tid,
+            "bob",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         reg.bb_publish(
             &tid,
@@ -319,12 +363,45 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
-        reg.add_teammate(&tid, "bob", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
-        reg.add_teammate(&tid, "carol", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
+        reg.add_teammate(
+            &tid,
+            "alice",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.add_teammate(
+            &tid,
+            "bob",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.add_teammate(
+            &tid,
+            "carol",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         reg.bb_publish(
             &tid,
@@ -369,8 +446,19 @@ mod tests {
         let tid = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
             .unwrap();
-        reg.add_teammate(&tid, "alice", None, "m", "local", vec![], vec![], None, None, None)
-            .unwrap();
+        reg.add_teammate(
+            &tid,
+            "alice",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         reg.bb_publish(
             &tid,

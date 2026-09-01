@@ -500,10 +500,7 @@ pub(crate) async fn run_flow_file(
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         let status_result = mcp
-            .call_tool(
-                "flow_status",
-                serde_json::json!({"flow_id": flow_id}),
-            )
+            .call_tool("flow_status", serde_json::json!({"flow_id": flow_id}))
             .await?;
         let status_text = status_result
             .content

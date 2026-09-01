@@ -95,10 +95,7 @@ impl Default for MiningConfig {
 }
 
 /// Mine weaknesses from a set of flow execution traces.
-pub fn mine_weaknesses(
-    events: &[StoredEvent],
-    config: &MiningConfig,
-) -> Vec<WeaknessFinding> {
+pub fn mine_weaknesses(events: &[StoredEvent], config: &MiningConfig) -> Vec<WeaknessFinding> {
     let mut findings = Vec::new();
 
     let mut tool_errors: HashMap<String, Vec<i64>> = HashMap::new();
@@ -290,7 +287,11 @@ pub fn mine_weaknesses(
         }
     }
 
-    findings.sort_by(|a, b| b.severity.partial_cmp(&a.severity).unwrap_or(std::cmp::Ordering::Equal));
+    findings.sort_by(|a, b| {
+        b.severity
+            .partial_cmp(&a.severity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     findings
 }
 
@@ -307,7 +308,11 @@ pub fn mine_from_event_log(
             all_findings.append(&mut findings);
         }
     }
-    all_findings.sort_by(|a, b| b.severity.partial_cmp(&a.severity).unwrap_or(std::cmp::Ordering::Equal));
+    all_findings.sort_by(|a, b| {
+        b.severity
+            .partial_cmp(&a.severity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     all_findings
 }
 
@@ -360,15 +365,9 @@ pub enum ProposalDiff {
         new_limit: u32,
     },
     /// Add a timeout to a tool or node.
-    AddTimeout {
-        target: String,
-        timeout_ms: u64,
-    },
+    AddTimeout { target: String, timeout_ms: u64 },
     /// Skip or remove a node from the flow.
-    RemoveNode {
-        task_id: String,
-        reason: String,
-    },
+    RemoveNode { task_id: String, reason: String },
     /// Add a recovery fallback for a failing node.
     AddFallback {
         task_id: String,
@@ -447,9 +446,7 @@ pub fn propose_harnesses(findings: &[WeaknessFinding]) -> Vec<HarnessProposal> {
                 Some(HarnessProposal {
                     id: format!("SH-{proposal_id:04}"),
                     kind: ProposalKind::FlowDagEdit,
-                    description: format!(
-                        "Consider removing persistently skipped task '{task}'"
-                    ),
+                    description: format!("Consider removing persistently skipped task '{task}'"),
                     addresses: vec![WeaknessType::SkippedNode],
                     expected_improvement: 0.1,
                     regression_risk: 0.4,
@@ -533,7 +530,9 @@ pub fn validate_proposal(
         };
         traces_checked += 1;
 
-        let flow_succeeded = events.iter().any(|e| matches!(&e.event, FlowEvent::FlowCompleted { .. }));
+        let flow_succeeded = events
+            .iter()
+            .any(|e| matches!(&e.event, FlowEvent::FlowCompleted { .. }));
         if !flow_succeeded {
             continue;
         }
@@ -581,24 +580,32 @@ pub fn validate_proposal(
 /// Check if a proposal would cause a regression in the given trace.
 fn would_regress(proposal: &HarnessProposal, events: &[StoredEvent]) -> bool {
     match &proposal.diff {
-        ProposalDiff::BackEdgeLimit { from, old_limit, new_limit, .. } => {
+        ProposalDiff::BackEdgeLimit {
+            from,
+            old_limit,
+            new_limit,
+            ..
+        } => {
             for event in events {
                 if let FlowEvent::BackEdgeActivated {
                     from: edge_from,
                     iteration,
                     ..
                 } = &event.event
-                    && edge_from == from && *iteration > *new_limit && *iteration <= *old_limit {
-                        return true;
-                    }
+                    && edge_from == from
+                    && *iteration > *new_limit
+                    && *iteration <= *old_limit
+                {
+                    return true;
+                }
             }
             false
         }
-        ProposalDiff::RemoveNode { task_id, .. } => {
-            events.iter().any(|e| matches!(&e.event,
+        ProposalDiff::RemoveNode { task_id, .. } => events.iter().any(|e| {
+            matches!(&e.event,
                 FlowEvent::NodeCompleted { task_id: tid, .. } if tid == task_id
-            ))
-        }
+            )
+        }),
         ProposalDiff::AddTimeout { .. }
         | ProposalDiff::AddFallback { .. }
         | ProposalDiff::ToolConfigChange { .. } => false,
@@ -670,60 +677,93 @@ mod tests {
             e
         };
 
-        events.push(event(&mut seq, FlowEvent::NodeStarted {
-            task_id: "analyze".into(),
-            specialist: "reviewer".into(),
-        }));
-        events.push(event(&mut seq, FlowEvent::ToolCalled {
-            task_id: "analyze".into(),
-            tool_name: "file_read".into(),
-            args_hash: "abc".into(),
-        }));
-        events.push(event(&mut seq, FlowEvent::ToolResult {
-            task_id: "analyze".into(),
-            tool_name: "file_read".into(),
-            is_error: true,
-            duration_ms: 50,
-        }));
-        events.push(event(&mut seq, FlowEvent::ToolResult {
-            task_id: "analyze".into(),
-            tool_name: "file_read".into(),
-            is_error: true,
-            duration_ms: 50,
-        }));
-        events.push(event(&mut seq, FlowEvent::NodeCompleted {
-            task_id: "analyze".into(),
-            output_preview: "done".into(),
-            prompt_tokens: 1000,
-            completion_tokens: 20,
-        }));
-        events.push(event(&mut seq, FlowEvent::BackEdgeActivated {
-            from: "review".into(),
-            to: "fix".into(),
-            iteration: 5,
-        }));
-        events.push(event(&mut seq, FlowEvent::ToolResult {
-            task_id: "fix".into(),
-            tool_name: "slow_tool".into(),
-            is_error: false,
-            duration_ms: 15_000,
-        }));
-        events.push(event(&mut seq, FlowEvent::NodeFailed {
-            task_id: "deploy".into(),
-            error: "timeout".into(),
-        }));
-        events.push(event(&mut seq, FlowEvent::NodeFailed {
-            task_id: "deploy".into(),
-            error: "connection refused".into(),
-        }));
-        events.push(event(&mut seq, FlowEvent::NodeSkipped {
-            task_id: "cleanup".into(),
-            reason: "dependency failed".into(),
-        }));
-        events.push(event(&mut seq, FlowEvent::FlowCompleted {
-            total_prompt_tokens: 2000,
-            total_completion_tokens: 200,
-        }));
+        events.push(event(
+            &mut seq,
+            FlowEvent::NodeStarted {
+                task_id: "analyze".into(),
+                specialist: "reviewer".into(),
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::ToolCalled {
+                task_id: "analyze".into(),
+                tool_name: "file_read".into(),
+                args_hash: "abc".into(),
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::ToolResult {
+                task_id: "analyze".into(),
+                tool_name: "file_read".into(),
+                is_error: true,
+                duration_ms: 50,
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::ToolResult {
+                task_id: "analyze".into(),
+                tool_name: "file_read".into(),
+                is_error: true,
+                duration_ms: 50,
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::NodeCompleted {
+                task_id: "analyze".into(),
+                output_preview: "done".into(),
+                prompt_tokens: 1000,
+                completion_tokens: 20,
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::BackEdgeActivated {
+                from: "review".into(),
+                to: "fix".into(),
+                iteration: 5,
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::ToolResult {
+                task_id: "fix".into(),
+                tool_name: "slow_tool".into(),
+                is_error: false,
+                duration_ms: 15_000,
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::NodeFailed {
+                task_id: "deploy".into(),
+                error: "timeout".into(),
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::NodeFailed {
+                task_id: "deploy".into(),
+                error: "connection refused".into(),
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::NodeSkipped {
+                task_id: "cleanup".into(),
+                reason: "dependency failed".into(),
+            },
+        ));
+        events.push(event(
+            &mut seq,
+            FlowEvent::FlowCompleted {
+                total_prompt_tokens: 2000,
+                total_completion_tokens: 200,
+            },
+        ));
 
         events
     }
@@ -855,14 +895,26 @@ mod tests {
     #[test]
     fn validate_safe_proposal() {
         let log = EventLog::open_memory().unwrap();
-        log.append("f1", &FlowEvent::NodeStarted {
-            task_id: "a".into(),
-            specialist: "dev".into(),
-        }, None, None).unwrap();
-        log.append("f1", &FlowEvent::FlowCompleted {
-            total_prompt_tokens: 100,
-            total_completion_tokens: 50,
-        }, None, None).unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::NodeStarted {
+                task_id: "a".into(),
+                specialist: "dev".into(),
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::FlowCompleted {
+                total_prompt_tokens: 100,
+                total_completion_tokens: 50,
+            },
+            None,
+            None,
+        )
+        .unwrap();
 
         let proposal = HarnessProposal {
             id: "SH-0001".into(),
@@ -886,15 +938,27 @@ mod tests {
     #[test]
     fn validate_regression_detected() {
         let log = EventLog::open_memory().unwrap();
-        log.append("f1", &FlowEvent::BackEdgeActivated {
-            from: "review".into(),
-            to: "fix".into(),
-            iteration: 3,
-        }, None, None).unwrap();
-        log.append("f1", &FlowEvent::FlowCompleted {
-            total_prompt_tokens: 100,
-            total_completion_tokens: 50,
-        }, None, None).unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::BackEdgeActivated {
+                from: "review".into(),
+                to: "fix".into(),
+                iteration: 3,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::FlowCompleted {
+                total_prompt_tokens: 100,
+                total_completion_tokens: 50,
+            },
+            None,
+            None,
+        )
+        .unwrap();
 
         let proposal = HarnessProposal {
             id: "SH-0002".into(),
@@ -939,16 +1003,28 @@ mod tests {
     #[test]
     fn validate_remove_node_regression() {
         let log = EventLog::open_memory().unwrap();
-        log.append("f1", &FlowEvent::NodeCompleted {
-            task_id: "cleanup".into(),
-            output_preview: "cleaned".into(),
-            prompt_tokens: 50,
-            completion_tokens: 10,
-        }, None, None).unwrap();
-        log.append("f1", &FlowEvent::FlowCompleted {
-            total_prompt_tokens: 100,
-            total_completion_tokens: 50,
-        }, None, None).unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::NodeCompleted {
+                task_id: "cleanup".into(),
+                output_preview: "cleaned".into(),
+                prompt_tokens: 50,
+                completion_tokens: 10,
+            },
+            None,
+            None,
+        )
+        .unwrap();
+        log.append(
+            "f1",
+            &FlowEvent::FlowCompleted {
+                total_prompt_tokens: 100,
+                total_completion_tokens: 50,
+            },
+            None,
+            None,
+        )
+        .unwrap();
 
         let proposal = HarnessProposal {
             id: "SH-0004".into(),

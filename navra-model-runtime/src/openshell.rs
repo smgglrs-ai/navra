@@ -22,16 +22,17 @@ tokio::task_local! {
 #[allow(clippy::collapsible_if)]
 fn inject_traceparent<T>(req: &mut tonic::Request<T>) {
     if let Ok(trace_id) = TRACE_ID.try_with(|t| t.clone())
-        && !trace_id.is_empty() {
-            // Version 00, derive span ID from trace_id + counter, sampled flag 01
-            static SPAN_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let ctr = SPAN_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let span_id = format!("{:016x}", ctr);
-            let traceparent = format!("00-{trace_id}-{span_id}-01");
-            if let Ok(val) = traceparent.parse() {
-                req.metadata_mut().insert("traceparent", val);
-            }
+        && !trace_id.is_empty()
+    {
+        // Version 00, derive span ID from trace_id + counter, sampled flag 01
+        static SPAN_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let ctr = SPAN_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let span_id = format!("{:016x}", ctr);
+        let traceparent = format!("00-{trace_id}-{span_id}-01");
+        if let Ok(val) = traceparent.parse() {
+            req.metadata_mut().insert("traceparent", val);
         }
+    }
 }
 
 /// Generated protobuf types for the OpenShell compute driver.

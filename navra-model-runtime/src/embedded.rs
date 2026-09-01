@@ -216,7 +216,13 @@ async fn chat_completions(
     let ctx_size = state.context_size;
     let cache_cfg = state.cache_config;
     let result = tokio::task::spawn_blocking(move || {
-        generate_response(&state.backend, &state.model, &req, ctx_size, cache_cfg.as_ref())
+        generate_response(
+            &state.backend,
+            &state.model,
+            &req,
+            ctx_size,
+            cache_cfg.as_ref(),
+        )
     })
     .await
     .unwrap_or_else(|e| Err(format!("inference task panicked: {e}")));
@@ -664,18 +670,24 @@ mod tests {
 
     #[test]
     fn kv_cache_type_to_ggml_turbo_rejected() {
-        for turbo in [KvCacheType::Turbo2, KvCacheType::Turbo3, KvCacheType::Turbo4] {
+        for turbo in [
+            KvCacheType::Turbo2,
+            KvCacheType::Turbo3,
+            KvCacheType::Turbo4,
+        ] {
             let err = kv_cache_type_to_ggml(turbo).unwrap_err();
             let msg = err.to_string();
-            assert!(msg.contains("TurboQuant"), "expected TurboQuant mention: {msg}");
+            assert!(
+                msg.contains("TurboQuant"),
+                "expected TurboQuant mention: {msg}"
+            );
         }
     }
 
     #[test]
     fn apply_cache_config_sets_both_types() {
         let config = KvCacheConfig::symmetric(KvCacheType::Q8_0);
-        let params = LlamaContextParams::default()
-            .with_n_ctx(std::num::NonZeroU32::new(2048));
+        let params = LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(2048));
         let params = apply_cache_config(params, &config).unwrap();
         // The getter returns the raw ggml_type (i32), compare against the known
         // discriminant value for Q8_0 = 8.

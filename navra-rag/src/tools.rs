@@ -8,9 +8,9 @@
 //! - `rag_status` — show index statistics
 
 use crate::chunk::{ChunkConfig, chunk_text, predict_chunk_value};
-use navra_core::path_util::resolve_path;
 use crate::rerank::{NoopReranker, Reranker};
 use crate::store::{CascadeConfig, ChunkStore};
+use navra_core::path_util::resolve_path;
 use navra_macros::tool;
 use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
@@ -206,7 +206,8 @@ async fn handle_index(
         chunks.retain(|c| predict_chunk_value(c, &state.chunk_config) >= threshold);
         let skipped = total_before - chunks.len();
         if let Some(ref m) = state.metrics {
-            m.rag.chunks_skipped
+            m.rag
+                .chunks_skipped
                 .fetch_add(skipped as u64, std::sync::atomic::Ordering::Relaxed);
         }
         if chunks.is_empty() {
@@ -218,7 +219,8 @@ async fn handle_index(
         }
     }
     if let Some(ref m) = state.metrics {
-        m.rag.chunks_indexed
+        m.rag
+            .chunks_indexed
             .fetch_add(chunks.len() as u64, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -285,7 +287,8 @@ async fn handle_query(
     };
 
     if let Some(ref m) = state.metrics {
-        m.rag.queries_total
+        m.rag
+            .queries_total
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -305,11 +308,13 @@ async fn handle_query(
         Ok((candidates, vector_skipped, rerank_skipped)) => {
             if let Some(ref m) = state.metrics {
                 if vector_skipped {
-                    m.rag.vector_skips
+                    m.rag
+                        .vector_skips
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 if rerank_skipped {
-                    m.rag.rerank_skips
+                    m.rag
+                        .rerank_skips
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
             }

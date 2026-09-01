@@ -288,13 +288,12 @@ impl Engine {
                     "TurboQuant KV cache ({kv}) not yet supported by vLLM, falling back to fp8"
                 );
             }
-            let dtype = if kv.keys == crate::KvCacheType::F16
-                && kv.values == crate::KvCacheType::F16
-            {
-                "auto"
-            } else {
-                "fp8"
-            };
+            let dtype =
+                if kv.keys == crate::KvCacheType::F16 && kv.values == crate::KvCacheType::F16 {
+                    "auto"
+                } else {
+                    "fp8"
+                };
             args.extend_from_slice(&["--kv-cache-dtype".to_string(), dtype.to_string()]);
         }
 
@@ -321,7 +320,9 @@ impl std::fmt::Display for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GpuDevice, GpuKind, HardwareTarget, KvCacheConfig, KvCacheType, SpeculativeConfig};
+    use crate::{
+        GpuDevice, GpuKind, HardwareTarget, KvCacheConfig, KvCacheType, SpeculativeConfig,
+    };
     use std::path::PathBuf;
 
     // ── llama.cpp args ──────────────────────────────────────────────────
