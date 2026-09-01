@@ -200,8 +200,9 @@ is_regex = true
 | `is_regex` | bool | `false` | Interpret `value` as a regex pattern |
 
 Exact matches have confidence 1.0; regex matches have confidence
-0.95. Canary tokens are added to all profiles except `none` and
-`secrets-only`.
+0.95. Canary tokens are added to `standard`, `guardian`,
+`guardian-deep`, `block`, `multi-label`, and `pseudonymize`
+profiles. They are not added to `none` or `secrets-only`.
 
 Tips for effective canary placement:
 
