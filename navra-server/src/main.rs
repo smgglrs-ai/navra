@@ -15,6 +15,7 @@ mod cmd_eval;
 mod cmd_flow;
 mod cmd_misc;
 mod cmd_model;
+mod cmd_persona;
 mod cmd_pii;
 mod cmd_run;
 mod cmd_self_harness;
@@ -59,8 +60,8 @@ use navra_core::permissions::{PathAcl, PermissionEngine};
 use std::sync::Arc;
 
 use cli::{
-    AgentAction, Cli, Commands, ConfigAction, FlowAction, McpAction, ModelAction, PiiAction,
-    TokenAction, TriggerAction,
+    AgentAction, Cli, Commands, ConfigAction, FlowAction, McpAction, ModelAction, PersonaAction,
+    PiiAction, TokenAction, TriggerAction,
 };
 
 
@@ -327,6 +328,14 @@ async fn main() -> anyhow::Result<()> {
                     })
                     .await?;
                 }
+            }
+        },
+        Commands::Persona { action } => match action {
+            PersonaAction::New { name, output } => {
+                cmd_persona::persona_new(&name, output.as_deref())?;
+            }
+            PersonaAction::List { cognitive_core } => {
+                cmd_persona::persona_list(cognitive_core.as_deref())?;
             }
         },
         Commands::Flow { action } => match action {
