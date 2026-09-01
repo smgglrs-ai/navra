@@ -5,7 +5,7 @@ title = "navra"
 lead = "Secure agentic AI framework for Rust. MCP gateway, agent SDK, multi-agent flow engine, and model server — unified behind capability-based security, information flow control, and a 22-hook safety pipeline."
 url = "docs/getting-started"
 repo_url = "https://github.com/smgglrs-ai/navra"
-repo_license = "Apache-2.0 · Rust · 25 crates · ~172K LoC"
+repo_license = "Apache-2.0 · Rust · 24 crates · ~172K LoC"
 
 [[extra.list]]
 title = "Security Gateway"

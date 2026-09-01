@@ -1,6 +1,6 @@
 # Testing
 
-navra has 2900+ tests across 25 crates: unit tests, integration
+navra has 2,800+ tests across 24 crates: unit tests, integration
 tests, and end-to-end tests that spawn a real server process.
 
 ## Prerequisites
@@ -25,7 +25,7 @@ tests, and end-to-end tests that spawn a real server process.
 
   Without Ollama running, 11 of 12 e2e tests pass. Only the chat
   completion proxy test requires it. All unit and integration tests
-  (2900+) pass without Ollama.
+  (2,800+) pass without Ollama.
 
 ## Running tests
 
