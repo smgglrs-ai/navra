@@ -657,7 +657,8 @@ fn truncate_value(s: &str) -> String {
     if s.len() <= 80 {
         s.to_string()
     } else {
-        format!("{}...", &s[..77])
+        let boundary = s.floor_char_boundary(77);
+        format!("{}...", &s[..boundary])
     }
 }
 
@@ -1056,6 +1057,39 @@ mod tests {
                 .iter()
                 .any(|f| f.category == ToolThreatCategory::SuspiciousMcpInstall)
         );
+    }
+
+    #[test]
+    fn truncate_value_multibyte_safe() {
+        // Each emoji is 4 bytes; 21 emojis = 84 bytes, which exceeds the 80-byte
+        // limit and triggers truncation. Slicing at byte 77 would land inside
+        // a multi-byte character and panic without floor_char_boundary.
+        let emojis = "🔥".repeat(21); // 84 bytes
+        let result = truncate_value(&emojis);
+        assert!(result.ends_with("..."));
+        // floor_char_boundary(77) rounds down to 76 (19 emojis * 4 bytes)
+        assert_eq!(result.len(), 76 + 3); // 19 emojis + "..."
+
+        // CJK: each char is 3 bytes; 30 chars = 90 bytes
+        let cjk = "漢".repeat(30);
+        let result = truncate_value(&cjk);
+        assert!(result.ends_with("..."));
+        // floor_char_boundary(77) rounds down to 75 (25 chars * 3 bytes)
+        assert_eq!(result.len(), 75 + 3); // 25 CJK chars + "..."
+    }
+
+    #[test]
+    fn truncate_value_ascii_unchanged() {
+        let short = "hello world";
+        assert_eq!(truncate_value(short), short);
+
+        let exact_80 = "a".repeat(80);
+        assert_eq!(truncate_value(&exact_80), exact_80);
+
+        let long = "b".repeat(100);
+        let result = truncate_value(&long);
+        assert_eq!(result.len(), 80); // 77 + "..."
+        assert!(result.ends_with("..."));
     }
 
     #[test]
