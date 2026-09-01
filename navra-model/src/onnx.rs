@@ -391,7 +391,9 @@ pub fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProvi
             }
             #[cfg(not(feature = "openvino"))]
             {
-                tracing::warn!("OpenVINO device requested but navra-model was built without the 'openvino' feature — falling back to CPU");
+                tracing::warn!(
+                    "OpenVINO device requested but navra-model was built without the 'openvino' feature — falling back to CPU"
+                );
                 vec![ort::ep::CPU::default().build()]
             }
         }
@@ -405,7 +407,9 @@ pub fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProvi
             }
             #[cfg(not(feature = "cuda"))]
             {
-                tracing::warn!("CUDA device requested but navra-model was built without the 'cuda' feature — falling back to CPU");
+                tracing::warn!(
+                    "CUDA device requested but navra-model was built without the 'cuda' feature — falling back to CPU"
+                );
                 vec![ort::ep::CPU::default().build()]
             }
         }
