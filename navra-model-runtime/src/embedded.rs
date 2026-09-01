@@ -10,8 +10,8 @@
 //! to CPU otherwise.
 
 use crate::{
-    Endpoint, Isolation, ModelRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeError,
-    ServeConfig,
+    Endpoint, Isolation, KvCacheConfig, KvCacheType, ModelRuntime, RuntimeBackend,
+    RuntimeCapabilities, RuntimeError, ServeConfig,
 };
 use std::collections::HashMap;
 use std::future::Future;
@@ -25,10 +25,38 @@ use llama_cpp_4::context::params::LlamaContextParams;
 use llama_cpp_4::llama_backend::LlamaBackend;
 use llama_cpp_4::model::params::LlamaModelParams;
 use llama_cpp_4::model::{AddBos, LlamaModel, Special};
+use llama_cpp_4::quantize::GgmlType;
 use llama_cpp_4::sampling::LlamaSampler;
 use llama_cpp_4::token::LlamaToken;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+/// Map navra's [`KvCacheType`] to llama-cpp-4's [`GgmlType`].
+///
+/// Standard types (F16, Q8_0, Q4_0) map directly. TurboQuant variants
+/// are not supported by the upstream llama-cpp-4 crate and return an error.
+pub(crate) fn kv_cache_type_to_ggml(t: KvCacheType) -> Result<GgmlType, RuntimeError> {
+    match t {
+        KvCacheType::F16 => Ok(GgmlType::F16),
+        KvCacheType::Q8_0 => Ok(GgmlType::Q8_0),
+        KvCacheType::Q4_0 => Ok(GgmlType::Q4_0),
+        turbo => Err(RuntimeError::Start(format!(
+            "KV cache type '{turbo}' requires TurboQuant support (community fork); \
+             the embedded runtime only supports f16, q8_0, and q4_0"
+        ))),
+    }
+}
+
+/// Apply [`KvCacheConfig`] to [`LlamaContextParams`], mapping each
+/// key/value cache type to the corresponding [`GgmlType`].
+fn apply_cache_config(
+    params: LlamaContextParams,
+    config: &KvCacheConfig,
+) -> Result<LlamaContextParams, RuntimeError> {
+    let k = kv_cache_type_to_ggml(config.keys)?;
+    let v = kv_cache_type_to_ggml(config.values)?;
+    Ok(params.with_cache_type_k(k).with_cache_type_v(v))
+}
 
 struct LoadedModel {
     endpoint: Endpoint,
@@ -117,6 +145,7 @@ struct AppState {
     model: Arc<LlamaModel>,
     backend: Arc<LlamaBackend>,
     context_size: u32,
+    cache_config: Option<KvCacheConfig>,
 }
 
 unsafe impl Send for AppState {}
@@ -182,8 +211,9 @@ async fn chat_completions(
     Json(req): Json<ChatCompletionRequest>,
 ) -> Json<ChatCompletionResponse> {
     let ctx_size = state.context_size;
+    let cache_cfg = state.cache_config;
     let result = tokio::task::spawn_blocking(move || {
-        generate_response(&state.backend, &state.model, &req, ctx_size)
+        generate_response(&state.backend, &state.model, &req, ctx_size, cache_cfg.as_ref())
     })
     .await
     .unwrap_or_else(|e| Err(format!("inference task panicked: {e}")));
@@ -215,11 +245,17 @@ fn generate_response(
     model: &LlamaModel,
     req: &ChatCompletionRequest,
     context_size: u32,
+    cache_config: Option<&KvCacheConfig>,
 ) -> Result<ChatCompletionResponse, String> {
     let prompt = format_chat_prompt(model, &req.messages);
 
-    let ctx_params =
+    let mut ctx_params =
         LlamaContextParams::default().with_n_ctx(std::num::NonZeroU32::new(context_size));
+
+    if let Some(cc) = cache_config {
+        ctx_params = apply_cache_config(ctx_params, cc)
+            .map_err(|e| format!("KV cache config failed: {e}"))?;
+    }
 
     let mut ctx = model
         .new_context(_backend, ctx_params)
@@ -468,6 +504,7 @@ impl ModelRuntime for EmbeddedRuntime {
                 model: Arc::new(model),
                 backend,
                 context_size,
+                cache_config: config.cache_type,
             };
 
             let app = Router::new()
@@ -602,6 +639,75 @@ mod tests {
         assert!(prompt.contains("You are helpful."));
         assert!(prompt.contains("User: Hello"));
         assert!(prompt.ends_with("Assistant:"));
+    }
+
+    #[test]
+    fn kv_cache_type_to_ggml_f16() {
+        let ggml = kv_cache_type_to_ggml(KvCacheType::F16).unwrap();
+        assert_eq!(ggml, GgmlType::F16);
+    }
+
+    #[test]
+    fn kv_cache_type_to_ggml_q8_0() {
+        let ggml = kv_cache_type_to_ggml(KvCacheType::Q8_0).unwrap();
+        assert_eq!(ggml, GgmlType::Q8_0);
+    }
+
+    #[test]
+    fn kv_cache_type_to_ggml_q4_0() {
+        let ggml = kv_cache_type_to_ggml(KvCacheType::Q4_0).unwrap();
+        assert_eq!(ggml, GgmlType::Q4_0);
+    }
+
+    #[test]
+    fn kv_cache_type_to_ggml_turbo_rejected() {
+        for turbo in [KvCacheType::Turbo2, KvCacheType::Turbo3, KvCacheType::Turbo4] {
+            let err = kv_cache_type_to_ggml(turbo).unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("TurboQuant"), "expected TurboQuant mention: {msg}");
+        }
+    }
+
+    #[test]
+    fn apply_cache_config_sets_both_types() {
+        let config = KvCacheConfig::symmetric(KvCacheType::Q8_0);
+        let params = LlamaContextParams::default()
+            .with_n_ctx(std::num::NonZeroU32::new(2048));
+        let params = apply_cache_config(params, &config).unwrap();
+        // The getter returns the raw ggml_type (i32), compare against the known
+        // discriminant value for Q8_0 = 8.
+        assert_eq!(params.cache_type_k(), 8); // GGML_TYPE_Q8_0
+        assert_eq!(params.cache_type_v(), 8);
+    }
+
+    #[test]
+    fn apply_cache_config_asymmetric() {
+        let config = KvCacheConfig {
+            keys: KvCacheType::Q4_0,
+            values: KvCacheType::F16,
+        };
+        let params = LlamaContextParams::default();
+        let params = apply_cache_config(params, &config).unwrap();
+        assert_eq!(params.cache_type_k(), 2); // GGML_TYPE_Q4_0
+        assert_eq!(params.cache_type_v(), 1); // GGML_TYPE_F16
+    }
+
+    #[test]
+    fn default_params_use_f16_cache() {
+        // When no cache config is set, LlamaContextParams defaults to F16
+        let params = LlamaContextParams::default();
+        assert_eq!(params.cache_type_k(), 1); // GGML_TYPE_F16
+        assert_eq!(params.cache_type_v(), 1);
+    }
+
+    #[test]
+    fn apply_cache_config_rejects_turbo_keys() {
+        let config = KvCacheConfig {
+            keys: KvCacheType::Turbo3,
+            values: KvCacheType::Q8_0,
+        };
+        let params = LlamaContextParams::default();
+        assert!(apply_cache_config(params, &config).is_err());
     }
 
     #[test]
