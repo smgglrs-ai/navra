@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-01
 
 ### Added
 
@@ -112,6 +112,7 @@ All notable changes to navra are documented here.
 - Update crate count 25→24 after navra-security removal
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
+- Update CHANGELOG.md for v0.4.0
 
 ### Fixed
 
@@ -143,6 +144,7 @@ All notable changes to navra are documented here.
 - **security**: UTF-8 panic in truncate_value, deny-wins enforcement, mTLS warning
 - P2 hardening — persist rug-pull hashes, verify-on-start, reduce false positives
 - **model**: Gate CUDA and OpenVINO execution providers behind features
+- **ci**: Add cargo/bin to PATH for cross, use embedded (not cuda) for linux-x86_64
 
 ### Maintenance
 
@@ -186,6 +188,7 @@ All notable changes to navra are documented here.
 
 - **tui**: Cargo fmt
 - Cargo fmt --all across workspace
+- Cargo fmt navra-model and navra-server
 
 ## [0.3.0] - 2026-07-16
 
