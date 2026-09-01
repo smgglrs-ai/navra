@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/navra-icon-192.png" alt="navra logo" width="128" />
+  <img src="assets/logo/navra-armored-256.png" alt="navra logo" width="192" />
 </p>
 
 <h1 align="center">navra</h1>
