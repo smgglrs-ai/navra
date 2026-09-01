@@ -102,7 +102,7 @@ the project's license.
 
 ### Adding a Module
 
-1. Create a crate implementing the `Module` trait (from `navra-core`).
+1. Create a crate implementing the `Module` trait (from `navra-mcp`).
 2. Add the dependency in `navra-server/Cargo.toml`.
 3. Add a config struct in `config.rs`.
 4. Wire it in `main.rs` behind a config gate.
