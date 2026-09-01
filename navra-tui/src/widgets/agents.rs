@@ -79,14 +79,12 @@ impl Widget for AgentsTab<'_> {
             ratatui::layout::Constraint::Min(20),
         ];
 
-        let table = Table::new(rows, widths)
-            .header(header)
-            .block(
-                Block::default()
-                    .title(" Active Agents ")
-                    .borders(Borders::ALL)
-                    .border_style(theme::muted()),
-            );
+        let table = Table::new(rows, widths).header(header).block(
+            Block::default()
+                .title(" Active Agents ")
+                .borders(Borders::ALL)
+                .border_style(theme::muted()),
+        );
 
         table.render(area, buf);
     }

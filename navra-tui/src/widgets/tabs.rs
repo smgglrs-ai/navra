@@ -33,7 +33,14 @@ impl Widget for TabBar {
                     theme::tab_inactive()
                 };
                 vec![
-                    Span::styled(num, if tab == self.active { theme::accent() } else { theme::muted() }),
+                    Span::styled(
+                        num,
+                        if tab == self.active {
+                            theme::accent()
+                        } else {
+                            theme::muted()
+                        },
+                    ),
                     Span::styled(label, style),
                 ]
             })
@@ -58,7 +65,11 @@ mod tests {
     fn tabs_shows_all_labels() {
         let out = render_tabs(Tab::Dashboard, 80);
         for tab in Tab::ALL {
-            assert!(out.contains(tab.label()), "missing tab label: {}", tab.label());
+            assert!(
+                out.contains(tab.label()),
+                "missing tab label: {}",
+                tab.label()
+            );
         }
     }
 

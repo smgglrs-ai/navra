@@ -93,9 +93,27 @@ impl Dashboard<'_> {
         let model_count = self.state.models.len();
         let flow_count = self.state.flows.len();
 
-        render_stat_card("Agents", &agent_count.to_string(), theme::ACCENT, cols[0], buf);
-        render_stat_card("Sessions", &session_count.to_string(), theme::ACCENT, cols[1], buf);
-        render_stat_card("Models", &model_count.to_string(), theme::SUCCESS, cols[2], buf);
+        render_stat_card(
+            "Agents",
+            &agent_count.to_string(),
+            theme::ACCENT,
+            cols[0],
+            buf,
+        );
+        render_stat_card(
+            "Sessions",
+            &session_count.to_string(),
+            theme::ACCENT,
+            cols[1],
+            buf,
+        );
+        render_stat_card(
+            "Models",
+            &model_count.to_string(),
+            theme::SUCCESS,
+            cols[2],
+            buf,
+        );
         render_stat_card("Flows", &flow_count.to_string(), theme::WARN, cols[3], buf);
     }
 
@@ -115,19 +133,13 @@ impl Dashboard<'_> {
             .take(inner.height as usize)
             .map(|e| {
                 Line::from(vec![
-                    Span::styled(
-                        format!("{:<12}", e.agent_name),
-                        theme::accent(),
-                    ),
+                    Span::styled(format!("{:<12}", e.agent_name), theme::accent()),
                     Span::raw(format!("{:<24}", e.tool_name)),
                     Span::styled(
                         format!("{:<10}", e.outcome),
                         theme::outcome_style(&e.outcome),
                     ),
-                    Span::styled(
-                        format!("{}us", e.duration_us),
-                        theme::muted(),
-                    ),
+                    Span::styled(format!("{}us", e.duration_us), theme::muted()),
                 ])
             })
             .collect();
@@ -200,8 +212,14 @@ mod tests {
             ..Default::default()
         });
         state.models = vec![
-            ModelInfo { name: "m1".into(), ..Default::default() },
-            ModelInfo { name: "m2".into(), ..Default::default() },
+            ModelInfo {
+                name: "m1".into(),
+                ..Default::default()
+            },
+            ModelInfo {
+                name: "m2".into(),
+                ..Default::default()
+            },
         ];
         state.sys_status = Some(SysStatus {
             agents: vec![],

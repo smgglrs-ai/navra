@@ -16,7 +16,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 use client::NavraClient;
-use event::{map_key_filter, map_key_normal, Action, AppEvent};
+use event::{Action, AppEvent, map_key_filter, map_key_normal};
 use state::{AppState, InputMode, Tab};
 
 pub async fn run(endpoint: String, token: Option<String>) -> Result<()> {
@@ -198,7 +198,7 @@ impl Widget for AppView<'_> {
         let chunks = Layout::vertical([
             Constraint::Length(1), // header
             Constraint::Length(1), // tabs
-            Constraint::Min(5),   // content
+            Constraint::Min(5),    // content
             Constraint::Length(1), // footer
         ])
         .split(area);
