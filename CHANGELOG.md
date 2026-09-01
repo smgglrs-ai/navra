@@ -110,6 +110,7 @@ All notable changes to navra are documented here.
 - Use armored narwhal logo in README to match docs site
 - Mark supply chain scanning gap as closed in ecosystem positioning
 - Update crate count 25→24 after navra-security removal
+- Update CHANGELOG.md for v0.4.0
 
 ### Fixed
 
@@ -182,6 +183,7 @@ All notable changes to navra are documented here.
 ### Style
 
 - **tui**: Cargo fmt
+- Cargo fmt --all across workspace
 
 ## [0.3.0] - 2026-07-16
 
