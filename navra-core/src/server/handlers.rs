@@ -421,27 +421,18 @@ impl McpServer {
         } else if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
             match tp.check(&params.name) {
                 crate::permissions::tool_rules::ToolPolicy::Deny => {
-                    // Check if a dynamic session grant overrides the denial
-                    if !self
-                        .session_permissions
-                        .check_tool(&ctx.session_id, &params.name)
-                    {
-                        self.process_table.record_denied(
-                            &ctx.agent.name,
-                            &ctx.agent.permissions,
-                            agent_did,
-                            agent_ring,
-                        );
-                        return CallToolResult::error_msg(format!(
-                            "Permission denied: tool '{}' is blocked",
-                            params.name,
-                        ));
-                    }
-                    tracing::info!(
-                        tool = %params.name,
-                        session_id = %ctx.session_id,
-                        "Tool allowed via dynamic session grant"
+                    // Deny is absolute — dynamic session grants cannot override
+                    // a static deny rule. This enforces the deny-wins invariant.
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
                     );
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: tool '{}' is blocked",
+                        params.name,
+                    ));
                 }
                 crate::permissions::tool_rules::ToolPolicy::Approve => {
                     // Check if a dynamic session grant overrides the approval requirement

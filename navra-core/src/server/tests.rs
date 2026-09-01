@@ -2208,12 +2208,12 @@ fn capabilities_include_permissions() {
 }
 
 #[tokio::test]
-async fn dynamic_grant_overrides_tool_deny() {
+async fn static_deny_cannot_be_overridden_by_dynamic_grant() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("reached") })
+            Box::pin(async { CallToolResult::text("should not reach") })
         })
         .tool_permissions(
             "dev",
@@ -2252,15 +2252,24 @@ async fn dynamic_grant_overrides_tool_deny() {
         )
         .unwrap();
 
-    // Now the tool should be allowed via dynamic grant
+    // Deny-wins invariant: static deny MUST NOT be overridden by session grant
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
         .await;
-    assert!(result.is_error != Some(true));
-    match &result.content[0] {
-        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "reached"),
-        _ => panic!("expected text content"),
-    }
+    assert_eq!(
+        result.is_error,
+        Some(true),
+        "static deny must not be overridden by dynamic session grant"
+    );
+    let text = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
+    assert!(
+        text.text.contains("Permission denied"),
+        "expected denial message, got: {}",
+        text.text
+    );
 }
 
 // --- URI template matching tests ---
@@ -2595,5 +2604,61 @@ fn usage_tracker_sliding_window() {
     assert!(
         unused.contains("a"),
         "tool 'a' should be pruned after sliding out of window"
+    );
+}
+
+#[tokio::test]
+async fn deny_wins_over_session_grant() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    // Add a dynamic session grant for the denied tool
+    server.session_permission_store().add_grant(
+        "test-session",
+        "grant-echo".to_string(),
+        navra_protocol::permissions::PermissionScope::ToolAccess {
+            tool_name: "echo".to_string(),
+        },
+        None,
+        "operator".to_string(),
+    );
+
+    // Verify the grant is active in the store
+    assert!(
+        server
+            .session_permission_store()
+            .check_tool("test-session", "echo"),
+        "session grant should be recorded"
+    );
+
+    // Despite the session grant, the static deny rule must win
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+
+    assert_eq!(result.is_error, Some(true));
+    let text = result.content[0]
+        .raw
+        .as_text()
+        .expect("expected text content");
+    assert!(
+        text.text.contains("Permission denied"),
+        "static deny must not be overridden by session grant, got: {}",
+        text.text
     );
 }
