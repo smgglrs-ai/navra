@@ -1244,9 +1244,10 @@ isolation, and DAC (Unix permissions) to navra's capability-scoped
 ACLs. The combination is the same defense-in-depth pattern used in
 production operating systems.
 
-See `docs/designs/openshell-sandbox.md` for the full OpenShell
-integration design including identity federation, A2A teammate mesh,
-sandbox delegation, and gRPC module architecture.
+See `docs/content/docs/learn/openshell-integration.md` for user-facing
+MAC + DAC content, and `docs/openshell/architecture.md` for internal
+integration designs (identity federation, A2A teammate mesh,
+sandbox delegation, gRPC module architecture, gap roadmap).
 
 ## Transport Security
 
