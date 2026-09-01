@@ -41,26 +41,32 @@ impl SafetyTab<'_> {
         let lines = vec![
             Line::from(vec![
                 Span::styled("Total scans:  ", theme::muted()),
-                Span::raw(m.map(|s| s.total_scans.to_string()).unwrap_or_else(|| "--".into())),
+                Span::raw(
+                    m.map(|s| s.total_scans.to_string())
+                        .unwrap_or_else(|| "--".into()),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("PII detected: ", theme::muted()),
                 Span::styled(
-                    m.map(|s| s.pii_detected.to_string()).unwrap_or_else(|| "--".into()),
+                    m.map(|s| s.pii_detected.to_string())
+                        .unwrap_or_else(|| "--".into()),
                     theme::accent(),
                 ),
             ]),
             Line::from(vec![
                 Span::styled("PII redacted: ", theme::muted()),
                 Span::styled(
-                    m.map(|s| s.pii_redacted.to_string()).unwrap_or_else(|| "--".into()),
+                    m.map(|s| s.pii_redacted.to_string())
+                        .unwrap_or_else(|| "--".into()),
                     theme::status_ok(),
                 ),
             ]),
             Line::from(vec![
                 Span::styled("PII blocked:  ", theme::muted()),
                 Span::styled(
-                    m.map(|s| s.pii_blocked.to_string()).unwrap_or_else(|| "--".into()),
+                    m.map(|s| s.pii_blocked.to_string())
+                        .unwrap_or_else(|| "--".into()),
                     if m.map(|s| s.pii_blocked).unwrap_or(0) > 0 {
                         theme::status_error()
                     } else {

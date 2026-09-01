@@ -111,13 +111,22 @@ mod tests {
     fn normal_tab_switching() {
         assert_eq!(map_key_normal(press(KeyCode::Tab)), Action::NextTab);
         assert_eq!(map_key_normal(press(KeyCode::BackTab)), Action::PrevTab);
-        assert_eq!(map_key_normal(press(KeyCode::Char('1'))), Action::SelectTab(0));
-        assert_eq!(map_key_normal(press(KeyCode::Char('6'))), Action::SelectTab(5));
+        assert_eq!(
+            map_key_normal(press(KeyCode::Char('1'))),
+            Action::SelectTab(0)
+        );
+        assert_eq!(
+            map_key_normal(press(KeyCode::Char('6'))),
+            Action::SelectTab(5)
+        );
     }
 
     #[test]
     fn normal_scrolling() {
-        assert_eq!(map_key_normal(press(KeyCode::Char('j'))), Action::ScrollDown);
+        assert_eq!(
+            map_key_normal(press(KeyCode::Char('j'))),
+            Action::ScrollDown
+        );
         assert_eq!(map_key_normal(press(KeyCode::Char('k'))), Action::ScrollUp);
         assert_eq!(map_key_normal(press(KeyCode::Down)), Action::ScrollDown);
         assert_eq!(map_key_normal(press(KeyCode::Up)), Action::ScrollUp);
@@ -129,14 +138,23 @@ mod tests {
 
     #[test]
     fn normal_filter_and_refresh() {
-        assert_eq!(map_key_normal(press(KeyCode::Char('/'))), Action::StartFilter);
+        assert_eq!(
+            map_key_normal(press(KeyCode::Char('/'))),
+            Action::StartFilter
+        );
         assert_eq!(map_key_normal(press(KeyCode::Char('r'))), Action::Refresh);
     }
 
     #[test]
     fn filter_mode_typing() {
-        assert_eq!(map_key_filter(press(KeyCode::Char('a'))), Action::FilterChar('a'));
-        assert_eq!(map_key_filter(press(KeyCode::Backspace)), Action::FilterBackspace);
+        assert_eq!(
+            map_key_filter(press(KeyCode::Char('a'))),
+            Action::FilterChar('a')
+        );
+        assert_eq!(
+            map_key_filter(press(KeyCode::Backspace)),
+            Action::FilterBackspace
+        );
     }
 
     #[test]

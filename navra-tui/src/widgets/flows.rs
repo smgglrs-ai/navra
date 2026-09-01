@@ -17,8 +17,8 @@ impl<'a> FlowsTab<'a> {
 
 impl Widget for FlowsTab<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let chunks = Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(area);
+        let chunks =
+            Layout::vertical([Constraint::Percentage(40), Constraint::Percentage(60)]).split(area);
 
         self.render_flows(chunks[0], buf);
         self.render_runs(chunks[1], buf);
@@ -40,12 +40,7 @@ impl FlowsTab<'_> {
                 } else {
                     theme::base()
                 };
-                Row::new(vec![
-                    f.name.clone(),
-                    f.path.clone(),
-                    f.tasks.to_string(),
-                ])
-                .style(style)
+                Row::new(vec![f.name.clone(), f.path.clone(), f.tasks.to_string()]).style(style)
             })
             .collect();
 
@@ -67,9 +62,8 @@ impl FlowsTab<'_> {
     }
 
     fn render_runs(&self, area: Rect, buf: &mut Buffer) {
-        let header =
-            Row::new(vec!["Flow ID", "Name", "Status", "Elapsed", "Nodes"])
-                .style(theme::table_header());
+        let header = Row::new(vec!["Flow ID", "Name", "Status", "Elapsed", "Nodes"])
+            .style(theme::table_header());
 
         let rows: Vec<Row> = self
             .state

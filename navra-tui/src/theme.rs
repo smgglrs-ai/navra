@@ -16,11 +16,17 @@ pub fn base() -> Style {
 }
 
 pub fn header() -> Style {
-    Style::default().fg(ACCENT).bg(HEADER_BG).add_modifier(Modifier::BOLD)
+    Style::default()
+        .fg(ACCENT)
+        .bg(HEADER_BG)
+        .add_modifier(Modifier::BOLD)
 }
 
 pub fn tab_active() -> Style {
-    Style::default().fg(ACCENT).bg(TAB_ACTIVE_BG).add_modifier(Modifier::BOLD)
+    Style::default()
+        .fg(ACCENT)
+        .bg(TAB_ACTIVE_BG)
+        .add_modifier(Modifier::BOLD)
 }
 
 pub fn tab_inactive() -> Style {

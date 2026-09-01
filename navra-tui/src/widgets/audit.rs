@@ -23,10 +23,8 @@ impl Widget for AuditTab<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let entries = &self.state.audit.entries;
 
-        let header = Row::new(vec![
-            "Seq", "Agent", "Tool", "Outcome", "Duration", "IFC",
-        ])
-        .style(theme::table_header());
+        let header = Row::new(vec!["Seq", "Agent", "Tool", "Outcome", "Duration", "IFC"])
+            .style(theme::table_header());
 
         let filtered: Vec<_> = entries
             .iter()
@@ -71,7 +69,11 @@ impl Widget for AuditTab<'_> {
             ratatui::layout::Constraint::Min(10),
         ];
 
-        let title = format!(" Audit Log ({}/{}) ", filtered.len(), self.state.audit.total);
+        let title = format!(
+            " Audit Log ({}/{}) ",
+            filtered.len(),
+            self.state.audit.total
+        );
         let table = Table::new(rows, widths).header(header).block(
             Block::default()
                 .title(title)
