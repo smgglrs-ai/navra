@@ -302,7 +302,14 @@ mod tests {
         let config = FieldFilterConfig {
             tool_fields: HashMap::from([(
                 "tool".into(),
-                vec!["str".into(), "num".into(), "bool".into(), "null".into(), "arr".into(), "obj".into()],
+                vec![
+                    "str".into(),
+                    "num".into(),
+                    "bool".into(),
+                    "null".into(),
+                    "arr".into(),
+                    "obj".into(),
+                ],
             )]),
         };
         let hook = FieldFilterHook::new(config);
@@ -335,9 +342,7 @@ mod tests {
         };
         let hook = FieldFilterHook::new(config);
 
-        let result = make_result(
-            r#"{"名前": "Tanaka", "メール": "a@b.com", "secret": "hidden"}"#,
-        );
+        let result = make_result(r#"{"名前": "Tanaka", "メール": "a@b.com", "secret": "hidden"}"#);
         let decision = hook
             .post_tool_use("tool", &json!({}), &result, &test_ctx())
             .await;

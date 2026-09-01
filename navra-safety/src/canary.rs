@@ -123,9 +123,7 @@ mod tests {
     fn regex_pattern_detection() {
         let filter = CanaryFilter::new(vec![CanaryToken {
             name: "secret-format".into(),
-            value: CanaryMatch::Pattern(
-                regex_lite::Regex::new(r"TRAP-[A-Z0-9]{8}").unwrap(),
-            ),
+            value: CanaryMatch::Pattern(regex_lite::Regex::new(r"TRAP-[A-Z0-9]{8}").unwrap()),
         }]);
         let findings = filter.scan("found TRAP-AB12CD34 in output", &test_ctx());
         assert_eq!(findings.len(), 1);

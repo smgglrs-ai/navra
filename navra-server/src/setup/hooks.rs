@@ -39,10 +39,10 @@ pub(crate) fn wire_hooks(
         };
 
         // Build SafetyHook using the shared pipeline builder
-        let mut safety_hook =
-            navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
+        let mut safety_hook = navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
         for (name, pset) in &cfg.permissions {
-            let pipeline = build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);
+            let pipeline =
+                build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);
             safety_hook.add_pipeline(name.clone(), pipeline);
         }
         builder = builder.hook(safety_hook);

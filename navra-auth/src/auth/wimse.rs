@@ -194,18 +194,16 @@ impl WimseAuthenticator {
         {
             let cache = self.jwks_caches.read().unwrap_or_else(|e| e.into_inner());
             if let Some(entry) = cache.get(jwks_uri)
-                && entry.fetched_at.elapsed().as_secs() < 300 {
-                    return Ok(entry.keys.clone());
-                }
+                && entry.fetched_at.elapsed().as_secs() < 300
+            {
+                return Ok(entry.keys.clone());
+            }
         }
 
         let jwks = fetch_jwks(jwks_uri)?;
 
         {
-            let mut cache = self
-                .jwks_caches
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut cache = self.jwks_caches.write().unwrap_or_else(|e| e.into_inner());
             cache.insert(
                 jwks_uri.to_string(),
                 JwksCache {
@@ -312,10 +310,7 @@ mod tests {
 
     #[test]
     fn spiffe_to_did_root() {
-        assert_eq!(
-            spiffe_to_did("spiffe://example.org"),
-            "did:web:example.org"
-        );
+        assert_eq!(spiffe_to_did("spiffe://example.org"), "did:web:example.org");
     }
 
     #[test]

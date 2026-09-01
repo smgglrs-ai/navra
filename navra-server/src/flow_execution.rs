@@ -4,8 +4,8 @@ use navra_protocol::truncate_str;
 use std::collections::{HashMap, HashSet};
 
 use crate::flow_tools::{
-    build_run_summary, current_bb_seq, record_task_results_to_audit, FlowContext, FlowRegistry,
-    NodeStatus,
+    FlowContext, FlowRegistry, NodeStatus, build_run_summary, current_bb_seq,
+    record_task_results_to_audit,
 };
 
 const MAX_FILE_TREE_ENTRIES: usize = 200;
@@ -153,9 +153,10 @@ pub(crate) async fn spawn_and_track_tasks(
                 .map(|s| s.to_string())
                 .collect()
         });
-        let tools = task.tools.clone().unwrap_or_else(|| {
-            ctx.team_registry.default_tools_for_operations(&ops)
-        });
+        let tools = task
+            .tools
+            .clone()
+            .unwrap_or_else(|| ctx.team_registry.default_tools_for_operations(&ops));
 
         if let Err(e) = ctx.team_registry.add_teammate(
             team_id,
@@ -186,10 +187,8 @@ pub(crate) async fn spawn_and_track_tasks(
         let mut message = task.mandate.clone();
 
         // Inject structured output requirement for specialist tasks.
-        let is_specialist = !task.generates_tasks
-            && !is_synthesizer
-            && task.id != "scout"
-            && task.id != "verify";
+        let is_specialist =
+            !task.generates_tasks && !is_synthesizer && task.id != "scout" && task.id != "verify";
         if is_specialist {
             message.push_str(concat!(
                 "\n\nOutput ONLY a JSON array of findings. Each finding:\n",
@@ -464,7 +463,15 @@ pub(crate) async fn handle_flow_start(
 
     tracing::info!(flow_id = %flow_id, name = %dag_config.name, team_id = %team_id, "Flow started");
 
-    let final_output = run_dag_execution(&ctx, &flow_id, &team_id, &prompt, dag_config.tasks, default_model).await;
+    let final_output = run_dag_execution(
+        &ctx,
+        &flow_id,
+        &team_id,
+        &prompt,
+        dag_config.tasks,
+        default_model,
+    )
+    .await;
 
     // Mark flow complete in metadata
     if let Some(ref audit) = ctx.audit_log {
@@ -715,9 +722,10 @@ pub(crate) async fn run_dag_execution(
 
             for mut new_task in new_tasks {
                 if default_model != "auto"
-                    && (new_task.model.is_none() || new_task.model.as_deref() == Some("auto")) {
-                        new_task.model = Some(default_model.to_string());
-                    }
+                    && (new_task.model.is_none() || new_task.model.as_deref() == Some("auto"))
+                {
+                    new_task.model = Some(default_model.to_string());
+                }
                 if new_task.depends_on.is_empty() {
                     new_task.depends_on.push(task.id.clone());
                 }

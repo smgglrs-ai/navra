@@ -13,10 +13,10 @@ use crate::retrieval::MemoryRetriever;
 use navra_macros::tool;
 use navra_mcp::Module;
 use navra_mcp::auth::CallContext;
-use navra_protocol::truncate_str;
 use navra_mcp::models::ModelBackend;
 use navra_mcp::protocol::CallToolResult;
 use navra_protocol::compat::CallToolResultExt;
+use navra_protocol::truncate_str;
 use rusqlite::params;
 use std::sync::{Arc, Mutex};
 
@@ -108,9 +108,7 @@ async fn handle_search(
 
     // Try hybrid search with vector channel if available
     #[cfg(feature = "rag")]
-    if let (Some(chunk_store), Some(embed_model)) =
-        (&state.chunk_store, &state.embedding_model)
-    {
+    if let (Some(chunk_store), Some(embed_model)) = (&state.chunk_store, &state.embedding_model) {
         let embed_req = navra_mcp::models::EmbedRequest {
             text: query.clone(),
         };

@@ -13,9 +13,9 @@ use crate::client::McpClient;
 use crate::error::AgentError;
 use crate::signal::AgentSignal;
 use config::{
-    compact_conversation, compress_tool_output, detect_model_refusal, estimate_input_tokens,
-    export_trace, filter_pii, phase_temperature, truncate_reasoning, warn_if_sensitive,
-    LoopDetector,
+    LoopDetector, compact_conversation, compress_tool_output, detect_model_refusal,
+    estimate_input_tokens, export_trace, filter_pii, phase_temperature, truncate_reasoning,
+    warn_if_sensitive,
 };
 use navra_model::{
     CreateResponseRequest, FunctionCallItem, FunctionCallOutputContent, FunctionCallOutputItem,
@@ -664,8 +664,7 @@ pub async fn run_tool_loop(
                     "Loop detection triggered"
                 );
                 if let Some(ref phase_lock) = config.flow_phase {
-                    *phase_lock.lock().unwrap() =
-                        navra_cognitive::FlowPhase::TrajectoryConvergence;
+                    *phase_lock.lock().unwrap() = navra_cognitive::FlowPhase::TrajectoryConvergence;
                 }
                 input.push(InputItem::Message(navra_model::MessageItem {
                     role: navra_model::MessageRole::System,

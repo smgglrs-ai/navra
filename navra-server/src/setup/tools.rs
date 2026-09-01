@@ -392,10 +392,10 @@ pub(crate) async fn wire_team_tools(
                     .json(&serde_json::json!({"name": name}))
                     .send()
                     .await
-                    && let Ok(info) = show_resp.json::<serde_json::Value>().await
-                {
-                    ollama_meta.insert(name.to_string(), info);
-                }
+                && let Ok(info) = show_resp.json::<serde_json::Value>().await
+            {
+                ollama_meta.insert(name.to_string(), info);
+            }
         }
     }
     if !ollama_meta.is_empty() {
@@ -621,9 +621,9 @@ pub(crate) async fn wire_team_tools(
         let reg = Arc::clone(&reg);
         let agent_name = ctx.agent.name.clone();
         let label = ctx.taint.level();
-        Box::pin(async move {
-            team_tools::handle_team_bb_publish(args, reg, &agent_name, label).await
-        })
+        Box::pin(
+            async move { team_tools::handle_team_bb_publish(args, reg, &agent_name, label).await },
+        )
     });
 
     // team_bb_read
@@ -638,9 +638,9 @@ pub(crate) async fn wire_team_tools(
     builder = builder.tool(team_tools::team_bb_notifications_def(), move |args, ctx| {
         let reg = Arc::clone(&reg);
         let agent_name = ctx.agent.name.clone();
-        Box::pin(async move {
-            team_tools::handle_team_bb_notifications(args, reg, &agent_name).await
-        })
+        Box::pin(
+            async move { team_tools::handle_team_bb_notifications(args, reg, &agent_name).await },
+        )
     });
 
     tracing::info!(
@@ -724,9 +724,7 @@ pub(crate) async fn wire_team_tools(
     builder = builder.tool(flow_tools::flow_escalate_tool_def(), move |args, ctx| {
         let flow_ctx = Arc::clone(&fe_ctx);
         let agent_name = ctx.agent.name.clone();
-        Box::pin(
-            async move { flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await },
-        )
+        Box::pin(async move { flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await })
     });
 
     let fr_ctx = Arc::clone(&flow_ctx);
@@ -939,10 +937,13 @@ pub(crate) fn wire_audit_query(
                             "description": "Filter by run ID (returns tool calls for that run)"
                         }),
                     );
-                    props.insert("summary".to_string(), serde_json::json!({
-                        "type": "boolean",
-                        "description": "If true, return a summary instead of individual entries"
-                    }));
+                    props.insert(
+                        "summary".to_string(),
+                        serde_json::json!({
+                            "type": "boolean",
+                            "description": "If true, return a summary instead of individual entries"
+                        }),
+                    );
                     Some(props)
                 },
                 None,
@@ -965,18 +966,14 @@ pub(crate) fn wire_audit_query(
                             Ok(s) => CallToolResult::text(
                                 serde_json::to_string_pretty(&s).unwrap_or_default(),
                             ),
-                            Err(e) => {
-                                CallToolResult::error_msg(format!("Audit query failed: {e}"))
-                            }
+                            Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
                         }
                     } else {
                         match audit.get_tool_calls(rid) {
                             Ok(calls) => CallToolResult::text(
                                 serde_json::to_string_pretty(&calls).unwrap_or_default(),
                             ),
-                            Err(e) => {
-                                CallToolResult::error_msg(format!("Audit query failed: {e}"))
-                            }
+                            Err(e) => CallToolResult::error_msg(format!("Audit query failed: {e}")),
                         }
                     }
                 } else {
@@ -1039,7 +1036,9 @@ pub(crate) fn wire_late_tools(
             crate::build_tools::build_test_tool_def(),
             move |args, ctx| {
                 let perm = Arc::clone(&perm);
-                Box::pin(async move { crate::build_tools::handle_build_test(args, ctx, perm).await })
+                Box::pin(
+                    async move { crate::build_tools::handle_build_test(args, ctx, perm).await },
+                )
             },
         );
         tracing::info!("Registered build_test tool");

@@ -32,9 +32,7 @@ pub(crate) async fn wire_upstream(
         }
 
         let module_result = match upstream_cfg.transport.as_str() {
-            "stdio" => {
-                wire_stdio_upstream(upstream_cfg, credential_store).await
-            }
+            "stdio" => wire_stdio_upstream(upstream_cfg, credential_store).await,
             "http" | "streamable-http" | "sse" => {
                 wire_http_upstream(upstream_cfg, upstream_cfg.tls.as_ref()).await
             }
@@ -321,7 +319,10 @@ async fn wire_http_upstream(
 
     let transport = if let Some(tls) = tls_config {
         let client = build_tls_client(tls, &upstream_cfg.name)?;
-        let config = rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(url);
+        let config =
+            rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig::with_uri(
+                url,
+            );
         rmcp::transport::StreamableHttpClientTransport::with_client(client, config)
     } else {
         rmcp::transport::StreamableHttpClientTransport::from_uri(url)
@@ -353,8 +354,9 @@ fn build_tls_client(
     let mut builder = reqwest::ClientBuilder::new();
 
     if let Some(ca_path) = &tls.ca_cert {
-        let pem = std::fs::read(ca_path)
-            .map_err(|e| format!("upstream '{upstream_name}': failed to read CA cert {ca_path}: {e}"))?;
+        let pem = std::fs::read(ca_path).map_err(|e| {
+            format!("upstream '{upstream_name}': failed to read CA cert {ca_path}: {e}")
+        })?;
         let cert = reqwest::tls::Certificate::from_pem(&pem)
             .map_err(|e| format!("upstream '{upstream_name}': invalid CA cert PEM: {e}"))?;
         builder = builder.add_root_certificate(cert);
@@ -363,15 +365,18 @@ fn build_tls_client(
 
     match (&tls.client_cert, &tls.client_key) {
         (Some(cert_path), Some(key_path)) => {
-            let cert_pem = std::fs::read(cert_path)
-                .map_err(|e| format!("upstream '{upstream_name}': failed to read client cert {cert_path}: {e}"))?;
-            let key_pem = std::fs::read(key_path)
-                .map_err(|e| format!("upstream '{upstream_name}': failed to read client key {key_path}: {e}"))?;
+            let cert_pem = std::fs::read(cert_path).map_err(|e| {
+                format!("upstream '{upstream_name}': failed to read client cert {cert_path}: {e}")
+            })?;
+            let key_pem = std::fs::read(key_path).map_err(|e| {
+                format!("upstream '{upstream_name}': failed to read client key {key_path}: {e}")
+            })?;
             let mut combined = cert_pem;
             combined.extend_from_slice(b"\n");
             combined.extend_from_slice(&key_pem);
-            let identity = reqwest::tls::Identity::from_pem(&combined)
-                .map_err(|e| format!("upstream '{upstream_name}': invalid client certificate/key: {e}"))?;
+            let identity = reqwest::tls::Identity::from_pem(&combined).map_err(|e| {
+                format!("upstream '{upstream_name}': invalid client certificate/key: {e}")
+            })?;
             builder = builder.identity(identity);
             tracing::info!(upstream = %upstream_name, "Mutual TLS client certificate loaded");
         }

@@ -3,12 +3,12 @@ mod approval;
 #[cfg(feature = "cedar")]
 pub mod cedar;
 pub mod disclosure;
-#[cfg(feature = "opa")]
-pub mod opa;
-#[cfg(all(feature = "cedar", feature = "opa"))]
-pub mod equivalence;
 pub mod dmn;
 pub mod domain_rules;
+#[cfg(all(feature = "cedar", feature = "opa"))]
+pub mod equivalence;
+#[cfg(feature = "opa")]
+pub mod opa;
 pub mod resource_class;
 pub mod risk_tier;
 mod session;
@@ -19,10 +19,10 @@ pub use approval::{ApprovalRequest, ApprovalStatus, ApprovalStore};
 #[cfg(feature = "cedar")]
 pub use cedar::{CedarDecision, CedarEngine};
 pub use disclosure::ToolDisclosure;
-#[cfg(feature = "opa")]
-pub use opa::{OpaDecision, OpaEngine};
 pub use dmn::{DmnDecision, DmnEngine};
 pub use domain_rules::{DomainPolicy, DomainRules};
+#[cfg(feature = "opa")]
+pub use opa::{OpaDecision, OpaEngine};
 pub use resource_class::{Domain, Operation, ResourceClass};
 pub use risk_tier::{RiskLevelThreshold, RiskTier, RiskTierConfig};
 pub use session::{SessionPermissionStore, SessionPermissions};

@@ -1,4 +1,4 @@
-use crate::team_tools::{AuditLogSink, TeamRegistry, DEFAULT_OPERATIONS};
+use crate::team_tools::{AuditLogSink, DEFAULT_OPERATIONS, TeamRegistry};
 use navra_core::identity::CapSigner;
 
 /// Context needed to spawn a teammate as a background agent task.
@@ -135,7 +135,8 @@ fn spawn_containerized_agent(
                         )
                     })
                     .unwrap_or_else(|| {
-                        let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_ops: Vec<String> =
+                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
                         let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
                         (fallback_ops, fallback_tools, None, "auto".to_string())
                     })
@@ -196,9 +197,11 @@ fn spawn_containerized_agent(
             // Resolve model
             let mut model = teammate_model;
             if model == "auto" {
-                if let Some(selected) =
-                    crate::model_selection::select_model_for_task(&reg.model_cards, tm_persona.as_deref(), &message)
-                {
+                if let Some(selected) = crate::model_selection::select_model_for_task(
+                    &reg.model_cards,
+                    tm_persona.as_deref(),
+                    &message,
+                ) {
                     model = selected;
                 } else {
                     model = "granite3.3:8b".to_string();
@@ -506,7 +509,8 @@ fn spawn_openshell_agent(
                         )
                     })
                     .unwrap_or_else(|| {
-                        let fallback_ops: Vec<String> = DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_ops: Vec<String> =
+                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
                         let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
                         (fallback_ops, fallback_tools, None, "auto".to_string())
                     })
@@ -567,9 +571,11 @@ fn spawn_openshell_agent(
             // Resolve model
             let mut model = teammate_model;
             if model == "auto" {
-                if let Some(selected) =
-                    crate::model_selection::select_model_for_task(&reg.model_cards, tm_persona.as_deref(), &message)
-                {
+                if let Some(selected) = crate::model_selection::select_model_for_task(
+                    &reg.model_cards,
+                    tm_persona.as_deref(),
+                    &message,
+                ) {
                     model = selected;
                 } else {
                     model = "granite3.3:8b".to_string();

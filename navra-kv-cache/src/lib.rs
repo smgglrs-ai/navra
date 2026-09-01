@@ -147,7 +147,8 @@ impl KvCompressor {
         assert_eq!(entry.dim, self.wht.original_dim());
 
         let signs = pack::unpack_bits(&entry.signs, self.wht.padded_dim());
-        let codes = pack::unpack_nbits(&entry.codes, self.level.polar_bits(), self.wht.padded_dim());
+        let codes =
+            pack::unpack_nbits(&entry.codes, self.level.polar_bits(), self.wht.padded_dim());
 
         let mut result = self.quantizer.dequantize(&signs, &codes);
 
@@ -234,8 +235,7 @@ mod tests {
         let compressed = compressor.compress(&vector);
         let recovered = compressor.decompress(&compressed);
 
-        let mse: f32 =
-            recovered.iter().map(|x| x * x).sum::<f32>() / dim as f32;
+        let mse: f32 = recovered.iter().map(|x| x * x).sum::<f32>() / dim as f32;
         assert!(
             mse < 1.0,
             "zero vector MSE {mse} too large (quantization noise expected)"

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::flow_execution::{poll_tasks_until_done, run_dag_execution};
 use crate::flow_tools::{
-    build_run_summary, current_bb_seq, record_task_results_to_audit, FlowContext, NodeStatus,
+    FlowContext, NodeStatus, build_run_summary, current_bb_seq, record_task_results_to_audit,
 };
 
 pub(crate) async fn handle_flow_escalate(
@@ -608,7 +608,8 @@ pub(crate) async fn handle_flow_resume(
     ctx.flow_registry.set_team_id(&new_flow_id, &team_id);
 
     let prompt = format!("Resumed flow {flow_id}");
-    let final_output = run_dag_execution(&ctx, &new_flow_id, &team_id, &prompt, remaining, "auto").await;
+    let final_output =
+        run_dag_execution(&ctx, &new_flow_id, &team_id, &prompt, remaining, "auto").await;
 
     if let Some(ref audit) = ctx.audit_log {
         let _ = audit.complete_flow_metadata(&new_flow_id, "completed");

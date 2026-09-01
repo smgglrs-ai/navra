@@ -553,10 +553,7 @@ pub fn validate_chain_policy(
         )));
     }
 
-    if require_wimse_root
-        && !act_chain.is_empty()
-        && !act_chain[0].sub.starts_with("spiffe://")
-    {
+    if require_wimse_root && !act_chain.is_empty() && !act_chain[0].sub.starts_with("spiffe://") {
         return Err(CapabilityError::DelegationViolation(format!(
             "chain root '{}' is not a WIMSE/SPIFFE identity",
             act_chain[0].sub
@@ -695,12 +692,7 @@ pub fn build_delegated_payload(
         sub: parent.sub.clone(),
         agent_id: parent.sub.clone(),
         iat: now,
-        permissions: parent
-            .cap
-            .operations
-            .first()
-            .cloned()
-            .unwrap_or_default(),
+        permissions: parent.cap.operations.first().cloned().unwrap_or_default(),
     });
 
     Ok(CapabilityPayload {

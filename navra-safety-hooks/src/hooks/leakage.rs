@@ -592,15 +592,9 @@ mod tests {
         });
 
         // Judge always returns high confidence (simulating leakage detection)
-        let judge_fn: JudgeFn = Arc::new(|_outgoing, _tainted| {
-            Box::pin(async { Some(0.95) })
-        });
+        let judge_fn: JudgeFn = Arc::new(|_outgoing, _tainted| Box::pin(async { Some(0.95) }));
 
-        let hook = SemanticLeakageJudge::new(
-            stores,
-            judge_fn,
-            SemanticLeakageConfig::default(),
-        );
+        let hook = SemanticLeakageJudge::new(stores, judge_fn, SemanticLeakageConfig::default());
         let ctx = test_ctx("sess-judge");
 
         let decision = hook

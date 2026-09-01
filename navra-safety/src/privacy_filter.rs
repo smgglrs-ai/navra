@@ -650,9 +650,11 @@ mod tests {
         assert!(email_with_homoglyph.contains('\u{0430}'));
 
         // Verify BIOES parsing handles this without panic
-        let tokens = vec![
-            ("S-private_email".to_string(), 0.99, Some((0, email_with_homoglyph.len()))),
-        ];
+        let tokens = vec![(
+            "S-private_email".to_string(),
+            0.99,
+            Some((0, email_with_homoglyph.len())),
+        )];
         let spans = group_bioes_tags(&tokens);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].category, "private_email");
@@ -681,7 +683,8 @@ mod tests {
     fn filter_pii_in_json_values() {
         // PII buried inside JSON string values should still produce
         // valid spans when the model detects them.
-        let json_text = r#"{"name": "John Doe", "email": "john@example.com", "notes": "safe text"}"#;
+        let json_text =
+            r#"{"name": "John Doe", "email": "john@example.com", "notes": "safe text"}"#;
 
         let tokens = vec![
             ("O".to_string(), 0.99, Some((0, 9))),
@@ -706,11 +709,11 @@ mod tests {
         // should only produce spans for the PII portions, leaving
         // gaps (O tags) for the safe text.
         let tokens = vec![
-            ("O".to_string(), 0.99, Some((0, 6))),     // "Hello "
-            ("S-private_person".to_string(), 0.95, Some((6, 14))),  // "John Doe"
-            ("O".to_string(), 0.99, Some((14, 26))),    // ", your order"
+            ("O".to_string(), 0.99, Some((0, 6))), // "Hello "
+            ("S-private_person".to_string(), 0.95, Some((6, 14))), // "John Doe"
+            ("O".to_string(), 0.99, Some((14, 26))), // ", your order"
             ("S-account_number".to_string(), 0.90, Some((27, 37))), // "1234567890"
-            ("O".to_string(), 0.99, Some((37, 51))),    // " is confirmed"
+            ("O".to_string(), 0.99, Some((37, 51))), // " is confirmed"
         ];
         let spans = group_bioes_tags(&tokens);
         assert_eq!(spans.len(), 2);

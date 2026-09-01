@@ -186,7 +186,9 @@ async fn run_init_with_profile(
     if dry_run {
         println!("{config_toml}");
         eprintln!("\n# Profile: {profile}");
-        eprintln!("# Replace REPLACE_WITH_HASH_FROM_TOKEN_GENERATE with: navra token generate --name <name> --permissions dev");
+        eprintln!(
+            "# Replace REPLACE_WITH_HASH_FROM_TOKEN_GENERATE with: navra token generate --name <name> --permissions dev"
+        );
         return Ok(());
     }
 

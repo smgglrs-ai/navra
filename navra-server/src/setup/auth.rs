@@ -75,12 +75,12 @@ pub(crate) fn wire_auth(
             let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
             if let Some(wimse_config) = cfg.server.wimse_auth.clone()
-                && wimse_config.enabled {
-                    let wimse_auth =
-                        navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
-                    chain = chain.add(wimse_auth);
-                    tracing::info!("WIMSE/SPIFFE identity federation enabled");
-                }
+                && wimse_config.enabled
+            {
+                let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
+                chain = chain.add(wimse_auth);
+                tracing::info!("WIMSE/SPIFFE identity federation enabled");
+            }
 
             if let Some(os_config) = cfg.server.openshell_auth.clone() {
                 let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);
@@ -104,11 +104,12 @@ pub(crate) fn wire_auth(
         let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
         if let Some(wimse_config) = cfg.server.wimse_auth.clone()
-            && wimse_config.enabled {
-                let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
-                chain = chain.add(wimse_auth);
-                tracing::info!("WIMSE/SPIFFE identity federation enabled");
-            }
+            && wimse_config.enabled
+        {
+            let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
+            chain = chain.add(wimse_auth);
+            tracing::info!("WIMSE/SPIFFE identity federation enabled");
+        }
 
         if let Some(os_config) = cfg.server.openshell_auth.clone() {
             let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);

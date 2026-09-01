@@ -7,8 +7,7 @@ use axum::http::HeaderMap;
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use navra_core::auth::capability::{
-    CapabilitySet, build_payload, decode_token, encode_token,
-    validate_delegation,
+    CapabilitySet, build_payload, decode_token, encode_token, validate_delegation,
 };
 use navra_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use navra_core::auth::{AgentIdentity, Authenticator, TokenAuthenticator};
@@ -640,8 +639,7 @@ mod audit {
             act_chain: Vec::new(),
         });
 
-        let ctx =
-            navra_core::auth::CallContext::new(agent, "audit-test-session");
+        let ctx = navra_core::auth::CallContext::new(agent, "audit-test-session");
         let result = server
             .handle_call_tool(CallToolParams::new("allowed_tool"), ctx)
             .await;

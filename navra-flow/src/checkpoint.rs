@@ -442,7 +442,10 @@ mod tests {
 
         // Reopen from the same path — simulates process restart
         let cp2 = DagCheckpoint::open(&path).unwrap();
-        let loaded = cp2.load("flow-reopen").unwrap().expect("checkpoint must survive reopen");
+        let loaded = cp2
+            .load("flow-reopen")
+            .unwrap()
+            .expect("checkpoint must survive reopen");
 
         // 2 completed tasks
         assert_eq!(loaded.completed.len(), 2);

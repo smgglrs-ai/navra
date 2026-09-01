@@ -346,10 +346,7 @@ mod tests {
         // Simulate what UpstreamConfig::retry_config() does
         let custom_timeout_secs: u64 = 10;
         config.request_timeout = std::time::Duration::from_secs(custom_timeout_secs);
-        assert_eq!(
-            config.request_timeout,
-            std::time::Duration::from_secs(10)
-        );
+        assert_eq!(config.request_timeout, std::time::Duration::from_secs(10));
     }
 
     fn tool_def(

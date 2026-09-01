@@ -26,10 +26,7 @@ pub(crate) fn flow_list(cfg: &config::Config) -> anyhow::Result<()> {
             let path = entry.path();
             let ext = path.extension().and_then(|e| e.to_str());
             if matches!(ext, Some("toml" | "yaml" | "yml")) {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("?");
+                let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("?");
                 println!("{:<30} {}", name, path.display());
                 found = true;
             }
@@ -38,39 +35,37 @@ pub(crate) fn flow_list(cfg: &config::Config) -> anyhow::Result<()> {
 
     // Scan agent instance flow dirs
     if let Some(agents_dir) = instance_agents_dir()
-        && agents_dir.is_dir() {
-            for entry in std::fs::read_dir(&agents_dir)? {
-                let entry = entry?;
-                let instance_dir = entry.path();
-                if !instance_dir.is_dir() {
-                    continue;
-                }
-                let flows_dir = instance_dir.join("flows");
-                if flows_dir.is_dir() {
-                    let instance_name = instance_dir
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("?");
-                    for flow_entry in std::fs::read_dir(&flows_dir)? {
-                        let flow_entry = flow_entry?;
-                        let path = flow_entry.path();
-                        let ext = path.extension().and_then(|e| e.to_str());
-                        if matches!(ext, Some("toml" | "yaml" | "yml")) {
-                            let name = path
-                                .file_stem()
-                                .and_then(|s| s.to_str())
-                                .unwrap_or("?");
-                            println!(
-                                "{:<30} {} (instance: {instance_name})",
-                                name,
-                                path.display()
-                            );
-                            found = true;
-                        }
+        && agents_dir.is_dir()
+    {
+        for entry in std::fs::read_dir(&agents_dir)? {
+            let entry = entry?;
+            let instance_dir = entry.path();
+            if !instance_dir.is_dir() {
+                continue;
+            }
+            let flows_dir = instance_dir.join("flows");
+            if flows_dir.is_dir() {
+                let instance_name = instance_dir
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("?");
+                for flow_entry in std::fs::read_dir(&flows_dir)? {
+                    let flow_entry = flow_entry?;
+                    let path = flow_entry.path();
+                    let ext = path.extension().and_then(|e| e.to_str());
+                    if matches!(ext, Some("toml" | "yaml" | "yml")) {
+                        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("?");
+                        println!(
+                            "{:<30} {} (instance: {instance_name})",
+                            name,
+                            path.display()
+                        );
+                        found = true;
                     }
                 }
             }
         }
+    }
 
     if !found {
         println!("No flows found.");
@@ -91,14 +86,8 @@ pub(crate) fn trigger_list(cfg: &config::Config) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{:<20} {:<12} {:<30} DETAILS",
-        "SOURCE", "TYPE", "TARGET"
-    );
-    println!(
-        "{:<20} {:<12} {:<30} -------",
-        "------", "----", "------"
-    );
+    println!("{:<20} {:<12} {:<30} DETAILS", "SOURCE", "TYPE", "TARGET");
+    println!("{:<20} {:<12} {:<30} -------", "------", "----", "------");
 
     for (source, trigger) in &all {
         match trigger {
@@ -289,8 +278,12 @@ flow_name = "ingest-document"
 "#;
         let parsed: InstanceConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(parsed.triggers.len(), 2);
-        assert!(matches!(&parsed.triggers[0], TriggerConfig::Cron { schedule, .. } if schedule == "0 9 * * 1-5"));
-        assert!(matches!(&parsed.triggers[1], TriggerConfig::FileWatch { path, .. } if path == "~/Documents"));
+        assert!(
+            matches!(&parsed.triggers[0], TriggerConfig::Cron { schedule, .. } if schedule == "0 9 * * 1-5")
+        );
+        assert!(
+            matches!(&parsed.triggers[1], TriggerConfig::FileWatch { path, .. } if path == "~/Documents")
+        );
     }
 
     #[test]

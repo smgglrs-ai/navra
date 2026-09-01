@@ -55,7 +55,8 @@ pub(crate) fn build_safety_pipeline(
     // Add canary tokens if configured
     if !canary_tokens.is_empty() {
         match pset.safety.as_str() {
-            "standard" | "guardian" | "guardian-deep" | "block" | "multi-label" | "pseudonymize" => {
+            "standard" | "guardian" | "guardian-deep" | "block" | "multi-label"
+            | "pseudonymize" => {
                 let configs: Vec<(String, String, bool)> = canary_tokens
                     .iter()
                     .map(|ct| (ct.name.clone(), ct.value.clone(), ct.is_regex))
@@ -107,17 +108,14 @@ pub(crate) fn build_safety_pipeline(
         if model_cfg.task == "classification"
             && let Some(model) = state.models.get(model_name)
         {
-            let classifier: Arc<dyn navra_core::safety::Classifier> =
-                Arc::new(navra_safety_hooks::bridge::ClassifierBridge::new(
-                    model.clone(),
-                ));
+            let classifier: Arc<dyn navra_core::safety::Classifier> = Arc::new(
+                navra_safety_hooks::bridge::ClassifierBridge::new(model.clone()),
+            );
             if pset.safety == "multi-label" && !pset.safety_thresholds.is_empty() {
-                pipeline.add_model_filter(
-                    navra_core::safety::MultiLabelFilter::from_thresholds(
-                        classifier,
-                        pset.safety_thresholds.clone(),
-                    ),
-                );
+                pipeline.add_model_filter(navra_core::safety::MultiLabelFilter::from_thresholds(
+                    classifier,
+                    pset.safety_thresholds.clone(),
+                ));
                 tracing::info!(
                     permission_set = %name,
                     categories = pset.safety_thresholds.len(),

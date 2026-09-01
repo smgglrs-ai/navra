@@ -11,11 +11,11 @@ use axum::extract::State;
 use axum::response::IntoResponse;
 
 use navra_agent::{McpClient, ToolLoopConfig};
-use navra_protocol::truncate_str;
 use navra_cognitive::ForgeService;
 use navra_core::McpServer;
 use navra_memory::{Message, Role, Turn, WorkingMemory};
 use navra_model::ModelBackend;
+use navra_protocol::truncate_str;
 
 /// Thread-safe wrapper around WorkingMemory.
 ///

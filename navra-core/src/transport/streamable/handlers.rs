@@ -116,14 +116,15 @@ pub(super) async fn handle_ai_catalog(State(state): State<AppState>) -> impl Int
 
             let mut transport = serde_json::json!({});
             if let Some(remotes) = remotes
-                && let Some(first) = remotes.first() {
-                    let remote_type = first["type"].as_str().unwrap_or("streamable-http");
-                    let url = first["url"].as_str().unwrap_or("");
-                    transport = serde_json::json!({
-                        "type": remote_type,
-                        "url": url,
-                    });
-                }
+                && let Some(first) = remotes.first()
+            {
+                let remote_type = first["type"].as_str().unwrap_or("streamable-http");
+                let url = first["url"].as_str().unwrap_or("");
+                transport = serde_json::json!({
+                    "type": remote_type,
+                    "url": url,
+                });
+            }
 
             let media_type = "application/mcp-server-card+json";
 

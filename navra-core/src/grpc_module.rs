@@ -625,7 +625,8 @@ mod tests {
 
     #[test]
     fn capability_caching_preserves_all_fields() {
-        let tools = [proto::ToolDef {
+        let tools = [
+            proto::ToolDef {
                 name: "mod_read".to_string(),
                 description: "Read a file".to_string(),
                 input_schema_json: b"{}".to_vec(),
@@ -634,7 +635,8 @@ mod tests {
                 name: "mod_write".to_string(),
                 description: "Write a file".to_string(),
                 input_schema_json: b"{}".to_vec(),
-            }];
+            },
+        ];
         let prompts = [proto::PromptDef {
             name: "mod_analyze".to_string(),
             description: "Analyze code".to_string(),

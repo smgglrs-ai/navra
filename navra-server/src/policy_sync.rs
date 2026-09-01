@@ -63,10 +63,7 @@ impl ToolEndpointRegistry {
 
     /// Check all tools against per-upstream network policies from config.
     /// Returns the set of tool names that should be blocked.
-    pub fn evaluate_config(
-        &self,
-        upstreams: &[crate::config::UpstreamConfig],
-    ) -> HashSet<String> {
+    pub fn evaluate_config(&self, upstreams: &[crate::config::UpstreamConfig]) -> HashSet<String> {
         let map = self.tool_domains.read().unwrap_or_else(|e| e.into_inner());
         let mut blocked = HashSet::new();
 
@@ -87,9 +84,7 @@ impl ToolEndpointRegistry {
                 if let Some(ref net) = u.network {
                     let allowed = &net.allowed_domains;
                     for domain in required_domains {
-                        if !domain_matches_any(domain, allowed)
-                            && !net.blocked_domains.is_empty()
-                        {
+                        if !domain_matches_any(domain, allowed) && !net.blocked_domains.is_empty() {
                             blocked.insert(tool_name.clone());
                             break;
                         }
@@ -112,11 +107,11 @@ fn domain_matches_any(domain: &str, allowed: &[String]) -> bool {
         }
         if let Some(suffix) = pattern.strip_prefix("*.")
             && domain.ends_with(suffix)
-                && domain.len() > suffix.len()
-                && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.'
-            {
-                return true;
-            }
+            && domain.len() > suffix.len()
+            && domain.as_bytes()[domain.len() - suffix.len() - 1] == b'.'
+        {
+            return true;
+        }
     }
     false
 }
@@ -183,7 +178,10 @@ impl PolicySyncHandle {
     /// Get the current set of blocked tools.
     #[allow(dead_code)] // pending NAVRA-180
     pub fn blocked(&self) -> HashSet<String> {
-        self.blocked.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.blocked
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 }
 
@@ -193,8 +191,14 @@ mod tests {
 
     #[test]
     fn domain_matches_exact() {
-        assert!(domain_matches_any("api.github.com", &["api.github.com".into()]));
-        assert!(!domain_matches_any("api.github.com", &["github.com".into()]));
+        assert!(domain_matches_any(
+            "api.github.com",
+            &["api.github.com".into()]
+        ));
+        assert!(!domain_matches_any(
+            "api.github.com",
+            &["github.com".into()]
+        ));
     }
 
     #[test]
@@ -230,14 +234,8 @@ mod tests {
     #[test]
     fn blocked_tools_detects_unreachable() {
         let reg = ToolEndpointRegistry::new();
-        reg.register_upstream(
-            &["github_pr_list".into()],
-            vec!["api.github.com".into()],
-        );
-        reg.register_upstream(
-            &["slack_post".into()],
-            vec!["slack.com".into()],
-        );
+        reg.register_upstream(&["github_pr_list".into()], vec!["api.github.com".into()]);
+        reg.register_upstream(&["slack_post".into()], vec!["slack.com".into()]);
 
         // Only github allowed → slack tools blocked
         let blocked = reg.blocked_tools(&["api.github.com".into()]);

@@ -1,13 +1,15 @@
 use super::{ContentFilter, FilterContext, Finding};
 
 const DANGEROUS_SCHEMES: &[&str] = &[
-    "file://", "gopher://", "ftp://", "data://", "dict://", "ldap://",
+    "file://",
+    "gopher://",
+    "ftp://",
+    "data://",
+    "dict://",
+    "ldap://",
 ];
 
-const METADATA_DOMAINS: &[&str] = &[
-    "metadata.google.internal",
-    "metadata.goog",
-];
+const METADATA_DOMAINS: &[&str] = &["metadata.google.internal", "metadata.goog"];
 
 pub struct SsrfFilter {
     url_re: regex_lite::Regex,
@@ -24,15 +26,9 @@ impl Default for SsrfFilter {
 impl SsrfFilter {
     pub fn new() -> Self {
         Self {
-            url_re: regex_lite::Regex::new(
-                r#"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s\)>\]"']+"#
-            ).unwrap(),
-            bare_ip_re: regex_lite::Regex::new(
-                r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b"
-            ).unwrap(),
-            ipv6_url_re: regex_lite::Regex::new(
-                r"[a-zA-Z][a-zA-Z0-9+.\-]*://\[[^\]]+\]"
-            ).unwrap(),
+            url_re: regex_lite::Regex::new(r#"[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s\)>\]"']+"#).unwrap(),
+            bare_ip_re: regex_lite::Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b").unwrap(),
+            ipv6_url_re: regex_lite::Regex::new(r"[a-zA-Z][a-zA-Z0-9+.\-]*://\[[^\]]+\]").unwrap(),
         }
     }
 
@@ -210,8 +206,10 @@ impl SsrfFilter {
         }
 
         // fe80::/10 (link-local)
-        if addr_lower.starts_with("fe8") || addr_lower.starts_with("fe9")
-            || addr_lower.starts_with("fea") || addr_lower.starts_with("feb")
+        if addr_lower.starts_with("fe8")
+            || addr_lower.starts_with("fe9")
+            || addr_lower.starts_with("fea")
+            || addr_lower.starts_with("feb")
         {
             return Some(Finding {
                 start,
@@ -240,7 +238,9 @@ impl ContentFilter for SsrfFilter {
         // IPv6 URLs with brackets (separate regex since the main one may not capture them well)
         for m in self.ipv6_url_re.find_iter(content) {
             // Skip if already covered by url_re match
-            let dominated = findings.iter().any(|f| f.start <= m.start() && f.end >= m.end());
+            let dominated = findings
+                .iter()
+                .any(|f| f.start <= m.start() && f.end >= m.end());
             if dominated {
                 continue;
             }
@@ -249,7 +249,9 @@ impl ContentFilter for SsrfFilter {
 
         // Bare IPs without scheme (e.g., in curl commands or text)
         for m in self.bare_ip_re.find_iter(content) {
-            let dominated = findings.iter().any(|f| f.start <= m.start() && f.end >= m.end());
+            let dominated = findings
+                .iter()
+                .any(|f| f.start <= m.start() && f.end >= m.end());
             if dominated {
                 continue;
             }
@@ -438,7 +440,9 @@ fn has_encoded_octets(host: &str) -> bool {
     host.split('.').any(|part| {
         let lower = part.to_ascii_lowercase();
         lower.starts_with("0x")
-            || (part.starts_with('0') && part.len() > 1 && part[1..].chars().all(|c| c.is_ascii_digit()))
+            || (part.starts_with('0')
+                && part.len() > 1
+                && part[1..].chars().all(|c| c.is_ascii_digit()))
     })
 }
 
@@ -529,7 +533,10 @@ mod tests {
     #[test]
     fn detect_gcp_metadata_domain() {
         let filter = SsrfFilter::new();
-        let findings = filter.scan("http://metadata.google.internal/computeMetadata/v1/", &ctx());
+        let findings = filter.scan(
+            "http://metadata.google.internal/computeMetadata/v1/",
+            &ctx(),
+        );
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "ssrf-metadata");
     }
@@ -695,10 +702,7 @@ mod tests {
     #[test]
     fn detect_url_in_curl_command() {
         let filter = SsrfFilter::new();
-        let findings = filter.scan(
-            "curl http://169.254.169.254/latest/meta-data/",
-            &ctx(),
-        );
+        let findings = filter.scan("curl http://169.254.169.254/latest/meta-data/", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "ssrf-metadata");
     }
@@ -706,10 +710,7 @@ mod tests {
     #[test]
     fn detect_url_in_markdown_link() {
         let filter = SsrfFilter::new();
-        let findings = filter.scan(
-            "Click [here](http://10.0.0.1/admin) for access",
-            &ctx(),
-        );
+        let findings = filter.scan("Click [here](http://10.0.0.1/admin) for access", &ctx());
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].category, "ssrf-private-ip");
     }
@@ -760,7 +761,10 @@ mod tests {
 
     #[test]
     fn extract_host_with_userinfo() {
-        assert_eq!(extract_host("http://user:pass@example.com/path"), "example.com");
+        assert_eq!(
+            extract_host("http://user:pass@example.com/path"),
+            "example.com"
+        );
     }
 
     #[test]

@@ -1044,15 +1044,16 @@ async fn dispatch_request(
             let sid = session_id.unwrap_or_else(|| format!("stateless:{}", agent.name));
 
             if server.mcp_version() != navra_protocol::PROTOCOL_VERSION_2026
-                && server.sessions().get(&sid).is_none() {
-                    return JsonRpcResponse::error(
-                        id,
-                        JsonRpcError::new(
-                            crate::protocol::ErrorCode::Custom(-32002),
-                            "Session required — call initialize first",
-                        ),
-                    );
-                }
+                && server.sessions().get(&sid).is_none()
+            {
+                return JsonRpcResponse::error(
+                    id,
+                    JsonRpcError::new(
+                        crate::protocol::ErrorCode::Custom(-32002),
+                        "Session required — call initialize first",
+                    ),
+                );
+            }
 
             server.ensure_session(&sid, &agent);
             dispatch_request_inner(server, method, params, &agent, &sid, id).await

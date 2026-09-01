@@ -3,8 +3,8 @@ use std::sync::Arc;
 use axum::response::IntoResponse;
 
 use crate::config;
-use crate::util::expand_tilde;
 use crate::ui_events::UiBroadcaster;
+use crate::util::expand_tilde;
 
 #[path = "ui_assets_gen.rs"]
 mod ui_assets_gen;
@@ -1633,7 +1633,18 @@ mod tests {
         let cfg = test_config();
         let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
         let base = axum::Router::new();
-        attach_ui_routes(base, &cfg, &server, &models, Some("stub"), None, None, None, config_state, std::path::PathBuf::from("/tmp/navra-test-config.json"))
+        attach_ui_routes(
+            base,
+            &cfg,
+            &server,
+            &models,
+            Some("stub"),
+            None,
+            None,
+            None,
+            config_state,
+            std::path::PathBuf::from("/tmp/navra-test-config.json"),
+        )
     }
 
     async fn post_json(

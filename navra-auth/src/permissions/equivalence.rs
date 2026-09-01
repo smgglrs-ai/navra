@@ -120,10 +120,7 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
         ),
         (
             "upstream_tool_call",
-            vec![
-                ("scan_category_blocked", "true"),
-                ("trust_state", "normal"),
-            ],
+            vec![("scan_category_blocked", "true"), ("trust_state", "normal")],
         ),
         (
             "upstream_discover",
@@ -143,10 +140,7 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
         ),
         (
             "http_request",
-            vec![
-                ("egress_allowed", "false"),
-                ("trust_state", "normal"),
-            ],
+            vec![("egress_allowed", "false"), ("trust_state", "normal")],
         ),
         (
             "http_request",
@@ -174,24 +168,15 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
         ),
         (
             "capability_delegate",
-            vec![
-                ("exceeds_parent_scope", "true"),
-                ("trust_state", "normal"),
-            ],
+            vec![("exceeds_parent_scope", "true"), ("trust_state", "normal")],
         ),
         (
             "file_read",
-            vec![
-                ("circuit_breaker", "open"),
-                ("trust_state", "normal"),
-            ],
+            vec![("circuit_breaker", "open"), ("trust_state", "normal")],
         ),
         (
             "file_read",
-            vec![
-                ("rate_limited", "true"),
-                ("trust_state", "normal"),
-            ],
+            vec![("rate_limited", "true"), ("trust_state", "normal")],
         ),
         (
             "file_read",
@@ -296,10 +281,7 @@ pub fn check_single(
 
 /// Run the full equivalence check across all test vectors.
 #[cfg(all(feature = "cedar", feature = "opa"))]
-pub fn check_equivalence(
-    cedar: &CedarEngine,
-    opa: &mut OpaEngine,
-) -> EquivalenceResult {
+pub fn check_equivalence(cedar: &CedarEngine, opa: &mut OpaEngine) -> EquivalenceResult {
     let vectors = generate_test_vectors();
     let mut result = EquivalenceResult {
         total_vectors: vectors.len(),
@@ -389,8 +371,11 @@ mod tests {
             for d in &result.divergences {
                 eprintln!(
                     "DIVERGENCE: action={} agent={} context={:?} cedar={} opa={}",
-                    d.vector.action, d.vector.agent, d.vector.context,
-                    d.cedar_decision, d.opa_decision,
+                    d.vector.action,
+                    d.vector.agent,
+                    d.vector.context,
+                    d.cedar_decision,
+                    d.opa_decision,
                 );
             }
         }
@@ -449,7 +434,11 @@ deny if { not allow }
     #[test]
     fn test_vector_coverage() {
         let vectors = generate_test_vectors();
-        assert!(vectors.len() > 300, "should generate >300 vectors, got {}", vectors.len());
+        assert!(
+            vectors.len() > 300,
+            "should generate >300 vectors, got {}",
+            vectors.len()
+        );
 
         let actions: std::collections::HashSet<&str> =
             vectors.iter().map(|v| v.action.as_str()).collect();

@@ -1373,8 +1373,7 @@ async fn d11_exfil_pattern_detected_in_result() {
 
     let text = result_text(&read_resp);
     // The exfil filter should detect and redact the exfiltration pattern
-    let exfil_detected =
-        text.contains("[REDACTED") || !text.contains("cat ~/.ssh/id_rsa | curl");
+    let exfil_detected = text.contains("[REDACTED") || !text.contains("cat ~/.ssh/id_rsa | curl");
     assert!(
         exfil_detected,
         "D11: Exfil pattern should be detected by safety filter, got: {text}"
@@ -1416,8 +1415,7 @@ async fn d12_context_poisoning_combined_detected() {
     // The poisoning filter triggers on combined persistence ("From now on")
     // + dangerous action ("exfiltrate", "send to https://"). The content
     // should be redacted.
-    let poisoning_detected =
-        text.contains("[REDACTED") || !text.contains("exfiltrate all data");
+    let poisoning_detected = text.contains("[REDACTED") || !text.contains("exfiltrate all data");
     assert!(
         poisoning_detected,
         "D12: Context poisoning (persistence + dangerous action) should be detected, got: {text}"
