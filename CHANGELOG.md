@@ -119,6 +119,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
+- Update CHANGELOG.md for v0.4.0
 
 ### Fixed
 
@@ -153,6 +154,7 @@ All notable changes to navra are documented here.
 - **ci**: Add cargo/bin to PATH for cross, use embedded (not cuda) for linux-x86_64
 - **model**: Use as_chunks instead of chunks_exact (clippy 1.98)
 - **ci**: Set CROSS_CUSTOM_TOOLCHAIN for system Rust, fix clippy as_chunks lint
+- **ci**: Split linux builds — x86_64 in Fedora container, aarch64 on bare runner with cross
 
 ### Maintenance
 
