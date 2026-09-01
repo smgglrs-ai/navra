@@ -272,8 +272,11 @@ approve = ["write"]
 
 ### IFC tainted write approval
 
-When Information Flow Control detects that an agent has read
-untrusted external data, subsequent writes can require approval:
+When [Information Flow Control](@/docs/learn/information-flow-control.md)
+detects that an agent has read untrusted external data, subsequent
+writes can require approval. The agent's
+[capability token](@/docs/learn/capability-tokens.md) encodes which
+operations are allowed, approved, or denied:
 
 ```toml
 [permissions.dev]

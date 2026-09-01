@@ -84,7 +84,8 @@ strings with high-confidence regex patterns:
 
 ### PII detection
 
-Detects personally identifiable information with validated patterns:
+Detects personally identifiable information with validated patterns
+(see [PII Detection with Regex](@/docs/learn/pii-regex.md) for design rationale):
 
 - US Social Security numbers (with SSA rule validation)
 - Credit card numbers (with Luhn checksum validation)
@@ -271,8 +272,10 @@ programmatically.
 ## PII NER models
 
 For semantic PII detection beyond regex (e.g., "John Smith lives in
-Paris"), navra supports ONNX-based Named Entity Recognition models.
-These require the `onnx` feature flag at build time.
+Paris"), navra supports ONNX-based Named Entity Recognition models
+(see [Named Entity Recognition](@/docs/learn/named-entity-recognition.md)
+for how NER complements regex). These require the `onnx` feature
+flag at build time.
 
 ### Download and install
 

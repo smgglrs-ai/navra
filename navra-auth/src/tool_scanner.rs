@@ -96,13 +96,35 @@ impl Default for ToolScanConfig {
 pub struct ToolScanner {
     config: ToolScanConfig,
     previous_hashes: HashMap<String, String>,
+    hash_path: Option<std::path::PathBuf>,
 }
 
 impl ToolScanner {
     pub fn new(config: ToolScanConfig) -> Self {
+        let hash_path = default_hash_path();
+        let previous_hashes = hash_path
+            .as_ref()
+            .map(|p| load_hashes(p))
+            .unwrap_or_default();
         Self {
             config,
-            previous_hashes: HashMap::new(),
+            previous_hashes,
+            hash_path,
+        }
+    }
+
+    /// Create a scanner with an explicit hash persistence path.
+    ///
+    /// Use `None` to disable persistence (useful for tests).
+    pub fn with_hash_path(config: ToolScanConfig, hash_path: Option<std::path::PathBuf>) -> Self {
+        let previous_hashes = hash_path
+            .as_ref()
+            .map(|p| load_hashes(p))
+            .unwrap_or_default();
+        Self {
+            config,
+            previous_hashes,
+            hash_path,
         }
     }
 
@@ -111,7 +133,7 @@ impl ToolScanner {
         upstream_name: &str,
         tools: &[ToolDefinition],
     ) -> Vec<ToolScanResult> {
-        tools
+        let results = tools
             .iter()
             .map(|tool| {
                 let mut findings = Vec::new();
@@ -143,7 +165,13 @@ impl ToolScanner {
                     manifest_verified: None,
                 }
             })
-            .collect()
+            .collect();
+
+        if let Some(path) = &self.hash_path {
+            save_hashes(&self.previous_hashes, path);
+        }
+
+        results
     }
 
     pub fn verify_manifest(
@@ -183,6 +211,36 @@ impl ToolScanner {
         }
         self.previous_hashes.insert(key, hash);
         findings
+    }
+}
+
+/// Default path for persisted tool hashes: `~/.local/share/navra/tool_hashes.json`.
+fn default_hash_path() -> Option<std::path::PathBuf> {
+    dirs::data_dir().map(|d| d.join("navra").join("tool_hashes.json"))
+}
+
+/// Load previously saved tool hashes from disk.
+pub fn load_hashes(path: &std::path::Path) -> HashMap<String, String> {
+    match std::fs::read_to_string(path) {
+        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+/// Save current tool hashes to disk for rug-pull detection across restarts.
+pub fn save_hashes(hashes: &HashMap<String, String>, path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(hashes) {
+        Ok(data) => {
+            if let Err(e) = std::fs::write(path, data) {
+                tracing::warn!(path = %path.display(), error = %e, "Failed to save tool hashes");
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to serialize tool hashes");
+        }
     }
 }
 
@@ -689,10 +747,13 @@ mod tests {
     }
 
     fn scanner() -> ToolScanner {
-        ToolScanner::new(ToolScanConfig {
-            known_tool_names: vec!["file_read".into(), "file_write".into(), "git_status".into()],
-            ..Default::default()
-        })
+        ToolScanner::with_hash_path(
+            ToolScanConfig {
+                known_tool_names: vec!["file_read".into(), "file_write".into(), "git_status".into()],
+                ..Default::default()
+            },
+            None,
+        )
     }
 
     #[test]
