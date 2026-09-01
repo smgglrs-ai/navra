@@ -87,7 +87,7 @@ Run `cargo test --workspace --no-fail-fast` for exact numbers.
 | navra-cognitive | 122 | 5 | — | 127 |
 | navra-model | 74 | 27 | — | 101 |
 | navra-model-runtime | 70 | — | — | 70 |
-| navra-security | 17 | 39 | — | 56 |
+
 | navra-openapi | 43 | 6 | — | 49 |
 | navra-modal-vision | 40 | — | — | 40 |
 | navra-model-hub | 33 | — | — | 33 |

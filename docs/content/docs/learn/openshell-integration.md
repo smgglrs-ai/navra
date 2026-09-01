@@ -1,5 +1,5 @@
 +++
-title = "OpenShell Integration"
+title = "31. OpenShell Integration"
 description = "MAC + DAC defense in depth with OpenShell sandboxes."
 weight = 25
 template = "docs/page.html"

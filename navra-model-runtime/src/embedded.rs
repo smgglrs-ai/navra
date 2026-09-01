@@ -148,6 +148,9 @@ struct AppState {
     cache_config: Option<KvCacheConfig>,
 }
 
+// SAFETY: LlamaModel is read-only after loading. LlamaContext is created
+// per-request via new_context(), which is thread-safe in llama.cpp.
+// No mutable shared state.
 unsafe impl Send for AppState {}
 unsafe impl Sync for AppState {}
 

@@ -542,6 +542,17 @@ impl Blackbox {
         .collect()
     }
 
+    /// Verify hash chain integrity on open.
+    ///
+    /// Returns `true` if the chain is clean (no tampering detected).
+    /// This is O(n) on the full chain and is intentionally not called
+    /// automatically — the caller (e.g., navra-server setup) can invoke
+    /// it and log a warning if tampering is detected.
+    pub fn verify_on_open(&self) -> bool {
+        let (_, broken) = self.verify_chain();
+        broken.is_none()
+    }
+
     /// Entry count.
     pub fn count(&self) -> u64 {
         let db = self.db.lock().unwrap_or_else(|e| e.into_inner());

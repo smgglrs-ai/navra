@@ -8,7 +8,7 @@ members = [
     "navra-auth",
     "navra-safety",
     "navra-safety-hooks",
-    "navra-security",
+
     "navra-cognitive",
     "navra-memory",
     "navra-agent",
