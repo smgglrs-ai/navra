@@ -2,6 +2,187 @@
 
 All notable changes to navra are documented here.
 
+## [0.4.0] - 2026-09-01
+
+### Added
+
+- Add `navra eval` CLI for adversarial security evaluations (NAVRA-152)
+- **memory**: Auto-assign importance via type-based heuristic
+- **team**: Derive default teammate tools from server tool inventory
+- **model-runtime**: Add TurboQuant KV cache compression with asymmetric K/V config
+- **model-server**: Hardware profile classification and config generation
+- **init**: Add --profile flag for hardware-optimized config generation
+- **kv-cache**: Implement TurboQuant KV cache compression in pure Rust
+- **cli**: Add --flow flag to navra run for direct flow execution
+- **flow**: Add verifier stage and structured output to review flow
+- **agent**: Make temperature, max_tokens, force_tool_iterations configurable per-task
+- **flow**: Planner selects models via models_list, not just "auto"
+- **flow**: --model flag overrides default model for all flow tasks
+- **flow**: --model default + models_list filters unconfigured models
+- **blackbox**: Add trace_id column for cross-system correlation
+- **audit**: Add trace_id to AuditLog and AuditSink trait
+- **trace**: Generate W3C trace IDs per tool call
+- **openshell**: Propagate W3C traceparent on all gRPC calls
+- **a2a**: Propagate W3C traceparent on A2A HTTP requests
+- **policy**: Add ToolEndpointRegistry and PolicySyncFilter
+- **policy**: Wire upstream registration to ToolEndpointRegistry
+- **policy**: Wire ConfigWatcher to PolicySyncFilter
+- **auth**: Add OPA/Rego policy engine via regorus
+- **core**: Integrate OPA engine into McpServer handler chain
+- **policy**: Add OWASP ASI baseline in Rego
+- **policy**: Cedar↔Rego equivalence checker with exhaustive verification
+- **openshell**: Unified inference routing via navra model proxy
+- **ui**: Wire agentic chat, WebSocket updates, flow run button
+- **ui**: Enhance Audit, Agents, Sessions, Models pages
+- **ui**: Add react-markdown, error boundaries, responsive, theme toggle
+- **config**: Support JSON config format with TOML deprecation
+- **ui**: Add config mutation API endpoints
+- **ui**: Add permission and agent editing to web console
+- **cli**: Add config export command for TOML→JSON migration
+- **ui**: Add flow execution endpoint and wire Run button
+- **auth**: Add WIMSE/SPIFFE identity support (NAVRA-172)
+- **auth**: Add actor-chain JWT delegation tracking (NAVRA-175)
+- **discover**: Add DNS-AID SVCB and ARD catalog support (NAVRA-173, NAVRA-174)
+- **flow**: Add Self-Harness execution trace improvement engine (NAVRA-171)
+- **cli**: Add `navra self-harness` command and user guide
+- **cli**: Restructure CLI into navra mcp/agent/flow subcommands (NAVRA-162)
+- **systemd**: Split into multi-service architecture (NAVRA-162)
+- **cognitive**: Add SelfCompact compression policy types (NAVRA-170)
+- **agent**: Wire SelfCompact compression policy into tool loop (NAVRA-170)
+- **flow**: Set FlowPhase at node boundaries for compression (NAVRA-170)
+- **server**: Wire compression_policy config through to agent (NAVRA-170)
+- **discover**: Wire DNS-AID SVCB and ARD catalog into startup discovery
+- **safety**: Add SSRF, exfil, poisoning, canary, and injection filters with pipeline wiring
+- **model-hub**: Stream HuggingFace downloads to disk, add 10 tests
+- **upstream**: Wire TlsConfig for custom CA, mTLS, and skip-verify
+- **upstream**: Wire TlsConfig for custom CA, mTLS, and skip-verify
+- **model-runtime**: Wire KV cache type into embedded llama.cpp runtime
+- **cli**: Add navra persona new/list, move 18 generic personas to examples
+
+### Changed
+
+- Extract wrap, run, misc commands and utils from main.rs
+- Extract CLI implementations into cmd_model, cmd_agent, cmd_pii modules
+- Extract serve_inner() wiring into wiring/ modules
+- Rename wiring/ to setup/ for conventional Rust naming
+- Move SharedCustomPiiFilter to setup/safety.rs
+- Migrate all unsafe string truncations to truncate_str
+- Consolidate duplicate test helpers (test_ctx, test_perm_engine)
+- Extract shared utility functions (resolve_path, glob_match, health)
+- Split team_tools.rs into agent_spawn.rs and model_selection.rs
+- Decompose serve_inner into setup submodules
+- Split flow_tools.rs into flow_execution.rs and flow_escalation.rs
+- **navra-agent**: Split tool_loop.rs config into submodule
+- Group Metrics struct fields into logical sub-structs
+- **config**: Add Serialize derive to all config structs
+
+### Documentation
+
+- Update CHANGELOG.md for v0.3.0
+- Polish hero page layout, feature grid, and CTA styling
+- Fix stale numbers in papers and strip internal review notes
+- Add laptop config example and update TurboQuant status
+- **paper**: Update autonomous-review eval with external project results
+- **paper**: Update autonomous-review with full 4-project eval results
+- **paper**: Add self-improvement loop closure to autonomous-review
+- **paper**: Add model and timing to self-eval section
+- Update lean items for OpenShell 1000x and add PIP RFC draft
+- **openshell**: Add refined threat model and 1000x gap analysis
+- Add eval CLI reference page (NAVRA-152 step 6)
+- **cli**: Rewrite CLI reference from actual cli.rs source
+- **config**: Fix phantom fields, add undocumented config options
+- Fix feature-level errors in arch, SDK, security, README, MODELS, TESTING
+- Fix 5 remaining feature-level issues
+- Move OPENSHELL.md into proper docs site + internal architecture ref
+- Final accuracy pass on root markdown files
+- **guides**: Add navra wrap quick start guide
+- **guides**: Add team orchestration guide
+- **guides**: Add human-in-the-loop approval guide
+- **guides**: Add content safety configuration guide
+- **learn**: Add supply chain defense explainer
+- **guides**: Add event-driven triggers guide
+- **guides**: Add credential brokering guide
+- **guides**: Add audit trail practical guide
+- Fix Module trait crate reference in CONTRIBUTING.md (navra-core→navra-mcp)
+- Rewrite README to cover all capabilities
+- Rewrite hero page to reflect full capabilities
+- Redesign hero page — terminal demo, pillar chips, three-column layout
+- Use armored narwhal logo in README to match docs site
+- Mark supply chain scanning gap as closed in ecosystem positioning
+- Update crate count 25→24 after navra-security removal
+
+### Fixed
+
+- **run**: Fix embedded feature build (missing import and destructure)
+- **agent**: Raise max_tokens from 8192 to 32768 for local models
+- **flow**: Inject structured output format in engine, not planner
+- **server**: Configurable session limits and agent session cleanup
+- **team**: Handle global region in Vertex AI URL for teammates
+- **agent**: Use char boundary checks for string truncation
+- **server**: Char boundary checks for all string truncations
+- **flow**: Remove 4K truncation on blackboard publish
+- **flow**: Verifier must depend on all injected specialist tasks
+- **flow**: Cap file tree injection at 200 entries for large projects
+- **server**: Raise body limit to 32MB on /v1/chat/completions proxy
+- **proof**: Bound cursor_roundtrip Kani proof to 0-99
+- **security**: Add trace_id to BlackboxEntry in taint_audit tests
+- Add trace_id to capability token denial blackbox record
+- **ui**: Add /api/safety endpoint, fix hardcoded values, rename smgglrs
+- Resolve all compiler warnings in navra-server
+- Resolve clippy errors in navra-kv-cache and navra-model-runtime
+- Resolve all clippy warnings across the workspace
+- Resolve remaining clippy warnings with all features
+- Resolve clippy with all platform features (otel, cedar, embedded-cuda)
+- **auth**: Upgrade trust_score atomics to Acquire/Release, add 5 Kani proofs for quota
+- **cognitive**: Update persona count assertion after gallery move (43→25)
+- **docs**: Correct canary token profile list in safety guide
+- Suppress card list on docs landing page, cargo fmt navra-tui
+- Transparent background on armored narwhal logo PNG
+- **security**: UTF-8 panic in truncate_value, deny-wins enforcement, mTLS warning
+- P2 hardening — persist rug-pull hashes, verify-on-start, reduce false positives
+
+### Maintenance
+
+- Clean changelog duplicates, mark NAVRA-151 done, remove stale worktrees
+- Remove legacy docs-site/ (mdBook)
+- Add rustdoc and rustdoc-open recipes to justfile
+- Remove unnecessary clippy::too_many_arguments allow
+- Update Cargo.lock for regorus dependency
+- Add NAVRA-185 config persistence migration work item
+- Mark NAVRA-185 done
+- Mark NAVRA-172 and NAVRA-175 done
+- Mark NAVRA-173 and NAVRA-174 done
+- Mark NAVRA-171 done
+- Mark NAVRA-162 done
+- Mark NAVRA-170 done
+- Bump to v0.4.0
+
+### Merge
+
+- Crash-recovery and concurrency stress tests (F2, F3)
+- Upstream timeout and DAG+IFC integration tests (F5, F6)
+- Audit trail assertion and credential lifecycle tests (F1, F4)
+
+### Performance
+
+- Lazy regex compilation, deduplicate safety profiles, dev-mode deny fallback, fix docs
+
+### Tests
+
+- **memory**: Add unit tests and Kani proofs for importance heuristic
+- Add crash-recovery and concurrency stress tests (F2, F3)
+- Add upstream timeout and DAG+IFC integration tests (F5, F6)
+- Add audit trail assertion and credential lifecycle tests (F1, F4)
+- **cli**: Add tests for new mcp/agent/flow subcommands (NAVRA-162)
+- **model-runtime**: Add 24 tests for direct, podman, and npu modules
+- **model**: Add 20 tests for chat translation helpers and CLI backend
+- **safety**: Add 27 edge-case tests for PII, classifier, privacy, field filter, leakage
+- Add 11 tests for hibernate/websocket, fix DESIGN.md drift
+
+### Style
+
+- **tui**: Cargo fmt
+
 ## [0.3.0] - 2026-07-16
 
 ### Added
@@ -39,6 +220,33 @@ All notable changes to navra are documented here.
 - Rewrite model proxy section with step-by-step setup
 - Add learn chapter on the model proxy security layer
 - Show both global and regional Vertex AI endpoints
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 
 ### Fixed
 
