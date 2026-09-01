@@ -1,5 +1,5 @@
 +++
-title = "The Model Proxy"
+title = "30. The Model Proxy"
 description = "navra sits between agents and frontier models — not just tools. PII filtering, credential isolation, audit logging, and safety enforcement apply to every model call, covering the trust boundary that providers cannot see."
 weight = 185
 template = "docs/page.html"

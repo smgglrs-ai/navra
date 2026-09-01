@@ -18,7 +18,7 @@ of origin.
 
 ## Crate Structure
 
-25-crate workspace (24 navra-* + benchmarks).
+24-crate workspace (23 navra-* + benchmarks).
 
 | Crate | Category | Role |
 |---|---|---|
@@ -31,7 +31,7 @@ of origin.
 | `navra-auth` | Infrastructure | Auth, permissions, identity, IFC, upstream tool scanning (no ML deps) |
 | `navra-safety` | Infrastructure | ML safety filters (NER, PII), regex patterns, pseudonymization |
 | `navra-safety-hooks` | Infrastructure | Hook pipeline (20+ hook types), integrity monitoring, bridges navra-safety to workspace |
-| `navra-security` | Infrastructure | Facade re-exporting navra-auth + navra-safety-hooks |
+
 | `navra-mcp` | Infrastructure | Lightweight Module trait, handler type aliases, MCP re-exports |
 | `navra-openapi` | Infrastructure | OpenAPI/Swagger-to-MCP bridge with OAuth support |
 | `navra-cognitive` | Cognitive | Persona/directive/heuristic YAML loader + prompt weaver |
@@ -64,7 +64,7 @@ navra-auth              (protocol, NO ML deps)
     ↓
 navra-safety            (auth + protocol + model, HAS ort/tokenizers)
 navra-safety-hooks      (safety + auth, hook pipeline, NO direct ML deps)
-navra-security          (facade: auth + safety-hooks)
+
 navra-mcp               (protocol + auth + model + safety, Module trait)
     ↓
 navra-core              (protocol + model + auth + safety-hooks + mcp)
