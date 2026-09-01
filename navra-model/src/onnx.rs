@@ -362,36 +362,52 @@ pub fn build_onnx_session(
 pub fn build_execution_providers(device: &Device) -> Vec<ort::ep::ExecutionProviderDispatch> {
     match device {
         Device::Cpu => vec![ort::ep::CPU::default().build()],
-        Device::OpenVino(ov_device) => {
-            let cache_dir = std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-                format!("{home}/.cache")
-            });
-            let ov_cache = format!("{cache_dir}/navra/openvino");
+        Device::OpenVino(_ov_device) => {
+            #[cfg(feature = "openvino")]
+            {
+                let cache_dir = std::env::var("XDG_CACHE_HOME").unwrap_or_else(|_| {
+                    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                    format!("{home}/.cache")
+                });
+                let ov_cache = format!("{cache_dir}/navra/openvino");
 
-            let device_type = match ov_device {
-                OpenVinoDevice::Auto => "AUTO",
-                OpenVinoDevice::Npu => "NPU",
-                OpenVinoDevice::Gpu => "GPU",
-                OpenVinoDevice::Hetero(spec) => {
-                    // Leak is fine: these are created once at startup.
-                    Box::leak(format!("HETERO:{spec}").into_boxed_str())
-                }
-            };
+                let device_type = match _ov_device {
+                    OpenVinoDevice::Auto => "AUTO",
+                    OpenVinoDevice::Npu => "NPU",
+                    OpenVinoDevice::Gpu => "GPU",
+                    OpenVinoDevice::Hetero(spec) => {
+                        // Leak is fine: these are created once at startup.
+                        Box::leak(format!("HETERO:{spec}").into_boxed_str())
+                    }
+                };
 
-            vec![
-                ort::ep::OpenVINO::default()
-                    .with_device_type(device_type)
-                    .with_cache_dir(&ov_cache)
-                    .build(),
-                ort::ep::CPU::default().build(),
-            ]
+                vec![
+                    ort::ep::OpenVINO::default()
+                        .with_device_type(device_type)
+                        .with_cache_dir(&ov_cache)
+                        .build(),
+                    ort::ep::CPU::default().build(),
+                ]
+            }
+            #[cfg(not(feature = "openvino"))]
+            {
+                tracing::warn!("OpenVINO device requested but navra-model was built without the 'openvino' feature — falling back to CPU");
+                vec![ort::ep::CPU::default().build()]
+            }
         }
         Device::Cuda => {
-            vec![
-                ort::ep::CUDA::default().build(),
-                ort::ep::CPU::default().build(),
-            ]
+            #[cfg(feature = "cuda")]
+            {
+                vec![
+                    ort::ep::CUDA::default().build(),
+                    ort::ep::CPU::default().build(),
+                ]
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                tracing::warn!("CUDA device requested but navra-model was built without the 'cuda' feature — falling back to CPU");
+                vec![ort::ep::CPU::default().build()]
+            }
         }
     }
 }
