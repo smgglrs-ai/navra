@@ -1268,40 +1268,24 @@ is not required — the traffic never traverses a network.
 
 ### Upstream HTTPS (rustls)
 
-Upstream MCP server connections support HTTPS out of the box via
-`rustls` with platform certificate verification. Use `https://`
-URLs directly:
+Upstream HTTP and SSE transports use `reqwest` with `rustls` for TLS.
+Standard HTTPS URLs work out of the box with platform certificate
+verification — no reverse proxy required.
+
+For enterprise scenarios, configure custom TLS per upstream:
 
 ```toml
 [[upstream]]
-name = "remote-tools"
+name = "internal-server"
 transport = "http"
-url = "https://remote-mcp-server.example.com/mcp"
-```
-
-For enterprise environments requiring custom CA bundles or mutual
-TLS (client certificates), configure the `[upstream.tls]` section:
-
-```toml
-[[upstream]]
-name = "corporate-server"
-transport = "http"
-url = "https://mcp.corp.internal/mcp"
+url = "https://mcp.internal.corp.com/mcp"
 
 [upstream.tls]
-ca_cert = "/etc/pki/tls/certs/corporate-ca.pem"
+ca_cert = "/etc/pki/tls/certs/corp-ca.pem"
 client_cert = "/etc/pki/tls/certs/navra-client.pem"
-client_key = "/etc/pki/tls/private/navra-client-key.pem"
+client_key = "/etc/pki/tls/private/navra-client.key"
+# danger_skip_verify = true  # development only
 ```
-
-When `[upstream.tls]` is absent, the default reqwest client handles
-TLS with standard platform-trusted CAs. The `danger_skip_verify`
-flag disables certificate validation for development only.
-
-A reverse proxy (nginx, Caddy, Envoy) is still useful for advanced
-scenarios like rate limiting, WAF, or when the upstream requires
-protocol translation — but it is no longer required for basic
-HTTPS connectivity.
 
 ## Configuration
 
