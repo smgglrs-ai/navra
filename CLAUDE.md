@@ -146,7 +146,7 @@ Prerequisites:
 ```bash
 # Build with OTel trace export
 just build
-# Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 navra serve
+# Then: OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 navra mcp serve
 ```
 
 Conventions:

@@ -1,6 +1,6 @@
 # Testing
 
-navra has 2800+ tests across 23 crates: unit tests, integration
+navra has 2900+ tests across 25 crates: unit tests, integration
 tests, and end-to-end tests that spawn a real server process.
 
 ## Prerequisites
@@ -25,7 +25,7 @@ tests, and end-to-end tests that spawn a real server process.
 
   Without Ollama running, 11 of 12 e2e tests pass. Only the chat
   completion proxy test requires it. All unit and integration tests
-  (2700+) pass without Ollama.
+  (2900+) pass without Ollama.
 
 ## Running tests
 
@@ -98,11 +98,11 @@ Run `cargo test --workspace --no-fail-fast` for exact numbers.
 
 Totals exclude doc-tests (~15). Full `cargo test --workspace` runs 2800+.
 
-Crates removed since previous counts: navra-tools-file (replaced by
-upstream Filesystem MCP), navra-tools-git (replaced by upstream git
-MCP server), navra-tools-exec, navra-tools-gitlab. New crates:
-navra-auth (split from navra-security), navra-safety-hooks,
-navra-openapi, navra-mcp, navra-model-server.
+Counts above are from initial porting. Run `just test-workspace` for
+current numbers (2924 as of 2026-09-01). Crates added since this
+table: navra-kv-cache (34 tests), navra-tui (46 tests). Crates
+removed: navra-tools-file, navra-tools-git, navra-tools-exec,
+navra-tools-gitlab (replaced by upstream MCP servers).
 
 ## Known caveats
 

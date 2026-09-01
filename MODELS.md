@@ -738,7 +738,7 @@ router auto-selects. Explicit `device` overrides the router.
 **Startup log examples:**
 
 ```
-$ navra serve   # desktop
+$ navra mcp serve   # desktop
 [INFO] Detected: NvidiaGpu { vram: 32GB, cc: 120, nvfp4: true }
 [INFO] guardian-hap → CPU (in-process ONNX, small encoder)
 [INFO] embeddings  → CPU (in-process ONNX, small encoder)
@@ -750,7 +750,7 @@ $ navra serve   # desktop
 ```
 
 ```
-$ navra serve   # laptop
+$ navra mcp serve   # laptop
 [INFO] Detected: IntelCoreUltra { npu: 47 TOPS, igpu: Arc 140V }
 [INFO] guardian-hap → NPU (OpenVINO, small encoder)
 [INFO] embeddings  → NPU (OpenVINO, small encoder)
@@ -1568,9 +1568,8 @@ navra-security          (protocol + model)
     ↓
 navra-core              (protocol + model + security)
     ↓
-navra-tools-*  ─────┐
-navra-rag      ─────┼── (core only)
-navra-modal-*  ─────┘
+navra-rag      ─────┐
+navra-modal-*  ─────┘── (core only)
     ↓
 navra-server            (all + hub + runtime)
 ```
