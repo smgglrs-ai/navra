@@ -146,7 +146,206 @@ a {
   }
 }
 
-// Feature cards
+// Pillar chips in hero
+.hero-pillars {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+  @media (max-width: 768px) { justify-content: center; }
+}
+.pillar-chip {
+  display: inline-block;
+  padding: 0.3rem 0.85rem;
+  background: rgba($navra-ice, 0.12);
+  border: 1px solid rgba($navra-ice, 0.35);
+  border-radius: 20px;
+  color: $navra-ice;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+// Verification badges
+.hero-badges {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  @media (max-width: 768px) { justify-content: center; }
+}
+.badge-verify {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  background: rgba(#27C93F, 0.1);
+  border: 1px solid rgba(#27C93F, 0.3);
+  border-radius: 4px;
+  color: #7BE0AD;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 0.02em;
+}
+
+// Terminal demo
+.section-demo {
+  background: darken($navra-deep, 4%);
+  padding: 3rem 0;
+}
+.demo-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+.demo-terminal {
+  background: #0A1628;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  margin-bottom: 1.75rem;
+}
+.terminal-header {
+  background: #162035;
+  padding: 0.6rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.terminal-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  &.red { background: #FF5F56; }
+  &.yellow { background: #FFBD2E; }
+  &.green { background: #27C93F; }
+}
+.terminal-title {
+  margin-left: 0.5rem;
+  color: #6B8AAD;
+  font-size: 0.78rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.terminal-body {
+  padding: 1rem 1.25rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82rem;
+  line-height: 1.8;
+}
+.term-line { color: #8BAEC8; }
+.term-prompt { color: #6B8AAD; }
+.term-cmd { color: #7BE0AD; font-weight: 600; }
+.term-arg { color: #C8DDF0; }
+.term-deny { color: #FF8A80; }
+.term-ok { color: #7BE0AD; }
+.term-audit { color: #FFBD2E; }
+.term-dim { color: #4A6580; }
+.term-badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-right: 0.3rem;
+  &.deny { background: rgba(#FF5F56, 0.2); color: #FF8A80; }
+  &.ok { background: rgba(#27C93F, 0.2); color: #7BE0AD; }
+  &.audit { background: rgba(#FFBD2E, 0.15); color: #FFBD2E; }
+}
+.terminal-body code {
+  background: rgba(white, 0.08) !important;
+  color: #C8DDF0;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+.demo-quickstart {
+  text-align: center;
+  margin-top: 0.5rem;
+}
+.demo-label {
+  color: $navra-ice;
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.01em;
+}
+.demo-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #0A1628;
+  border: 1.5px solid rgba($navra-ice, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  code {
+    background: none !important;
+    color: #7BE0AD;
+    font-size: 0.92rem;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+}
+.demo-prompt {
+  color: #6B8AAD;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.92rem;
+  user-select: none;
+}
+.demo-sub {
+  color: #6B8AAD;
+  font-size: 0.82rem;
+  margin-top: 0.6rem;
+}
+
+// Three-column pillars
+.section-pillars {
+  padding: 4rem 0 3.5rem;
+}
+.pillars-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  @media (max-width: 900px) { grid-template-columns: 1fr; }
+}
+.pillar {
+  border-top: 3px solid $navra-steel;
+  padding-top: 1.5rem;
+}
+.pillar-title {
+  color: $navra-steel;
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+.pillar-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  li {
+    padding: 0.4rem 0;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    color: $navra-slate;
+    border-bottom: 1px solid rgba($navra-steel, 0.08);
+    &:last-child { border-bottom: none; }
+    strong { color: $navra-deep; font-weight: 600; }
+  }
+}
+
+// Dark mode for new sections
+body.dark {
+  .badge-verify { background: rgba(white, 0.08); border-color: rgba(white, 0.15); }
+  .section-demo { background: darken($navra-dark-bg, 2%); }
+  .demo-code { background: darken($navra-dark-bg, 3%); border-color: rgba($navra-ice, 0.2); }
+  .pillar { border-top-color: $navra-ice; }
+  .pillar-title { color: $navra-ice; }
+  .pillar-list li { color: $navra-dark-text; border-bottom-color: rgba($navra-ice, 0.08); }
+  .pillar-list li strong { color: white; }
+}
+
+// Legacy feature cards (kept for subsection pages)
 .section-features {
   padding: 4rem 0 3.5rem;
 }
