@@ -387,10 +387,11 @@ impl ModelBackend for OpenAiBackend {
                 .map_err(|e| ModelError::Api(format!("failed to read audio: {e}")))?;
 
             // OpenAI PCM format: 24kHz mono 16-bit signed little-endian
-            let samples: Vec<f32> = bytes
-                .chunks_exact(2)
+            let (chunks, _remainder) = bytes.as_chunks::<2>();
+            let samples: Vec<f32> = chunks
+                .iter()
                 .map(|chunk| {
-                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    let sample = i16::from_le_bytes(*chunk);
                     sample as f32 / 32768.0
                 })
                 .collect();
