@@ -153,6 +153,11 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "10000")]
         slow_tool_ms: u64,
     },
+    /// Manage cognitive personas
+    Persona {
+        #[command(subcommand)]
+        action: PersonaAction,
+    },
     /// Manage flows, triggers, and flow execution
     Flow {
         #[command(subcommand)]
@@ -593,6 +598,24 @@ pub(crate) enum FlowAction {
     Trigger {
         #[command(subcommand)]
         action: TriggerAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PersonaAction {
+    /// Create a new persona from a starter template
+    New {
+        /// Persona name (snake_case)
+        name: String,
+        /// Output directory (default: cognitive_core from config)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+    /// List available personas
+    List {
+        /// Path to cognitive core directory
+        #[arg(long)]
+        cognitive_core: Option<String>,
     },
 }
 
