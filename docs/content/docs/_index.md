@@ -7,6 +7,7 @@ template = "docs/section.html"
 
 [extra]
 toc = false
+no_card_list = true
 +++
 
 ## Use navra
