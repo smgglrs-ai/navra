@@ -80,8 +80,9 @@ leakage, exfiltration URLs), YAML policy model (default_action: deny),
 DID-based identity, and fail-closed defaults. Broader AGT base includes
 execution rings (4 privilege levels), trust decay (0-1000 score),
 Ed25519 plugin signing, saga orchestration, circuit breakers, and
-kill switches. Upstream tool scanning (9m) is our most critical gap
-identified from this comparison.
+kill switches. **Gap closed**: navra now has `ToolScanner` (8 threat
+categories matching AGT's) and `SupplyChainGuardHook` (argument
+scanning for download-and-execute, reverse shells, env hijacking).
 
 Reference: Microsoft AGT (github.com/microsoft/agent-governance-toolkit),
 AGT architecture deep dive (TechCommunity blog, April 2026),
@@ -116,8 +117,9 @@ what IFC taint tracking addresses — navra's gateway-level enforcement
 prevents contaminated context from propagating across tool chains.
 
 navra coverage: IFC addresses #2/#3/#5, deny-wins ACLs address #3,
-safety hooks address #6, NAVRA-074 addresses #7. Gap: supply chain
-scanning (#1) — see AGT MCP Extensions for prior art.
+safety hooks address #6, NAVRA-074 addresses #7. Supply chain
+scanning (#1) closed: `ToolScanner` (8 threat categories) +
+`SupplyChainGuardHook` (argument scanning).
 
 Reference: https://www.microsoft.com/en-us/security/blog/2026/06/04/updating-taxonomy-failure-modes-agentic-ai-systems-year-red-teaming-taught-us/
 
