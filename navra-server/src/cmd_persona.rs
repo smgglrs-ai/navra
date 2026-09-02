@@ -8,10 +8,10 @@ fn resolve_cognitive_core(flag: Option<&str>) -> PathBuf {
         return PathBuf::from(crate::util::expand_tilde(path));
     }
     // Try loading config to get the cognitive_core path
-    if let Ok(cfg) = crate::config::Config::load(None) {
-        if let Some(ref cc) = cfg.cognitive_core {
-            return PathBuf::from(crate::util::expand_tilde(cc));
-        }
+    if let Ok(cfg) = crate::config::Config::load(None)
+        && let Some(ref cc) = cfg.cognitive_core
+    {
+        return PathBuf::from(crate::util::expand_tilde(cc));
     }
     // Default
     dirs::config_dir()
@@ -100,10 +100,7 @@ pub(crate) fn persona_list(cognitive_core_flag: Option<&str>) -> anyhow::Result<
     }
 
     // Print header
-    println!(
-        "{:<24} {:<26} {}",
-        "Name", "Display Name", "Mandate (first line)"
-    );
+    println!("{:<24} {:<26} Mandate (first line)", "Name", "Display Name");
     println!(
         "{:<24} {:<26} {}",
         "\u{2500}".repeat(20),
