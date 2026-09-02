@@ -1,10 +1,9 @@
-name: Deploy Site + Docs
+name: Deploy Docs
 
 on:
   push:
     branches: [main]
     paths:
-      - 'site/**'
       - 'docs/**'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
@@ -26,40 +25,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: site/package-lock.json
-
       - name: Setup Zola
         uses: taiki-e/install-action@v2
         with:
           tool: zola@0.22.1
 
-      # Build Astro marketing site
-      - name: Build marketing site
-        working-directory: site
-        run: npm ci && npm run build
-
-      # Build Zola docs
       - name: Build documentation
         working-directory: docs
         run: zola build --base-url "https://smgglrs-ai.github.io/navra"
 
-      # Merge: marketing site at / , docs at /docs/
-      # Zola content lives under content/docs/ so output is public/docs/*
-      - name: Merge outputs
-        run: |
-          mkdir -p _site
-          cp -r docs/public/* _site/
-          cp -r site/dist/* _site/
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: docs/public
 
   deploy:
     name: Deploy
