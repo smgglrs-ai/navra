@@ -116,7 +116,7 @@ impl ModelTransport for HuggingFaceTransport {
             // Stream to a temp file, then read back.
             // This keeps the in-memory pull() API but avoids holding
             // the entire response in reqwest's buffer.
-            let tmp = tempfile::NamedTempFile::new().map_err(|e| HubError::Io(e))?;
+            let tmp = tempfile::NamedTempFile::new().map_err(HubError::Io)?;
             let tmp_path = tmp.path().to_path_buf();
 
             self.pull_to_file(uri, &tmp_path, None).await?;
@@ -138,13 +138,13 @@ impl ModelTransport for HuggingFaceTransport {
             let filename = self.resolve_filename(org, repo, specific_file).await?;
 
             // Ensure parent directory exists
-            if let Some(parent) = dest.parent() {
-                if !parent.exists() {
-                    return Err(HubError::Io(std::io::Error::new(
-                        std::io::ErrorKind::NotFound,
-                        format!("parent directory does not exist: {}", parent.display()),
-                    )));
-                }
+            if let Some(parent) = dest.parent()
+                && !parent.exists()
+            {
+                return Err(HubError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("parent directory does not exist: {}", parent.display()),
+                )));
             }
 
             let download_url = format!("{}/{org}/{repo}/resolve/main/{filename}", self.api_url);

@@ -68,7 +68,7 @@ impl SsrfFilter {
             }
         }
 
-        if let Some(finding) = self.check_host_ip(&host, start, url.len()) {
+        if let Some(finding) = self.check_host_ip(host, start, url.len()) {
             findings.push(finding);
         }
 
@@ -86,15 +86,15 @@ impl SsrfFilter {
         let host_lower = host.to_ascii_lowercase();
         if host_lower.starts_with("::ffff:") {
             let mapped = &host[7..];
-            if let Some(octets) = normalize_ip(mapped) {
-                if is_private_ipv4(octets) {
-                    return Some(Finding {
-                        start,
-                        end: start + url_len,
-                        category: "ssrf-encoded-ip".to_string(),
-                        confidence: 1.0,
-                    });
-                }
+            if let Some(octets) = normalize_ip(mapped)
+                && is_private_ipv4(octets)
+            {
+                return Some(Finding {
+                    start,
+                    end: start + url_len,
+                    category: "ssrf-encoded-ip".to_string(),
+                    confidence: 1.0,
+                });
             }
             // ::ffff:7f00:1 style
             if is_ipv6_mapped_hex_private(&host_lower) {
@@ -108,53 +108,53 @@ impl SsrfFilter {
         }
 
         // Check for hex integer IP (0x7f000001)
-        if host_lower.starts_with("0x") && !host.contains('.') {
-            if let Some(octets) = decode_hex_integer(&host_lower) {
-                if is_private_ipv4(octets) {
-                    return Some(Finding {
-                        start,
-                        end: start + url_len,
-                        category: "ssrf-encoded-ip".to_string(),
-                        confidence: 1.0,
-                    });
-                }
-            }
+        if host_lower.starts_with("0x")
+            && !host.contains('.')
+            && let Some(octets) = decode_hex_integer(&host_lower)
+            && is_private_ipv4(octets)
+        {
+            return Some(Finding {
+                start,
+                end: start + url_len,
+                category: "ssrf-encoded-ip".to_string(),
+                confidence: 1.0,
+            });
         }
 
         // Check for decimal integer IP (2130706433)
-        if host.chars().all(|c| c.is_ascii_digit()) && host.len() >= 7 {
-            if let Ok(val) = host.parse::<u64>() {
-                if val <= 0xFFFFFFFF {
-                    let octets = u32_to_octets(val as u32);
-                    if is_private_ipv4(octets) {
-                        return Some(Finding {
-                            start,
-                            end: start + url_len,
-                            category: "ssrf-encoded-ip".to_string(),
-                            confidence: 1.0,
-                        });
-                    }
-                }
+        if host.chars().all(|c| c.is_ascii_digit())
+            && host.len() >= 7
+            && let Ok(val) = host.parse::<u64>()
+            && val <= 0xFFFFFFFF
+        {
+            let octets = u32_to_octets(val as u32);
+            if is_private_ipv4(octets) {
+                return Some(Finding {
+                    start,
+                    end: start + url_len,
+                    category: "ssrf-encoded-ip".to_string(),
+                    confidence: 1.0,
+                });
             }
         }
 
         // Dotted notation (standard, hex octets, octal octets, mixed)
-        if let Some(octets) = normalize_ip(host) {
-            if is_private_ipv4(octets) {
-                let category = if is_cloud_metadata_ip(octets) {
-                    "ssrf-metadata"
-                } else if has_encoded_octets(host) {
-                    "ssrf-encoded-ip"
-                } else {
-                    "ssrf-private-ip"
-                };
-                return Some(Finding {
-                    start,
-                    end: start + url_len,
-                    category: category.to_string(),
-                    confidence: 1.0,
-                });
-            }
+        if let Some(octets) = normalize_ip(host)
+            && is_private_ipv4(octets)
+        {
+            let category = if is_cloud_metadata_ip(octets) {
+                "ssrf-metadata"
+            } else if has_encoded_octets(host) {
+                "ssrf-encoded-ip"
+            } else {
+                "ssrf-private-ip"
+            };
+            return Some(Finding {
+                start,
+                end: start + url_len,
+                category: category.to_string(),
+                confidence: 1.0,
+            });
         }
 
         None
@@ -175,15 +175,15 @@ impl SsrfFilter {
         // IPv6-mapped IPv4: ::ffff:127.0.0.1 or ::ffff:7f00:1
         if addr_lower.starts_with("::ffff:") {
             let mapped = &addr[7..];
-            if let Some(octets) = normalize_ip(mapped) {
-                if is_private_ipv4(octets) {
-                    return Some(Finding {
-                        start,
-                        end: start + url_len,
-                        category: "ssrf-encoded-ip".to_string(),
-                        confidence: 1.0,
-                    });
-                }
+            if let Some(octets) = normalize_ip(mapped)
+                && is_private_ipv4(octets)
+            {
+                return Some(Finding {
+                    start,
+                    end: start + url_len,
+                    category: "ssrf-encoded-ip".to_string(),
+                    confidence: 1.0,
+                });
             }
             if is_ipv6_mapped_hex_private(&addr_lower) {
                 return Some(Finding {
@@ -256,15 +256,15 @@ impl ContentFilter for SsrfFilter {
                 continue;
             }
             let host = m.as_str().split(':').next().unwrap_or(m.as_str());
-            if let Some(octets) = normalize_ip(host) {
-                if is_cloud_metadata_ip(octets) {
-                    findings.push(Finding {
-                        start: m.start(),
-                        end: m.end(),
-                        category: "ssrf-metadata".to_string(),
-                        confidence: 1.0,
-                    });
-                }
+            if let Some(octets) = normalize_ip(host)
+                && is_cloud_metadata_ip(octets)
+            {
+                findings.push(Finding {
+                    start: m.start(),
+                    end: m.end(),
+                    category: "ssrf-metadata".to_string(),
+                    confidence: 1.0,
+                });
             }
         }
 
@@ -293,15 +293,15 @@ fn extract_host(url: &str) -> &str {
     };
 
     // Handle bracketed IPv6
-    if after_userinfo.starts_with('[') {
-        if let Some(end) = after_userinfo.find(']') {
-            return &after_userinfo[..end + 1];
-        }
+    if after_userinfo.starts_with('[')
+        && let Some(end) = after_userinfo.find(']')
+    {
+        return &after_userinfo[..end + 1];
     }
 
     // Take host up to port, path, or end
     let end = after_userinfo
-        .find(|c: char| c == '/' || c == '?' || c == '#')
+        .find(['/', '?', '#'])
         .unwrap_or(after_userinfo.len());
     let host_port = &after_userinfo[..end];
 
@@ -337,8 +337,7 @@ fn parse_octet(s: &str) -> Option<u8> {
     let s_lower = s.to_ascii_lowercase();
 
     // Hex: 0x...
-    if s_lower.starts_with("0x") {
-        let hex = &s_lower[2..];
+    if let Some(hex) = s_lower.strip_prefix("0x") {
         if hex.is_empty() {
             return None;
         }
