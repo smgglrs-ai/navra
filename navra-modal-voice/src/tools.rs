@@ -357,10 +357,11 @@ fn read_wav_file(path: &std::path::Path) -> Result<Vec<f32>, String> {
             }
 
             // Convert 16-bit PCM to f32
-            let mut samples: Vec<f32> = audio_data
-                .chunks_exact(2)
+            let (chunks, _) = audio_data.as_chunks::<2>();
+            let mut samples: Vec<f32> = chunks
+                .iter()
                 .map(|chunk| {
-                    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    let sample = i16::from_le_bytes(*chunk);
                     sample as f32 / 32768.0
                 })
                 .collect();
