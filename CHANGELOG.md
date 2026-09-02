@@ -2,7 +2,7 @@
 
 All notable changes to navra are documented here.
 
-## [0.4.0] - 2026-09-01
+## [0.4.0] - 2026-09-02
 
 ### Added
 
@@ -121,6 +121,7 @@ All notable changes to navra are documented here.
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
 - Update CHANGELOG.md for v0.4.0
+- Update CHANGELOG.md for v0.4.0
 
 ### Fixed
 
@@ -157,6 +158,9 @@ All notable changes to navra are documented here.
 - **ci**: Set CROSS_CUSTOM_TOOLCHAIN for system Rust, fix clippy as_chunks lint
 - **ci**: Split linux builds — x86_64 in Fedora container, aarch64 on bare runner with cross
 - **ci**: Use native ARM runner for aarch64 — same Fedora container, no cross
+- Resolve clippy warnings for Rust 1.98 (collapsible if, needless borrow, manual strip)
+- Replace remaining chunks_exact with as_chunks (clippy 1.98)
+- Resolve all clippy 1.98 warnings (sort_by_key, field_reassign, useless format)
 
 ### Maintenance
 
@@ -173,6 +177,7 @@ All notable changes to navra are documented here.
 - Mark NAVRA-162 done
 - Mark NAVRA-170 done
 - Bump to v0.4.0
+- Bump MSRV to 1.98 (as_chunks, edition 2024, clippy 1.98 lints)
 
 ### Merge
 
