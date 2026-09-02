@@ -76,10 +76,7 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
         registry_entries.push(serde_json::json!({
             "server": {
                 "name": state.server.server_info().name,
-                "description": format!(
-                    "{}",
-                    discovery.description.as_deref().unwrap_or("navra MCP gateway")
-                ),
+                "description": discovery.description.as_deref().unwrap_or("navra MCP gateway"),
                 "version": state.server.server_info().version,
                 "remotes": [{
                     "type": "streamable-http",

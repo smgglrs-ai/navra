@@ -127,8 +127,10 @@ pub(crate) fn wire_auth(
                      registering deny-all fallback so anonymous access \
                      is restricted by default."
                 );
-                let mut fallback = config::PermissionSet::default();
-                fallback.default_tool_policy = "deny".to_string();
+                let fallback = config::PermissionSet {
+                    default_tool_policy: "deny".to_string(),
+                    ..Default::default()
+                };
                 cfg.permissions.insert("readonly".to_string(), fallback);
             }
 

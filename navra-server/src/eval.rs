@@ -576,7 +576,7 @@ pub(crate) fn run_report(files: &[String], output_path: Option<&str>) -> anyhow:
             md.push_str("| Category | Count |\n");
             md.push_str("|----------|------:|\n");
             let mut sorted: Vec<_> = obj.iter().collect();
-            sorted.sort_by(|a, b| b.1.as_u64().unwrap_or(0).cmp(&a.1.as_u64().unwrap_or(0)));
+            sorted.sort_by_key(|&(_, v)| std::cmp::Reverse(v.as_u64().unwrap_or(0)));
             for (cat, count) in sorted {
                 md.push_str(&format!("| {} | {} |\n", cat, count.as_u64().unwrap_or(0)));
             }
