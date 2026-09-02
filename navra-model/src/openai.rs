@@ -693,10 +693,11 @@ mod tests {
 
         // Read back the samples from the data section
         let data_start = 44;
-        let decoded: Vec<f32> = wav[data_start..]
-            .chunks_exact(2)
+        let (chunks, _) = wav[data_start..].as_chunks::<2>();
+        let decoded: Vec<f32> = chunks
+            .iter()
             .map(|chunk| {
-                let s = i16::from_le_bytes([chunk[0], chunk[1]]);
+                let s = i16::from_le_bytes(*chunk);
                 s as f32 / 32768.0
             })
             .collect();
