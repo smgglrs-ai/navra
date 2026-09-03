@@ -2,6 +2,14 @@
 
 All notable changes to navra are documented here.
 
+## [0.5.0] - 2026-09-03
+
+### Added
+
+- **agent-spawn**: Kubernetes agent sandbox spawn path — agents can be spawned as `agents.x-k8s.io/v1alpha1` Sandbox CRs on a Kubernetes cluster
+- **config**: `kubernetes_namespace`, `kubernetes_agent_template`, `kubernetes_context`, `kubernetes_gateway_service` server config fields
+- **agent-spawn**: Dispatch priority: OpenShell > Kubernetes > Podman > in-process
+
 ## [0.4.0] - 2026-09-02
 
 ### Added
