@@ -1,6 +1,15 @@
 use crate::team_tools::{AuditLogSink, DEFAULT_OPERATIONS, TeamRegistry};
 use navra_core::identity::CapSigner;
 
+/// Configuration for Kubernetes agent sandboxing.
+#[derive(Debug, Clone)]
+pub struct KubernetesAgentConfig {
+    pub namespace: String,
+    pub template: String,
+    pub context: Option<String>,
+    pub gateway_service: String,
+}
+
 /// Context needed to spawn a teammate as a background agent task.
 pub struct TeammateSpawnContext {
     pub team_registry: std::sync::Arc<TeamRegistry>,
@@ -55,6 +64,8 @@ pub struct TeammateSpawnContext {
     pub compaction_trigger_ratio: Option<f32>,
     /// Enable SelfCompact flow-driven compression policy.
     pub compression_policy: bool,
+    /// Kubernetes agent sandbox config. When set, agents are spawned as Sandbox CRs.
+    pub kubernetes: Option<KubernetesAgentConfig>,
 }
 
 /// Check if Podman is available on this system.
@@ -847,6 +858,584 @@ fn spawn_openshell_agent(
     })
 }
 
+/// Sanitize a string into a valid Kubernetes resource name.
+///
+/// K8s names: lowercase alphanumeric and hyphens, max 63 chars,
+/// must start and end with an alphanumeric character.
+fn sanitize_k8s_name(prefix: &str, team_id: &str, teammate_id: &str) -> String {
+    let raw = format!("{prefix}-{team_id}-{teammate_id}");
+    let sanitized: String = raw
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    // Collapse consecutive hyphens
+    let mut result = String::with_capacity(sanitized.len());
+    let mut prev_hyphen = false;
+    for c in sanitized.chars() {
+        if c == '-' {
+            if !prev_hyphen {
+                result.push(c);
+            }
+            prev_hyphen = true;
+        } else {
+            result.push(c);
+            prev_hyphen = false;
+        }
+    }
+    // Strip leading/trailing hyphens and truncate
+    let trimmed = result.trim_matches('-');
+    if trimmed.len() > 63 {
+        let truncated = &trimmed[..63];
+        truncated.trim_end_matches('-').to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn kubectl_base(k8s: &KubernetesAgentConfig) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new("kubectl");
+    if let Some(ref ctx) = k8s.context {
+        cmd.arg("--context").arg(ctx);
+    }
+    cmd.args(["-n", &k8s.namespace]);
+    cmd
+}
+
+fn build_agent_sandbox_manifest(
+    k8s: &KubernetesAgentConfig,
+    name: &str,
+    agent_image: &str,
+    env: &std::collections::HashMap<String, String>,
+    container_memory: &str,
+    container_cpus: &str,
+    team_id: &str,
+    teammate_id: &str,
+) -> serde_json::Value {
+    let env_array: Vec<serde_json::Value> = env
+        .iter()
+        .map(|(k, v)| serde_json::json!({"name": k, "value": v}))
+        .collect();
+
+    serde_json::json!({
+        "apiVersion": "agents.x-k8s.io/v1alpha1",
+        "kind": "Sandbox",
+        "metadata": {
+            "name": name,
+            "namespace": k8s.namespace,
+            "labels": {
+                "app.kubernetes.io/managed-by": "navra",
+                "navra.io/component": "agent",
+                "navra.io/team": team_id,
+                "navra.io/agent": teammate_id
+            }
+        },
+        "spec": {
+            "templateRef": {
+                "name": k8s.template
+            },
+            "image": agent_image,
+            "resources": {
+                "limits": {
+                    "memory": container_memory,
+                    "cpu": container_cpus
+                }
+            },
+            "env": env_array
+        }
+    })
+}
+
+/// Spawn a teammate agent as a Kubernetes Sandbox CR.
+///
+/// Creates an `agents.x-k8s.io/v1alpha1` Sandbox resource that runs the
+/// `navra-agent` binary. The agent communicates with the navra gateway
+/// via in-cluster Service DNS and receives a scoped capability token.
+///
+/// The SandboxTemplate referenced by `kubernetes_agent_template` determines
+/// the compute driver (OpenShell microVM, kata-containers, or plain pod).
+fn spawn_kubernetes_agent(
+    ctx: &TeammateSpawnContext,
+    team_id: &str,
+    teammate_id: &str,
+    message: &str,
+    max_iterations: usize,
+    timeout_secs: u64,
+    _generates_tasks: bool,
+) -> tokio::task::JoinHandle<()> {
+    let reg = std::sync::Arc::clone(&ctx.team_registry);
+    let signer = std::sync::Arc::clone(&ctx.signer);
+    let root_payload = ctx.root_payload.clone();
+    let model_server_url = ctx.model_server_url.clone();
+    let agent_image = ctx.agent_image.clone();
+    let container_memory = ctx.container_memory.clone();
+    let container_cpus = ctx.container_cpus.clone();
+    let gpu_semaphore = std::sync::Arc::clone(&ctx.gpu_semaphore);
+    let audit_log = ctx.audit_log.clone();
+    let k8s = ctx.kubernetes.clone().unwrap();
+    let team_id = team_id.to_string();
+    let teammate_id = teammate_id.to_string();
+    let message = message.to_string();
+
+    tokio::spawn(async move {
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        let timeout_reg = reg.clone();
+        let timeout_team = team_id.clone();
+        let timeout_task = teammate_id.clone();
+        let timeout_k8s = k8s.clone();
+
+        let result = tokio::time::timeout(deadline, async {
+            let _permit = gpu_semaphore.acquire().await.unwrap();
+
+            // Build scoped capability token
+            let (tm_ops, tm_tools, tm_persona, teammate_model) = {
+                let teams = reg.teams.lock().unwrap_or_else(|e| e.into_inner());
+                teams
+                    .get(&team_id)
+                    .and_then(|t| t.teammates.get(&teammate_id))
+                    .map(|tm| {
+                        (
+                            tm.operations.clone(),
+                            tm.tools.clone(),
+                            tm.persona.clone(),
+                            tm.model.clone(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        let fallback_ops: Vec<String> =
+                            DEFAULT_OPERATIONS.iter().map(|s| s.to_string()).collect();
+                        let fallback_tools = reg.default_tools_for_operations(&fallback_ops);
+                        (fallback_ops, fallback_tools, None, "auto".to_string())
+                    })
+            };
+
+            let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            let token = if let Some(ref root) = root_payload {
+                match navra_core::auth::capability::build_delegated_payload(
+                    root,
+                    &did,
+                    tm_ops,
+                    tm_tools,
+                    2,
+                    timeout_secs,
+                ) {
+                    Ok(payload) => {
+                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
+                        {
+                            Ok(t) => t,
+                            Err(e) => {
+                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        reg.set_failed(
+                            &team_id,
+                            &teammate_id,
+                            format!("Token delegation error: {e}"),
+                        );
+                        return;
+                    }
+                }
+            } else {
+                let cap = navra_core::auth::capability::CapabilitySet {
+                    paths: vec!["**".to_string()],
+                    operations: tm_ops,
+                    tools: tm_tools,
+                    credentials: vec![],
+                };
+                let payload = navra_core::auth::capability::build_payload(
+                    signer.did(),
+                    &did,
+                    cap,
+                    2,
+                    timeout_secs,
+                );
+                match navra_core::auth::capability::encode_token(&payload, signer.as_ref()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
+                        return;
+                    }
+                }
+            };
+
+            // Resolve model
+            let mut model = teammate_model;
+            if model == "auto" {
+                if let Some(selected) = crate::model_selection::select_model_for_task(
+                    &reg.model_cards,
+                    tm_persona.as_deref(),
+                    &message,
+                ) {
+                    model = selected;
+                } else {
+                    model = "granite3.3:8b".to_string();
+                }
+            }
+            if let Some(bare) = model.strip_prefix("ollama://") {
+                model = bare.to_string();
+            }
+
+            // In-cluster gateway URL via K8s Service DNS
+            let gateway_url = format!(
+                "http://{}.{}.svc.cluster.local:9315/mcp",
+                k8s.gateway_service, k8s.namespace
+            );
+
+            // Model endpoint: use configured model server URL or gateway's /v1
+            let model_endpoint = model_server_url
+                .clone()
+                .unwrap_or_else(|| {
+                    format!(
+                        "http://{}.{}.svc.cluster.local:9315/v1",
+                        k8s.gateway_service, k8s.namespace
+                    )
+                });
+
+            let sandbox_name = sanitize_k8s_name("navra-agent", &team_id, &teammate_id);
+
+            reg.set_resolved_model(&team_id, &teammate_id, &model);
+            eprintln!(
+                "  [kubernetes] {} → model: {}, sandbox: {}",
+                teammate_id, model, sandbox_name
+            );
+
+            // Build env vars
+            let mut env = std::collections::HashMap::new();
+            env.insert("NAVRA_ENDPOINT".to_string(), gateway_url);
+            env.insert("NAVRA_TOKEN".to_string(), token);
+            env.insert("NAVRA_MODEL_ENDPOINT".to_string(), model_endpoint);
+            env.insert("NAVRA_MODEL_NAME".to_string(), model.clone());
+            env.insert("NAVRA_TASK".to_string(), message.clone());
+            env.insert(
+                "NAVRA_MAX_ITERATIONS".to_string(),
+                max_iterations.to_string(),
+            );
+            if let Some(ref name) = tm_persona {
+                env.insert("NAVRA_PERSONA".to_string(), name.clone());
+                env.insert(
+                    "NAVRA_COGNITIVE_CORE".to_string(),
+                    "/cognitive_core".to_string(),
+                );
+            }
+
+            // Build and apply the Sandbox manifest
+            let manifest = build_agent_sandbox_manifest(
+                &k8s,
+                &sandbox_name,
+                &agent_image,
+                &env,
+                &container_memory,
+                &container_cpus,
+                &team_id,
+                &teammate_id,
+            );
+
+            let manifest_json = match serde_json::to_string(&manifest) {
+                Ok(j) => j,
+                Err(e) => {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("Manifest serialization error: {e}"),
+                    );
+                    return;
+                }
+            };
+
+            // kubectl apply -f -
+            let mut apply_cmd = kubectl_base(&k8s);
+            apply_cmd.args(["apply", "-f", "-"]);
+            apply_cmd.stdin(std::process::Stdio::piped());
+            apply_cmd.stdout(std::process::Stdio::piped());
+            apply_cmd.stderr(std::process::Stdio::piped());
+
+            let mut child = match apply_cmd.spawn() {
+                Ok(c) => c,
+                Err(e) => {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("kubectl spawn error: {e}"),
+                    );
+                    return;
+                }
+            };
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use tokio::io::AsyncWriteExt;
+                if let Err(e) = stdin.write_all(manifest_json.as_bytes()).await {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("kubectl stdin error: {e}"),
+                    );
+                    return;
+                }
+            }
+
+            let apply_output = match child.wait_with_output().await {
+                Ok(o) => o,
+                Err(e) => {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("kubectl wait error: {e}"),
+                    );
+                    return;
+                }
+            };
+
+            if !apply_output.status.success() {
+                let stderr = String::from_utf8_lossy(&apply_output.stderr);
+                reg.set_failed(
+                    &team_id,
+                    &teammate_id,
+                    format!("kubectl apply failed: {stderr}"),
+                );
+                return;
+            }
+
+            tracing::info!(
+                team = %team_id, teammate = %teammate_id,
+                sandbox = %sandbox_name,
+                "Kubernetes agent sandbox created"
+            );
+
+            // Wait for sandbox to be ready
+            let mut wait_cmd = kubectl_base(&k8s);
+            wait_cmd.args([
+                "wait",
+                "--for=condition=Ready",
+                &format!("sandbox/{sandbox_name}"),
+                &format!("--timeout={timeout_secs}s"),
+            ]);
+            let wait_output = match wait_cmd.output().await {
+                Ok(o) => o,
+                Err(e) => {
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("kubectl wait error: {e}"),
+                    );
+                    cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+                    return;
+                }
+            };
+
+            if !wait_output.status.success() {
+                let stderr = String::from_utf8_lossy(&wait_output.stderr);
+                reg.set_failed(
+                    &team_id,
+                    &teammate_id,
+                    format!("Sandbox not ready: {stderr}"),
+                );
+                cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+                return;
+            }
+
+            // Poll sandbox phase until Completed or Failed
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                let mut status_cmd = kubectl_base(&k8s);
+                status_cmd.args([
+                    "get",
+                    &format!("sandbox/{sandbox_name}"),
+                    "-o",
+                    "jsonpath={.status.phase}",
+                ]);
+                match status_cmd.output().await {
+                    Ok(output) => {
+                        let phase = String::from_utf8_lossy(&output.stdout);
+                        let phase = phase.trim();
+                        if phase.eq_ignore_ascii_case("Completed")
+                            || phase.eq_ignore_ascii_case("Succeeded")
+                            || phase.eq_ignore_ascii_case("Failed")
+                        {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+
+            // Collect output via kubectl logs
+            let mut logs_cmd = kubectl_base(&k8s);
+            logs_cmd.args(["logs", &format!("sandbox/{sandbox_name}")]);
+            let logs_output = logs_cmd.output().await;
+
+            match logs_output {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+
+                    let json_str = stdout.find('{').map(|i| &stdout[i..]).unwrap_or(&stdout);
+                    match serde_json::from_str::<serde_json::Value>(json_str) {
+                        Ok(result) => {
+                            let response = result
+                                .get("output")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let iterations = result
+                                .get("iterations")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0);
+                            let tokens_in = result
+                                .get("tokens_in")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+                            let tokens_out = result
+                                .get("tokens_out")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+
+                            let total_tokens = tokens_in + tokens_out;
+                            reg.add_tokens(&team_id, total_tokens);
+                            reg.set_agent_metrics(
+                                &team_id,
+                                &teammate_id,
+                                iterations as u32,
+                                total_tokens,
+                            );
+
+                            tracing::info!(
+                                team = %team_id, teammate = %teammate_id,
+                                sandbox = %sandbox_name,
+                                iterations = iterations,
+                                tokens = total_tokens,
+                                "Kubernetes teammate completed"
+                            );
+
+                            if let Some(ref audit) = audit_log {
+                                let now_ms = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis()
+                                    as i64;
+                                let run_id = format!("tm-{team_id}-{teammate_id}");
+                                let run = navra_memory::AuditRun {
+                                    run_id,
+                                    agent_id: teammate_id.clone(),
+                                    prompt: message.clone(),
+                                    persona: tm_persona.clone(),
+                                    model: model.clone(),
+                                    started_at: now_ms - (deadline.as_millis() as i64),
+                                    ended_at: Some(now_ms),
+                                    teammates: vec![],
+                                    final_report: Some(response.clone()),
+                                    exit_reason: Some("completed".to_string()),
+                                };
+                                let _ = audit.begin_run(&run);
+                            }
+
+                            // Prefer blackboard findings over stdout
+                            let bb_key = format!("findings/{}", teammate_id);
+                            let bb_output = reg.bb_read(&team_id, &bb_key).map(|e| e.value);
+                            let final_output = if let Some(bb) = bb_output {
+                                tracing::info!(
+                                    team = %team_id, teammate = %teammate_id,
+                                    "Using blackboard output (key: {bb_key})"
+                                );
+                                bb
+                            } else {
+                                response
+                            };
+                            reg.set_output(&team_id, &teammate_id, final_output);
+                        }
+                        Err(e) => {
+                            let bb_key = format!("findings/{}", teammate_id);
+                            if let Some(bb) = reg.bb_read(&team_id, &bb_key).map(|e| e.value) {
+                                tracing::info!(
+                                    team = %team_id, teammate = %teammate_id,
+                                    "Stdout not parseable but blackboard has findings"
+                                );
+                                reg.set_output(&team_id, &teammate_id, bb);
+                            } else {
+                                let raw = stdout.trim().to_string();
+                                if !raw.is_empty() {
+                                    tracing::warn!(
+                                        team = %team_id, teammate = %teammate_id,
+                                        error = %e,
+                                        "Could not parse K8s sandbox JSON output, using raw text"
+                                    );
+                                    reg.set_output(&team_id, &teammate_id, raw);
+                                } else {
+                                    reg.set_failed(
+                                        &team_id,
+                                        &teammate_id,
+                                        format!(
+                                            "Sandbox produced no output. stderr: {}",
+                                            stderr.trim()
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        team = %team_id, teammate = %teammate_id,
+                        error = %e,
+                        "Failed to collect K8s sandbox logs"
+                    );
+                    reg.set_failed(
+                        &team_id,
+                        &teammate_id,
+                        format!("kubectl logs error: {e}"),
+                    );
+                }
+            }
+
+            // Cleanup
+            cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+        })
+        .await;
+
+        if result.is_err() {
+            tracing::warn!(
+                team = %timeout_team, teammate = %timeout_task,
+                "Kubernetes teammate timed out after {timeout_secs}s"
+            );
+            let sandbox_name =
+                sanitize_k8s_name("navra-agent", &timeout_team, &timeout_task);
+            cleanup_k8s_sandbox(&timeout_k8s, &sandbox_name).await;
+            timeout_reg.set_failed(
+                &timeout_team,
+                &timeout_task,
+                format!("Timed out after {timeout_secs}s"),
+            );
+        }
+    })
+}
+
+async fn cleanup_k8s_sandbox(k8s: &KubernetesAgentConfig, name: &str) {
+    let mut cmd = kubectl_base(k8s);
+    cmd.args(["delete", "sandbox", name, "--ignore-not-found"]);
+    let output = cmd.output().await;
+    match output {
+        Ok(o) if !o.status.success() => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            tracing::warn!(sandbox = %name, error = %stderr, "Failed to delete K8s sandbox");
+        }
+        Err(e) => {
+            tracing::warn!(sandbox = %name, error = %e, "Failed to run kubectl delete");
+        }
+        _ => {
+            tracing::info!(sandbox = %name, "Kubernetes agent sandbox deleted");
+        }
+    }
+}
+
 /// Spawn a teammate agent in a background task.
 ///
 /// This is the shared logic used by team_message, flow_start, and
@@ -863,6 +1452,19 @@ pub fn spawn_teammate_agent(
     // OpenShell path: preferred when gateway is configured
     if ctx.openshell_gateway.is_some() {
         return spawn_openshell_agent(
+            ctx,
+            team_id,
+            teammate_id,
+            message,
+            max_iterations,
+            timeout_secs,
+            generates_tasks,
+        );
+    }
+
+    // Kubernetes path: spawn agent as a Sandbox CR
+    if ctx.kubernetes.is_some() {
+        return spawn_kubernetes_agent(
             ctx,
             team_id,
             teammate_id,
@@ -1258,4 +1860,154 @@ pub fn spawn_teammate_agent(
             );
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_k8s_config() -> KubernetesAgentConfig {
+        KubernetesAgentConfig {
+            namespace: "navra".into(),
+            template: "agent-default".into(),
+            context: None,
+            gateway_service: "navra-gateway".into(),
+        }
+    }
+
+    #[test]
+    fn kubernetes_sandbox_name_basic() {
+        let name = sanitize_k8s_name("navra-agent", "team1", "reviewer");
+        assert_eq!(name, "navra-agent-team1-reviewer");
+    }
+
+    #[test]
+    fn kubernetes_sandbox_name_sanitizes_special_chars() {
+        let name = sanitize_k8s_name("navra-agent", "team@1", "review_er!");
+        assert!(!name.contains('@'));
+        assert!(!name.contains('!'));
+        assert!(!name.contains('_'));
+        assert!(name.starts_with("navra-agent-"));
+        assert_eq!(name, "navra-agent-team-1-review-er");
+    }
+
+    #[test]
+    fn kubernetes_sandbox_name_collapses_hyphens() {
+        let name = sanitize_k8s_name("navra-agent", "team--1", "rev");
+        assert!(!name.contains("--"));
+    }
+
+    #[test]
+    fn kubernetes_sandbox_name_truncates_to_63() {
+        let long_team = "a".repeat(50);
+        let long_mate = "b".repeat(50);
+        let name = sanitize_k8s_name("navra-agent", &long_team, &long_mate);
+        assert!(name.len() <= 63);
+        assert!(!name.ends_with('-'));
+    }
+
+    #[test]
+    fn kubernetes_sandbox_name_no_leading_trailing_hyphens() {
+        let name = sanitize_k8s_name("navra-agent", "-team-", "-mate-");
+        assert!(!name.starts_with('-'));
+        assert!(!name.ends_with('-'));
+    }
+
+    #[test]
+    fn kubernetes_agent_manifest_structure() {
+        let k8s = test_k8s_config();
+        let mut env = std::collections::HashMap::new();
+        env.insert("NAVRA_ENDPOINT".to_string(), "http://gw:9315/mcp".to_string());
+        env.insert("NAVRA_TOKEN".to_string(), "tok123".to_string());
+        env.insert("NAVRA_TASK".to_string(), "review code".to_string());
+
+        let manifest = build_agent_sandbox_manifest(
+            &k8s,
+            "navra-agent-t1-rev",
+            "navra-agent:latest",
+            &env,
+            "2g",
+            "2",
+            "t1",
+            "rev",
+        );
+
+        assert_eq!(manifest["apiVersion"], "agents.x-k8s.io/v1alpha1");
+        assert_eq!(manifest["kind"], "Sandbox");
+        assert_eq!(manifest["metadata"]["name"], "navra-agent-t1-rev");
+        assert_eq!(manifest["metadata"]["namespace"], "navra");
+        assert_eq!(
+            manifest["metadata"]["labels"]["app.kubernetes.io/managed-by"],
+            "navra"
+        );
+        assert_eq!(manifest["metadata"]["labels"]["navra.io/component"], "agent");
+        assert_eq!(manifest["metadata"]["labels"]["navra.io/team"], "t1");
+        assert_eq!(manifest["metadata"]["labels"]["navra.io/agent"], "rev");
+        assert_eq!(manifest["spec"]["templateRef"]["name"], "agent-default");
+        assert_eq!(manifest["spec"]["image"], "navra-agent:latest");
+        assert_eq!(manifest["spec"]["resources"]["limits"]["memory"], "2g");
+        assert_eq!(manifest["spec"]["resources"]["limits"]["cpu"], "2");
+
+        let env_array = manifest["spec"]["env"].as_array().unwrap();
+        assert!(env_array.iter().any(|e| e["name"] == "NAVRA_ENDPOINT"));
+        assert!(env_array.iter().any(|e| e["name"] == "NAVRA_TOKEN"));
+        assert!(env_array.iter().any(|e| e["name"] == "NAVRA_TASK"));
+    }
+
+    #[test]
+    fn kubernetes_manifest_with_custom_config() {
+        let k8s = KubernetesAgentConfig {
+            namespace: "prod".into(),
+            template: "secure-agent".into(),
+            context: Some("prod-cluster".into()),
+            gateway_service: "navra-gw".into(),
+        };
+        let env = std::collections::HashMap::new();
+        let manifest = build_agent_sandbox_manifest(
+            &k8s,
+            "test-sandbox",
+            "img:v1",
+            &env,
+            "4g",
+            "4",
+            "team-a",
+            "agent-1",
+        );
+
+        assert_eq!(manifest["metadata"]["namespace"], "prod");
+        assert_eq!(manifest["spec"]["templateRef"]["name"], "secure-agent");
+        assert_eq!(manifest["spec"]["resources"]["limits"]["memory"], "4g");
+        assert_eq!(manifest["spec"]["resources"]["limits"]["cpu"], "4");
+    }
+
+    #[test]
+    fn kubectl_base_includes_namespace() {
+        let k8s = test_k8s_config();
+        let cmd = kubectl_base(&k8s);
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"-n".to_string()));
+        assert!(args.contains(&"navra".to_string()));
+    }
+
+    #[test]
+    fn kubectl_base_includes_context_when_set() {
+        let k8s = KubernetesAgentConfig {
+            namespace: "navra".into(),
+            template: "agent-default".into(),
+            context: Some("my-ctx".into()),
+            gateway_service: "navra-gateway".into(),
+        };
+        let cmd = kubectl_base(&k8s);
+        let args: Vec<_> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&"--context".to_string()));
+        assert!(args.contains(&"my-ctx".to_string()));
+    }
 }
