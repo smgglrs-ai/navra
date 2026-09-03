@@ -760,6 +760,8 @@ pub struct FlowContext {
     pub workspace_provider: Option<std::sync::Arc<dyn crate::workspace::WorkspaceProvider>>,
     /// Optional SQLite checkpoint store for DAG crash resilience.
     pub checkpoint: Option<std::sync::Arc<navra_flow::DagCheckpoint>>,
+    /// Kubernetes agent sandbox config. When set, agents are spawned as Sandbox CRs.
+    pub kubernetes: Option<crate::agent_spawn::KubernetesAgentConfig>,
 }
 
 /// Record completed/failed task results to the audit log.
