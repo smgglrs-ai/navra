@@ -545,6 +545,18 @@ pub(crate) async fn wire_team_tools(
         compaction_keep_recent: cfg.budget.compaction_keep_recent,
         compaction_trigger_ratio: cfg.budget.compaction_trigger_ratio,
         compression_policy: cfg.budget.compression_policy,
+        kubernetes: cfg.server.kubernetes_namespace.as_ref().map(|ns| {
+            crate::agent_spawn::KubernetesAgentConfig {
+                namespace: ns.clone(),
+                template: cfg
+                    .server
+                    .kubernetes_agent_template
+                    .clone()
+                    .unwrap_or_else(|| "agent-default".to_string()),
+                context: cfg.server.kubernetes_context.clone(),
+                gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+            }
+        }),
     });
     builder = builder.tool(team_tools::team_message_def(), move |args, _ctx| {
         let spawn_ctx = Arc::clone(&msg_spawn_ctx);
@@ -709,6 +721,18 @@ pub(crate) async fn wire_team_tools(
         exec_state: exec_module.clone(),
         workspace_provider: None,
         checkpoint,
+        kubernetes: cfg.server.kubernetes_namespace.as_ref().map(|ns| {
+            crate::agent_spawn::KubernetesAgentConfig {
+                namespace: ns.clone(),
+                template: cfg
+                    .server
+                    .kubernetes_agent_template
+                    .clone()
+                    .unwrap_or_else(|| "agent-default".to_string()),
+                context: cfg.server.kubernetes_context.clone(),
+                gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+            }
+        }),
     });
 
     // flow_start

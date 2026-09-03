@@ -93,6 +93,19 @@ pub struct ServerConfig {
     /// Debounce interval in ms for config file watch events.
     #[serde(default = "default_config_watch_debounce_ms")]
     pub config_watch_debounce_ms: u64,
+    /// Kubernetes namespace for agent sandboxes.
+    /// When set, enables spawning agents as Sandbox CRs on the cluster.
+    #[serde(default)]
+    pub kubernetes_namespace: Option<String>,
+    /// SandboxTemplate name for agent sandboxes (default: "agent-default").
+    #[serde(default)]
+    pub kubernetes_agent_template: Option<String>,
+    /// kubectl context override for agent sandboxes.
+    #[serde(default)]
+    pub kubernetes_context: Option<String>,
+    /// Kubernetes Service name for the navra gateway (in-cluster DNS).
+    #[serde(default = "default_kubernetes_gateway_service")]
+    pub kubernetes_gateway_service: String,
 }
 
 fn default_mcp_version() -> String {
@@ -145,6 +158,10 @@ fn default_session_ttl() -> u64 {
 
 fn default_agent_signature_policy() -> String {
     "warn".to_string()
+}
+
+fn default_kubernetes_gateway_service() -> String {
+    "navra-gateway".to_string()
 }
 
 /// Root identity configuration.
