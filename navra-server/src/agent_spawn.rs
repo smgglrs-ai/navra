@@ -907,6 +907,7 @@ fn kubectl_base(k8s: &KubernetesAgentConfig) -> tokio::process::Command {
     cmd
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_agent_sandbox_manifest(
     k8s: &KubernetesAgentConfig,
     name: &str,
@@ -1090,14 +1091,12 @@ fn spawn_kubernetes_agent(
             );
 
             // Model endpoint: use configured model server URL or gateway's /v1
-            let model_endpoint = model_server_url
-                .clone()
-                .unwrap_or_else(|| {
-                    format!(
-                        "http://{}.{}.svc.cluster.local:9315/v1",
-                        k8s.gateway_service, k8s.namespace
-                    )
-                });
+            let model_endpoint = model_server_url.clone().unwrap_or_else(|| {
+                format!(
+                    "http://{}.{}.svc.cluster.local:9315/v1",
+                    k8s.gateway_service, k8s.namespace
+                )
+            });
 
             let sandbox_name = sanitize_k8s_name("navra-agent", &team_id, &teammate_id);
 
@@ -1160,11 +1159,7 @@ fn spawn_kubernetes_agent(
             let mut child = match apply_cmd.spawn() {
                 Ok(c) => c,
                 Err(e) => {
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("kubectl spawn error: {e}"),
-                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("kubectl spawn error: {e}"));
                     return;
                 }
             };
@@ -1172,11 +1167,7 @@ fn spawn_kubernetes_agent(
             if let Some(mut stdin) = child.stdin.take() {
                 use tokio::io::AsyncWriteExt;
                 if let Err(e) = stdin.write_all(manifest_json.as_bytes()).await {
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("kubectl stdin error: {e}"),
-                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("kubectl stdin error: {e}"));
                     return;
                 }
             }
@@ -1184,11 +1175,7 @@ fn spawn_kubernetes_agent(
             let apply_output = match child.wait_with_output().await {
                 Ok(o) => o,
                 Err(e) => {
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("kubectl wait error: {e}"),
-                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("kubectl wait error: {e}"));
                     return;
                 }
             };
@@ -1220,11 +1207,7 @@ fn spawn_kubernetes_agent(
             let wait_output = match wait_cmd.output().await {
                 Ok(o) => o,
                 Err(e) => {
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("kubectl wait error: {e}"),
-                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("kubectl wait error: {e}"));
                     cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
                     return;
                 }
@@ -1388,11 +1371,7 @@ fn spawn_kubernetes_agent(
                         error = %e,
                         "Failed to collect K8s sandbox logs"
                     );
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("kubectl logs error: {e}"),
-                    );
+                    reg.set_failed(&team_id, &teammate_id, format!("kubectl logs error: {e}"));
                 }
             }
 
@@ -1406,8 +1385,7 @@ fn spawn_kubernetes_agent(
                 team = %timeout_team, teammate = %timeout_task,
                 "Kubernetes teammate timed out after {timeout_secs}s"
             );
-            let sandbox_name =
-                sanitize_k8s_name("navra-agent", &timeout_team, &timeout_task);
+            let sandbox_name = sanitize_k8s_name("navra-agent", &timeout_team, &timeout_task);
             cleanup_k8s_sandbox(&timeout_k8s, &sandbox_name).await;
             timeout_reg.set_failed(
                 &timeout_team,
@@ -1917,7 +1895,10 @@ mod tests {
     fn kubernetes_agent_manifest_structure() {
         let k8s = test_k8s_config();
         let mut env = std::collections::HashMap::new();
-        env.insert("NAVRA_ENDPOINT".to_string(), "http://gw:9315/mcp".to_string());
+        env.insert(
+            "NAVRA_ENDPOINT".to_string(),
+            "http://gw:9315/mcp".to_string(),
+        );
         env.insert("NAVRA_TOKEN".to_string(), "tok123".to_string());
         env.insert("NAVRA_TASK".to_string(), "review code".to_string());
 
@@ -1940,7 +1921,10 @@ mod tests {
             manifest["metadata"]["labels"]["app.kubernetes.io/managed-by"],
             "navra"
         );
-        assert_eq!(manifest["metadata"]["labels"]["navra.io/component"], "agent");
+        assert_eq!(
+            manifest["metadata"]["labels"]["navra.io/component"],
+            "agent"
+        );
         assert_eq!(manifest["metadata"]["labels"]["navra.io/team"], "t1");
         assert_eq!(manifest["metadata"]["labels"]["navra.io/agent"], "rev");
         assert_eq!(manifest["spec"]["templateRef"]["name"], "agent-default");
