@@ -6,9 +6,21 @@ All notable changes to navra are documented here.
 
 ### Added
 
-- **agent-spawn**: Kubernetes agent sandbox spawn path — agents can be spawned as `agents.x-k8s.io/v1alpha1` Sandbox CRs on a Kubernetes cluster
-- **config**: `kubernetes_namespace`, `kubernetes_agent_template`, `kubernetes_context`, `kubernetes_gateway_service` server config fields
-- **agent-spawn**: Dispatch priority: OpenShell > Kubernetes > Podman > in-process
+- Add Kubernetes agent sandbox spawn path for production deployments
+
+### Documentation
+
+- Update CHANGELOG.md for v0.4.0
+- Fix hero terminal demo — IFC example now shows actual sensitive content, not a source file
+
+### Maintenance
+
+- Remove Astro marketing site, deploy Zola docs at /
+- Bump version to v0.5.0
+
+### Merge
+
+- Kubernetes agent sandbox spawn path
 
 ## [0.4.0] - 2026-09-02
 
