@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useWs } from '../contexts/WebSocketContext';
 import { Spinner } from '../components/shared/Spinner';
 import type { AuditResponse, BlackboxEntry } from '../types/api';
 
@@ -9,11 +10,22 @@ const PAGE_SIZE = 50;
 
 export function AuditPage() {
   const { token } = useAuth();
+  const { subscribe } = useWs();
+  const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const [agentFilter, setAgentFilter] = useState('');
   const [toolFilter, setToolFilter] = useState('');
   const [outcomeFilter, setOutcomeFilter] = useState('');
+  const [ifcFilter, setIfcFilter] = useState('');
   const [expandedSeq, setExpandedSeq] = useState<number | null>(null);
+
+  // Subscribe to tool_call_end WS events and refetch audit data
+  useEffect(() => {
+    const unsub = subscribe('tool_call_end', () => {
+      queryClient.invalidateQueries({ queryKey: ['audit'] });
+    });
+    return unsub;
+  }, [subscribe, queryClient]);
 
   const params = new URLSearchParams({
     limit: String(PAGE_SIZE),
@@ -22,25 +34,36 @@ export function AuditPage() {
   if (agentFilter) params.set('agent', agentFilter);
   if (toolFilter) params.set('tool', toolFilter);
   if (outcomeFilter) params.set('outcome', outcomeFilter);
+  if (ifcFilter) params.set('ifc_label', ifcFilter);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit', offset, agentFilter, toolFilter, outcomeFilter],
+    queryKey: ['audit', offset, agentFilter, toolFilter, outcomeFilter, ifcFilter],
     queryFn: () => fetchJson<AuditResponse>(`/api/audit?${params}`, token),
-    refetchInterval: 10_000,
     retry: false,
   });
 
+  // Trust server for outcome filter. Apply ifc_label client-side as fallback
+  // in case the server doesn't support that param yet.
   const entries = data?.entries ?? [];
-  const filtered = outcomeFilter
-    ? entries.filter(e => outcomeFilter === 'allowed' ? e.outcome === 'allowed' : e.outcome !== 'allowed')
+  const displayed = ifcFilter
+    ? entries.filter(e => e.ifc_label.toLowerCase().includes(ifcFilter.toLowerCase()))
     : entries;
 
   const exportCsv = useCallback(() => {
     if (!data) return;
     const rows = [
-      ['seq', 'timestamp', 'agent', 'tool', 'outcome', 'duration_us', 'ifc_label'].join(','),
-      ...filtered.map(e =>
-        [e.seq, new Date(e.timestamp_ms).toISOString(), e.agent_name, e.tool_name, e.outcome, e.duration_us, e.ifc_label].join(',')
+      ['seq', 'timestamp', 'agent', 'tool', 'outcome', 'duration_us', 'ifc_label', 'session_id'].join(','),
+      ...displayed.map(e =>
+        [
+          e.seq,
+          new Date(e.timestamp_ms).toISOString(),
+          e.agent_name,
+          e.tool_name,
+          e.outcome,
+          e.duration_us,
+          e.ifc_label,
+          e.session_id,
+        ].join(',')
       ),
     ].join('\n');
     const blob = new Blob([rows], { type: 'text/csv' });
@@ -50,7 +73,7 @@ export function AuditPage() {
     a.download = `navra-audit-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [data, filtered]);
+  }, [data, displayed]);
 
   return (
     <div className="page">
@@ -88,6 +111,12 @@ export function AuditPage() {
           <option value="allowed">Allowed</option>
           <option value="denied">Denied</option>
         </select>
+        <input
+          className="filter-input"
+          placeholder="Filter by IFC label..."
+          value={ifcFilter}
+          onChange={e => { setIfcFilter(e.target.value); setOffset(0); }}
+        />
       </div>
 
       {isLoading ? (
@@ -103,11 +132,12 @@ export function AuditPage() {
                 <th>Tool</th>
                 <th>Outcome</th>
                 <th>Duration</th>
-                <th>IFC</th>
+                <th>IFC Label</th>
+                <th>Session</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(entry => (
+              {displayed.map(entry => (
                 <AuditRow
                   key={entry.seq}
                   entry={entry}
@@ -161,19 +191,45 @@ function AuditRow({ entry, expanded, onToggle }: { entry: BlackboxEntry; expande
           </span>
         </td>
         <td className="mono">{formatDuration(entry.duration_us)}</td>
-        <td className="mono">{entry.ifc_label}</td>
+        <td>
+          {entry.ifc_label && (
+            <span
+              className="badge mono"
+              style={{
+                background: 'var(--indigo-muted, #e8eaf6)',
+                color: 'var(--indigo, #3949ab)',
+                border: '1px solid var(--indigo-border, #9fa8da)',
+              }}
+            >
+              {entry.ifc_label}
+            </span>
+          )}
+        </td>
+        <td className="mono" style={{ color: 'var(--text-muted)' }}>
+          {entry.session_id ? entry.session_id.slice(0, 8) : '—'}
+        </td>
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} style={{ background: 'var(--surface)', padding: '16px' }}>
+          <td colSpan={8} style={{ background: 'var(--surface)', padding: '16px' }}>
             <div style={{ marginBottom: '8px' }}>
               <strong>Arguments:</strong>
               <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_args)}</pre>
             </div>
-            <div>
+            <div style={{ marginBottom: '8px' }}>
               <strong>Result:</strong>
               <pre style={{ marginTop: '4px' }}>{formatJson(entry.tool_result)}</pre>
             </div>
+            {entry.act_chain && entry.act_chain.length > 0 && (
+              <div>
+                <strong>Activation chain:</strong>
+                <ol style={{ marginTop: '4px', paddingLeft: '20px' }}>
+                  {parseActChain(entry.act_chain).map((name, i) => (
+                    <li key={i} className="mono" style={{ fontSize: '0.85rem' }}>{name}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </td>
         </tr>
       )}
@@ -193,4 +249,22 @@ function formatJson(s: string): string {
   } catch {
     return s;
   }
+}
+
+function parseActChain(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: unknown) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'tool_name' in item) {
+          return String((item as Record<string, unknown>).tool_name);
+        }
+        return String(item);
+      });
+    }
+  } catch {
+    // not JSON — return as a single entry
+  }
+  return raw ? [raw] : [];
 }
