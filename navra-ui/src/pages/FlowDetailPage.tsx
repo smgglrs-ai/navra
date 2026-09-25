@@ -49,9 +49,16 @@ export function FlowDetailPage() {
                   <span className="model-name" style={{ fontSize: '13px' }}>{node.label}</span>
                   <span className="model-meta" style={{ marginLeft: '8px' }}>{node.id}</span>
                 </div>
-                <span className={`badge ${node.status === 'done' ? 'success' : node.status === 'running' ? 'info' : node.status === 'failed' ? 'danger' : ''}`}>
-                  {node.status}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {node.duration_ms !== undefined && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontVariantNumeric: 'tabular-nums' }}>
+                      {node.duration_ms < 1000 ? `${node.duration_ms}ms` : `${(node.duration_ms / 1000).toFixed(1)}s`}
+                    </span>
+                  )}
+                  <span className={`badge ${node.status === 'done' ? 'success' : node.status === 'running' ? 'info' : node.status === 'failed' ? 'danger' : ''}`}>
+                    {node.status}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
