@@ -123,4 +123,5 @@ export interface ChatEvent {
   result?: string;
   usage?: { input_tokens: number; output_tokens: number };
   session_id?: string;
+  ifc_label?: string;
 }
