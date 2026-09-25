@@ -79,19 +79,59 @@ export function BpmnViewer({ flowId, token }: BpmnViewerProps) {
     viewerRef.current = viewer;
     loadDiagram(viewer);
 
-    // SSE for live updates
-    const url = new URL(`/flows/${flowId}/events`, window.location.origin);
-    const eventSource = new EventSource(url.toString());
-    eventSource.addEventListener('flow_event', () => {
-      loadDiagram(viewer);
-    });
-    eventSource.addEventListener('done', () => {
-      loadDiagram(viewer);
-      eventSource.close();
-    });
+    // SSE for live updates via fetch — EventSource does not support auth headers,
+    // so we use a fetch-based reader to pass the Bearer token.
+    const abortController = new AbortController();
+
+    (async () => {
+      try {
+        const sseHeaders: Record<string, string> = {};
+        if (token) sseHeaders['Authorization'] = `Bearer ${token}`;
+
+        const resp = await fetch(`/flows/${flowId}/events`, {
+          headers: sseHeaders,
+          signal: abortController.signal,
+        });
+
+        if (!resp.ok || !resp.body) return;
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentEvent = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              currentEvent = line.slice(6).trim();
+            } else if (line === '') {
+              if (currentEvent === 'flow_event') {
+                loadDiagram(viewer);
+              } else if (currentEvent === 'done') {
+                loadDiagram(viewer);
+                abortController.abort();
+                return;
+              }
+              currentEvent = '';
+            }
+          }
+        }
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.warn('SSE connection error:', e);
+        }
+      }
+    })();
 
     return () => {
-      eventSource.close();
+      abortController.abort();
       viewer.destroy();
       viewerRef.current = null;
     };
