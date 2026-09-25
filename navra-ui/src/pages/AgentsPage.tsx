@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { mutateApi } from '../hooks/useMutation';
 import { useAuth } from '../contexts/AuthContext';
+import { useWs } from '../contexts/WebSocketContext';
 import { Spinner } from '../components/shared/Spinner';
 import { EmptyState } from '../components/shared/EmptyState';
 import type { AgentInfo, ProcessSnapshot, PermissionSet } from '../types/api';
@@ -15,6 +16,7 @@ interface AgentEditForm {
 
 export function AgentsPage() {
   const { token } = useAuth();
+  const { subscribe } = useWs();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<AgentEditForm>({ name: '', permissions: '', token_hash: '' });
@@ -30,7 +32,6 @@ export function AgentsPage() {
   const { data: processes } = useQuery({
     queryKey: ['process'],
     queryFn: () => fetchJson<ProcessSnapshot[]>('/api/process', token),
-    refetchInterval: 10_000,
     retry: false,
   });
 
@@ -39,6 +40,13 @@ export function AgentsPage() {
     queryFn: () => fetchJson<{ permission_sets: Record<string, PermissionSet> }>('/api/permissions', token),
     retry: false,
   });
+
+  useEffect(() => {
+    const unsub = subscribe('process_update', () => {
+      queryClient.invalidateQueries({ queryKey: ['process'] });
+    });
+    return unsub;
+  }, [subscribe, queryClient]);
 
   const activeAgents = new Set(processes?.map(p => p.name) ?? []);
   const permNames = permData?.permission_sets ? Object.keys(permData.permission_sets) : [];
@@ -148,9 +156,22 @@ export function AgentsPage() {
                   />
                 ) : (
                   <>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div className="agent-name">{a.name}</div>
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <div className="agent-name">{a.name}</div>
+                        {a.did && (
+                          <div
+                            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '2px' }}
+                            title={a.did}
+                          >
+                            {a.did.length > 20 ? a.did.slice(0, 20) + '…' : a.did}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        {a.taint && (
+                          <span className="badge warning" style={{ fontSize: '0.65rem' }}>{a.taint}</span>
+                        )}
                         <span className={`badge ${isActive ? 'success' : ''}`} style={!isActive ? { color: 'var(--text-dim)' } : undefined}>
                           {isActive ? 'active' : 'offline'}
                         </span>
@@ -182,6 +203,13 @@ export function AgentsPage() {
                       <div className="agent-detail">
                         <span>Safety</span>
                         <span style={{ fontFamily: 'var(--font-mono)' }}>{a.safety}</span>
+                      </div>
+                    )}
+                    {a.operations && a.operations.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
+                        {a.operations.map(op => (
+                          <span key={op} className="badge" style={{ fontSize: '0.65rem' }}>{op}</span>
+                        ))}
                       </div>
                     )}
                   </>
