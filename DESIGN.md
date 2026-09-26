@@ -48,6 +48,22 @@ of origin.
 | `navra-tui` | Binary | Interactive terminal dashboard (agents, audit, flows, models, safety widgets) |
 | `benchmarks` | Dev tooling | Criterion performance benchmarks |
 
+### UI Surfaces
+
+navra exposes two admin interfaces for different deployment contexts:
+
+- **navra-ui** (`navra-ui/`) — React admin console served by navra-server.
+  Targets headless server and SSH deployments where no desktop app is present.
+  Operators use it to manage agents, flows, permissions, audit trails, and safety
+  configuration over a browser connection to a remote navra daemon.
+- **ai-workbench Governance screen** (`github.com/fabiendupont/ai-workbench`) —
+  Svelte 5 screen embedded in the ai-workbench Electron desktop app. Targets
+  desktop developers building and deploying local AI models who want governance
+  alongside their model lifecycle tooling. Connects to the same navra REST API.
+
+These are complementary, not duplicates: navra-ui is for remote operators;
+ai-workbench Governance is for local desktop developers.
+
 ### Dependency layering
 
 ```
