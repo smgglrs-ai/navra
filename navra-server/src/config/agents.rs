@@ -111,6 +111,10 @@ pub struct UpstreamConfig {
     /// context.
     #[serde(default)]
     pub scan_tools: Option<bool>,
+    /// Content bounds for this upstream's discovery response. Defaults
+    /// are applied per field; see [`UpstreamBoundsConfig`].
+    #[serde(default)]
+    pub bounds: Option<UpstreamBoundsConfig>,
     /// Override the rug-pull hash store location for this upstream.
     /// Default: `~/.local/share/navra/tool_hashes.json`. Set per
     /// upstream to isolate hash stores between navra instances.
@@ -186,6 +190,45 @@ pub struct ManifestConfig {
     /// `~/.local/share/navra/manifest_keys.json`.
     #[serde(default)]
     pub keystore: Option<String>,
+}
+
+/// Content bounds for upstream discovery responses.
+///
+/// Upstream `tools/list` responses are untrusted input. Without
+/// bounds, a hostile server can flood the gateway with tool
+/// definitions or absurdly nested schemas. Exceeding a bound rejects
+/// the upstream registration with a clear error (fail closed) unless
+/// `truncate_oversized = true`, in which case descriptions are
+/// truncated and excess tools dropped with warnings. Schema depth can
+/// never be truncated and always rejects.
+///
+/// ```toml
+/// [upstream.bounds]
+/// max_tools = 500
+/// max_description_length = 2048
+/// truncate_oversized = false
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct UpstreamBoundsConfig {
+    /// Maximum number of tools accepted from one upstream.
+    /// Default: 1000.
+    #[serde(default)]
+    pub max_tools: Option<usize>,
+    /// Maximum JSON nesting depth of any tool's input schema.
+    /// Default: 32.
+    #[serde(default)]
+    pub max_input_schema_depth: Option<usize>,
+    /// Maximum length (bytes) of any tool description. Default: 4096.
+    #[serde(default)]
+    pub max_description_length: Option<usize>,
+    /// Maximum total size (bytes) of all serialized tool definitions.
+    /// Default: 4194304 (4 MiB).
+    #[serde(default)]
+    pub max_total_definition_bytes: Option<u64>,
+    /// Truncate instead of reject where truncation is sound
+    /// (descriptions, tool count). Default: `false` (fail closed).
+    #[serde(default)]
+    pub truncate_oversized: Option<bool>,
 }
 
 /// Network egress policy controlling which external endpoints a sandboxed

@@ -42,4 +42,4 @@ pub use server::{
     McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker, UsagePruningFilter,
 };
 pub use session::Session;
-pub use upstream_module::{ManifestCheck, UpstreamModule};
+pub use upstream_module::{DiscoveryBounds, DiscoveryOptions, ManifestCheck, UpstreamModule};

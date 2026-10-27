@@ -532,6 +532,7 @@ request_timeout_secs = 60
 | `tool_overrides` | map | `{}` | Per-tool operation overrides: `read`, `write`, `deny` |
 | `scan_tools` | bool | `true` | Scan tool definitions for supply-chain threats (poisoning, rug pulls, schema abuse). Malicious tools are dropped, suspicious tools register with a warning. Disabling logs a startup warning |
 | `tool_hash_path` | string | `~/.local/share/navra/tool_hashes.json` | Rug-pull hash store location for this upstream |
+| `bounds` | table | defaults below | Discovery content bounds (see below) |
 | `manifest` | table | -- | Signed tool manifest + TOFU keystore config (see below) |
 | `max_response_bytes` | usize | `32768` | Max response body size for OpenAPI upstreams |
 | `openapi` | string | -- | OpenAPI 3.x spec URL or file path |
@@ -544,6 +545,26 @@ request_timeout_secs = 60
 [upstream.tool_class]
 zip_files = { domain = "filesystem", operation = "write" }
 ```
+
+### Upstream discovery bounds
+
+Upstream `tools/list` responses are untrusted input. navra bounds them
+before scanning or registration; exceeding a bound rejects the
+upstream with a clear error (fail closed):
+
+```toml
+[upstream.bounds]
+max_tools = 1000                     # max tools per upstream
+max_input_schema_depth = 32          # max JSON nesting in input schemas
+max_description_length = 4096        # max tool description bytes
+max_total_definition_bytes = 4194304 # max total definition bytes (4 MiB)
+truncate_oversized = false           # truncate instead of reject where sound
+```
+
+`truncate_oversized = true` truncates oversized descriptions and drops
+tools beyond `max_tools` with warnings. Schema depth can never be
+truncated and always rejects. Auto-discovered upstreams (AID/mDNS)
+always use the default bounds.
 
 ### Upstream signed manifests (TOFU)
 
