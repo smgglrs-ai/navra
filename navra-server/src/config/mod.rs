@@ -433,6 +433,7 @@ impl Default for Config {
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
                 cedar_action_version: 1,
+                hide_denied_tools: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),

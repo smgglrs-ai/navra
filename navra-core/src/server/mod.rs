@@ -94,6 +94,10 @@ pub struct McpServer {
     session_log_levels: Arc<RwLock<HashMap<String, navra_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    /// Hide tools with a static `Deny` in tool_rules from tools/list.
+    /// Default: true — a denied tool's description is pure injection
+    /// surface for a tool the agent cannot call.
+    hide_denied_tools: bool,
     /// Trusted declassification authority (the gateway's CapSigner).
     /// When absent, declassification recommendations are honored only
     /// as label elevations — never as step-downs (fail-safe).

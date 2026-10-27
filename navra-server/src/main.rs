@@ -1073,6 +1073,16 @@ async fn serve_inner(
         );
     }
 
+    // Statically denied tools are hidden from tools/list by default
+    // (deny-wins); operators can restore the historical listing.
+    builder = builder.hide_denied_tools(cfg.server.hide_denied_tools.unwrap_or(true));
+    if !cfg.server.hide_denied_tools.unwrap_or(true) {
+        tracing::warn!(
+            "hide_denied_tools = false — statically denied tools will be listed in tools/list \
+             (their descriptions remain visible to agents; calls are still denied)"
+        );
+    }
+
     // Persistent session store (SQLite)
     {
         let session_db_path = dirs::data_dir()

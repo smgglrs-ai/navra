@@ -114,6 +114,12 @@ pub struct ServerConfig {
     /// class. See the security docs for the migration note.
     #[serde(default)]
     pub cedar_action_version: u32,
+    /// Hide tools with a static `Deny` in `tool_rules` from
+    /// `tools/list`. Default: `true` (deny-wins philosophy — a denied
+    /// tool's description is injection surface for a tool the agent
+    /// cannot call). Set `false` to restore listing denied tools.
+    #[serde(default)]
+    pub hide_denied_tools: Option<bool>,
 }
 
 fn default_mcp_version() -> String {
