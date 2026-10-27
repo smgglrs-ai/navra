@@ -1,0 +1,44 @@
+id: NAVRA-186
+title: "Security-wiring follow-ups from the cross-project review"
+status: open
+priority: low
+effort: 1-2d
+description: |
+  The 2026-10 security-wiring pass (branch security-wiring-gaps)
+  closed the review's eight findings: production tool-scanner wiring,
+  manifest/TOFU enforcement, the IFC declassification pipeline,
+  discovery content bounds, the CrossServerReference check,
+  tools/list_changed handling, Cedar action dispatch versioning, and
+  hiding statically denied tools from tools/list. A few follow-ups
+  were identified during that work and deliberately left for
+  maintainers:
+
+  - navra-server never constructs a CedarEngine, so the Cedar gates
+    (including the new upstream_discover dispatch and v2 action
+    namespacing) only take effect for library consumers that wire
+    one. A [permissions] cedar_policies config → engine wiring would
+    make them effective in the shipped daemon.
+  - Upstream list_changed refreshes do not forward
+    notifications/tools/list_changed to connected downstream clients
+    (the gateway re-registers tools; agents must re-list on their
+    own cadence). The SSE broadcaster exists; wiring it to registry
+    swaps would complete MCP-spec behavior.
+  - rmcp hangs when an upstream response cannot be decoded (e.g.
+    JSON nested beyond serde_json's 128-level recursion limit)
+    instead of erroring the request; discovery-level timeouts would
+    bound this.
+  - Partial redaction is unreachable through FilterPipeline's
+    apply_action (Redact always returns Ok), so the partial-redaction
+    row of the declassification rule table is only covered at the
+    Declassification API level, not end-to-end.
+  - Cedar and OPA diverge on missing context attributes (Cedar
+    errors and skips the policy; Rego treats missing as not-equal).
+    The equivalence harness avoids it by always providing checked
+    attributes; a lint or doc note for policy authors would help.
+notes: |
+  - Gap work landed as commits 905590e3..31d829be on
+    security-wiring-gaps
+  - Environmental test caveats on the dev machine: Ollama not
+    installed (v1_chat_completions_returns_openai_format), podman
+    mcp-filesystem/mcp-git images not built (3 adversarial_eval
+    tests)
