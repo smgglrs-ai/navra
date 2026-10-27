@@ -1,6 +1,6 @@
 id: NAVRA-186
 title: "Security-wiring follow-ups from the cross-project review"
-status: open
+status: done
 priority: low
 effort: 1-2d
 description: |
@@ -9,35 +9,36 @@ description: |
   manifest/TOFU enforcement, the IFC declassification pipeline,
   discovery content bounds, the CrossServerReference check,
   tools/list_changed handling, Cedar action dispatch versioning, and
-  hiding statically denied tools from tools/list. A few follow-ups
-  were identified during that work and deliberately left for
-  maintainers:
+  hiding statically denied tools from tools/list. The follow-ups
+  identified during that work were implemented in the same branch:
 
-  - navra-server never constructs a CedarEngine, so the Cedar gates
-    (including the new upstream_discover dispatch and v2 action
-    namespacing) only take effect for library consumers that wire
-    one. A [permissions] cedar_policies config → engine wiring would
-    make them effective in the shipped daemon.
-  - Upstream list_changed refreshes do not forward
-    notifications/tools/list_changed to connected downstream clients
-    (the gateway re-registers tools; agents must re-list on their
-    own cadence). The SSE broadcaster exists; wiring it to registry
-    swaps would complete MCP-spec behavior.
-  - rmcp hangs when an upstream response cannot be decoded (e.g.
-    JSON nested beyond serde_json's 128-level recursion limit)
-    instead of erroring the request; discovery-level timeouts would
-    bound this.
-  - Partial redaction is unreachable through FilterPipeline's
-    apply_action (Redact always returns Ok), so the partial-redaction
-    row of the declassification rule table is only covered at the
-    Declassification API level, not end-to-end.
-  - Cedar and OPA diverge on missing context attributes (Cedar
-    errors and skips the policy; Rego treats missing as not-equal).
-    The equivalence harness avoids it by always providing checked
-    attributes; a lint or doc note for policy authors would help.
+  - Cedar engine wiring: [permissions.<set>] cedar_policies files are
+    combined into one engine at startup (fail closed on errors),
+    behind the cedar feature (commit 0c17fa7f).
+  - Upstream list_changed refreshes now forward
+    notifications/tools/list_changed to connected clients via the SSE
+    broadcaster (commit e948129a).
+  - All upstream rmcp calls (discovery listings and forwarded tool
+    calls) run under UpstreamConfig.request_timeout_secs; a tools/list
+    timeout rejects the registration (commit 4b159699). The underlying
+    rmcp hang-on-undecodable-response defect remains worth reporting
+    upstream — the timeout is defense in depth.
+  - Partial redaction is reachable via the redaction_threshold
+    permission-set option: below-threshold findings stay in the text,
+    the result is marked partially redacted, and no declassification
+    follows (commit 893fa7d3). Default 0.0 = full redaction.
+  - The Cedar/OPA missing-attribute divergence is resolved: every
+    context reference in the Cedar baseline is has-guarded so missing
+    attributes mean "does not match" (the Rego semantics), and the
+    equivalence harness now enforces agreement on empty-context
+    vectors for every action (commit 32c0a781).
 notes: |
-  - Gap work landed as commits 905590e3..31d829be on
-    security-wiring-gaps
+  - Gap work landed as commits 905590e3..31d829be; follow-ups as
+    0c17fa7f..893fa7d3 on security-wiring-gaps
+  - Remaining rmcp defect: an upstream response that cannot be decoded
+    (e.g. JSON nested past serde_json's 128-level recursion limit)
+    hangs the request instead of erroring; minimal repro is the
+    NAVRA_TEST_SCHEMA_DEPTH=100 python server from the Gap 4 tests
   - Environmental test caveats on the dev machine: the e2e chat
     proxy test pins model qwen3:8b (~5 GB, not pulled); the 3
     adversarial_eval tests that fail need the podman images
