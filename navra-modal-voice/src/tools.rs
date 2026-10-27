@@ -510,10 +510,7 @@ mod tests {
         let (_, handler) = handle_status_handler(state);
         let result = handler(serde_json::json!({}), test_ctx()).await;
         assert!(result.is_error != Some(true));
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("Voice Module Status"));
         assert!(t.text.contains("Audio host"));
     }

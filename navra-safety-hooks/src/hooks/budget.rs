@@ -162,7 +162,7 @@ impl Hook for BudgetHook {
         let total_tokens: usize = result
             .content
             .iter()
-            .filter_map(|c| match &c.raw {
+            .filter_map(|c| match &c {
                 RawContent::Text(t) => Some(estimate_tokens(&t.text)),
                 _ => None,
             })
@@ -183,7 +183,7 @@ impl Hook for BudgetHook {
         let text_count = result
             .content
             .iter()
-            .filter(|c| matches!(&c.raw, RawContent::Text(_)))
+            .filter(|c| matches!(c, RawContent::Text(_)))
             .count();
 
         // If only one text item, give it the full budget.
@@ -192,7 +192,7 @@ impl Hook for BudgetHook {
         let mut any_changed = false;
 
         for content in &result.content {
-            match &content.raw {
+            match &content {
                 RawContent::Text(t) => {
                     let item_tokens = estimate_tokens(&t.text);
                     let item_budget = if text_count == 1 {
@@ -226,7 +226,7 @@ impl Hook for BudgetHook {
         // Add a metadata note about truncation
         let new_total: usize = truncated_content
             .iter()
-            .filter_map(|c| match &c.raw {
+            .filter_map(|c| match &c {
                 RawContent::Text(t) => Some(estimate_tokens(&t.text)),
                 _ => None,
             })
@@ -364,7 +364,7 @@ mod tests {
                 let all_text: String = r
                     .content
                     .iter()
-                    .filter_map(|c| match &c.raw {
+                    .filter_map(|c| match &c {
                         RawContent::Text(t) => Some(t.text.as_str()),
                         _ => None,
                     })
@@ -421,10 +421,7 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content {
-                            raw: RawContent::Text(t),
-                            ..
-                        } => Some(&t.text),
+                        Content::Text(t) => Some(&t.text),
                         _ => None,
                     })
                     .collect();
@@ -459,10 +456,7 @@ mod tests {
                     .content
                     .iter()
                     .filter_map(|c| match c {
-                        Content {
-                            raw: RawContent::Text(t),
-                            ..
-                        } => Some(t.text.as_str()),
+                        Content::Text(t) => Some(t.text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()

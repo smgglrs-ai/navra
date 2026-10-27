@@ -70,7 +70,7 @@ The kernel enforces security identically in both modes.
 
 ## MCP Transport
 
-navra uses the [rmcp SDK](https://github.com/anthropics/rust-mcp-sdk)
+navra uses the [rmcp SDK](https://github.com/modelcontextprotocol/rust-sdk)
 for MCP protocol handling. The `NavraHandler` implements rmcp's
 `ServerHandler` trait, wrapping the security pipeline around standard
 MCP operations. Three transports are supported:

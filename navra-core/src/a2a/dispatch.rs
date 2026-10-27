@@ -84,7 +84,7 @@ fn tool_result_to_parts(result: &crate::protocol::CallToolResult) -> Vec<Part> {
     result
         .content
         .iter()
-        .map(|c| match c.raw.as_text() {
+        .map(|c| match c.as_text() {
             Some(tc) => Part::text(&tc.text),
             None => Part::text("[unsupported content type]"),
         })

@@ -592,7 +592,7 @@ mod tests {
 
     struct EmptyServer;
     impl rmcp::ServerHandler for EmptyServer {
-        fn get_info(&self) -> rmcp::model::ServerInfo {
+        fn get_info(&self) -> rmcp::model::ServerConfig {
             rmcp::model::InitializeResult::new(Default::default())
                 .with_server_info(rmcp::model::Implementation::new("test", "0.1.0"))
         }

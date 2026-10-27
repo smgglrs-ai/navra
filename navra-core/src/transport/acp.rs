@@ -343,7 +343,7 @@ async fn handle_resume_run(
             let result_text: String = result
                 .content
                 .iter()
-                .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+                .filter_map(|c| c.as_text().map(|t| t.text.clone()))
                 .collect::<Vec<_>>()
                 .join("\n");
 

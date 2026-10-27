@@ -170,7 +170,7 @@ impl Hook for MonitoringHook {
             let reason = result
                 .content
                 .first()
-                .and_then(|c| match &c.raw {
+                .and_then(|c| match &c {
                     navra_protocol::RawContent::Text(t) => Some(t.text.clone()),
                     _ => None,
                 })
