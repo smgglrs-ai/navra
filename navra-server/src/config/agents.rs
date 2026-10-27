@@ -41,7 +41,7 @@ pub struct AgentConfig {
     pub max_context: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamConfig {
     /// Unique name for this upstream server.
     pub name: String,
@@ -96,6 +96,20 @@ pub struct UpstreamConfig {
     /// LLM context windows. Default: 32768 (32 KB).
     #[serde(default)]
     pub max_response_bytes: Option<usize>,
+    /// Scan tool definitions advertised by this upstream for
+    /// supply-chain threats (tool poisoning, typosquatting, schema
+    /// abuse, hidden unicode, rug pulls, ...). Tools classified
+    /// Malicious are dropped; Suspicious tools are registered with a
+    /// warning. Default: `true`. Disabling is discouraged — it removes
+    /// the only gate between upstream tool descriptions and agent
+    /// context.
+    #[serde(default)]
+    pub scan_tools: Option<bool>,
+    /// Override the rug-pull hash store location for this upstream.
+    /// Default: `~/.local/share/navra/tool_hashes.json`. Set per
+    /// upstream to isolate hash stores between navra instances.
+    #[serde(default)]
+    pub tool_hash_path: Option<String>,
     /// OpenAPI 3.x spec source (URL or file path).
     /// When set, transport/command/url are ignored — navra parses the spec
     /// and exposes operations as MCP tools directly.

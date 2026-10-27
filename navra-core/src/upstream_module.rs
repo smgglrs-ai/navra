@@ -65,6 +65,7 @@ impl UpstreamModule {
     /// upstream, caching the definitions. Errors during discovery are
     /// logged but don't prevent the module from being created — the
     /// corresponding capability will simply be empty.
+    ///
     pub async fn discover(
         name: &str,
         peer: rmcp::Peer<rmcp::RoleClient>,
@@ -79,6 +80,17 @@ impl UpstreamModule {
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
             let results = scanner.scan_tools(name, &tools);
+            if results.len() != tools.len() {
+                // Fail closed: a count mismatch means the scanner
+                // misbehaved. zip() below drops unmatched tools, which
+                // is stricter than treating them as Suspicious.
+                tracing::error!(
+                    upstream = %name,
+                    expected = tools.len(),
+                    got = results.len(),
+                    "Scanner returned wrong number of results — dropping unmatched tools (fail closed)"
+                );
+            }
             let mut filtered = Vec::new();
             for (tool, result) in tools.into_iter().zip(results.iter()) {
                 match &result.verdict {

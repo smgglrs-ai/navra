@@ -8,6 +8,38 @@ use crate::util;
 use navra_core::credentials::CredentialStore as _;
 use std::sync::Arc;
 
+/// Build the production tool scanner for an upstream, honoring its
+/// scan config.
+///
+/// - Scanning is on by default; an explicit disable logs a startup
+///   warning because it removes the only gate between upstream tool
+///   descriptions and agent context.
+/// - A corrupt or unreadable rug-pull hash store is an error (fail
+///   closed) — the caller must reject the upstream rather than
+///   register its tools unscanned.
+fn build_scanner(
+    upstream_cfg: &config::UpstreamConfig,
+) -> Result<Option<navra_auth::tool_scanner::ToolScanner>, String> {
+    if !upstream_cfg.scan_tools.unwrap_or(true) {
+        tracing::warn!(
+            upstream = %upstream_cfg.name,
+            "Tool scanning DISABLED by config for this upstream — tool poisoning, \
+             rug pulls, and schema abuse will NOT be detected. Re-enable with \
+             scan_tools = true"
+        );
+        return Ok(None);
+    }
+    let hash_path = upstream_cfg
+        .tool_hash_path
+        .as_ref()
+        .map(std::path::PathBuf::from);
+    let scanner = navra_auth::tool_scanner::ToolScanner::production(
+        navra_auth::tool_scanner::ToolScanConfig::default(),
+        hash_path,
+    )?;
+    Ok(Some(scanner))
+}
+
 /// Wire all configured upstream MCP servers onto the builder.
 ///
 /// When `endpoint_registry` is provided, tool-to-domain mappings are
@@ -287,10 +319,12 @@ async fn wire_stdio_upstream(
                     tokio::spawn(async move {
                         let _ = client.waiting().await;
                     });
+                    let mut scanner = build_scanner(upstream_cfg)
+                        .map_err(|e| format!("tool scanner init failed (fail closed): {e}"))?;
                     Ok(navra_core::UpstreamModule::discover(
                         &upstream_cfg.name,
                         peer,
-                        None,
+                        scanner.as_mut(),
                         &upstream_cfg.tool_overrides,
                     )
                     .await)
@@ -334,10 +368,12 @@ async fn wire_http_upstream(
             tokio::spawn(async move {
                 let _ = client.waiting().await;
             });
+            let mut scanner = build_scanner(upstream_cfg)
+                .map_err(|e| format!("tool scanner init failed (fail closed): {e}"))?;
             Ok(navra_core::UpstreamModule::discover(
                 &upstream_cfg.name,
                 peer,
-                None,
+                scanner.as_mut(),
                 &upstream_cfg.tool_overrides,
             )
             .await)
@@ -414,6 +450,154 @@ mod tests {
         let tls = navra_protocol::TlsConfig::default();
         let client = build_tls_client(&tls, "test");
         assert!(client.is_ok());
+    }
+
+    // --- Tool scanner wiring (production path) ---
+
+    /// Shared buffer capturing tracing output for log assertions.
+    #[derive(Clone)]
+    struct CaptureWriter(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for CaptureWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for CaptureWriter {
+        type Writer = CaptureWriter;
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// Install a thread-local tracing subscriber capturing to a buffer.
+    /// Returns the buffer and the guard keeping the subscriber installed.
+    fn capture_logs() -> (
+        std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+        tracing::subscriber::DefaultGuard,
+    ) {
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(CaptureWriter(std::sync::Arc::clone(&buf)))
+            .finish();
+        let guard = tracing::subscriber::set_default(subscriber);
+        (buf, guard)
+    }
+
+    fn test_server_path() -> String {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("test_upstream.py")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn test_upstream_cfg(name: &str, env: Vec<(String, String)>) -> config::UpstreamConfig {
+        config::UpstreamConfig {
+            name: name.to_string(),
+            transport: "stdio".to_string(),
+            command: vec!["python3".to_string(), test_server_path()],
+            env: env.into_iter().collect(),
+            ..Default::default()
+        }
+    }
+
+    fn empty_credential_store() -> Arc<navra_core::credentials::MappedCredentialStore> {
+        Arc::new(navra_core::credentials::MappedCredentialStore::new(
+            std::collections::HashMap::new(),
+        ))
+    }
+
+    /// List tool names from a gateway built around the module produced
+    /// by the production stdio wiring.
+    async fn gateway_tool_names(cfg: &config::UpstreamConfig) -> Vec<String> {
+        let module = wire_stdio_upstream(cfg, &empty_credential_store())
+            .await
+            .expect("upstream should connect");
+        let server = navra_core::McpServer::builder()
+            .allow_anonymous()
+            .module(module)
+            .build();
+        let agent = navra_core::auth::AgentIdentity::new("test", "dev");
+        server
+            .handle_list_tools(&agent, &Default::default())
+            .tools
+            .iter()
+            .map(|t| t.name.to_string())
+            .filter(|n| !n.starts_with("navra_var_"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn scanner_wiring_blocks_malicious_upstream_tool() {
+        // Production wiring: a tool whose description carries a Critical
+        // poisoning pattern must be absent from the gateway tools/list,
+        // while the clean tool from the same upstream still registers.
+        let cfg = test_upstream_cfg(
+            "scanner-poisoned",
+            vec![("NAVRA_TEST_POISON".to_string(), "1".to_string())],
+        );
+        let names = gateway_tool_names(&cfg).await;
+        assert!(
+            names.contains(&"echo".to_string()),
+            "clean tool must register, got: {names:?}"
+        );
+        assert!(
+            !names.contains(&"secret_helper".to_string()),
+            "malicious tool must be dropped from tools/list, got: {names:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn scanner_wiring_registers_clean_upstream() {
+        let cfg = test_upstream_cfg("scanner-clean", vec![]);
+        let names = gateway_tool_names(&cfg).await;
+        assert_eq!(names, vec!["echo".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn scanner_disable_allows_poisoned_tool_and_warns() {
+        // Explicit disable: the poisoned tool registers (documented
+        // operator choice) and a startup warning is logged.
+        let (buf, _guard) = capture_logs();
+        let mut cfg = test_upstream_cfg(
+            "scanner-disabled",
+            vec![("NAVRA_TEST_POISON".to_string(), "1".to_string())],
+        );
+        cfg.scan_tools = Some(false);
+        let names = gateway_tool_names(&cfg).await;
+        assert!(
+            names.contains(&"secret_helper".to_string()),
+            "disabled scanner must pass tools through, got: {names:?}"
+        );
+        let logs = String::from_utf8_lossy(&buf.lock().unwrap()).into_owned();
+        assert!(
+            logs.contains("Tool scanning DISABLED"),
+            "disable must log a startup warning, got: {logs}"
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_hash_store_fails_closed() {
+        // A rug-pull hash store that exists but does not parse must
+        // reject the upstream instead of silently disabling detection.
+        let dir = tempfile::tempdir().unwrap();
+        let hash_path = dir.path().join("tool_hashes.json");
+        std::fs::write(&hash_path, b"{not json").unwrap();
+        let mut cfg = test_upstream_cfg("scanner-corrupt-store", vec![]);
+        cfg.tool_hash_path = Some(hash_path.to_string_lossy().into_owned());
+        let result = wire_stdio_upstream(&cfg, &empty_credential_store()).await;
+        let err = result.err().expect("corrupt hash store must fail closed");
+        assert!(
+            err.contains("tool scanner init failed"),
+            "error should name the scanner init failure, got: {err}"
+        );
     }
 
     #[test]

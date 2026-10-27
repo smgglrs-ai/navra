@@ -178,6 +178,32 @@ impl ToolScanner {
         }
     }
 
+    /// Create a scanner for production wiring, failing closed when the
+    /// persisted hash store is unreadable or corrupt.
+    ///
+    /// `hash_path` overrides the default location
+    /// (`~/.local/share/navra/tool_hashes.json`); pass `None` to use it.
+    ///
+    /// A missing hash file is normal (first run) and yields an empty
+    /// store. A file that exists but cannot be read or parsed is an
+    /// error: silently continuing would disable rug-pull detection
+    /// without warning, so callers must reject the upstream instead.
+    pub fn production(
+        config: ToolScanConfig,
+        hash_path: Option<std::path::PathBuf>,
+    ) -> Result<Self, String> {
+        let hash_path = hash_path.or_else(default_hash_path);
+        let previous_hashes = match &hash_path {
+            None => HashMap::new(),
+            Some(path) => load_hashes_checked(path)?,
+        };
+        Ok(Self {
+            config,
+            previous_hashes,
+            hash_path,
+        })
+    }
+
     pub fn scan_tools(
         &mut self,
         upstream_name: &str,
@@ -275,6 +301,31 @@ pub fn load_hashes(path: &std::path::Path) -> HashMap<String, String> {
         Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
         Err(_) => HashMap::new(),
     }
+}
+
+/// Load previously saved tool hashes from disk, surfacing errors.
+///
+/// A missing file is treated as an empty store (first run). Any other
+/// read failure, or a file that does not parse as the expected JSON
+/// map, is an error — fail closed rather than silently disabling
+/// rug-pull detection.
+pub fn load_hashes_checked(path: &std::path::Path) -> Result<HashMap<String, String>, String> {
+    let data = match std::fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(e) => {
+            return Err(format!(
+                "failed to read tool hash store {}: {e}",
+                path.display()
+            ));
+        }
+    };
+    serde_json::from_str(&data).map_err(|e| {
+        format!(
+            "corrupt tool hash store {} (delete it to re-pin from scratch): {e}",
+            path.display()
+        )
+    })
 }
 
 /// Save current tool hashes to disk for rug-pull detection across restarts.
