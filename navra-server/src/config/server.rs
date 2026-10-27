@@ -106,6 +106,14 @@ pub struct ServerConfig {
     /// Kubernetes Service name for the navra gateway (in-cluster DNS).
     #[serde(default = "default_kubernetes_gateway_service")]
     pub kubernetes_gateway_service: String,
+    /// Cedar action dispatch version. 1 (default) dispatches bare
+    /// tool names as Cedar actions (compatibility). 2 namespaces
+    /// upstream tool calls under the modeled
+    /// `Action::"upstream_tool_call"` (tool name in the context), so
+    /// the bundled ASI01/ASI10 policies apply to upstream calls as a
+    /// class. See the security docs for the migration note.
+    #[serde(default)]
+    pub cedar_action_version: u32,
 }
 
 fn default_mcp_version() -> String {

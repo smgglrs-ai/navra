@@ -1062,6 +1062,17 @@ async fn serve_inner(
             ),
         ));
 
+    // Cedar action dispatch version (v2 namespaces upstream tool
+    // calls under Action::"upstream_tool_call").
+    #[cfg(feature = "cedar")]
+    if cfg.server.cedar_action_version >= 2 {
+        builder =
+            builder.cedar_action_version(navra_core::CedarActionVersion::V2UpstreamNamespaced);
+        tracing::info!(
+            "Cedar action dispatch v2: upstream tool calls dispatch Action::\"upstream_tool_call\" with context.tool_name"
+        );
+    }
+
     // Persistent session store (SQLite)
     {
         let session_db_path = dirs::data_dir()

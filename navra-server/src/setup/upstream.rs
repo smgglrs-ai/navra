@@ -85,6 +85,38 @@ pub(crate) async fn wire_upstream(
                     transport = %upstream_cfg.transport,
                     "Connected upstream (rmcp)"
                 );
+
+                // Cedar ASI04 gate: dispatch Action::"upstream_discover"
+                // where the discovery results are accepted for
+                // registration. The bundled policy permits discovery
+                // under trust-on-first-use (navra's upstream trust
+                // model) and forbids accepting unsigned upstreams when
+                // an operator policy withdraws that trust. No engine
+                // configured = allow (Cedar only restricts).
+                #[cfg(feature = "cedar")]
+                {
+                    let cedar_ctx = std::collections::HashMap::from([
+                        (
+                            "manifest_signed".to_string(),
+                            upstream_cfg.manifest.is_some().to_string(),
+                        ),
+                        // navra's upstream trust model is TOFU (scanner
+                        // hash pinning, manifest key pinning).
+                        ("trust_on_first_use".to_string(), "true".to_string()),
+                        (
+                            "scan_enabled".to_string(),
+                            upstream_cfg.scan_tools.unwrap_or(true).to_string(),
+                        ),
+                    ]);
+                    if !builder.cedar_allows("upstream_discover", &upstream_cfg.name, &cedar_ctx) {
+                        tracing::error!(
+                            upstream = %upstream_cfg.name,
+                            "Cedar policy denied upstream_discover — refusing registration (fail closed)"
+                        );
+                        continue;
+                    }
+                }
+
                 if let Some(watcher) = watcher {
                     builder = builder.upstream_watcher(watcher);
                 }

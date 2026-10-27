@@ -174,6 +174,26 @@ forbid(
 
 // ── Write/push permits (require approval) ──────────────────────────
 
+// Upstream tool calls (dispatched as Action::"upstream_tool_call"
+// under cedar_action_version = 2, with context.tool_name carrying the
+// concrete tool). Permitted under trust-on-first-use, navra's
+// upstream trust model; ASI01/ASI10 forbids above still apply.
+permit(
+    principal,
+    action == Action::"upstream_tool_call",
+    resource
+) when { context.trust_state == "normal" };
+
+// Accepting upstream discovery results for registration (dispatched
+// where discover() results are accepted). Permitted under
+// trust-on-first-use; ASI04's forbid above still applies when an
+// operator policy withdraws that trust.
+permit(
+    principal,
+    action == Action::"upstream_discover",
+    resource
+) when { context.trust_on_first_use == "true" };
+
 permit(
     principal,
     action == Action::"file_write",

@@ -40,6 +40,7 @@ config_watch_debounce_ms = 50
 | `session_ttl_secs` | u64 | `3600` | Session idle TTL in seconds (stale sessions expired on new connection) |
 | `config_watch` | bool | `false` | Watch config file for changes and hot-reload |
 | `config_watch_debounce_ms` | u64 | `50` | Debounce interval for config file watch events |
+| `cedar_action_version` | u32 | `1` | Cedar action dispatch: `1` = bare tool names, `2` = upstream tool calls dispatch `Action::"upstream_tool_call"` with `context.tool_name` (see security docs for the migration note) |
 
 ### PII models
 

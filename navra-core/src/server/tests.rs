@@ -59,6 +59,108 @@ fn builder_with_name_and_version() {
     assert_eq!(info.version, "2.0.0");
 }
 
+#[cfg(feature = "cedar")]
+#[tokio::test]
+async fn cedar_v2_namespaces_upstream_tool_calls() {
+    use crate::permissions::CedarEngine;
+    use crate::server::CedarActionVersion;
+
+    // Policy: allow everything, except the modeled upstream action.
+    let policy = r#"
+        permit(principal, action, resource);
+        forbid(principal, action == Action::"upstream_tool_call", resource);
+    "#;
+
+    // v2: the upstream-owned test_ping dispatches
+    // Action::"upstream_tool_call" → denied by the policy.
+    let server_v2 = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .cedar_action_version(CedarActionVersion::V2UpstreamNamespaced)
+        .upstream_module("test")
+        .module(TestModule)
+        .build();
+    let result = server_v2
+        .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
+        .await;
+    assert!(
+        result.is_error == Some(true),
+        "v2 must dispatch upstream tool calls as upstream_tool_call (denied here)"
+    );
+
+    // v1 (default): bare tool name → the policy does not match → allowed.
+    let server_v1 = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .upstream_module("test")
+        .module(TestModule)
+        .build();
+    let result = server_v1
+        .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
+        .await;
+    assert!(
+        result.is_error != Some(true),
+        "v1 keeps bare tool-name actions (compatibility)"
+    );
+
+    // v2 with a non-upstream tool: bare name dispatch → allowed.
+    let server_v2_local = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .cedar_action_version(CedarActionVersion::V2UpstreamNamespaced)
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .build();
+    let result = server_v2_local
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(
+        result.is_error != Some(true),
+        "v2 keeps bare actions for gateway-local tools"
+    );
+}
+
+#[cfg(feature = "cedar")]
+#[tokio::test]
+async fn cedar_upstream_discover_dispatched_at_registration() {
+    use crate::permissions::CedarEngine;
+    use std::collections::HashMap;
+
+    // A policy that withdraws trust-on-first-use for unsigned
+    // upstreams: only signed discoveries are permitted.
+    let policy = r#"
+        permit(principal, action == Action::"upstream_discover", resource)
+        when { context.manifest_signed == "true" };
+    "#;
+    let builder = test_builder().cedar_engine(CedarEngine::from_policies(policy).unwrap());
+
+    let unsigned: HashMap<String, String> = HashMap::from([
+        ("manifest_signed".to_string(), "false".to_string()),
+        ("trust_on_first_use".to_string(), "true".to_string()),
+    ]);
+    assert!(
+        !builder.cedar_allows("upstream_discover", "upstream-a", &unsigned),
+        "unsigned upstream discovery must be deniable by policy"
+    );
+
+    let signed: HashMap<String, String> = HashMap::from([
+        ("manifest_signed".to_string(), "true".to_string()),
+        ("trust_on_first_use".to_string(), "true".to_string()),
+    ]);
+    assert!(
+        builder.cedar_allows("upstream_discover", "upstream-a", &signed),
+        "signed upstream discovery must be permitted"
+    );
+
+    // No engine configured → allow (Cedar only further restricts).
+    let no_engine = test_builder();
+    assert!(no_engine.cedar_allows("upstream_discover", "upstream-a", &unsigned));
+}
+
 #[test]
 fn register_tool_and_list() {
     let server = test_builder()

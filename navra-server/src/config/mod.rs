@@ -432,6 +432,7 @@ impl Default for Config {
                 kubernetes_agent_template: None,
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
+                cedar_action_version: 1,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),
