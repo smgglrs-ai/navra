@@ -2030,6 +2030,14 @@ impl McpServer {
                 &crate::blackbox::generate_trace_id(),
             );
         }
+
+        // Tell connected clients the tool list changed (MCP spec:
+        // servers that advertise tools.listChanged send
+        // notifications/tools/list_changed when the list changes).
+        // No notification when the swap is a no-op.
+        if !added.is_empty() || !removed.is_empty() {
+            self.notify("notifications/tools/list_changed", None);
+        }
     }
 
     /// Is this tool registered by an upstream module? (Used by the
