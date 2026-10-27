@@ -77,6 +77,7 @@ use navra_auth::manifest::{
     ManifestKeyStore, ManifestVerification, SignedManifest, ToolManifest, verify_signed_manifest,
 };
 use navra_core::ManifestCheck;
+use navra_core::{DiscoveryBounds, DiscoveryOptions};
 
 /// Build a signed manifest for the tools the test server currently
 /// serves, by listing them over a dedicated connection.
@@ -101,11 +102,14 @@ async fn upstream_manifest_valid_signed_manifest_passes() {
     let module = UpstreamModule::discover_with(
         "manifest-ok",
         peer,
-        None,
-        Some(ManifestCheck {
-            signed: &signed,
-            key_store: &mut key_store,
-        }),
+        DiscoveryOptions {
+            scanner: None,
+            manifest: Some(ManifestCheck {
+                signed: &signed,
+                key_store: &mut key_store,
+            }),
+            bounds: DiscoveryBounds::default(),
+        },
         &Default::default(),
     )
     .await
@@ -128,11 +132,14 @@ async fn upstream_manifest_tampered_content_rejected() {
     let err = UpstreamModule::discover_with(
         "manifest-tampered",
         peer,
-        None,
-        Some(ManifestCheck {
-            signed: &signed,
-            key_store: &mut key_store,
-        }),
+        DiscoveryOptions {
+            scanner: None,
+            manifest: Some(ManifestCheck {
+                signed: &signed,
+                key_store: &mut key_store,
+            }),
+            bounds: DiscoveryBounds::default(),
+        },
         &Default::default(),
     )
     .await
@@ -165,11 +172,14 @@ async fn upstream_manifest_tool_set_mismatch_rejected() {
     let err = UpstreamModule::discover_with(
         "manifest-mismatch",
         peer,
-        None,
-        Some(ManifestCheck {
-            signed: &re_signed,
-            key_store: &mut key_store,
-        }),
+        DiscoveryOptions {
+            scanner: None,
+            manifest: Some(ManifestCheck {
+                signed: &re_signed,
+                key_store: &mut key_store,
+            }),
+            bounds: DiscoveryBounds::default(),
+        },
         &Default::default(),
     )
     .await
@@ -193,11 +203,14 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
         UpstreamModule::discover_with(
             "manifest-keychange",
             peer,
-            None,
-            Some(ManifestCheck {
-                signed: &signed1,
-                key_store: &mut key_store,
-            }),
+            DiscoveryOptions {
+                scanner: None,
+                manifest: Some(ManifestCheck {
+                    signed: &signed1,
+                    key_store: &mut key_store,
+                }),
+                bounds: DiscoveryBounds::default(),
+            },
             &Default::default(),
         )
         .await
@@ -217,11 +230,14 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
     let err = UpstreamModule::discover_with(
         "manifest-keychange",
         peer,
-        None,
-        Some(ManifestCheck {
-            signed: &signed2,
-            key_store: &mut key_store,
-        }),
+        DiscoveryOptions {
+            scanner: None,
+            manifest: Some(ManifestCheck {
+                signed: &signed2,
+                key_store: &mut key_store,
+            }),
+            bounds: DiscoveryBounds::default(),
+        },
         &Default::default(),
     )
     .await
@@ -542,5 +558,153 @@ async fn domain_rules_block_resources() {
     assert!(
         result.unwrap_err().contains("Permission denied"),
         "error should mention permission denied"
+    );
+}
+
+// --- Discovery content bounds ---
+
+#[tokio::test]
+async fn upstream_bounds_reject_tool_flood() {
+    // An upstream advertising 10,000 tools exceeds the default
+    // max_tools bound (1000) and must be rejected.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_TOOL_COUNT", "10000")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "bounds-flood",
+        peer,
+        DiscoveryOptions::new(),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("tool flood must be rejected");
+    assert!(
+        err.contains("max_tools_per_upstream"),
+        "error should name the tool-count bound, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_bounds_reject_deep_schema() {
+    // An input schema nested 100 JSON levels deep (50 wrapped object
+    // levels) exceeds the default max_input_schema_depth bound (32)
+    // and must be rejected — depth cannot be truncated, even in
+    // truncate mode. (Schemas nested beyond serde_json's own
+    // 128-level recursion limit never reach this code: rmcp fails to
+    // decode the response entirely.)
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_SCHEMA_DEPTH", "50")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "bounds-depth",
+        peer,
+        DiscoveryOptions::new(),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("deep schema must be rejected");
+    assert!(
+        err.contains("max_input_schema_depth"),
+        "error should name the depth bound, got: {err}"
+    );
+
+    // Truncate mode does not rescue a depth violation.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_SCHEMA_DEPTH", "50")]).await;
+    let err = UpstreamModule::discover_with(
+        "bounds-depth-truncate",
+        peer,
+        DiscoveryOptions {
+            bounds: DiscoveryBounds {
+                truncate_oversized: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("depth violation must reject even in truncate mode");
+    assert!(err.contains("cannot be truncated"));
+}
+
+#[tokio::test]
+async fn upstream_bounds_reject_oversized_description() {
+    // A 10,000-byte description exceeds the default
+    // max_description_length bound (4096) and must be rejected.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_DESC_LENGTH", "10000")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "bounds-desc",
+        peer,
+        DiscoveryOptions::new(),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("oversized description must be rejected");
+    assert!(
+        err.contains("max_description_length"),
+        "error should name the description bound, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_bounds_truncate_oversized_description_when_configured() {
+    // With truncate_oversized = true the description is truncated to
+    // the bound and the tool registers.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_DESC_LENGTH", "10000")]).await;
+
+    let module = UpstreamModule::discover_with(
+        "bounds-desc-truncate",
+        peer,
+        DiscoveryOptions {
+            bounds: DiscoveryBounds {
+                truncate_oversized: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .expect("truncate mode must register the tool");
+
+    let tools: Vec<_> = navra_core::Module::tools(&module);
+    assert_eq!(tools.len(), 1);
+    let desc = tools[0].0.description.as_deref().unwrap_or("");
+    assert!(
+        desc.len() <= 4096 + "[truncated]".len() + 3,
+        "truncated description must respect the bound, got {} bytes",
+        desc.len()
+    );
+    assert!(desc.ends_with("[truncated]"));
+}
+
+#[tokio::test]
+async fn upstream_bounds_reject_total_definition_bytes() {
+    // 10,000 tools each with a small description stay under the
+    // per-tool bounds but exceed the total-bytes bound when it is
+    // lowered — proving the total accounting works.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_TOOL_COUNT", "500")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "bounds-total",
+        peer,
+        DiscoveryOptions {
+            bounds: DiscoveryBounds {
+                max_total_definition_bytes: 1024,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("total definition bytes must be enforced");
+    assert!(
+        err.contains("max_total_definition_bytes"),
+        "error should name the total-bytes bound, got: {err}"
     );
 }

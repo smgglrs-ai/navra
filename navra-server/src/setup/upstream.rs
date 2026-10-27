@@ -229,6 +229,28 @@ fn load_manifest(
     Ok(Some((signed, key_store)))
 }
 
+/// Build the discovery content bounds for an upstream from its config,
+/// applying defaults per field.
+fn discovery_bounds(upstream_cfg: &config::UpstreamConfig) -> navra_core::DiscoveryBounds {
+    let Some(ref b) = upstream_cfg.bounds else {
+        return navra_core::DiscoveryBounds::default();
+    };
+    let defaults = navra_core::DiscoveryBounds::default();
+    navra_core::DiscoveryBounds {
+        max_tools: b.max_tools.unwrap_or(defaults.max_tools),
+        max_input_schema_depth: b
+            .max_input_schema_depth
+            .unwrap_or(defaults.max_input_schema_depth),
+        max_description_length: b
+            .max_description_length
+            .unwrap_or(defaults.max_description_length),
+        max_total_definition_bytes: b
+            .max_total_definition_bytes
+            .unwrap_or(defaults.max_total_definition_bytes),
+        truncate_oversized: b.truncate_oversized.unwrap_or(false),
+    }
+}
+
 /// Wire an OpenAPI bridge upstream (no MCP transport needed).
 async fn wire_openapi_upstream(
     mut builder: navra_core::McpServerBuilder,
@@ -386,8 +408,11 @@ async fn wire_stdio_upstream(
                     navra_core::UpstreamModule::discover_with(
                         &upstream_cfg.name,
                         peer,
-                        scanner.as_mut(),
-                        manifest,
+                        navra_core::DiscoveryOptions {
+                            scanner: scanner.as_mut(),
+                            manifest,
+                            bounds: discovery_bounds(upstream_cfg),
+                        },
                         &upstream_cfg.tool_overrides,
                     )
                     .await
@@ -441,8 +466,11 @@ async fn wire_http_upstream(
             navra_core::UpstreamModule::discover_with(
                 &upstream_cfg.name,
                 peer,
-                scanner.as_mut(),
-                manifest,
+                navra_core::DiscoveryOptions {
+                    scanner: scanner.as_mut(),
+                    manifest,
+                    bounds: discovery_bounds(upstream_cfg),
+                },
                 &upstream_cfg.tool_overrides,
             )
             .await
@@ -780,6 +808,81 @@ mod tests {
             Some(signer1.did()),
             "key change must not re-pin"
         );
+    }
+
+    #[tokio::test]
+    async fn bounds_wiring_rejects_tool_flood() {
+        // Production wiring: a 10k-tool upstream is rejected at
+        // registration by the default discovery bounds.
+        let cfg = test_upstream_cfg(
+            "bounds-wiring",
+            vec![("NAVRA_TEST_TOOL_COUNT".to_string(), "10000".to_string())],
+        );
+        let err = wire_stdio_upstream(&cfg, &empty_credential_store())
+            .await
+            .err()
+            .expect("tool flood must be rejected by bounds");
+        assert!(
+            err.contains("max_tools_per_upstream"),
+            "error should name the tool-count bound, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bounds_wiring_truncates_when_configured() {
+        // With truncate_oversized the oversized description is
+        // truncated and the upstream registers.
+        let mut cfg = test_upstream_cfg(
+            "bounds-wiring-truncate",
+            vec![("NAVRA_TEST_DESC_LENGTH".to_string(), "10000".to_string())],
+        );
+        cfg.bounds = Some(config::UpstreamBoundsConfig {
+            truncate_oversized: Some(true),
+            ..Default::default()
+        });
+        let names = gateway_tool_names(&cfg).await;
+        assert_eq!(names, vec!["echo".to_string()]);
+    }
+
+    #[test]
+    fn upstream_config_parses_bounds_toml() {
+        let toml_str = r#"
+            name = "bounded"
+            transport = "stdio"
+            command = ["true"]
+
+            [bounds]
+            max_tools = 500
+            max_input_schema_depth = 16
+            max_description_length = 2048
+            max_total_definition_bytes = 1048576
+            truncate_oversized = true
+        "#;
+        let cfg: config::UpstreamConfig = toml::from_str(toml_str).unwrap();
+        let bounds = cfg.bounds.clone().expect("bounds table");
+        assert_eq!(bounds.max_tools, Some(500));
+        assert_eq!(bounds.max_input_schema_depth, Some(16));
+        assert_eq!(bounds.max_description_length, Some(2048));
+        assert_eq!(bounds.max_total_definition_bytes, Some(1048576));
+        assert_eq!(bounds.truncate_oversized, Some(true));
+
+        // Default bounds apply fail-closed semantics.
+        let defaults = discovery_bounds(&cfg);
+        assert!(defaults.truncate_oversized);
+        assert_eq!(defaults.max_tools, 500);
+        let plain: config::UpstreamConfig = toml::from_str(
+            r#"
+            name = "plain"
+            command = ["true"]
+        "#,
+        )
+        .unwrap();
+        let defaults = discovery_bounds(&plain);
+        assert!(!defaults.truncate_oversized);
+        assert_eq!(defaults.max_tools, 1000);
+        assert_eq!(defaults.max_input_schema_depth, 32);
+        assert_eq!(defaults.max_description_length, 4096);
+        assert_eq!(defaults.max_total_definition_bytes, 4 * 1024 * 1024);
     }
 
     #[test]

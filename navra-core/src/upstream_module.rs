@@ -39,6 +39,170 @@ pub struct ManifestCheck<'a> {
     pub key_store: &'a mut navra_auth::manifest::ManifestKeyStore,
 }
 
+/// Content bounds for upstream discovery.
+///
+/// Upstream `tools/list` responses are untrusted input: without
+/// bounds, a hostile server can flood the gateway with tool
+/// definitions (memory/CPU during scanning and registration) or with
+/// absurdly nested schemas and descriptions. Exceeding a bound fails
+/// closed — the upstream registration is rejected with a clear error —
+/// unless `truncate_oversized` is set, in which case descriptions are
+/// truncated and excess tools dropped with warnings. Schema depth can
+/// never be truncated and always rejects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiscoveryBounds {
+    /// Maximum number of tools accepted from one upstream.
+    pub max_tools: usize,
+    /// Maximum JSON nesting depth of any tool's input schema.
+    pub max_input_schema_depth: usize,
+    /// Maximum length (bytes) of any tool description.
+    pub max_description_length: usize,
+    /// Maximum total size (bytes) of all serialized tool definitions.
+    pub max_total_definition_bytes: u64,
+    /// Truncate instead of reject where truncation is sound
+    /// (descriptions, tool count). Depth violations always reject.
+    pub truncate_oversized: bool,
+}
+
+impl Default for DiscoveryBounds {
+    fn default() -> Self {
+        Self {
+            max_tools: 1000,
+            max_input_schema_depth: 32,
+            max_description_length: 4096,
+            max_total_definition_bytes: 4 * 1024 * 1024,
+            truncate_oversized: false,
+        }
+    }
+}
+
+impl DiscoveryBounds {
+    /// Enforce the bounds over a set of discovered tool definitions.
+    ///
+    /// In reject mode any violation is an error naming the bound. In
+    /// truncate mode descriptions are truncated to
+    /// `max_description_length`, tools beyond `max_tools` are dropped,
+    /// and only non-truncatable violations (schema depth, total size
+    /// after truncation) still error.
+    fn enforce(
+        &self,
+        upstream: &str,
+        mut tools: Vec<ToolDefinition>,
+    ) -> Result<Vec<ToolDefinition>, String> {
+        if tools.len() > self.max_tools {
+            if self.truncate_oversized {
+                tracing::warn!(
+                    upstream = %upstream,
+                    tools = tools.len(),
+                    max_tools = self.max_tools,
+                    "Upstream exceeds max_tools — dropping excess (truncate mode)"
+                );
+                tools.truncate(self.max_tools);
+            } else {
+                return Err(format!(
+                    "upstream '{upstream}': advertises {} tools, exceeding \
+                     max_tools_per_upstream ({}) — rejecting registration",
+                    tools.len(),
+                    self.max_tools
+                ));
+            }
+        }
+
+        let mut total_bytes: u64 = 0;
+        let mut bounded = Vec::with_capacity(tools.len());
+        for mut tool in tools {
+            let depth = schema_depth(tool.input_schema.as_ref());
+            if depth > self.max_input_schema_depth {
+                return Err(format!(
+                    "upstream '{upstream}': tool '{}' has an input schema nested \
+                     {depth} levels deep, exceeding max_input_schema_depth ({}) — \
+                     rejecting registration (schema depth cannot be truncated)",
+                    tool.name, self.max_input_schema_depth
+                ));
+            }
+
+            if let Some(desc) = tool.description.as_deref()
+                && desc.len() > self.max_description_length
+            {
+                if self.truncate_oversized {
+                    tracing::warn!(
+                        upstream = %upstream,
+                        tool = %tool.name,
+                        length = desc.len(),
+                        max = self.max_description_length,
+                        "Tool description exceeds max_description_length — truncating"
+                    );
+                    let boundary = desc.floor_char_boundary(self.max_description_length);
+                    tool.description = Some(format!("{}…[truncated]", &desc[..boundary]).into());
+                } else {
+                    return Err(format!(
+                        "upstream '{upstream}': tool '{}' has a {}-byte description, \
+                         exceeding max_description_length ({}) — rejecting registration",
+                        tool.name,
+                        desc.len(),
+                        self.max_description_length
+                    ));
+                }
+            }
+
+            total_bytes += serde_json::to_string(&tool)
+                .map(|s| s.len() as u64)
+                .unwrap_or(u64::MAX);
+            if total_bytes > self.max_total_definition_bytes {
+                return Err(format!(
+                    "upstream '{upstream}': total tool definition size exceeds \
+                     max_total_definition_bytes ({}) — rejecting registration",
+                    self.max_total_definition_bytes
+                ));
+            }
+            bounded.push(tool);
+        }
+        Ok(bounded)
+    }
+}
+
+/// Maximum JSON nesting depth of a serde_json value (an object or
+/// array counts as one level over its children).
+fn json_depth(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Object(map) => map.values().map(json_depth).max().map_or(1, |d| d + 1),
+        serde_json::Value::Array(arr) => arr.iter().map(json_depth).max().map_or(1, |d| d + 1),
+        _ => 0,
+    }
+}
+
+/// Nesting depth of a JSON schema object (the map itself is one level).
+fn schema_depth(schema: &serde_json::Map<String, serde_json::Value>) -> usize {
+    schema.values().map(json_depth).max().map_or(1, |d| d + 1)
+}
+
+/// Options for [`UpstreamModule::discover_with`].
+pub struct DiscoveryOptions<'a> {
+    /// Supply-chain scanner (tool poisoning, rug pulls, ...).
+    pub scanner: Option<&'a mut navra_auth::tool_scanner::ToolScanner>,
+    /// Signed manifest + TOFU keystore verification.
+    pub manifest: Option<ManifestCheck<'a>>,
+    /// Content bounds enforced over the discovered definitions.
+    pub bounds: DiscoveryBounds,
+}
+
+impl<'a> DiscoveryOptions<'a> {
+    /// Options with no scanner, no manifest, and default bounds.
+    pub fn new() -> Self {
+        Self {
+            scanner: None,
+            manifest: None,
+            bounds: DiscoveryBounds::default(),
+        }
+    }
+}
+
+impl<'a> Default for DiscoveryOptions<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A module backed by an upstream MCP server via rmcp.
 pub struct UpstreamModule {
     name: String,
@@ -86,32 +250,54 @@ impl UpstreamModule {
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
     ) -> Self {
-        Self::discover_with(name, peer, scanner, None, tool_overrides)
-            .await
-            // Structural invariant: with no manifest check, discovery
-            // above never returns Err. If this ever changes, fail
-            // loudly instead of silently registering an empty module.
-            .unwrap_or_else(|e| panic!("discovery without manifest check failed: {e}"))
+        Self::discover_with(
+            name,
+            peer,
+            DiscoveryOptions {
+                scanner,
+                manifest: None,
+                bounds: DiscoveryBounds::default(),
+            },
+            tool_overrides,
+        )
+        .await
+        // Structural invariant: with no manifest check and default
+        // bounds, discovery above never returns Err. If this ever
+        // changes, fail loudly instead of silently registering an
+        // empty module.
+        .unwrap_or_else(|e| panic!("discovery without manifest check failed: {e}"))
     }
 
     /// Connect to an upstream via rmcp and discover its capabilities,
-    /// verifying a signed tool manifest when one is configured.
+    /// verifying a signed tool manifest when one is configured and
+    /// enforcing content bounds over the discovered definitions.
     ///
     /// Fail-closed: a manifest whose signature does not verify (tampered
     /// content), whose signing key changed since the TOFU pin, or whose
     /// tool set does not match what the upstream serves rejects the
-    /// upstream entirely with a clear error.
+    /// upstream entirely with a clear error. The same applies to
+    /// content-bound violations (tool count, schema depth, description
+    /// length, total definition bytes) unless truncation was opted into.
     pub async fn discover_with(
         name: &str,
         peer: rmcp::Peer<rmcp::RoleClient>,
-        scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
-        manifest: Option<ManifestCheck<'_>>,
+        options: DiscoveryOptions<'_>,
         tool_overrides: &HashMap<String, String>,
     ) -> Result<Self, String> {
+        let DiscoveryOptions {
+            scanner,
+            manifest,
+            bounds,
+        } = options;
+
         let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
             tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
             Vec::new()
         });
+
+        // Content bounds first: the definitions are untrusted input
+        // and must be bounded before any further processing.
+        let tools = bounds.enforce(name, tools)?;
 
         if let Some(check) = manifest {
             use navra_auth::manifest::{ManifestVerification, verify_signed_manifest};
