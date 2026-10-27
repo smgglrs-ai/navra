@@ -139,6 +139,14 @@ pub struct PermissionSet {
     /// Name of the DMN decision to evaluate (must match a `<decision name="...">` in the DMN file).
     #[serde(default)]
     pub dmn_decision: Option<String>,
+    /// Paths to Cedar policy files for this permission set (e.g. the
+    /// bundled `policies/owasp-asi-baseline.cedar`). Files from all
+    /// permission sets are combined into one engine; policies can
+    /// branch on `context.permission_set`. Requires the `cedar`
+    /// feature. Unreadable or unparsable files abort startup (fail
+    /// closed).
+    #[serde(default)]
+    pub cedar_policies: Vec<String>,
     /// Actor-chain delegation policy. When set, the gateway enforces
     /// chain depth limits and optionally requires a WIMSE-identified root.
     #[serde(default)]
@@ -267,6 +275,7 @@ impl Default for PermissionSet {
             max_context: None,
             dmn_policies: None,
             dmn_decision: None,
+            cedar_policies: Vec::new(),
             chain_policy: None,
         }
     }

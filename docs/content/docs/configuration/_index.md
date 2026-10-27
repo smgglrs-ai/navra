@@ -271,6 +271,22 @@ using any DMN 1.3+ editor (Camunda Modeler, Trisotech, etc.).
 See the [DMN guardrails guide]({{< relref "/docs/guides/dmn-guardrails" >}})
 for details on authoring decision tables.
 
+### Cedar policies
+
+Cedar policy files as a second authorization gate (can only further
+restrict — never grant beyond TOML rules). Requires building navra
+with the `cedar` feature; files from all permission sets are combined
+into one engine, and policies can branch on `context.permission_set`.
+
+```toml
+[permissions.default]
+cedar_policies = ["policies/owasp-asi-baseline.cedar"]
+```
+
+An unreadable or unparsable policy file aborts startup (fail closed).
+See the [security docs]({{< relref "/docs/security" >}}) for the action
+dispatch versions and the bundled OWASP ASI baseline.
+
 ### Chain policy
 
 Actor-chain delegation enforcement for multi-hop agent scenarios:

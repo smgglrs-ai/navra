@@ -759,6 +759,54 @@ async fn bootstrap_identity(cfg: &config::Config) -> anyhow::Result<Ed25519Signe
     }
 }
 
+/// Build the Cedar policy engine from permission-set config.
+///
+/// Cedar policy files named by any permission set's `cedar_policies`
+/// are combined into a single engine — the dispatch context carries
+/// `permission_set`, so policies can branch per set. Fail closed: an
+/// unreadable or unparsable policy file aborts startup rather than
+/// running with a silently dropped gate.
+#[cfg(feature = "cedar")]
+fn load_cedar_engine(
+    cfg: &config::Config,
+) -> anyhow::Result<Option<navra_core::permissions::CedarEngine>> {
+    let mut files = Vec::new();
+    for (name, pset) in &cfg.permissions {
+        for path in &pset.cedar_policies {
+            let expanded = util::expand_tilde(path);
+            let content = std::fs::read_to_string(&expanded).map_err(|e| {
+                anyhow::anyhow!(
+                    "permission set '{name}': failed to read Cedar policy file '{path}': {e}"
+                )
+            })?;
+            files.push((name.clone(), path.clone(), content));
+        }
+    }
+    if files.is_empty() {
+        return Ok(None);
+    }
+    let combined = files
+        .iter()
+        .map(|(_, _, content)| content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let engine = navra_core::permissions::CedarEngine::from_policies(&combined).map_err(|e| {
+        anyhow::anyhow!(
+            "failed to parse Cedar policies ({}): {e}",
+            files
+                .iter()
+                .map(|(name, path, _)| format!("{name}:{path}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })?;
+    tracing::info!(
+        files = files.len(),
+        "Cedar policy engine enabled (second gate — can only further restrict)"
+    );
+    Ok(Some(engine))
+}
+
 /// Build the permission engine from config.
 fn build_perm_engine(cfg: &config::Config) -> PermissionEngine {
     let mut engine = PermissionEngine::new();
@@ -1071,6 +1119,13 @@ async fn serve_inner(
         tracing::info!(
             "Cedar action dispatch v2: upstream tool calls dispatch Action::\"upstream_tool_call\" with context.tool_name"
         );
+    }
+
+    // Cedar policy engine from [permissions.<set>] cedar_policies.
+    // Fail closed: load errors abort startup before the server serves.
+    #[cfg(feature = "cedar")]
+    if let Some(engine) = load_cedar_engine(&cfg)? {
+        builder = builder.cedar_engine(engine);
     }
 
     // Statically denied tools are hidden from tools/list by default
@@ -1703,5 +1758,105 @@ mod tests {
         assert!(names.contains(&"git_status".to_string()));
         // Also includes gateway IFC tools registered in build()
         assert!(names.contains(&"navra_var_list".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod cedar_wiring_tests {
+    use super::*;
+
+    fn cfg_with_cedar(files: &[String]) -> config::Config {
+        let mut cfg = config::Config::default();
+        cfg.permissions.insert(
+            "dev".to_string(),
+            config::PermissionSet {
+                cedar_policies: files.to_vec(),
+                ..Default::default()
+            },
+        );
+        cfg
+    }
+
+    #[test]
+    fn cedar_policies_config_parses_from_toml() {
+        let toml_str = r#"
+            [server]
+            tcp = "127.0.0.1:9315"
+
+            [permissions.dev]
+            ring = 2
+            cedar_policies = ["policies/owasp-asi-baseline.cedar", "local.cedar"]
+        "#;
+        let cfg: config::Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            cfg.permissions["dev"].cedar_policies,
+            vec![
+                "policies/owasp-asi-baseline.cedar".to_string(),
+                "local.cedar".to_string()
+            ]
+        );
+    }
+
+    #[cfg(feature = "cedar")]
+    #[test]
+    fn load_cedar_engine_combines_files_and_enforces() {
+        let dir = tempfile::tempdir().unwrap();
+        let baseline = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("policies/owasp-asi-baseline.cedar");
+        let local = dir.path().join("local.cedar");
+        std::fs::write(
+            &local,
+            r#"forbid(principal, action == Action::"file_read", resource);"#,
+        )
+        .unwrap();
+
+        let cfg = cfg_with_cedar(&[
+            baseline.to_string_lossy().into_owned(),
+            local.to_string_lossy().into_owned(),
+        ]);
+        let engine = load_cedar_engine(&cfg)
+            .expect("loading should succeed")
+            .expect("engine should be constructed");
+        // Policy from the second file is enforced alongside the baseline.
+        let mut ctx = std::collections::HashMap::new();
+        ctx.insert("trust_state".to_string(), "normal".to_string());
+        assert!(
+            matches!(
+                engine.is_authorized("agent", "file_read", "/tmp/x", &ctx),
+                navra_core::permissions::CedarDecision::Deny(_)
+            ),
+            "local forbid must combine with the baseline"
+        );
+        // Baseline rules still present (git_status permitted for normal).
+        assert!(matches!(
+            engine.is_authorized("agent", "git_status", "/tmp/x", &ctx),
+            navra_core::permissions::CedarDecision::Allow
+        ));
+    }
+
+    #[cfg(feature = "cedar")]
+    #[test]
+    fn load_cedar_engine_no_files_is_none() {
+        let cfg = cfg_with_cedar(&[]);
+        assert!(load_cedar_engine(&cfg).unwrap().is_none());
+    }
+
+    #[cfg(feature = "cedar")]
+    #[test]
+    fn load_cedar_engine_missing_file_fails_closed() {
+        let cfg = cfg_with_cedar(&["/nonexistent/policy.cedar".to_string()]);
+        assert!(load_cedar_engine(&cfg).is_err());
+    }
+
+    #[cfg(feature = "cedar")]
+    #[test]
+    fn load_cedar_engine_bad_policy_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join("bad.cedar");
+        std::fs::write(&bad, "this is not cedar").unwrap();
+        let cfg = cfg_with_cedar(&[bad.to_string_lossy().into_owned()]);
+        assert!(load_cedar_engine(&cfg).is_err());
     }
 }

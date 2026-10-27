@@ -1,10 +1,11 @@
 // OWASP Agentic Security Initiative (ASI) Top 10 — baseline Cedar policies.
 //
 // These policies implement default-deny with explicit permits for safe
-// operations. Load via config.toml:
+// operations. Load via config.toml (requires building navra with the
+// `cedar` feature):
 //
 //   [permissions.default]
-//   cedar_policies = "policies/owasp-asi-baseline.cedar"
+//   cedar_policies = ["policies/owasp-asi-baseline.cedar"]
 //
 // Operator can override by loading additional .cedar files that further
 // restrict or (via permit) open specific paths. Cedar forbid always wins
