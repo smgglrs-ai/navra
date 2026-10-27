@@ -288,6 +288,13 @@ impl McpServer {
         } else {
             all_tools
         };
+        // Layered on disclosure: hide statically denied tools (their
+        // descriptions are injection surface for tools the agent
+        // cannot call). Off restores the historical listing.
+        if self.hide_denied_tools {
+            let permission_set = &agent.permissions;
+            visible.retain(|t| !self.tool_denied_by_rules(permission_set, &t.name));
+        }
         let offset = pagination.decode_offset().unwrap_or(0);
         let (tools, next_cursor) =
             crate::protocol::paginate(&visible, offset, crate::protocol::DEFAULT_PAGE_SIZE);
@@ -295,6 +302,16 @@ impl McpServer {
             tools,
             next_cursor,
             meta: None,
+        }
+    }
+
+    /// Does a static `Deny` in the permission set's tool_rules block
+    /// this tool? (Dynamic session grants cannot override a static
+    /// deny, so a denied tool is never callable.)
+    fn tool_denied_by_rules(&self, permission_set: &str, tool_name: &str) -> bool {
+        match self.tool_permissions.get(permission_set) {
+            Some(tp) => tp.check(tool_name) == crate::permissions::tool_rules::ToolPolicy::Deny,
+            None => false,
         }
     }
 
@@ -320,6 +337,11 @@ impl McpServer {
         } else {
             all_tools
         };
+        // Layered on disclosure: hide statically denied tools.
+        if self.hide_denied_tools {
+            let permission_set = &agent.permissions;
+            visible.retain(|t| !self.tool_denied_by_rules(permission_set, &t.name));
+        }
         // Filter by allowed upstreams (per-agent scoping)
         if !agent.allowed_upstreams.is_empty() {
             let allowed = &agent.allowed_upstreams;

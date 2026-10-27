@@ -4,6 +4,14 @@
 //! Tools not in the disclosure set are hidden from tools/list but
 //! can still be called if the agent knows the name (disclosure is
 //! UI-level, not security — use tool_rules for access control).
+//!
+//! Layered behavior: on top of these disclosure rules, the gateway
+//! also hides tools with a static `Deny` in the permission set's
+//! `tool_rules` from `tools/list` (default, `hide_denied_tools`).
+//! Unlike disclosure-only hiding, a statically denied tool cannot be
+//! called by name at all — its description is pure injection surface
+//! for a tool the agent is forbidden to invoke, so there is no reason
+//! to advertise it.
 
 use vstd::prelude::*;
 

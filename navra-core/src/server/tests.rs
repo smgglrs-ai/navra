@@ -1117,6 +1117,110 @@ async fn tool_permissions_deny_blocks_tool() {
 }
 
 #[tokio::test]
+async fn denied_tool_hidden_from_list_and_still_denied_on_call() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    // Default (hide_denied_tools = true): a statically denied tool is
+    // absent from tools/list while allowed tools remain visible, and
+    // calling the denied tool by name is still refused.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool(
+            ToolDefinition::new("status_check", "Check status", empty_input_schema()),
+            |_args, _ctx| Box::pin(async { CallToolResult::text("ok") }),
+        )
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let agent = test_agent();
+    let listed: Vec<String> = server
+        .handle_list_tools(&agent, &Default::default())
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(
+        !listed.contains(&"echo".to_string()),
+        "denied tool must be hidden from tools/list, got: {listed:?}"
+    );
+    assert!(
+        listed.contains(&"status_check".to_string()),
+        "allowed tool must stay visible, got: {listed:?}"
+    );
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(
+        result.is_error == Some(true),
+        "hidden tool must still be denied when called by name"
+    );
+
+    // The dynamic listing behaves the same way.
+    let ctx = test_ctx();
+    let listed: Vec<String> = server
+        .handle_list_tools_dynamic(&agent, &Default::default(), &ctx)
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(!listed.contains(&"echo".to_string()));
+    assert!(listed.contains(&"status_check".to_string()));
+}
+
+#[tokio::test]
+async fn hide_denied_tools_off_restores_listing() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    // Flag off restores the historical behavior: denied tools are
+    // listed (their descriptions visible) while calls stay denied.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .hide_denied_tools(false)
+        .build();
+
+    let agent = test_agent();
+    let listed: Vec<String> = server
+        .handle_list_tools(&agent, &Default::default())
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(
+        listed.contains(&"echo".to_string()),
+        "flag off must restore listing denied tools, got: {listed:?}"
+    );
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(result.is_error == Some(true));
+}
+
+#[tokio::test]
 async fn tool_permissions_allow_passes_through() {
     use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
 

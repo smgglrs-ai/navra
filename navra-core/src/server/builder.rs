@@ -50,6 +50,7 @@ pub struct McpServerBuilder {
     opa_engine: Option<navra_auth::permissions::OpaEngine>,
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    hide_denied_tools: bool,
     declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
     declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
     upstream_watchers: Vec<crate::UpstreamWatcher>,
@@ -100,6 +101,7 @@ impl McpServerBuilder {
             opa_engine: None,
             dmn_engine: None,
             tool_disclosure: HashMap::new(),
+            hide_denied_tools: true,
             declassification_authority: None,
             declassification_ledger: None,
             upstream_watchers: Vec::new(),
@@ -457,6 +459,16 @@ impl McpServerBuilder {
     /// watchers after `build()` and spawn `UpstreamWatcher::run`.
     pub fn upstream_watcher(mut self, watcher: crate::UpstreamWatcher) -> Self {
         self.upstream_watchers.push(watcher);
+        self
+    }
+
+    /// Control whether tools with a static `Deny` in `tool_rules` are
+    /// hidden from `tools/list`. Default: true (deny-wins philosophy —
+    /// a denied tool's description is pure injection surface for a
+    /// tool the agent cannot call). Setting false restores the
+    /// historical behavior where denied tools remain listed.
+    pub fn hide_denied_tools(mut self, hide: bool) -> Self {
+        self.hide_denied_tools = hide;
         self
     }
 
@@ -1020,6 +1032,7 @@ impl McpServerBuilder {
             opa_engine: self.opa_engine.map(std::sync::Mutex::new),
             dmn_engine: self.dmn_engine,
             tool_disclosure: self.tool_disclosure,
+            hide_denied_tools: self.hide_denied_tools,
             declassification_authority: self.declassification_authority,
             declassification_ledger: self.declassification_ledger,
             declassification_witnesses: std::sync::Mutex::new(Vec::new()),
