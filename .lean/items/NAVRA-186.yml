@@ -38,7 +38,7 @@ description: |
 notes: |
   - Gap work landed as commits 905590e3..31d829be on
     security-wiring-gaps
-  - Environmental test caveats on the dev machine: Ollama not
-    installed (v1_chat_completions_returns_openai_format), podman
-    mcp-filesystem/mcp-git images not built (3 adversarial_eval
-    tests)
+  - Environmental test caveats on the dev machine: the e2e chat
+    proxy test pins model qwen3:8b (~5 GB, not pulled); the 3
+    adversarial_eval tests that fail need the podman images
+    localhost/mcp-filesystem and localhost/mcp-git (not built)
