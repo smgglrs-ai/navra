@@ -79,12 +79,15 @@ pub(crate) async fn wire_upstream(
         };
 
         match module_result {
-            Ok(module) => {
+            Ok((module, watcher)) => {
                 tracing::info!(
                     upstream = %upstream_cfg.name,
                     transport = %upstream_cfg.transport,
                     "Connected upstream (rmcp)"
                 );
+                if let Some(watcher) = watcher {
+                    builder = builder.upstream_watcher(watcher);
+                }
 
                 for prompt_def in module.discovered_prompts() {
                     if let Some(persona_name) = prompt_def.name.strip_prefix("persona:") {
@@ -347,10 +350,19 @@ async fn wire_openapi_upstream(
 }
 
 /// Connect a stdio-transport upstream.
+///
+/// Returns the discovered module plus a `list_changed` refresh watcher
+/// (the caller registers the module and spawns the watcher).
 async fn wire_stdio_upstream(
     upstream_cfg: &config::UpstreamConfig,
     credential_store: &Arc<navra_core::credentials::MappedCredentialStore>,
-) -> Result<navra_core::UpstreamModule, String> {
+) -> Result<
+    (
+        navra_core::UpstreamModule,
+        Option<navra_core::UpstreamWatcher>,
+    ),
+    String,
+> {
     let mut cmd = tokio::process::Command::new(&upstream_cfg.command[0]);
     for arg in &upstream_cfg.command[1..] {
         cmd.arg(arg);
@@ -392,7 +404,8 @@ async fn wire_stdio_upstream(
     }
     match rmcp::transport::TokioChildProcess::new(cmd) {
         Ok(transport) => {
-            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+            let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
                     tokio::spawn(async move {
@@ -405,9 +418,9 @@ async fn wire_stdio_upstream(
                     let manifest = manifest_data
                         .as_mut()
                         .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
-                    navra_core::UpstreamModule::discover_with(
+                    let module = navra_core::UpstreamModule::discover_with(
                         &upstream_cfg.name,
-                        peer,
+                        peer.clone(),
                         navra_core::DiscoveryOptions {
                             scanner: scanner.as_mut(),
                             manifest,
@@ -415,7 +428,20 @@ async fn wire_stdio_upstream(
                         },
                         &upstream_cfg.tool_overrides,
                     )
-                    .await
+                    .await?;
+                    let watcher = navra_core::UpstreamWatcher::new(
+                        upstream_cfg.name.clone(),
+                        peer,
+                        events,
+                        scanner,
+                        manifest_data,
+                        discovery_bounds(upstream_cfg),
+                        upstream_cfg.tool_overrides.clone(),
+                        std::time::Duration::from_millis(
+                            upstream_cfg.refresh_debounce_ms.unwrap_or(1000),
+                        ),
+                    );
+                    Ok((module, Some(watcher)))
                 }
                 Err(e) => Err(format!("rmcp init failed: {e}")),
             }
@@ -425,10 +451,18 @@ async fn wire_stdio_upstream(
 }
 
 /// Connect an HTTP/SSE/streamable-HTTP upstream.
+///
+/// Returns the discovered module plus a `list_changed` refresh watcher.
 async fn wire_http_upstream(
     upstream_cfg: &config::UpstreamConfig,
     tls_config: Option<&navra_protocol::TlsConfig>,
-) -> Result<navra_core::UpstreamModule, String> {
+) -> Result<
+    (
+        navra_core::UpstreamModule,
+        Option<navra_core::UpstreamWatcher>,
+    ),
+    String,
+> {
     let url = match &upstream_cfg.url {
         Some(u) => u.as_str(),
         None => {
@@ -450,7 +484,8 @@ async fn wire_http_upstream(
         rmcp::transport::StreamableHttpClientTransport::from_uri(url)
     };
 
-    match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
         Ok(client) => {
             let peer = client.peer().clone();
             tokio::spawn(async move {
@@ -463,9 +498,9 @@ async fn wire_http_upstream(
             let manifest = manifest_data
                 .as_mut()
                 .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
-            navra_core::UpstreamModule::discover_with(
+            let module = navra_core::UpstreamModule::discover_with(
                 &upstream_cfg.name,
-                peer,
+                peer.clone(),
                 navra_core::DiscoveryOptions {
                     scanner: scanner.as_mut(),
                     manifest,
@@ -473,7 +508,18 @@ async fn wire_http_upstream(
                 },
                 &upstream_cfg.tool_overrides,
             )
-            .await
+            .await?;
+            let watcher = navra_core::UpstreamWatcher::new(
+                upstream_cfg.name.clone(),
+                peer,
+                events,
+                scanner,
+                manifest_data,
+                discovery_bounds(upstream_cfg),
+                upstream_cfg.tool_overrides.clone(),
+                std::time::Duration::from_millis(upstream_cfg.refresh_debounce_ms.unwrap_or(1000)),
+            );
+            Ok((module, Some(watcher)))
         }
         Err(e) => Err(format!("rmcp init failed: {e}")),
     }
@@ -614,7 +660,7 @@ mod tests {
     /// List tool names from a gateway built around the module produced
     /// by the production stdio wiring.
     async fn gateway_tool_names(cfg: &config::UpstreamConfig) -> Vec<String> {
-        let module = wire_stdio_upstream(cfg, &empty_credential_store())
+        let (module, _watcher) = wire_stdio_upstream(cfg, &empty_credential_store())
             .await
             .expect("upstream should connect");
         let server = navra_core::McpServer::builder()

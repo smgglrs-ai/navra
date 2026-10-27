@@ -8,12 +8,15 @@ use crate::protocol::{
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
+use navra_mcp::ToolHandler;
 use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::truncate_str;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use super::McpServer;
+use super::types::RegisteredTool;
 
 /// Dynamic tool filter applied during `tools/list`.
 ///
@@ -168,7 +171,12 @@ impl McpServer {
         }
 
         crate::protocol::ServerCapabilities {
-            tools: if self.tools.is_empty() {
+            tools: if self
+                .tools
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+            {
                 None
             } else {
                 Some(crate::protocol::ToolsCapability {
@@ -266,7 +274,13 @@ impl McpServer {
         agent: &crate::auth::AgentIdentity,
         pagination: &PaginatedRequest,
     ) -> ListToolsResult {
-        let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
+        let all_tools: Vec<_> = self
+            .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .map(|t| t.definition.clone())
+            .collect();
         let visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
             disclosure.filter(&all_tools)
         } else {
@@ -292,7 +306,13 @@ impl McpServer {
         pagination: &PaginatedRequest,
         ctx: &CallContext,
     ) -> ListToolsResult {
-        let all_tools: Vec<_> = self.tools.values().map(|t| t.definition.clone()).collect();
+        let all_tools: Vec<_> = self
+            .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .map(|t| t.definition.clone())
+            .collect();
         let mut visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
             disclosure.filter(&all_tools)
         } else {
@@ -473,7 +493,12 @@ impl McpServer {
         // If a tool is classified as "write" and the agent's permission
         // set only allows "read", block it.
         if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions)
-            && let Some(tool_op) = self.tool_operations.get(params.name.as_ref())
+            && let Some(tool_op) = self
+                .tool_operations
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(params.name.as_ref())
+                .cloned()
         {
             match tool_op {
                 navra_mcp::ToolOperation::Write if !ops.contains("write") => {
@@ -507,8 +532,13 @@ impl McpServer {
         // If domain_rules are configured for this permission set, check
         // the tool's classified domain:operation against allowed pairs.
         if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions)
-            && let Some(class) = self.tool_classifications.get(params.name.as_ref())
-            && rules.check(class) == crate::permissions::DomainPolicy::Deny
+            && let Some(class) = self
+                .tool_classifications
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(params.name.as_ref())
+                .cloned()
+            && rules.check(&class) == crate::permissions::DomainPolicy::Deny
         {
             self.process_table.record_denied(
                 &ctx.agent.name,
@@ -653,12 +683,13 @@ impl McpServer {
             && let Some(acl) = self.path_acls.get(&ctx.agent.permissions)
         {
             let path = std::path::Path::new(path_str);
-            let tool_op = if crate::ifc::is_write_tool(
-                &params.name,
-                self.tools
-                    .get(params.name.as_ref())
-                    .and_then(|t| t.definition.annotations.as_ref()),
-            ) {
+            let annotations = self
+                .tools
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(params.name.as_ref())
+                .and_then(|t| t.definition.annotations.clone());
+            let tool_op = if crate::ifc::is_write_tool(&params.name, annotations.as_ref()) {
                 "write"
             } else {
                 "read"
@@ -713,9 +744,11 @@ impl McpServer {
         // IFC pre-check: per-value write blocking (Bell-LaPadula no-write-down).
         let tool_annotations = self
             .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .get(params.name.as_ref())
-            .and_then(|t| t.definition.annotations.as_ref());
-        if crate::ifc::is_write_tool(&params.name, tool_annotations) {
+            .and_then(|t| t.definition.annotations.clone());
+        if crate::ifc::is_write_tool(&params.name, tool_annotations.as_ref()) {
             let check_label = if resolved.referenced_vars.is_empty() {
                 // No var:// refs — fall back to session context label
                 ctx.taint.level()
@@ -802,7 +835,12 @@ impl McpServer {
         let arguments = if self.hooks.has_hooks() {
             match self
                 .hooks
-                .run_pre(&params.name, resolved.arguments, &ctx, tool_annotations)
+                .run_pre(
+                    &params.name,
+                    resolved.arguments,
+                    &ctx,
+                    tool_annotations.as_ref(),
+                )
                 .await
             {
                 crate::hooks::PreHookOutcome::Proceed(args) => args,
@@ -843,28 +881,33 @@ impl McpServer {
 
         let tool_start = std::time::Instant::now();
         let trace_id = crate::blackbox::generate_trace_id();
-        let result = match self.tools.get(params.name.as_ref()) {
+        let tools_snapshot: HashMap<String, RegisteredTool> =
+            self.tools.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let result = match tools_snapshot.get(params.name.as_ref()) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
                 // Multi-hypothesis tool routing: try fuzzy matching
-                let registered_names: Vec<&str> = self.tools.keys().map(|s| s.as_str()).collect();
-                let tool_schemas: std::collections::HashMap<String, Option<Vec<String>>> = self
-                    .tools
-                    .iter()
-                    .map(|(name, tool)| {
-                        let props: Option<Vec<String>> = tool
-                            .definition
-                            .input_schema
-                            .get("properties")
-                            .and_then(|p| p.as_object())
-                            .map(|p| p.keys().cloned().collect());
-                        (name.clone(), props)
-                    })
-                    .collect();
+                let registered_names: Vec<String> = tools_snapshot.keys().cloned().collect();
+                let tool_schemas: std::collections::HashMap<String, Option<Vec<String>>> =
+                    tools_snapshot
+                        .iter()
+                        .map(|(name, tool)| {
+                            let props: Option<Vec<String>> = tool
+                                .definition
+                                .input_schema
+                                .get("properties")
+                                .and_then(|p| p.as_object())
+                                .map(|p| p.keys().cloned().collect());
+                            (name.clone(), props)
+                        })
+                        .collect();
 
                 let candidates = super::routing::find_candidates(
                     &params.name,
-                    &registered_names,
+                    &registered_names
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>(),
                     &arguments,
                     &tool_schemas,
                     &self.tool_routing,
@@ -887,7 +930,7 @@ impl McpServer {
                             .routing_decisions
                             .fetch_add(1, Ordering::Relaxed);
 
-                        if let Some(tool) = self.tools.get(&top.name) {
+                        if let Some(tool) = tools_snapshot.get(&top.name) {
                             (tool.handler)(arguments.clone(), ctx.clone()).await
                         } else {
                             CallToolResult::error_msg(format!("Unknown tool: {}", params.name))
@@ -1821,19 +1864,149 @@ impl McpServer {
     }
 
     pub fn tool_count(&self) -> usize {
-        self.tools.len()
+        self.tools.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     /// Returns sorted list of registered tool names.
     pub fn tool_names(&self) -> Vec<String> {
-        let mut names: Vec<String> = self.tools.keys().cloned().collect();
+        let mut names: Vec<String> = self
+            .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .cloned()
+            .collect();
         names.sort();
         names
     }
 
+    /// Atomically swap an upstream module's tool registry entries.
+    ///
+    /// Removes the module's previously-registered tools and inserts
+    /// the new set, updating the operation and classification maps.
+    /// A tool name that would collide with a tool owned by a
+    /// *different* module is refused (the last registrant does not
+    /// win — fail closed). Emits a blackbox audit event per swap.
+    pub fn swap_upstream_tools(
+        &self,
+        module_name: &str,
+        tools: Vec<(crate::protocol::ToolDefinition, ToolHandler)>,
+        operations: HashMap<String, navra_mcp::ToolOperation>,
+        classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+    ) {
+        let previous: Vec<String> = {
+            let index = self
+                .upstream_tool_index
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            index.get(module_name).cloned().unwrap_or_default()
+        };
+
+        let new_names: Vec<String> = tools.iter().map(|(def, _)| def.name.to_string()).collect();
+
+        {
+            let mut tools_map = self.tools.write().unwrap_or_else(|e| e.into_inner());
+            for name in &previous {
+                tools_map.remove(name);
+            }
+            for (definition, handler) in tools {
+                let name = definition.name.to_string();
+                if tools_map.contains_key(&name) {
+                    tracing::error!(
+                        module = %module_name,
+                        tool = %name,
+                        "Refreshed upstream tool collides with another module's tool — refusing registration (fail closed)"
+                    );
+                    continue;
+                }
+                tools_map.insert(
+                    name,
+                    RegisteredTool {
+                        definition,
+                        handler,
+                    },
+                );
+            }
+        }
+        {
+            let mut ops = self
+                .tool_operations
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            for name in &previous {
+                ops.remove(name);
+            }
+            ops.extend(operations);
+        }
+        {
+            let mut classes = self
+                .tool_classifications
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            for name in &previous {
+                classes.remove(name);
+            }
+            classes.extend(classifications);
+        }
+        {
+            let mut index = self
+                .upstream_tool_index
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            index.insert(module_name.to_string(), new_names.clone());
+        }
+
+        let removed: Vec<&String> = previous.iter().filter(|n| !new_names.contains(n)).collect();
+        let added: Vec<&String> = new_names.iter().filter(|n| !previous.contains(n)).collect();
+        tracing::info!(
+            module = %module_name,
+            tools = new_names.len(),
+            removed = ?removed,
+            added = ?added,
+            "Upstream tool registry refreshed (list_changed)"
+        );
+
+        // Blackbox audit event per refresh.
+        if let Some(ref bb) = self.blackbox {
+            bb.record(
+                "navra-gateway",
+                "system",
+                "",
+                module_name,
+                "tools/list_changed",
+                &format!(
+                    "{{\"removed\": {:?}, \"added\": {:?}, \"total\": {}}}",
+                    removed,
+                    added,
+                    new_names.len()
+                ),
+                "registry_refresh",
+                0,
+                "N/A",
+                &crate::blackbox::generate_trace_id(),
+            );
+        }
+    }
+
+    /// Take the upstream refresh watchers registered on the builder.
+    ///
+    /// The embedding server calls this once after `build()` and spawns
+    /// `UpstreamWatcher::run` for each returned watcher.
+    pub fn take_upstream_watchers(&self) -> Vec<crate::UpstreamWatcher> {
+        std::mem::take(
+            &mut *self
+                .upstream_watchers
+                .write()
+                .unwrap_or_else(|e| e.into_inner()),
+        )
+    }
+
     /// Returns the operation classification map for all registered tools.
-    pub fn tool_operations(&self) -> &std::collections::HashMap<String, navra_mcp::ToolOperation> {
-        &self.tool_operations
+    pub fn tool_operations(&self) -> std::collections::HashMap<String, navra_mcp::ToolOperation> {
+        self.tool_operations
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Returns the shared pause flag. Use this to wire pause/resume

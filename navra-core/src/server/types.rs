@@ -2,6 +2,7 @@ use crate::protocol::{PromptDefinition, ResourceDefinition, ToolDefinition};
 use navra_mcp::{PromptHandler, ResourceHandler, ToolHandler};
 
 /// Registered tool: definition + handler.
+#[derive(Clone)]
 pub(super) struct RegisteredTool {
     pub definition: ToolDefinition,
     pub handler: ToolHandler,

@@ -115,6 +115,11 @@ pub struct UpstreamConfig {
     /// are applied per field; see [`UpstreamBoundsConfig`].
     #[serde(default)]
     pub bounds: Option<UpstreamBoundsConfig>,
+    /// Minimum interval between `tools/list_changed` refreshes for
+    /// this upstream, in milliseconds (debounce against a chatty
+    /// upstream). Default: 1000.
+    #[serde(default)]
+    pub refresh_debounce_ms: Option<u64>,
     /// Override the rug-pull hash store location for this upstream.
     /// Default: `~/.local/share/navra/tool_hashes.json`. Set per
     /// upstream to isolate hash stores between navra instances.

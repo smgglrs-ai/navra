@@ -13,6 +13,8 @@ impl McpServer {
     pub fn server_card(&self) -> serde_json::Value {
         let tools: Vec<_> = self
             .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|t| {
                 serde_json::json!({
@@ -66,6 +68,8 @@ impl McpServer {
     pub fn agent_card(&self, endpoint_url: &str, root_did: Option<&str>) -> AgentCard {
         let skills: Vec<AgentSkill> = self
             .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|t| {
                 let name = &t.definition.name;
@@ -87,7 +91,14 @@ impl McpServer {
             })
             .collect();
 
-        let has_voice = self.tools.keys().any(|k| k.starts_with("voice_"));
+        let tool_names: Vec<String> = self
+            .tools
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .keys()
+            .cloned()
+            .collect();
+        let has_voice = tool_names.iter().any(|k| k.starts_with("voice_"));
         let mut input_modes = vec!["text/plain".to_string()];
         let mut output_modes = vec!["text/plain".to_string()];
         if has_voice {
@@ -99,9 +110,9 @@ impl McpServer {
             name: self.name.clone(),
             description: format!(
                 "MCP gateway with {} tools across {} capabilities",
-                self.tools.len(),
-                self.tools
-                    .keys()
+                tool_names.len(),
+                tool_names
+                    .iter()
                     .map(|k| k.split('_').next().unwrap_or(k))
                     .collect::<std::collections::HashSet<_>>()
                     .len()

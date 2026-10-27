@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
 use super::McpServer;
@@ -49,6 +50,9 @@ pub struct McpServerBuilder {
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
     declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
     declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
+    upstream_watchers: Vec<crate::UpstreamWatcher>,
+    /// Tool names registered per module (for upstream registry swaps).
+    module_tool_index: HashMap<String, Vec<String>>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
@@ -94,6 +98,8 @@ impl McpServerBuilder {
             tool_disclosure: HashMap::new(),
             declassification_authority: None,
             declassification_ledger: None,
+            upstream_watchers: Vec::new(),
+            module_tool_index: HashMap::new(),
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
@@ -213,6 +219,7 @@ impl McpServerBuilder {
     /// `git_status`) to avoid collisions.
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();
+        let mut mod_tools = Vec::new();
         for (definition, handler) in module.tools() {
             let tool_name = definition.name.to_string();
             if self.tools.contains_key(&tool_name) {
@@ -226,6 +233,7 @@ impl McpServerBuilder {
                 tool = %tool_name,
                 "Registered tool"
             );
+            mod_tools.push(tool_name.clone());
             self.tools.insert(
                 tool_name,
                 RegisteredTool {
@@ -234,6 +242,7 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_tool_index.insert(mod_name.clone(), mod_tools);
         for (definition, handler) in module.prompts() {
             let prompt_name = definition.name.clone();
             if self.prompts.contains_key(&prompt_name) {
@@ -436,6 +445,14 @@ impl McpServerBuilder {
         ledger: Arc<crate::safety::DeclassificationLedger>,
     ) -> Self {
         self.declassification_ledger = Some(ledger);
+        self
+    }
+
+    /// Register a refresh watcher for an upstream module that
+    /// advertises `list_changed`. The embedding server must drain the
+    /// watchers after `build()` and spawn `UpstreamWatcher::run`.
+    pub fn upstream_watcher(mut self, watcher: crate::UpstreamWatcher) -> Self {
+        self.upstream_watchers.push(watcher);
         self
     }
 
@@ -933,7 +950,6 @@ impl McpServerBuilder {
         McpServer {
             name: self.name,
             version: self.version,
-            tools,
             prompts: self.prompts,
             resources,
             resource_templates,
@@ -942,8 +958,6 @@ impl McpServerBuilder {
             safety_pipelines: self.safety_pipelines,
             tool_permissions: self.tool_permissions,
             agent_operations: self.agent_operations,
-            tool_operations: self.tool_operations,
-            tool_classifications: self.tool_classifications,
             domain_rules: self.domain_rules,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
@@ -971,6 +985,11 @@ impl McpServerBuilder {
             declassification_authority: self.declassification_authority,
             declassification_ledger: self.declassification_ledger,
             declassification_witnesses: std::sync::Mutex::new(Vec::new()),
+            tools: RwLock::new(tools),
+            tool_operations: RwLock::new(self.tool_operations),
+            tool_classifications: RwLock::new(self.tool_classifications),
+            upstream_tool_index: RwLock::new(self.module_tool_index),
+            upstream_watchers: RwLock::new(self.upstream_watchers),
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),

@@ -290,6 +290,62 @@ impl UpstreamModule {
             bounds,
         } = options;
 
+        let discovered =
+            discover_tools(name, &peer, scanner, manifest, &bounds, tool_overrides).await?;
+
+        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
+            Vec::new()
+        });
+
+        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
+            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
+            Vec::new()
+        });
+
+        tracing::info!(
+            upstream = %name,
+            tools = discovered.tools.len(),
+            prompts = prompts.len(),
+            resources = resources.len(),
+            "Discovered upstream capabilities"
+        );
+
+        Ok(Self {
+            name: name.to_string(),
+            peer,
+            tools: discovered.tools,
+            tool_operations: discovered.tool_operations,
+            tool_classifications: discovered.tool_classifications,
+            prompts,
+            resources,
+        })
+    }
+}
+
+/// The accepted tool set produced by one discovery run.
+pub struct DiscoveredTools {
+    pub tools: Vec<ToolDefinition>,
+    pub tool_operations: HashMap<String, ToolOperation>,
+    pub tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+}
+
+/// Run the discovery pipeline over an upstream peer: list tools,
+/// enforce content bounds, verify the signed manifest (if any), scan
+/// for supply-chain threats, and apply tool overrides.
+///
+/// Shared by initial registration and by `list_changed` refreshes so
+/// both paths enforce identical gates. Malicious tools are dropped,
+/// Suspicious tools pass with a warning.
+async fn discover_tools(
+    name: &str,
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
+    manifest: Option<ManifestCheck<'_>>,
+    bounds: &DiscoveryBounds,
+    tool_overrides: &HashMap<String, String>,
+) -> Result<DiscoveredTools, String> {
+    {
         let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
             tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
             Vec::new()
@@ -419,33 +475,180 @@ impl UpstreamModule {
             );
         }
 
-        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
-            Vec::new()
-        });
-
-        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
-            Vec::new()
-        });
-
-        tracing::info!(
-            upstream = %name,
-            tools = accepted_tools.len(),
-            prompts = prompts.len(),
-            resources = resources.len(),
-            "Discovered upstream capabilities"
-        );
-
-        Ok(Self {
-            name: name.to_string(),
-            peer,
+        Ok(DiscoveredTools {
             tools: accepted_tools,
             tool_operations,
             tool_classifications,
-            prompts,
-            resources,
         })
+    }
+}
+
+/// Build (definition, handler) pairs for a set of upstream tools.
+///
+/// Each handler closes over the upstream peer and the tool name,
+/// forwarding calls over rmcp. Used both at registration and when
+/// rebuilding the registry after a `list_changed` refresh.
+pub fn upstream_tool_handlers(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    tools: &[ToolDefinition],
+) -> Vec<(ToolDefinition, ToolHandler)> {
+    tools
+        .iter()
+        .map(|def| {
+            let tool_name = def.name.clone();
+            let peer = peer.clone();
+            let handler: ToolHandler = Arc::new(move |args, _ctx| {
+                let peer = peer.clone();
+                let name = tool_name.clone();
+                Box::pin(async move {
+                    let mut params = CallToolParams::new(name);
+                    if let Some(obj) = args.as_object() {
+                        params = params.with_arguments(obj.clone());
+                    }
+                    match peer.call_tool(params).await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            use navra_protocol::compat::CallToolResultExt;
+                            CallToolResult::error_msg(format!("upstream error: {e}"))
+                        }
+                    }
+                })
+            });
+            (def.clone(), handler)
+        })
+        .collect()
+}
+
+/// rmcp client handler that forwards upstream `tools/list_changed`
+/// notifications to an [`UpstreamWatcher`].
+///
+/// Construct with [`UpstreamNotificationHandler::new`], which returns
+/// the handler (to pass to `serve`) and the receiving end of the
+/// notification channel.
+pub struct UpstreamNotificationHandler {
+    tx: tokio::sync::mpsc::UnboundedSender<()>,
+}
+
+impl UpstreamNotificationHandler {
+    /// Create the handler and the notification receiver.
+    pub fn new() -> (Self, tokio::sync::mpsc::UnboundedReceiver<()>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (Self { tx }, rx)
+    }
+}
+
+impl rmcp::handler::client::ClientHandler for UpstreamNotificationHandler {
+    fn on_tool_list_changed(
+        &self,
+        _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
+        let _ = self.tx.send(());
+        tracing::debug!("Upstream sent tools/list_changed");
+        std::future::ready(())
+    }
+}
+
+/// Refresh loop for an upstream that advertises `list_changed`.
+///
+/// Owned by the server after build; spawn [`UpstreamWatcher::run`]
+/// with the `Arc<McpServer>`. On each notification (debounced to at
+/// most one refresh per `min_refresh_interval`) the watcher re-runs
+/// the full discovery pipeline — scanner, manifest verification, and
+/// bounds included — and atomically swaps the module's tool registry.
+/// A failed refresh keeps the existing tools (fail closed to the last
+/// known-good set); tools that turned Malicious on refresh are not
+/// registered.
+pub struct UpstreamWatcher {
+    name: String,
+    peer: rmcp::Peer<rmcp::RoleClient>,
+    events: tokio::sync::mpsc::UnboundedReceiver<()>,
+    scanner: Option<navra_auth::tool_scanner::ToolScanner>,
+    manifest: Option<(
+        navra_auth::manifest::SignedManifest,
+        navra_auth::manifest::ManifestKeyStore,
+    )>,
+    bounds: DiscoveryBounds,
+    tool_overrides: HashMap<String, String>,
+    min_refresh_interval: std::time::Duration,
+}
+
+impl UpstreamWatcher {
+    /// Assemble a watcher from the pieces used for the initial
+    /// discovery (the scanner and manifest data are reused so rug-pull
+    /// hashes and TOFU pins persist across refreshes).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        name: impl Into<String>,
+        peer: rmcp::Peer<rmcp::RoleClient>,
+        events: tokio::sync::mpsc::UnboundedReceiver<()>,
+        scanner: Option<navra_auth::tool_scanner::ToolScanner>,
+        manifest: Option<(
+            navra_auth::manifest::SignedManifest,
+            navra_auth::manifest::ManifestKeyStore,
+        )>,
+        bounds: DiscoveryBounds,
+        tool_overrides: HashMap<String, String>,
+        min_refresh_interval: std::time::Duration,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            peer,
+            events,
+            scanner,
+            manifest,
+            bounds,
+            tool_overrides,
+            min_refresh_interval,
+        }
+    }
+
+    /// Run the refresh loop until the notification channel closes.
+    pub async fn run(mut self, server: std::sync::Arc<crate::server::McpServer>) {
+        loop {
+            if self.events.recv().await.is_none() {
+                // Upstream connection dropped; nothing left to watch.
+                return;
+            }
+            // Debounce: wait out the minimum interval, then swallow
+            // any notifications that arrived inside the window so a
+            // chatty upstream triggers one refresh, not a storm.
+            tokio::time::sleep(self.min_refresh_interval).await;
+            while self.events.try_recv().is_ok() {}
+            if let Err(e) = self.refresh_once(&server).await {
+                tracing::error!(
+                    upstream = %self.name,
+                    error = %e,
+                    "list_changed refresh failed — keeping the existing tool registry (fail closed)"
+                );
+            }
+        }
+    }
+
+    async fn refresh_once(
+        &mut self,
+        server: &std::sync::Arc<crate::server::McpServer>,
+    ) -> Result<(), String> {
+        let manifest_check = self
+            .manifest
+            .as_mut()
+            .map(|(signed, key_store)| ManifestCheck { signed, key_store });
+        let discovered = discover_tools(
+            &self.name,
+            &self.peer,
+            self.scanner.as_mut(),
+            manifest_check,
+            &self.bounds,
+            &self.tool_overrides,
+        )
+        .await?;
+        let handlers = upstream_tool_handlers(&self.peer, &discovered.tools);
+        server.swap_upstream_tools(
+            &self.name,
+            handlers,
+            discovered.tool_operations,
+            discovered.tool_classifications,
+        );
+        Ok(())
     }
 }
 
@@ -455,31 +658,7 @@ impl Module for UpstreamModule {
     }
 
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
-        self.tools
-            .iter()
-            .map(|def| {
-                let tool_name = def.name.clone();
-                let peer = self.peer.clone();
-                let handler: ToolHandler = Arc::new(move |args, _ctx| {
-                    let peer = peer.clone();
-                    let name = tool_name.clone();
-                    Box::pin(async move {
-                        let mut params = CallToolParams::new(name);
-                        if let Some(obj) = args.as_object() {
-                            params = params.with_arguments(obj.clone());
-                        }
-                        match peer.call_tool(params).await {
-                            Ok(result) => result,
-                            Err(e) => {
-                                use navra_protocol::compat::CallToolResultExt;
-                                CallToolResult::error_msg(format!("upstream error: {e}"))
-                            }
-                        }
-                    })
-                });
-                (def.clone(), handler)
-            })
-            .collect()
+        upstream_tool_handlers(&self.peer, &self.tools)
     }
 
     fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
