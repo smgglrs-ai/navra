@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+#[cfg(feature = "cedar")]
+use super::CedarActionVersion;
 use super::McpServer;
 use super::types::RegisteredTool;
 
@@ -281,7 +283,7 @@ impl McpServer {
             .values()
             .map(|t| t.definition.clone())
             .collect();
-        let visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
+        let mut visible = if let Some(disclosure) = self.tool_disclosure.get(&agent.permissions) {
             disclosure.filter(&all_tools)
         } else {
             all_tools
@@ -562,7 +564,7 @@ impl McpServer {
         // Cedar policy check (second gate — can only further restrict)
         #[cfg(feature = "cedar")]
         if let Some(ref cedar) = self.cedar_engine {
-            let context = std::collections::HashMap::from([
+            let mut context = std::collections::HashMap::from([
                 ("permission_set".to_string(), ctx.agent.permissions.clone()),
                 ("session_id".to_string(), ctx.session_id.clone()),
             ]);
@@ -572,7 +574,25 @@ impl McpServer {
                 .or_else(|| arguments.get("uri"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("_default");
-            match cedar.is_authorized(&ctx.agent.name, &params.name, resource, &context) {
+            // Action dispatch: v1 keeps bare tool names (compatibility
+            // with policies written against tool names). v2 namespaces
+            // upstream tool calls under the modeled
+            // Action::"upstream_tool_call" — with the concrete tool
+            // name in the context — so the bundled ASI01/ASI10 rules
+            // (and per-tool refinements via context.tool_name) fire.
+            // Cedar matches action ids exactly, so a literal
+            // "upstream_tool_call:<tool>" action could never be matched
+            // by a generic policy and would default-deny every
+            // upstream call under the bundled baseline.
+            let action = if self.cedar_action_version == CedarActionVersion::V2UpstreamNamespaced
+                && self.is_upstream_tool(&params.name)
+            {
+                context.insert("tool_name".to_string(), params.name.to_string());
+                "upstream_tool_call".to_string()
+            } else {
+                params.name.to_string()
+            };
+            match cedar.is_authorized(&ctx.agent.name, &action, resource, &context) {
                 crate::permissions::CedarDecision::Allow => {}
                 crate::permissions::CedarDecision::Deny(reason) => {
                     self.process_table.record_denied(
@@ -584,6 +604,7 @@ impl McpServer {
                     self.metrics.cedar_denials.fetch_add(1, Ordering::Relaxed);
                     tracing::warn!(
                         tool = %params.name,
+                        cedar_action = %action,
                         cedar_reason = %reason,
                         "Cedar policy denied"
                     );
@@ -1986,6 +2007,19 @@ impl McpServer {
                 &crate::blackbox::generate_trace_id(),
             );
         }
+    }
+
+    /// Is this tool registered by an upstream module? (Used by the
+    /// v2 Cedar action dispatch to namespace upstream tool calls.)
+    #[cfg(feature = "cedar")]
+    pub(crate) fn is_upstream_tool(&self, tool_name: &str) -> bool {
+        let index = self
+            .upstream_tool_index
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        index.iter().any(|(module, tools)| {
+            self.upstream_modules.contains(module) && tools.iter().any(|t| t == tool_name)
+        })
     }
 
     /// Take the upstream refresh watchers registered on the builder.

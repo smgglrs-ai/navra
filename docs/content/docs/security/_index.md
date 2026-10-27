@@ -279,6 +279,42 @@ server's tool list is hashed and signed. On subsequent connections,
 the scanner verifies the signature against a TOFU (trust-on-first-use)
 key store. A key change triggers a `KeyChanged` alert.
 
+## Cedar Action Dispatch
+
+When a Cedar policy engine is configured, every tool call is checked
+against it as a second gate (it can only further restrict, never
+grant). Two action dispatch versions exist, selected with
+`cedar_action_version` in `[server]`:
+
+- **Version 1 (default)** dispatches the bare tool name as the Cedar
+  action — compatible with policies written against tool names.
+- **Version 2** namespaces upstream tool calls: tools registered from
+  upstream MCP servers dispatch the modeled
+  `Action::"upstream_tool_call"` with the concrete tool in
+  `context.tool_name`, so the bundled OWASP ASI policies (ASI01
+  prompt-injection and ASI10 rogue-agent rules) apply to upstream
+  calls as a class, and per-tool refinements are possible via
+  `context.tool_name`. Gateway-local tools keep bare-name actions in
+  both versions.
+
+`Action::"upstream_discover"` is dispatched where upstream discovery
+results are accepted for registration (principal `navra-gateway`),
+with `context.manifest_signed` and `context.trust_on_first_use` — a
+policy can therefore refuse unsigned upstreams entirely.
+
+### Migration note (v1 → v2)
+
+Version 2 changes Cedar evaluation semantics for upstream tool calls:
+policies matching the bare upstream tool names no longer see those
+calls, and policies matching `Action::"upstream_tool_call"` begin to.
+The bundled baseline (`policies/owasp-asi-baseline.cedar` and the
+equivalent Rego) ships permits so v2 remains usable as-is; custom
+policy sets should be audited for bare-tool-name rules that were
+intended to govern upstream tools before enabling v2. A literal
+`upstream_tool_call:<tool>` action id is deliberately not used —
+Cedar matches action ids exactly, so no generic policy could match a
+concatenated id and deny-by-default would block every upstream call.
+
 ### Configuration
 
 ```toml

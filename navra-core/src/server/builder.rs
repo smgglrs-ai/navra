@@ -44,6 +44,8 @@ pub struct McpServerBuilder {
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    #[cfg(feature = "cedar")]
+    cedar_action_version: Option<super::CedarActionVersion>,
     #[cfg(feature = "opa")]
     opa_engine: Option<navra_auth::permissions::OpaEngine>,
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
@@ -92,6 +94,8 @@ impl McpServerBuilder {
             broadcaster: None,
             #[cfg(feature = "cedar")]
             cedar_engine: None,
+            #[cfg(feature = "cedar")]
+            cedar_action_version: None,
             #[cfg(feature = "opa")]
             opa_engine: None,
             dmn_engine: None,
@@ -476,6 +480,38 @@ impl McpServerBuilder {
     pub fn cedar_engine(mut self, engine: navra_auth::permissions::CedarEngine) -> Self {
         self.cedar_engine = Some(engine);
         self
+    }
+
+    /// Select the Cedar action dispatch version (default v1, bare
+    /// tool names). See [`CedarActionVersion`] for the v2 upstream
+    /// namespacing semantics.
+    #[cfg(feature = "cedar")]
+    pub fn cedar_action_version(mut self, version: super::CedarActionVersion) -> Self {
+        self.cedar_action_version = Some(version);
+        self
+    }
+
+    /// Evaluate a Cedar action against the configured engine.
+    ///
+    /// Used at wiring time for actions that are not tool calls —
+    /// notably `upstream_discover`, dispatched when an upstream's
+    /// discovery results are accepted for registration. Returns true
+    /// (allow) when no Cedar engine is configured: the Cedar gate can
+    /// only further restrict, never grant.
+    #[cfg(feature = "cedar")]
+    pub fn cedar_allows(
+        &self,
+        action: &str,
+        resource: &str,
+        context: &std::collections::HashMap<String, String>,
+    ) -> bool {
+        match &self.cedar_engine {
+            None => true,
+            Some(engine) => matches!(
+                engine.is_authorized("navra-gateway", action, resource, context),
+                crate::permissions::CedarDecision::Allow
+            ),
+        }
     }
 
     /// Set the OPA/Rego policy engine for conditional access control.
@@ -978,6 +1014,8 @@ impl McpServerBuilder {
             broadcaster: self.broadcaster,
             #[cfg(feature = "cedar")]
             cedar_engine: self.cedar_engine,
+            #[cfg(feature = "cedar")]
+            cedar_action_version: self.cedar_action_version.unwrap_or_default(),
             #[cfg(feature = "opa")]
             opa_engine: self.opa_engine.map(std::sync::Mutex::new),
             dmn_engine: self.dmn_engine,

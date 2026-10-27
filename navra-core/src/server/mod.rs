@@ -126,8 +126,40 @@ pub struct McpServer {
     tool_routing: routing::ToolRoutingConfig,
     /// Module names that came from upstream MCP servers (for per-agent filtering).
     pub(crate) upstream_modules: HashSet<String>,
+    /// Cedar action dispatch version (see [`CedarActionVersion`]).
+    #[cfg(feature = "cedar")]
+    cedar_action_version: CedarActionVersion,
     /// Per-agent concurrency semaphores (created on first use).
     concurrency_semaphores: dashmap::DashMap<String, Arc<tokio::sync::Semaphore>>,
+}
+
+/// How the Cedar dispatch site names actions for tool calls.
+///
+/// Cedar matches action ids exactly (no prefix or wildcard matching),
+/// which constrains how upstream tool calls can be namespaced:
+///
+/// - **v1** dispatches the bare tool name as the action. Compatible
+///   with policies written against tool names; the modeled
+///   `Action::"upstream_tool_call"` rules never fire.
+/// - **v2** dispatches `Action::"upstream_tool_call"` for tools owned
+///   by upstream modules (with `context.tool_name` carrying the
+///   concrete tool), so the bundled ASI01/ASI10 rules — and per-tool
+///   refinements via `context.tool_name` — apply to upstream calls as
+///   a class. Gateway-local tools keep bare-name actions in both
+///   versions.
+///
+/// A literal `upstream_tool_call:<tool>` action id is deliberately NOT
+/// used: no generic Cedar policy could match it, and Cedar's
+/// deny-by-default would then block every upstream tool call under
+/// the bundled baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CedarActionVersion {
+    /// Bare tool-name actions (default; compatibility).
+    #[default]
+    V1BareToolNames,
+    /// Upstream tool calls dispatch the modeled
+    /// `Action::"upstream_tool_call"` with `context.tool_name`.
+    V2UpstreamNamespaced,
 }
 
 /// A pending permission request awaiting grant or deny.
