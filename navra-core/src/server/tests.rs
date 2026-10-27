@@ -609,6 +609,107 @@ async fn pseudonymized_result_keeps_label_and_no_witness() {
 }
 
 #[tokio::test]
+async fn partially_redacted_result_keeps_label_and_no_witness() {
+    use navra_auth::identity::Ed25519Signer;
+
+    // Partial redaction (findings below the confidence threshold stay
+    // in the text): the label is elevated to Pii but NOT declassified,
+    // and no witness is recorded — the rule table's partial row,
+    // exercised end-to-end through the gateway handler.
+    struct MixedConfidenceFilter;
+
+    impl crate::safety::ContentFilter for MixedConfidenceFilter {
+        fn name(&self) -> &str {
+            "mixed-confidence"
+        }
+        fn scan(
+            &self,
+            _content: &str,
+            _ctx: &crate::safety::FilterContext,
+        ) -> Vec<crate::safety::Finding> {
+            vec![
+                crate::safety::Finding {
+                    start: 0,
+                    end: 4,
+                    category: "pii".to_string(),
+                    confidence: 0.2,
+                },
+                crate::safety::Finding {
+                    start: 5,
+                    end: 9,
+                    category: "pii".to_string(),
+                    confidence: 0.95,
+                },
+            ]
+        }
+    }
+
+    let mut pipeline = crate::safety::FilterPipeline::new(crate::safety::FilterAction::Redact);
+    pipeline.add_filter(MixedConfidenceFilter);
+    pipeline.set_redaction_threshold(0.5);
+
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", pipeline)
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(Ed25519Signer::generate()),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "AAAA BBBB"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // The high-confidence span is redacted; the low-confidence one stays.
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(text.contains("AAAA"), "below-threshold finding stays");
+    assert!(
+        text.contains("[REDACTED:pii]"),
+        "above-threshold finding is redacted"
+    );
+
+    // Partially redacted: label elevated to Pii, no declassification,
+    // no witness.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "partially redacted result must stay at Pii"
+    );
+    assert!(
+        server.declassification_witnesses("test-session").is_empty(),
+        "no witness for partially redacted results"
+    );
+}
+
+#[tokio::test]
 async fn redaction_without_authority_keeps_label_elevated() {
     // Fail-safe: with no signing authority there is no auditable
     // declassification — the label stays at Pii after full redaction.

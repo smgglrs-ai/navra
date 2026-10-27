@@ -143,6 +143,8 @@ and `default_tool_policy`, not a flat `tools` list. Path access uses
 | `upstream` | string[] | `[]` | Visible upstream MCP servers (by name). Empty = all visible |
 | `max_concurrent` | u32 | -- | Maximum concurrent tool calls per agent session |
 | `max_context` | u32 | -- | Context window cap passed to the model |
+| `cedar_policies` | string[] | `[]` | Cedar policy files combined into one engine (requires the `cedar` feature; fail closed on errors) |
+| `redaction_threshold` | f32 | `0.0` | Minimum finding confidence for redaction. Below-threshold findings stay in the text — the result is partially redacted and never declassified |
 | `chain_policy` | object | -- | Actor-chain delegation policy (see below) |
 
 ### Safety profiles

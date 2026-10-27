@@ -147,6 +147,12 @@ pub struct PermissionSet {
     /// closed).
     #[serde(default)]
     pub cedar_policies: Vec<String>,
+    /// Minimum finding confidence for redaction in this set's safety
+    /// pipeline. Findings below the threshold are left in the text and
+    /// the result is marked partially redacted — no declassification
+    /// (raw PII may remain). Default 0.0: every finding is redacted.
+    #[serde(default)]
+    pub redaction_threshold: Option<f32>,
     /// Actor-chain delegation policy. When set, the gateway enforces
     /// chain depth limits and optionally requires a WIMSE-identified root.
     #[serde(default)]
@@ -276,6 +282,7 @@ impl Default for PermissionSet {
             dmn_policies: None,
             dmn_decision: None,
             cedar_policies: Vec::new(),
+            redaction_threshold: None,
             chain_policy: None,
         }
     }

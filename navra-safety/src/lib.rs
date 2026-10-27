@@ -417,6 +417,11 @@ pub struct FilterPipeline {
     action: FilterAction,
     pseudonym_map: PseudonymMap,
     metrics: Option<std::sync::Arc<PiiMetrics>>,
+    /// Minimum finding confidence for redaction. Findings below the
+    /// threshold are left in the text and mark the result as partially
+    /// redacted — no declassification (raw PII may remain). Default
+    /// 0.0: every finding is redacted (full redaction).
+    redaction_threshold: f32,
 }
 
 impl FilterPipeline {
@@ -427,6 +432,7 @@ impl FilterPipeline {
             action,
             pseudonym_map: PseudonymMap::new(),
             metrics: None,
+            redaction_threshold: 0.0,
         }
     }
 
@@ -438,7 +444,26 @@ impl FilterPipeline {
             action,
             pseudonym_map,
             metrics: None,
+            redaction_threshold: 0.0,
         }
+    }
+
+    /// Set the minimum finding confidence for redaction.
+    ///
+    /// Findings below the threshold are left in the text and the
+    /// result is marked partially redacted — the declassification
+    /// pipeline refuses to step the label down (raw PII may remain).
+    /// Default 0.0 redacts every finding.
+    pub fn set_redaction_threshold(&mut self, threshold: f32) {
+        self.redaction_threshold = threshold;
+    }
+
+    /// Are all findings at or above the redaction threshold (i.e. did
+    /// redaction handle everything it found)?
+    fn all_findings_handled(&self, findings: &[Finding]) -> bool {
+        findings
+            .iter()
+            .all(|f| f.confidence >= self.redaction_threshold)
     }
 
     /// Returns a reference to the pipeline's pseudonym map.
@@ -508,7 +533,10 @@ impl FilterPipeline {
         ctx: &FilterContext<'_>,
     ) -> (Result<String, String>, Declassification) {
         let (result, findings) = self.run_pipeline_with_findings(content, ctx, true).await;
-        let all_handled = result.is_ok();
+        // Partial redaction: findings below the redaction threshold
+        // remain in the text, so the result is not fully handled and
+        // no declassification may follow.
+        let all_handled = result.is_ok() && self.all_findings_handled(&findings);
         let declass =
             Declassification::from_filter_result(&self.action, findings.len(), all_handled);
         (result, declass)
@@ -533,7 +561,13 @@ impl FilterPipeline {
             return Ok(content.to_string());
         }
 
-        apply_action(&self.action, content, &mut findings, &self.pseudonym_map)
+        apply_action(
+            &self.action,
+            content,
+            &mut findings,
+            &self.pseudonym_map,
+            self.redaction_threshold,
+        )
     }
 
     async fn run_pipeline(
@@ -557,7 +591,13 @@ impl FilterPipeline {
                 if let Some(ref m) = self.metrics {
                     m.record(&findings, &self.action);
                 }
-                return apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
+                return apply_action(
+                    &self.action,
+                    content,
+                    &mut findings,
+                    &self.pseudonym_map,
+                    self.redaction_threshold,
+                );
             }
         }
 
@@ -573,7 +613,13 @@ impl FilterPipeline {
             return Ok(content.to_string());
         }
 
-        apply_action(&self.action, content, &mut findings, &self.pseudonym_map)
+        apply_action(
+            &self.action,
+            content,
+            &mut findings,
+            &self.pseudonym_map,
+            self.redaction_threshold,
+        )
     }
 
     async fn run_pipeline_with_findings(
@@ -597,8 +643,13 @@ impl FilterPipeline {
                 if let Some(ref m) = self.metrics {
                     m.record(&findings, &self.action);
                 }
-                let result =
-                    apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
+                let result = apply_action(
+                    &self.action,
+                    content,
+                    &mut findings,
+                    &self.pseudonym_map,
+                    self.redaction_threshold,
+                );
                 return (result, findings);
             }
         }
@@ -615,7 +666,13 @@ impl FilterPipeline {
             return (Ok(content.to_string()), Vec::new());
         }
 
-        let result = apply_action(&self.action, content, &mut findings, &self.pseudonym_map);
+        let result = apply_action(
+            &self.action,
+            content,
+            &mut findings,
+            &self.pseudonym_map,
+            self.redaction_threshold,
+        );
         (result, findings)
     }
 
@@ -642,6 +699,7 @@ fn apply_action(
     content: &str,
     findings: &mut [Finding],
     pseudonym_map: &PseudonymMap,
+    redaction_threshold: f32,
 ) -> Result<String, String> {
     match action {
         FilterAction::Pass => Ok(content.to_string()),
@@ -659,7 +717,7 @@ fn apply_action(
             );
             Err("Content blocked by security policy".to_string())
         }
-        FilterAction::Redact => Ok(redact(content, findings)),
+        FilterAction::Redact => Ok(redact(content, findings, redaction_threshold)),
         FilterAction::Pseudonymize => Ok(pseudonymize(content, findings, pseudonym_map)),
     }
 }
@@ -673,14 +731,22 @@ fn snap_to_char_boundary(s: &str, pos: usize) -> usize {
     p
 }
 
-fn redact(content: &str, findings: &mut [Finding]) -> String {
+fn redact(content: &str, findings: &mut [Finding], redaction_threshold: f32) -> String {
     if findings.is_empty() {
         return content.to_string();
     }
     findings.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
     let mut result = String::with_capacity(content.len());
     let mut pos = 0;
+    let mut skipped_low_confidence = 0;
     for finding in findings.iter() {
+        if finding.confidence < redaction_threshold {
+            // Below-threshold findings are left in the text; the
+            // result is marked partially redacted upstream (no
+            // declassification).
+            skipped_low_confidence += 1;
+            continue;
+        }
         let start = snap_to_char_boundary(content, finding.start);
         let end = snap_to_char_boundary(content, finding.end);
         if start < pos {
@@ -694,6 +760,13 @@ fn redact(content: &str, findings: &mut [Finding]) -> String {
     }
     if pos < content.len() {
         result.push_str(&content[pos..]);
+    }
+    if skipped_low_confidence > 0 {
+        tracing::warn!(
+            skipped = skipped_low_confidence,
+            threshold = redaction_threshold,
+            "Redaction skipped below-threshold findings — result is partially redacted (no declassification)"
+        );
     }
     result
 }
@@ -856,7 +929,7 @@ mod tests {
             category: "aws-key".to_string(),
             confidence: 1.0,
         }];
-        let result = redact("key = AKIAIOSFODNN7EXAMPLE rest", &mut findings);
+        let result = redact("key = AKIAIOSFODNN7EXAMPLE rest", &mut findings, 0.0);
         assert_eq!(result, "key = [REDACTED:aws-key] rest");
     }
 
@@ -876,7 +949,7 @@ mod tests {
                 confidence: 1.0,
             },
         ];
-        let result = redact("AAA BBB CCC", &mut findings);
+        let result = redact("AAA BBB CCC", &mut findings, 0.0);
         assert_eq!(result, "[REDACTED:a] [REDACTED:b] CCC");
     }
 
@@ -896,7 +969,7 @@ mod tests {
                 confidence: 1.0,
             },
         ];
-        let result = redact("ABCDEFGH", &mut findings);
+        let result = redact("ABCDEFGH", &mut findings, 0.0);
         assert_eq!(result, "[REDACTED:wide]FGH");
     }
 
@@ -912,7 +985,7 @@ mod tests {
             confidence: 1.0,
         }];
         // Should not panic — snaps to nearest char boundary
-        let result = redact(content, &mut findings);
+        let result = redact(content, &mut findings, 0.0);
         assert!(!result.is_empty());
     }
 
@@ -925,7 +998,7 @@ mod tests {
             category: "emoji".to_string(),
             confidence: 1.0,
         }];
-        let result = redact(content, &mut findings);
+        let result = redact(content, &mut findings, 0.0);
         assert!(result.contains("[REDACTED:emoji]"));
     }
 
@@ -1277,5 +1350,87 @@ mod tests {
         assert_eq!(drained[0].findings_count, 2);
         // Drain empties the ledger.
         assert!(ledger.drain().is_empty());
+    }
+
+    // --- Confidence-thresholded redaction (partial redaction) ---
+
+    /// A filter emitting findings at chosen confidences.
+    struct FixedConfidenceFilter {
+        spans: Vec<(usize, usize, f32)>,
+    }
+
+    impl ContentFilter for FixedConfidenceFilter {
+        fn name(&self) -> &str {
+            "fixed-confidence"
+        }
+        fn scan(&self, content: &str, _ctx: &FilterContext) -> Vec<Finding> {
+            self.spans
+                .iter()
+                .filter(|(start, end, _)| *start < content.len() && *end <= content.len())
+                .map(|(start, end, confidence)| Finding {
+                    start: *start,
+                    end: *end,
+                    category: "pii".to_string(),
+                    confidence: *confidence,
+                })
+                .collect()
+        }
+    }
+
+    #[test]
+    fn redaction_threshold_zero_redacts_everything() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(FixedConfidenceFilter {
+            spans: vec![(0, 4, 0.1), (5, 9, 0.9)],
+        });
+        let result = pipeline.process("AAAA BBBB", &ctx()).unwrap();
+        assert_eq!(result, "[REDACTED:pii] [REDACTED:pii]");
+    }
+
+    #[tokio::test]
+    async fn redaction_threshold_marks_partial_result() {
+        // With threshold 0.5: the high-confidence finding is redacted,
+        // the low-confidence one stays in the text, and the result is
+        // partially redacted — no declassification may follow.
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(FixedConfidenceFilter {
+            spans: vec![(0, 4, 0.2), (5, 9, 0.95)],
+        });
+        pipeline.set_redaction_threshold(0.5);
+
+        let (result, declass) = pipeline
+            .process_with_declassification("AAAA BBBB", &ctx())
+            .await;
+        let text = result.expect("redaction succeeds");
+        assert_eq!(text, "AAAA [REDACTED:pii]", "low-confidence finding stays");
+        assert_eq!(declass.findings_count, 2);
+        assert!(!declass.all_handled, "partial redaction must be marked");
+        assert_eq!(
+            declass.recommends_declassification(),
+            None,
+            "partially redacted results must not recommend a step-down"
+        );
+    }
+
+    #[tokio::test]
+    async fn redaction_threshold_all_above_still_declassifies() {
+        // Threshold 0.5 with both findings above it: full redaction,
+        // declassification recommended as usual.
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(FixedConfidenceFilter {
+            spans: vec![(0, 4, 0.6), (5, 9, 0.95)],
+        });
+        pipeline.set_redaction_threshold(0.5);
+
+        let (result, declass) = pipeline
+            .process_with_declassification("AAAA BBBB", &ctx())
+            .await;
+        let text = result.expect("redaction succeeds");
+        assert_eq!(text, "[REDACTED:pii] [REDACTED:pii]");
+        assert!(declass.all_handled);
+        assert_eq!(
+            declass.recommends_declassification(),
+            Some(Confidentiality::Sensitive)
+        );
     }
 }
