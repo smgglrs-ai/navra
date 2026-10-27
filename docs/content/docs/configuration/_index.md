@@ -530,6 +530,8 @@ request_timeout_secs = 60
 | `retry_budget_secs` | u64 | `600` | Total retry budget |
 | `tool_filter` | string[] | `[]` | Glob patterns to filter exposed tools |
 | `tool_overrides` | map | `{}` | Per-tool operation overrides: `read`, `write`, `deny` |
+| `scan_tools` | bool | `true` | Scan tool definitions for supply-chain threats (poisoning, rug pulls, schema abuse). Malicious tools are dropped, suspicious tools register with a warning. Disabling logs a startup warning |
+| `tool_hash_path` | string | `~/.local/share/navra/tool_hashes.json` | Rug-pull hash store location for this upstream |
 | `max_response_bytes` | usize | `32768` | Max response body size for OpenAPI upstreams |
 | `openapi` | string | -- | OpenAPI 3.x spec URL or file path |
 | `env` | map | `{}` | Environment variables (`${credential:label}` for keyring) |

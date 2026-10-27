@@ -288,10 +288,27 @@ pub(crate) async fn wire_modules(
                     tokio::spawn(async move {
                         let _ = client.waiting().await;
                     });
+                    // Auto-discovered upstreams have no per-upstream scan
+                    // config — scanning stays on (fail closed): a scanner
+                    // that cannot initialize skips the endpoint entirely.
+                    let mut scanner = match navra_auth::tool_scanner::ToolScanner::production(
+                        navra_auth::tool_scanner::ToolScanConfig::default(),
+                        None,
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!(
+                                domain = %endpoint.domain,
+                                error = %e,
+                                "Tool scanner init failed — refusing to register discovered upstream (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
                     let module = navra_core::UpstreamModule::discover(
                         &endpoint.domain,
                         peer,
-                        None,
+                        Some(&mut scanner),
                         &Default::default(),
                     )
                     .await;
@@ -354,10 +371,26 @@ pub(crate) async fn wire_modules(
                     tokio::spawn(async move {
                         let _ = client.waiting().await;
                     });
+                    // mDNS-discovered upstreams have no per-upstream scan
+                    // config — scanning stays on (fail closed).
+                    let mut scanner = match navra_auth::tool_scanner::ToolScanner::production(
+                        navra_auth::tool_scanner::ToolScanConfig::default(),
+                        None,
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!(
+                                name = %server.name,
+                                error = %e,
+                                "Tool scanner init failed — refusing to register LAN upstream (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
                     let module = navra_core::UpstreamModule::discover(
                         &server.name,
                         peer,
-                        None,
+                        Some(&mut scanner),
                         &Default::default(),
                     )
                     .await;
