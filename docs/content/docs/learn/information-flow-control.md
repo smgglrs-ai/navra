@@ -331,6 +331,13 @@ Without a configured authority (embedded deployments that never wire
 a signer), step 3 is skipped and labels stay elevated — fail-safe,
 never fail-open.
 
+The rule table's *partial redaction* row is reachable through the
+`redaction_threshold` permission-set option: findings below the
+confidence threshold are left in the text, the result is marked
+partially redacted, and no declassification may follow (raw PII may
+remain). The default threshold of 0.0 redacts every finding — full
+redaction.
+
 
 ## The formal guarantees
 
