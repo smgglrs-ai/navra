@@ -282,7 +282,7 @@ mod tests {
         // After half the window, we should have refilled roughly half the tokens
         let remaining = bucket.remaining();
         assert!(
-            remaining >= 1 && remaining <= 5,
+            (1..=5).contains(&remaining),
             "expected partial refill, got {}",
             remaining
         );

@@ -282,7 +282,7 @@ async fn upstream_call_tool_through_module() {
     let result = handler(serde_json::json!({"message": "hello"}), ctx).await;
     assert!(result.is_error != Some(true));
     match &result.content[0] {
-        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "echo: hello"),
+        c if c.as_text().is_some() => assert_eq!(c.as_text().unwrap().text, "echo: hello"),
         _ => panic!("expected text content"),
     }
 }
@@ -304,8 +304,8 @@ async fn upstream_get_prompt_through_module() {
     assert_eq!(result.description, Some("Greeting".to_string()));
     assert_eq!(result.messages.len(), 1);
     match &result.messages[0].content {
-        navra_protocol::PromptMessageContent::Text { text } => {
-            assert_eq!(text, "Hello from upstream!");
+        navra_protocol::PromptMessageContent::Text(t) => {
+            assert_eq!(t.text, "Hello from upstream!");
         }
         _ => panic!("expected text content"),
     }
@@ -394,7 +394,7 @@ async fn domain_rules_block_write_tool() {
         result.is_error == Some(true),
         "shell:execute should be denied for readonly"
     );
-    let text = &result.content[0].raw.as_text().expect("expected text").text;
+    let text = &result.content[0].as_text().expect("expected text").text;
     assert!(
         text.contains("Permission denied"),
         "error should mention permission denied, got: {text}"
@@ -713,8 +713,6 @@ async fn upstream_bounds_reject_total_definition_bytes() {
 
 #[tokio::test]
 async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
-    use std::sync::Arc;
-
     // The fake upstream serves a clean echo on the first tools/list,
     // then announces list_changed and poisons echo's description —
     // every later listing returns the malicious description.
@@ -882,9 +880,38 @@ async fn upstream_tool_call_times_out_with_clear_error() {
     );
     let result = handler(serde_json::json!({"message": "hi"}), ctx).await;
     assert!(result.is_error == Some(true), "stalled call must error");
-    let text = &result.content[0].raw.as_text().expect("text").text;
+    let text = &result.content[0].as_text().expect("text").text;
     assert!(
         text.contains("timed out"),
         "error should name the timeout, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_undecodable_response_fails_closed_within_timeout() {
+    // NAVRA-187 repro: an upstream response that cannot be decoded (an
+    // input schema nested past serde_json's 128-level recursion limit —
+    // NAVRA_TEST_SCHEMA_DEPTH=100 nests it 200 levels) is silently
+    // dropped by rmcp (upstream #938 ignores unparsable input, matching
+    // the other official SDKs), so the pending tools/list never
+    // resolves while the server process lives. The request timeout must
+    // fail the registration closed instead of hanging the gateway.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_SCHEMA_DEPTH", "100")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "undecodable",
+        peer,
+        DiscoveryOptions {
+            request_timeout: std::time::Duration::from_millis(500),
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("an undecodable tools/list must reject the registration");
+    assert!(
+        err.contains("timed out"),
+        "error should name the timeout, got: {err}"
     );
 }

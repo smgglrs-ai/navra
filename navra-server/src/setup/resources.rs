@@ -12,16 +12,13 @@ pub(crate) fn wire_flow_resources(
 ) -> navra_core::McpServerBuilder {
     let flow_audit = Arc::clone(audit_log);
     let builder = builder.resource(
-        navra_core::protocol::ResourceDefinition::new(
-            navra_protocol::RawResource::new("flow://", "Flow task results")
+        navra_protocol::RawResource::new("flow://", "Flow task results")
                 .with_description(
                     "Read flow task outputs. Use flow://list for all flows, \
                      flow://<flow_id>/tasks for task list, \
                      flow://<flow_id>/task/<task_id> for a specific output.",
                 )
                 .with_mime_type("text/plain"),
-            None,
-        ),
         Arc::new(move |uri: String, _ctx| {
             let audit = Arc::clone(&flow_audit);
             Box::pin(async move {
@@ -105,12 +102,9 @@ pub(crate) fn wire_kernel_resources(
     {
         let pt = process_table.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition::new(
-                navra_protocol::RawResource::new("navra://proc", "Process Table")
-                    .with_description("Active agent sessions and call counts")
-                    .with_mime_type("application/json"),
-                None,
-            ),
+            navra_protocol::RawResource::new("navra://proc", "Process Table")
+                .with_description("Active agent sessions and call counts")
+                .with_mime_type("application/json"),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 Box::pin(async move {
@@ -133,12 +127,9 @@ pub(crate) fn wire_kernel_resources(
     {
         let ss = session_store.clone();
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition::new(
-                navra_protocol::RawResource::new("navra://sessions", "Active Sessions")
-                    .with_description("List of active MCP sessions")
-                    .with_mime_type("application/json"),
-                None,
-            ),
+            navra_protocol::RawResource::new("navra://sessions", "Active Sessions")
+                .with_description("List of active MCP sessions")
+                .with_mime_type("application/json"),
             Arc::new(move |uri: String, _ctx| {
                 let ss = ss.clone();
                 Box::pin(async move {
@@ -177,12 +168,9 @@ pub(crate) fn wire_kernel_resources(
         let ss = session_store.clone();
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition::new(
-                navra_protocol::RawResource::new("navra://metrics", "Gateway Metrics")
-                    .with_description("Gateway metrics: call counts, sessions, uptime")
-                    .with_mime_type("text/plain"),
-                None,
-            ),
+            navra_protocol::RawResource::new("navra://metrics", "Gateway Metrics")
+                .with_description("Gateway metrics: call counts, sessions, uptime")
+                .with_mime_type("text/plain"),
             Arc::new(move |uri: String, _ctx| {
                 let pt = pt.clone();
                 let ss = ss.clone();
@@ -218,12 +206,9 @@ pub(crate) fn wire_kernel_resources(
     {
         let cell = Arc::clone(server_cell);
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition::new(
-                navra_protocol::RawResource::new("navra://tools", "Registered Tools")
-                    .with_description("List of all registered MCP tools")
-                    .with_mime_type("application/json"),
-                None,
-            ),
+            navra_protocol::RawResource::new("navra://tools", "Registered Tools")
+                .with_description("List of all registered MCP tools")
+                .with_mime_type("application/json"),
             Arc::new(move |uri: String, _ctx| {
                 let cell = Arc::clone(&cell);
                 Box::pin(async move {
@@ -255,12 +240,9 @@ pub(crate) fn wire_kernel_resources(
     {
         let boot = boot_instant;
         builder = builder.resource(
-            navra_core::protocol::ResourceDefinition::new(
-                navra_protocol::RawResource::new("navra://version", "Server Version")
-                    .with_description("Server name, version, protocol version, uptime")
-                    .with_mime_type("application/json"),
-                None,
-            ),
+            navra_protocol::RawResource::new("navra://version", "Server Version")
+                .with_description("Server name, version, protocol version, uptime")
+                .with_mime_type("application/json"),
             Arc::new(move |uri: String, _ctx| {
                 Box::pin(async move {
                     let json = serde_json::json!({

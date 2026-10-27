@@ -1,6 +1,7 @@
 //! Compatibility helpers for navra-specific patterns on top of rmcp types.
 
-use rmcp::model::{CallToolResult, Content};
+use crate::mcp::Content;
+use rmcp::model::CallToolResult;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -66,7 +67,7 @@ impl CallToolResultExt for CallToolResult {
 
 /// Extract text from a `Content` value, if it is a text variant.
 pub fn content_as_text(content: &Content) -> Option<&str> {
-    content.raw.as_text().map(|tc| tc.text.as_str())
+    content.as_text().map(|tc| tc.text.as_str())
 }
 
 /// Compress tool output to fit within a token budget.
@@ -76,7 +77,7 @@ pub fn content_as_text(content: &Content) -> Option<&str> {
 pub fn compress_result(result: &mut CallToolResult, max_tokens: u32) {
     let chars_budget = (max_tokens as usize) * 4;
     for content in &mut result.content {
-        if let Some(tc) = content.raw.as_text()
+        if let Some(tc) = content.as_text()
             && tc.text.len() > chars_budget
         {
             let cut = chars_budget.saturating_sub(40).min(tc.text.len());

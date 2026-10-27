@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn embedded_content_wraps_in_resource() {
         let content = embedded_content("my-surface", "[{}]");
-        if let Some(res) = content.raw.as_resource() {
+        if let Some(res) = content.as_resource() {
             match &res.resource {
                 crate::ResourceContent::TextResourceContents { uri, mime_type, .. } => {
                     assert_eq!(uri, "a2ui://dynamic-ui/my-surface");

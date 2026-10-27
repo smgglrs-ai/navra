@@ -33,7 +33,7 @@ fn build_mcp_service(
 > {
     let server_for_factory = server.clone();
     let config = rmcp::transport::StreamableHttpServerConfig::default()
-        .with_stateful_mode(false)
+        .with_legacy_session_mode(false)
         .with_json_response(true)
         .disable_allowed_hosts();
     StreamableHttpService::new(

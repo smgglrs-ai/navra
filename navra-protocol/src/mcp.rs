@@ -13,9 +13,13 @@ use vstd::prelude::*;
 // ========================================================================
 // Re-exports from rmcp
 // ========================================================================
-
-// --- Common ---
-pub use rmcp::model::Annotated;
+//
+// rmcp 3.x flattened the content model: the 1.x `Annotated<Raw*>` pairs
+// collapsed into single types (`ContentBlock`, `Resource`, ...) that carry
+// `meta`/`annotations` inline. navra keeps its public names: `Content` is
+// the content-block union, `RawResource`/`RawContent` remain as aliases of
+// the flat types so pattern matches written against the 1.x names keep
+// working.
 
 // --- Tools ---
 pub use rmcp::model::CallToolRequestParams as CallToolParams;
@@ -25,32 +29,32 @@ pub use rmcp::model::Tool as ToolDefinition;
 pub use rmcp::model::ToolAnnotations;
 
 // --- Content ---
-pub use rmcp::model::Content;
-pub use rmcp::model::RawAudioContent as AudioContent;
-pub use rmcp::model::RawContent;
-pub use rmcp::model::RawEmbeddedResource as EmbeddedResourceContent;
-pub use rmcp::model::RawImageContent as ImageContent;
-pub use rmcp::model::RawTextContent as TextContent;
+pub use rmcp::model::AudioContent;
+pub use rmcp::model::ContentBlock as Content;
+pub use rmcp::model::ContentBlock as RawContent;
+pub use rmcp::model::EmbeddedResource as EmbeddedResourceContent;
+pub use rmcp::model::ImageContent;
 pub use rmcp::model::ResourceContents as ResourceContent;
+pub use rmcp::model::TextContent;
 
 // --- Prompts ---
+pub use rmcp::model::ContentBlock as PromptMessageContent;
 pub use rmcp::model::GetPromptRequestParams as GetPromptParams;
 pub use rmcp::model::GetPromptResult;
 pub use rmcp::model::ListPromptsResult;
 pub use rmcp::model::Prompt as PromptDefinition;
 pub use rmcp::model::PromptArgument;
 pub use rmcp::model::PromptMessage;
-pub use rmcp::model::PromptMessageContent;
-pub use rmcp::model::PromptMessageRole as PromptRole;
+pub use rmcp::model::Role as PromptRole;
 
 // --- Resources ---
 pub use rmcp::model::ListResourceTemplatesResult;
 pub use rmcp::model::ListResourcesResult;
-pub use rmcp::model::RawResource;
-pub use rmcp::model::RawResourceTemplate;
 pub use rmcp::model::ReadResourceRequestParams as ReadResourceParams;
 pub use rmcp::model::ReadResourceResult;
+pub use rmcp::model::Resource as RawResource;
 pub use rmcp::model::Resource as ResourceDefinition;
+pub use rmcp::model::ResourceTemplate as RawResourceTemplate;
 pub use rmcp::model::ResourceTemplate;
 pub use rmcp::model::ResourceUpdatedNotificationParam as ResourceUpdatedParams;
 
@@ -68,12 +72,18 @@ pub use rmcp::model::InitializeResult;
 pub use rmcp::model::ProtocolVersion;
 
 // --- Logging ---
+// SEP-2577 deprecates protocol-level logging, but the wire methods still
+// exist and older clients use them; navra's dispatch keeps answering. The
+// deprecation is upstream-advisory only.
+#[allow(deprecated)]
 pub use rmcp::model::LoggingLevel;
+#[allow(deprecated)]
 pub use rmcp::model::LoggingMessageNotificationParam as LoggingMessageNotification;
+#[allow(deprecated)]
 pub use rmcp::model::SetLevelRequestParams as SetLevelParams;
 
 // --- Progress ---
-pub use rmcp::model::Meta as RequestMeta;
+pub use rmcp::model::MetaObject as RequestMeta;
 pub use rmcp::model::ProgressNotificationParam as ProgressParams;
 
 // --- Completions ---
@@ -266,7 +276,7 @@ mod tests {
     #[test]
     fn content_text_constructor() {
         let content = Content::text("hello world");
-        assert_eq!(content.raw.as_text().unwrap().text, "hello world");
+        assert_eq!(content.as_text().unwrap().text, "hello world");
     }
 
     #[test]

@@ -48,19 +48,9 @@ impl Module for TestResourceModule {
     }
     fn resources(&self) -> Vec<(crate::protocol::ResourceDefinition, ResourceHandler)> {
         vec![(
-            navra_protocol::Annotated::new(
-                crate::protocol::RawResource {
-                    uri: "info://version".to_string(),
-                    name: "Version".to_string(),
-                    title: None,
-                    description: Some("Server version".to_string()),
-                    mime_type: Some("text/plain".to_string()),
-                    size: None,
-                    icons: None,
-                    meta: None,
-                },
-                None,
-            ),
+            crate::protocol::RawResource::new("info://version".to_string(), "Version".to_string())
+                .with_description("Server version".to_string())
+                .with_mime_type("text/plain".to_string()),
             std::sync::Arc::new(|_uri: String, _ctx| {
                 Box::pin(async {
                     crate::protocol::ReadResourceResult::new(vec![
@@ -113,8 +103,9 @@ async fn initialize_returns_capabilities() {
     let info = client
         .peer_info()
         .expect("should have peer info after init");
-    assert_eq!(info.server_info.name, "test-server");
-    assert_eq!(info.server_info.version, "0.1.0");
+    let server_info = info.server_info.clone().expect("server_info present");
+    assert_eq!(server_info.name, "test-server");
+    assert_eq!(server_info.version, "0.1.0");
     client.cancel().await.ok();
 }
 
@@ -135,7 +126,7 @@ async fn tools_call_invokes_handler() {
         .call_tool(CallToolRequestParams::new("ping"))
         .await
         .unwrap();
-    let text = result.content[0].raw.as_text().unwrap().text.as_str();
+    let text = result.content[0].as_text().unwrap().text.as_str();
     assert!(text.contains("pong"));
     client.cancel().await.ok();
 }
@@ -185,7 +176,7 @@ async fn prompts_get_unknown_returns_error() {
 async fn resources_list_returns_registered_resources() {
     let client = connect_client().await;
     let result = client.list_resources(None).await.unwrap();
-    assert!(result.resources.iter().any(|r| r.raw.name == "Version"));
+    assert!(result.resources.iter().any(|r| r.name == "Version"));
     client.cancel().await.ok();
 }
 

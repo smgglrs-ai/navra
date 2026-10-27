@@ -62,7 +62,7 @@ keyring = "4"
 tonic = "0.14"
 prost = "0.14"
 schemars = "1.2"
-rmcp = { version = "1.8", features = [
+rmcp = { version = "3.8", features = [
     "server",
     "client",
     "macros",

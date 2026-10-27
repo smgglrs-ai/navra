@@ -568,10 +568,7 @@ mod tests {
         let result = handler(serde_json::json!({"query": "Rust safety"}), test_ctx()).await;
 
         assert!(!result.is_err(), "search should succeed");
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("Rust"), "should find Rust entry");
     }
 
@@ -613,10 +610,7 @@ mod tests {
         let (_, handler) = handle_search_handler(state);
         let result = handler(serde_json::json!({"query": "xyznonexistent"}), test_ctx()).await;
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("No results"));
     }
 
@@ -639,10 +633,7 @@ mod tests {
         let result = handler(serde_json::json!({"entity": "Alice"}), test_ctx()).await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
         let rels = parsed["direct_relationships"].as_array().unwrap();
         assert_eq!(rels.len(), 2);
@@ -672,10 +663,7 @@ mod tests {
         .await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
         let paths = parsed["two_hop_paths"].as_array().unwrap();
         assert!(!paths.is_empty());
@@ -721,10 +709,7 @@ mod tests {
         let result = handler(serde_json::json!({"entry_ids": "e1, e2"}), test_ctx()).await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
         assert_eq!(parsed.len(), 2);
         assert!(parsed[0]["effective_score"].as_f64().unwrap() > 0.0);
@@ -749,10 +734,7 @@ mod tests {
         let result = handler(serde_json::json!({"entry_ids": "all"}), test_ctx()).await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         let parsed: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
         assert_eq!(parsed.len(), 2);
     }
@@ -776,10 +758,7 @@ mod tests {
         let result = handler(serde_json::json!({"entry_ids": "nonexistent"}), test_ctx()).await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("not found"));
     }
 
@@ -809,10 +788,7 @@ mod tests {
         .await;
 
         assert!(!result.is_err());
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         let parsed: serde_json::Value = serde_json::from_str(&t.text).unwrap();
         assert_eq!(parsed["method"], "stub");
         assert_eq!(parsed["source"], "test-doc");

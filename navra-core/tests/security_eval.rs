@@ -646,10 +646,7 @@ mod audit {
 
         // The call must be denied
         assert!(result.is_error == Some(true));
-        let text = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let text = result.content[0].as_text().expect("expected text content");
         assert!(text.text.contains("Permission denied"));
 
         // Query the blackbox and assert the denial was recorded

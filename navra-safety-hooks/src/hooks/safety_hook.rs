@@ -167,7 +167,7 @@ impl Hook for SafetyHook {
 
         let mut filtered_content = Vec::new();
         for content in &result.content {
-            match &content.raw {
+            match &content {
                 RawContent::Text(text) => {
                     let (processed, declass) = pipeline
                         .process_with_declassification(&text.text, &filter_ctx)
@@ -214,6 +214,13 @@ impl Hook for SafetyHook {
                                 "Non-text resource content blocked by safety pipeline",
                             ));
                         }
+                        // ResourceContents is #[non_exhaustive] upstream: any
+                        // future variant is unfilterable, so fail closed.
+                        _ => {
+                            return HookDecision::ModifyResult(CallToolResult::error_msg(
+                                "Non-text resource content blocked by safety pipeline",
+                            ));
+                        }
                     }
                 }
                 _ => {
@@ -232,7 +239,7 @@ impl Hook for SafetyHook {
             return HookDecision::ModifyResult(new_result);
         }
         for (new_c, old_c) in new_result.content.iter().zip(result.content.iter()) {
-            if let (RawContent::Text(new_t), RawContent::Text(old_t)) = (&new_c.raw, &old_c.raw)
+            if let (RawContent::Text(new_t), RawContent::Text(old_t)) = (&new_c, &old_c)
                 && new_t.text != old_t.text
             {
                 return HookDecision::ModifyResult(new_result);
@@ -263,7 +270,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 assert!(!r.is_err());
-                match &r.content[0].raw {
+                match &r.content[0] {
                     RawContent::Text(t) => {
                         assert!(t.text.contains("[REDACTED:aws-key]"));
                         assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
@@ -392,7 +399,7 @@ mod tests {
         match decision {
             HookDecision::ModifyResult(r) => {
                 // Content should be redacted
-                match &r.content[0].raw {
+                match &r.content[0] {
                     RawContent::Text(t) => assert!(t.text.contains("[REDACTED:ssn]")),
                     _ => panic!("expected text content"),
                 }
@@ -411,7 +418,7 @@ mod tests {
             .await;
 
         match decision {
-            HookDecision::ModifyResult(r) => match &r.content[0].raw {
+            HookDecision::ModifyResult(r) => match &r.content[0] {
                 RawContent::Text(t) => assert!(t.text.contains("[REDACTED:")),
                 _ => panic!("expected text content"),
             },

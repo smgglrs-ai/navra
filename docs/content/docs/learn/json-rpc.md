@@ -108,7 +108,7 @@ These limits exist because navra processes requests from untrusted agents. An ag
 
 ## Protocol versions
 
-MCP has evolved through protocol versions. navra currently supports `2025-03-26` (the version that introduced Streamable HTTP and tool annotations) and `2026-07-28` (which added trace context propagation, cache hints, and enterprise-managed authorization). The version is negotiated during the `initialize` handshake -- the client sends its preferred version, and the server responds with the version it will use.
+MCP has evolved through protocol versions. navra currently supports `2025-03-26` (the version that introduced Streamable HTTP and tool annotations) and `2026-07-28` (which added trace context propagation, cache hints, and enterprise-managed authorization). For versions before `2026-07-28`, the version is negotiated during the `initialize` handshake -- the client sends its preferred version, and the server responds with the version it will use. `2026-07-28` removed the handshake itself (stateless discovery): a client that names it in a legacy `initialize` request is answered with the newest handshake version (`2025-11-25`), and clients wanting full `2026-07-28` semantics use `server/discover` instead.
 
 ## What's next
 

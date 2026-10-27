@@ -1,6 +1,6 @@
 id: NAVRA-187
 title: "Upgrade rmcp 1.8 to 3.x"
-status: open
+status: done
 priority: medium
 effort: 3-5d
 description: |
@@ -45,11 +45,55 @@ description: |
   (the security-wiring timeouts remain correct defense in depth
   either way).
 notes: |
-  - The security-wiring branch's integration tests (scanner, manifest,
-    bounds, list_changed, timeouts) exercise the rmcp surface
-    end-to-end and act as the migration safety net
-  - Do not fold into the security-wiring branch — separate PR
-  - 3.0.0 release notes: MCP 2026-07-28 removes protocol-level
-    sessions (no Mcp-Session-Id, standalone GET stream, DELETE
-    termination, Last-Event-ID resumption) — navra's stateless
-    default already matches this direction
+  - Implemented on branch rmcp-3-upgrade (worktree), based on
+    security-wiring-gaps but kept a separate branch per the
+    "do not fold into the security-wiring branch" rule.
+  - Upgrade landed as rmcp/rmcp-macros 1.8.0 -> 3.8.0 (+process-wrap
+    10.x); the workspace pin is the only version reference.
+  - NAVRA_TEST_SCHEMA_DEPTH=100 repro result: the hang is NOT fixed
+    upstream. rmcp 3.8's transport deliberately ignores unparsable
+    input (upstream #938, matching the other official SDKs), so a
+    response nested past serde_json's 128-level recursion limit is
+    dropped and the pending request never resolves while the server
+    process lives; #1333 only cancels tokens after transport EOF.
+    The security-wiring request timeouts remain load-bearing —
+    pinned by the new upstream_undecodable_response_fails_closed_
+    within_timeout regression test in navra-core/tests/
+    upstream_integration.rs.
+  - #1344's abandoned-request cancellation now complements the
+    timeouts: dropping the timeout future sends
+    notifications/cancelled to the upstream instead of silently
+    abandoning it.
+  - Protocol negotiation changed per SEP-2567: initialize only
+    exists for pre-2026-07-28 versions. A client naming 2026-07-28
+    over legacy initialize is answered with 2025-11-25 (newest
+    handshake version); 2026-07-28 clients use server/discover,
+    which rmcp 3.8 serves statelessly by default. The e2e
+    mcp_initialize_returns_capabilities test asserts both paths.
+  - MRTR (SEP-2322) forwarding: upstream forwarding keeps single-round
+    semantics — rmcp 3.8's macro-generated Peer::{call_tool,
+    get_prompt, read_resource} return the final result and error on
+    input_required/task responses. Transparent InputRequired
+    pass-through (and the ACL/IFC questions it raises) is future
+    work, not part of this upgrade.
+  - navra-protocol compat layer absorbed the content-model
+    flattening: Content = ContentBlock, the Raw* names alias the flat
+    types (RawContent = ContentBlock, RawResource = Resource, ...),
+    PromptRole = Role, RequestMeta = MetaObject; Annotated is gone
+    (content/resource types carry meta inline). Downstream churn was
+    mostly mechanical (.raw accessors removed, Content{raw:
+    RawContent::Text(t)} patterns -> Content::Text(t),
+    #[non_exhaustive] literals switched to constructors).
+  - SEP-2577 deprecates protocol-level logging; navra keeps
+    answering logging/setLevel for older clients, with
+    #[allow(deprecated)] at the compat re-exports.
+  - The security-wiring branch's integration tests (scanner,
+    manifest, bounds, list_changed, timeouts) plus the full workspace
+    suite passed against 3.8.0 (2915 workspace tests; navra-server
+    e2e 12/12, unit 356/356). Pre-existing environmental failures
+    unchanged from base: 4 adversarial_eval tests (3 need the
+    localhost/mcp-filesystem and mcp-git podman images; 1 sends
+    model "test" that no config maps).
+  - Machine note: alsa-lib-devel is not installed; navra-modal-voice
+    (cpal) was built against locally extracted Fedora alsa-lib-devel
+    RPMs under /tmp/opencode/alsa-prefix with PKG_CONFIG_PATH.
