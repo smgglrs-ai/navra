@@ -240,6 +240,49 @@ impl Declassification {
             reason,
         }
     }
+
+    /// Does this recommendation justify stepping the session down to
+    /// `new_confidentiality`? Only full redaction qualifies.
+    pub fn recommends_declassification(&self) -> Option<Confidentiality> {
+        if self.all_handled {
+            self.new_confidentiality
+        } else {
+            None
+        }
+    }
+}
+
+/// Shared ledger collecting declassification recommendations produced
+/// by safety filtering (legacy pipeline path or `SafetyHook`), to be
+/// drained by the gateway after post-call processing.
+///
+/// Filtering happens inside hook/pipeline code that cannot itself
+/// declassify (declassification requires the gateway's signing
+/// authority and session taint tracker). The ledger is the hand-off:
+/// producers record recommendations; the gateway drains them and
+/// routes the survivor through `TaintTracker::declassify`.
+#[derive(Debug, Default)]
+pub struct DeclassificationLedger {
+    inner: std::sync::Mutex<Vec<Declassification>>,
+}
+
+impl DeclassificationLedger {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a recommendation (called by filter pipelines / hooks).
+    pub fn record(&self, recommendation: Declassification) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.push(recommendation);
+    }
+
+    /// Drain all recorded recommendations (called by the gateway
+    /// after post-call filtering). Returns them in record order.
+    pub fn drain(&self) -> Vec<Declassification> {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        std::mem::take(&mut *inner)
+    }
 }
 
 /// Context passed to filters.
@@ -1140,5 +1183,99 @@ mod tests {
         let snap = metrics.snapshot();
         assert_eq!(snap.total_scans, 1);
         assert!(snap.pii_detected > 0);
+    }
+
+    // --- Declassification rule table ---
+
+    #[test]
+    fn declassification_full_redaction_recommends_sensitive() {
+        let d = Declassification::from_filter_result(&FilterAction::Redact, 3, true);
+        assert_eq!(d.new_confidentiality, Some(Confidentiality::Sensitive));
+        assert!(d.all_handled);
+        assert_eq!(
+            d.recommends_declassification(),
+            Some(Confidentiality::Sensitive)
+        );
+    }
+
+    #[test]
+    fn declassification_partial_redaction_denies_step_down() {
+        // Partial redaction: findings were not all handled — raw PII
+        // may remain, so no declassification is permitted.
+        let d = Declassification::from_filter_result(&FilterAction::Redact, 3, false);
+        assert_eq!(d.new_confidentiality, None);
+        assert!(!d.all_handled);
+        assert_eq!(d.recommends_declassification(), None);
+    }
+
+    #[test]
+    fn declassification_pseudonymize_stays_pii() {
+        // Pseudonymized data is still personal data (GDPR Art. 4(5)).
+        let d = Declassification::from_filter_result(&FilterAction::Pseudonymize, 2, true);
+        assert_eq!(d.new_confidentiality, None);
+        assert_eq!(d.recommends_declassification(), None);
+    }
+
+    #[test]
+    fn declassification_pass_and_block_no_step_down() {
+        let pass = Declassification::from_filter_result(&FilterAction::Pass, 1, true);
+        assert_eq!(pass.new_confidentiality, None);
+        let block = Declassification::from_filter_result(&FilterAction::Block, 1, true);
+        assert_eq!(block.new_confidentiality, None);
+    }
+
+    #[test]
+    fn declassification_no_findings_no_step_down() {
+        let d = Declassification::from_filter_result(&FilterAction::Redact, 0, true);
+        assert_eq!(d.new_confidentiality, None);
+    }
+
+    #[tokio::test]
+    async fn process_with_declassification_full_redaction() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(PiiFilter::new());
+        let (result, declass) = pipeline
+            .process_with_declassification("SSN: 123-45-6789", &ctx())
+            .await;
+        let text = result.expect("redaction succeeds");
+        assert!(text.contains("[REDACTED:"));
+        assert!(!text.contains("123-45-6789"));
+        assert!(declass.findings_count > 0);
+        assert_eq!(
+            declass.recommends_declassification(),
+            Some(Confidentiality::Sensitive)
+        );
+    }
+
+    #[tokio::test]
+    async fn process_with_declassification_clean_content() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(PiiFilter::new());
+        let (result, declass) = pipeline
+            .process_with_declassification("nothing sensitive here", &ctx())
+            .await;
+        assert!(result.is_ok());
+        assert_eq!(declass.findings_count, 0);
+        assert_eq!(declass.recommends_declassification(), None);
+    }
+
+    #[test]
+    fn declassification_ledger_records_and_drains() {
+        let ledger = DeclassificationLedger::new();
+        ledger.record(Declassification::from_filter_result(
+            &FilterAction::Redact,
+            2,
+            true,
+        ));
+        ledger.record(Declassification::from_filter_result(
+            &FilterAction::Pseudonymize,
+            1,
+            true,
+        ));
+        let drained = ledger.drain();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].findings_count, 2);
+        // Drain empties the ledger.
+        assert!(ledger.drain().is_empty());
     }
 }

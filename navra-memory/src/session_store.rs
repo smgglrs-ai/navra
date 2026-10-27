@@ -176,6 +176,16 @@ impl SessionBackend for SqliteSessionBackend {
         }
     }
 
+    fn declassify_context_label(&self, id: &str, new_confidentiality: Confidentiality) {
+        // Set the confidentiality directly (no join) — the wrapper only
+        // calls this to step DOWN.
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = db.execute(
+            "UPDATE sessions SET confidentiality = ?1 WHERE id = ?2",
+            rusqlite::params![format!("{new_confidentiality:?}"), id],
+        );
+    }
+
     fn context_label(&self, id: &str) -> DataLabel {
         self.get(id)
             .map(|s| s.context_label)
@@ -311,6 +321,27 @@ mod tests {
         let label = store.context_label("s1");
         assert_eq!(label.integrity, Integrity::Untrusted);
         assert_eq!(label.confidentiality, Confidentiality::Public);
+    }
+
+    #[test]
+    fn declassify_context_label_sets_confidentiality() {
+        let store = SqliteSessionBackend::open_memory().unwrap();
+        store.create(test_session("s1"));
+        store.update_context_label(
+            "s1",
+            DataLabel {
+                integrity: Integrity::Untrusted,
+                confidentiality: Confidentiality::Pii,
+            },
+        );
+
+        // Direct backend set (no join) — the SessionStore wrapper
+        // guards the step-down direction.
+        store.declassify_context_label("s1", Confidentiality::Sensitive);
+        let label = store.context_label("s1");
+        assert_eq!(label.confidentiality, Confidentiality::Sensitive);
+        // Integrity dimension untouched.
+        assert_eq!(label.integrity, Integrity::Untrusted);
     }
 
     #[test]

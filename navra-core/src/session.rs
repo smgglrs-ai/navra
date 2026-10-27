@@ -1,6 +1,7 @@
 use crate::auth::AgentIdentity;
 use crate::ifc::DataLabel;
 use crate::protocol::ClientInfo;
+use navra_protocol::label::Confidentiality;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use vstd::prelude::*;
@@ -32,6 +33,10 @@ pub trait SessionBackend: Send + Sync {
     fn count(&self) -> usize;
     fn update_context_label(&self, id: &str, label: DataLabel);
     fn context_label(&self, id: &str) -> DataLabel;
+    /// Set the session's context label confidentiality directly
+    /// (declassification path). Unlike `update_context_label`, this
+    /// does NOT join — the wrapper only calls it to step DOWN.
+    fn declassify_context_label(&self, id: &str, new_confidentiality: Confidentiality);
     /// Touch last_accessed timestamp.
     fn touch(&self, id: &str);
     /// Remove sessions older than `max_age_secs`.
@@ -94,6 +99,27 @@ impl SessionStore {
         self.backend.context_label(id)
     }
 
+    /// Step the session's context label confidentiality DOWN.
+    ///
+    /// This is the persisted-taint counterpart of
+    /// `TaintTracker::declassify` — the only exception to label
+    /// monotonicity (INV-1). Refuses to step up; returns the label
+    /// after the attempt.
+    pub fn declassify_context_label(
+        &self,
+        id: &str,
+        new_confidentiality: Confidentiality,
+    ) -> DataLabel {
+        let current = self.context_label(id);
+        if new_confidentiality < current.confidentiality {
+            self.backend
+                .declassify_context_label(id, new_confidentiality);
+            self.context_label(id)
+        } else {
+            current
+        }
+    }
+
     pub fn touch(&self, id: &str) {
         self.backend.touch(id);
     }
@@ -144,6 +170,13 @@ impl SessionBackend for InMemorySessionBackend {
         let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(session) = sessions.get_mut(id) {
             session.context_label = session.context_label.join(label);
+        }
+    }
+
+    fn declassify_context_label(&self, id: &str, new_confidentiality: Confidentiality) {
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(session) = sessions.get_mut(id) {
+            session.context_label.confidentiality = new_confidentiality;
         }
     }
 
@@ -209,6 +242,12 @@ impl SessionBackend for DashMapSessionBackend {
     fn update_context_label(&self, id: &str, label: DataLabel) {
         if let Some(mut session) = self.sessions.get_mut(id) {
             session.context_label = session.context_label.join(label);
+        }
+    }
+
+    fn declassify_context_label(&self, id: &str, new_confidentiality: Confidentiality) {
+        if let Some(mut session) = self.sessions.get_mut(id) {
+            session.context_label.confidentiality = new_confidentiality;
         }
     }
 
@@ -330,6 +369,41 @@ mod tests {
         assert_eq!(store.count(), 1);
         store.remove("d1");
         assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn declassify_context_label_steps_down_only() {
+        let store = SessionStore::default();
+        store.create(test_session("d1"));
+        store.update_context_label(
+            "d1",
+            DataLabel {
+                integrity: crate::ifc::Integrity::Trusted,
+                confidentiality: Confidentiality::Pii,
+            },
+        );
+
+        // Step down: Pii -> Sensitive succeeds.
+        let after = store.declassify_context_label("d1", Confidentiality::Sensitive);
+        assert_eq!(after.confidentiality, Confidentiality::Sensitive);
+
+        // Stepping UP via declassify is refused (monotonicity exception
+        // only goes down).
+        let after = store.declassify_context_label("d1", Confidentiality::Pii);
+        assert_eq!(after.confidentiality, Confidentiality::Sensitive);
+
+        // Join still raises afterwards (monotone absorb).
+        store.update_context_label(
+            "d1",
+            DataLabel {
+                integrity: crate::ifc::Integrity::Trusted,
+                confidentiality: Confidentiality::Secret,
+            },
+        );
+        assert_eq!(
+            store.context_label("d1").confidentiality,
+            Confidentiality::Secret
+        );
     }
 
     #[test]

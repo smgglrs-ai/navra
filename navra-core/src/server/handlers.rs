@@ -843,7 +843,7 @@ impl McpServer {
 
         let tool_start = std::time::Instant::now();
         let trace_id = crate::blackbox::generate_trace_id();
-        let mut result = match self.tools.get(params.name.as_ref()) {
+        let result = match self.tools.get(params.name.as_ref()) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
                 // Multi-hypothesis tool routing: try fuzzy matching
@@ -950,8 +950,12 @@ impl McpServer {
             "tool_call.complete"
         );
 
-        // IFC label tracking placeholder — result.label was removed in rmcp migration.
-        // A side-channel approach will restore IFC tracking in a later step.
+        // IFC: compute the result label. External-read tool outputs are
+        // Untrusted unless the path is trusted. The confidentiality
+        // dimension starts at the tool result's floor (Public) and is
+        // elevated below when the safety pipeline finds sensitive
+        // content — result.label was removed in the rmcp migration, so
+        // the label is derived here and from the filter pipeline.
         let result_label = crate::ifc::DataLabel::TRUSTED_PUBLIC;
 
         // IFC: auto-label external read tool outputs as Untrusted
@@ -978,12 +982,83 @@ impl McpServer {
             result_label
         };
 
+        // Post-call safety filtering (hooks, or the legacy direct
+        // pipeline path), collecting declassification recommendations.
+        // Filtering runs BEFORE the value is stored so that `var://`
+        // references cannot retrieve redacted or blocked content.
+        let mut declass_recs: Vec<crate::safety::Declassification> = Vec::new();
+        let mut result = if self.hooks.has_hooks() {
+            self.hooks
+                .run_post(&params.name, &arguments, result, &ctx)
+                .await
+        } else if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
+            && pipeline.has_filters()
+        {
+            // Legacy path: apply safety filters directly when no hooks
+            // are configured
+            let (result, recs) = self
+                .apply_safety_filter(pipeline, result, &ctx, &params.name)
+                .await;
+            declass_recs.extend(recs);
+            result
+        } else {
+            result
+        };
+        // Hook-path recommendations arrive via the shared ledger
+        // (the SafetyHook records there).
+        if let Some(ref ledger) = self.declassification_ledger {
+            declass_recs.extend(ledger.drain());
+        }
+
+        // Aggregate the rule table across content blocks:
+        // - any findings → elevate the confidentiality to Pii (the
+        //   pipeline found sensitive content in the result)
+        // - declassify only when findings were present, every block
+        //   with findings was fully handled, and a step-down was
+        //   recommended (full redaction → Sensitive; pseudonymize and
+        //   partial redaction never recommend a step-down)
+        let mut any_findings = false;
+        let mut any_partial = false;
+        let mut recommended_step_down: Option<crate::ifc::Confidentiality> = None;
+        for rec in &declass_recs {
+            if rec.findings_count == 0 {
+                continue;
+            }
+            any_findings = true;
+            if !rec.all_handled {
+                any_partial = true;
+            }
+            if let Some(conf) = rec.new_confidentiality {
+                // navra-safety mirrors the protocol's Confidentiality
+                // (it cannot depend on navra-protocol); map it over.
+                let conf = ifc_confidentiality(conf);
+                recommended_step_down =
+                    Some(recommended_step_down.map_or(conf, |prev| prev.max(conf)));
+            }
+        }
+        let declassify_to = if any_findings && !any_partial {
+            recommended_step_down
+        } else {
+            None
+        };
+
+        let mut result_label = result_label;
+        if any_findings {
+            // PII/sensitive content was detected in the result: elevate
+            // the label (join with the existing confidentiality).
+            result_label.confidentiality = result_label
+                .confidentiality
+                .max(crate::ifc::Confidentiality::Pii);
+        }
+
         // IFC: absorb tool result label into session taint
         ctx.taint.absorb(result_label);
         self.sessions
             .update_context_label(&ctx.session_id, result_label);
 
-        // IFC: auto-store result as a labeled variable
+        // IFC: store the FILTERED result as a labeled variable. The
+        // stored content is what the agent saw — storing pre-filter
+        // content would let `var://` references bypass redaction.
         let var_id = crate::ifc::value_store::generate_var_id();
         session_store.store(crate::ifc::value_store::StoredValue {
             id: var_id.clone(),
@@ -999,6 +1074,73 @@ impl McpServer {
             "\n---\n_var: {}_",
             var_id
         )));
+
+        // Declassification: route a full-redaction recommendation
+        // through TaintTracker::declassify with the gateway's signing
+        // authority. This records a signed witness and steps the
+        // session taint (and the stored value's label) down.
+        let mut final_label = result_label;
+        if let Some(new_conf) = declassify_to {
+            match self.declassification_authority.as_ref() {
+                Some(authority) => {
+                    let justification = format!(
+                        "post-call safety filter on '{}': full redaction of {} finding(s) — \
+                         all findings replaced with [REDACTED] markers",
+                        params.name,
+                        declass_recs.iter().map(|r| r.findings_count).sum::<usize>(),
+                    );
+                    if let Some(witness) = ctx.taint.declassify(new_conf, authority, &justification)
+                    {
+                        self.record_witness(&ctx.session_id, witness.clone());
+                        final_label = ctx.taint.level();
+                        // Step the persisted session label down as well,
+                        // so the declassification survives this request.
+                        self.sessions
+                            .declassify_context_label(&ctx.session_id, new_conf);
+                        // Apply the declassified label to the stored value.
+                        session_store.update(&var_id, result.content.clone(), final_label);
+                        tracing::info!(
+                            tool = %params.name,
+                            session_id = %ctx.session_id,
+                            from = ?result_label.confidentiality,
+                            to = ?new_conf,
+                            witness_signature = ?witness.signature.as_ref().map(|s| s.len()),
+                            "IFC declassification recorded (full redaction)"
+                        );
+                        if let Some(ref bb) = self.blackbox {
+                            bb.record(
+                                &ctx.agent.name,
+                                &ctx.agent.permissions,
+                                &ctx.session_id,
+                                &params.name,
+                                &justification,
+                                &format!(
+                                    "witness: {} -> {}",
+                                    witness.original_label, witness.new_label
+                                ),
+                                "declassified",
+                                0,
+                                &format!("{:?}", final_label),
+                                &trace_id,
+                            );
+                        }
+                    }
+                }
+                None => {
+                    // Fail-safe: without a signing authority there is no
+                    // auditable declassification — the label stays
+                    // elevated. Embedded deployments that want
+                    // declassification must wire a DeclassificationAuthority.
+                    tracing::warn!(
+                        tool = %params.name,
+                        session_id = %ctx.session_id,
+                        "Full redaction recommends declassification but no \
+                         DeclassificationAuthority is configured — label stays at {:?}",
+                        result_label.confidentiality
+                    );
+                }
+            }
+        }
 
         // Mark call complete in process table
         self.process_table
@@ -1026,24 +1168,10 @@ impl McpServer {
                     "allowed"
                 },
                 tool_duration_us,
-                &format!("{:?}", result_label),
+                &format!("{:?}", final_label),
                 &trace_id,
             );
         }
-
-        // Run post-hooks (includes safety filtering if wired as a hook)
-        let result = if self.hooks.has_hooks() {
-            self.hooks
-                .run_post(&params.name, &arguments, result, &ctx)
-                .await
-        } else if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
-            && pipeline.has_filters()
-        {
-            // Legacy path: apply safety filters directly when no hooks are configured
-            self.apply_safety_filter(pipeline, result, &ctx, &params.name)
-        } else {
-            result
-        };
 
         // DMN output validation (post-call): treat agent output as a proposal
         if let Some(ref dmn) = self.dmn_engine {
@@ -1089,13 +1217,13 @@ impl McpServer {
         result
     }
 
-    fn apply_safety_filter(
+    async fn apply_safety_filter(
         &self,
         pipeline: &FilterPipeline,
         mut result: CallToolResult,
         ctx: &CallContext,
         tool_name: &str,
-    ) -> CallToolResult {
+    ) -> (CallToolResult, Vec<crate::safety::Declassification>) {
         let filter_ctx = FilterContext {
             agent_name: &ctx.agent.name,
             operation: tool_name,
@@ -1103,23 +1231,20 @@ impl McpServer {
         };
 
         let mut filtered_content = Vec::new();
-        let mut has_pii = false;
+        let mut recommendations = Vec::new();
         for content in result.content.drain(..) {
             match &content.raw {
                 crate::protocol::RawContent::Text(text) => {
-                    let findings = pipeline.scan_sync(&text.text, &filter_ctx);
-                    if findings
-                        .iter()
-                        .any(|f| crate::safety::is_pii_category(&f.category))
-                    {
-                        has_pii = true;
-                    }
-                    match pipeline.process(&text.text, &filter_ctx) {
+                    let (processed, declass) = pipeline
+                        .process_with_declassification(&text.text, &filter_ctx)
+                        .await;
+                    recommendations.push(declass);
+                    match processed {
                         Ok(processed) => {
                             filtered_content.push(Content::text(processed));
                         }
                         Err(reason) => {
-                            return CallToolResult::error_msg(reason);
+                            return (CallToolResult::error_msg(reason), recommendations);
                         }
                     }
                 }
@@ -1130,12 +1255,16 @@ impl McpServer {
                     } = &res.resource
                     {
                         if mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
-                            match pipeline.process(text, &filter_ctx) {
+                            let (processed, declass) = pipeline
+                                .process_with_declassification(text, &filter_ctx)
+                                .await;
+                            recommendations.push(declass);
+                            match processed {
                                 Ok(processed) => {
                                     filtered_content.push(Content::text(processed));
                                 }
                                 Err(reason) => {
-                                    return CallToolResult::error_msg(reason);
+                                    return (CallToolResult::error_msg(reason), recommendations);
                                 }
                             }
                         } else {
@@ -1147,8 +1276,11 @@ impl McpServer {
                             agent = ctx.agent.name,
                             "Non-text resource blocked by safety pipeline"
                         );
-                        return CallToolResult::error_msg(
-                            "Non-text resource content blocked by safety pipeline",
+                        return (
+                            CallToolResult::error_msg(
+                                "Non-text resource content blocked by safety pipeline",
+                            ),
+                            recommendations,
                         );
                     }
                 }
@@ -1158,17 +1290,17 @@ impl McpServer {
                         agent = ctx.agent.name,
                         "Non-text content (image/audio) blocked by safety pipeline"
                     );
-                    return CallToolResult::error_msg(
-                        "Non-text content blocked by safety pipeline (no binary filter configured)",
+                    return (
+                        CallToolResult::error_msg(
+                            "Non-text content blocked by safety pipeline (no binary filter configured)",
+                        ),
+                        recommendations,
                     );
                 }
             }
         }
         result.content = filtered_content;
-        // Elevate IFC label to Pii if PII was detected
-        // PII label elevation placeholder — result.label removed in rmcp migration
-        let _ = has_pii;
-        result
+        (result, recommendations)
     }
 
     pub fn handle_list_prompts(
@@ -1730,6 +1862,32 @@ impl McpServer {
         &self.value_stores
     }
 
+    /// Declassification witnesses recorded for a session, oldest first.
+    pub fn declassification_witnesses(
+        &self,
+        session_id: &str,
+    ) -> Vec<navra_auth::ifc::DeclassificationWitness> {
+        self.declassification_witnesses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|(sid, _)| sid == session_id)
+            .map(|(_, w)| w.clone())
+            .collect()
+    }
+
+    /// Record a declassification witness (bounded to 1024 entries).
+    fn record_witness(&self, session_id: &str, witness: navra_auth::ifc::DeclassificationWitness) {
+        let mut witnesses = self
+            .declassification_witnesses
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if witnesses.len() >= 1024 {
+            witnesses.drain(..512);
+        }
+        witnesses.push((session_id.to_string(), witness));
+    }
+
     fn filter_resources_for_agent(
         &self,
         agent: &crate::auth::AgentIdentity,
@@ -1778,6 +1936,18 @@ impl McpServer {
         }
 
         true
+    }
+}
+
+/// Map navra-safety's mirrored `Confidentiality` onto the protocol's
+/// IFC label enum. navra-safety cannot depend on navra-protocol, so
+/// `Declassification` recommendations carry its own copy of the enum.
+fn ifc_confidentiality(c: crate::safety::Confidentiality) -> crate::ifc::Confidentiality {
+    match c {
+        crate::safety::Confidentiality::Public => crate::ifc::Confidentiality::Public,
+        crate::safety::Confidentiality::Sensitive => crate::ifc::Confidentiality::Sensitive,
+        crate::safety::Confidentiality::Pii => crate::ifc::Confidentiality::Pii,
+        crate::safety::Confidentiality::Secret => crate::ifc::Confidentiality::Secret,
     }
 }
 
