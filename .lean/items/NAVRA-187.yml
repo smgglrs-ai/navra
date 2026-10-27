@@ -1,0 +1,55 @@
+id: NAVRA-187
+title: "Upgrade rmcp 1.8 to 3.x"
+status: open
+priority: medium
+effort: 3-5d
+description: |
+  navra pins rmcp 1.8.0 (2026-06-23); the SDK has since shipped 2.x
+  and the full 3.x line (3.8.0, 2026-10-26) implementing the complete
+  MCP 2026-07-28 specification. Official migration guide:
+  https://github.com/modelcontextprotocol/rust-sdk/discussions/969
+
+  Motivation beyond spec completeness — several 3.x fixes land on
+  issues hit during the 2026-10 security-wiring pass:
+  - 3.6.0 #1344: cancel abandoned tools/call / prompts/get /
+    resources/read (complements our request timeouts, which currently
+    just drop the abandoned future)
+  - 3.6.0 #1049: bound the incoming line buffer in AsyncRwTransport
+    (transport-level DoS bound complementing the discovery bounds)
+  - 3.6.0 #1333: cancel pending request tokens after transport EOF
+    (the fix class for the hang-on-undecodable-response defect noted
+    in NAVRA-186)
+  - 3.8.0 #1363: stop SSE reconnects on permanent GET errors
+
+  Breaking changes that hit navra directly (see the guide's TL;DR):
+  - ServerHandler::{call_tool, get_prompt, read_resource} return
+    types widen (CallToolResult -> CallToolResponse etc.) —
+    navra-core/src/server/navra_handler.rs implements these manually
+  - ServerResult gains InputRequiredResult; protocol unions become
+    #[non_exhaustive] — wildcard match arms
+  - Meta splits into MetaObject/RequestMetaObject/NotificationMetaObject;
+    *RequestParam -> *RequestParams renames — ripples through the
+    navra-protocol compat layer
+  - StreamableHttpService requires S: ServerHandler;
+    stateful_mode -> legacy_session_mode; resources/subscribe ->
+    subscriptions/listen for 2026-07-28 peers
+  - Client surface is kinder: serve() unchanged (the
+    UpstreamNotificationHandler ClientHandler impl should mostly
+    survive); call_tool gains automatic MRTR driving (*_once to opt
+    out)
+
+  MSRV 1.88 — compatible with the workspace's 1.98.
+
+  First step: run the NAVRA_TEST_SCHEMA_DEPTH=100 repro against 3.8
+  to settle whether the undecodable-response hang is fixed upstream
+  (the security-wiring timeouts remain correct defense in depth
+  either way).
+notes: |
+  - The security-wiring branch's integration tests (scanner, manifest,
+    bounds, list_changed, timeouts) exercise the rmcp surface
+    end-to-end and act as the migration safety net
+  - Do not fold into the security-wiring branch — separate PR
+  - 3.0.0 release notes: MCP 2026-07-28 removes protocol-level
+    sessions (no Mcp-Session-Id, standalone GET stream, DELETE
+    termination, Last-Event-ID resumption) — navra's stateless
+    default already matches this direction
