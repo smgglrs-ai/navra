@@ -115,7 +115,9 @@ Disabling TLS verification is possible but logged as a warning. An upstream conn
 
 ## Tool discovery and notifications
 
-When an upstream server adds or removes tools (signaled via the `notifications/tools/list_changed` notification), navra re-fetches the tool list and updates its merged catalog. Connected agents receive a `tools/list_changed` notification from navra, prompting them to re-discover available tools.
+When an upstream server adds or removes tools (signaled via the `notifications/tools/list_changed` notification), navra re-fetches the tool list and updates its merged catalog.
+
+Every refresh runs the full discovery pipeline again — tool scanning, signed-manifest verification (including the TOFU pin), and discovery content bounds — and atomically swaps the upstream's tool registry. A tool that turned `Malicious` since the initial registration is *not* registered: the gateway fails closed to the last known-good set. Refreshes are debounced per upstream (`refresh_debounce_ms`, default 1000 ms) so a chatty or hostile upstream cannot turn notifications into a re-discovery storm, and each refresh emits a blackbox audit event for the audit trail.
 
 This means the tool list is dynamic. An upstream server can add new capabilities at runtime, and agents connected to navra will discover them without reconnecting.
 

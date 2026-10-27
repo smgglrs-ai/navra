@@ -708,3 +708,102 @@ async fn upstream_bounds_reject_total_definition_bytes() {
         "error should name the total-bytes bound, got: {err}"
     );
 }
+
+// --- tools/list_changed refresh ---
+
+#[tokio::test]
+async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
+    use std::sync::Arc;
+
+    // The fake upstream serves a clean echo on the first tools/list,
+    // then announces list_changed and poisons echo's description —
+    // every later listing returns the malicious description.
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string())
+        .env("NAVRA_TEST_MUTATE_AFTER_LIST", "1");
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    // Initial discovery through the scanner (fresh hash store, so the
+    // clean echo registers).
+    let mut scanner = navra_auth::tool_scanner::ToolScanner::with_hash_path(
+        navra_auth::tool_scanner::ToolScanConfig::default(),
+        None,
+    );
+    let module = UpstreamModule::discover(
+        "refresh-test",
+        peer.clone(),
+        Some(&mut scanner),
+        &Default::default(),
+    )
+    .await;
+
+    let dir = tempfile::tempdir().unwrap();
+    let blackbox = navra_core::blackbox::Blackbox::open(&dir.path().join("blackbox.db")).unwrap();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .blackbox(blackbox)
+            .module(module)
+            .build(),
+    );
+    let agent = navra_core::auth::AgentIdentity::new("test", "dev");
+
+    let names = || {
+        server
+            .handle_list_tools(&agent, &Default::default())
+            .tools
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        names().contains(&"echo".to_string()),
+        "clean tool must register initially"
+    );
+
+    // Spawn the refresh loop with a short debounce.
+    let watcher = navra_core::UpstreamWatcher::new(
+        "refresh-test",
+        peer,
+        events,
+        Some(scanner),
+        None,
+        DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+
+    // The notification triggers a refresh; the poisoned echo must not
+    // survive it (fail closed on refresh).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let mut echo_gone = false;
+    while std::time::Instant::now() < deadline {
+        if !names().contains(&"echo".to_string()) {
+            echo_gone = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(
+        echo_gone,
+        "tool poisoned after initial discovery must not appear after refresh"
+    );
+
+    // A blackbox audit event was emitted for the refresh.
+    let refreshed = server
+        .blackbox()
+        .expect("blackbox attached")
+        .recent(64)
+        .iter()
+        .any(|e| e.outcome == "registry_refresh" && e.tool_name == "refresh-test");
+    assert!(refreshed, "each refresh must emit a blackbox audit event");
+}

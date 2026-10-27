@@ -29,7 +29,9 @@ use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, Re
 pub struct McpServer {
     pub(crate) name: String,
     pub(crate) version: String,
-    tools: HashMap<String, RegisteredTool>,
+    /// Registered tools. Interior-mutable: upstream modules that
+    /// advertise `list_changed` swap their tool sets at runtime.
+    tools: RwLock<HashMap<String, RegisteredTool>>,
     prompts: HashMap<String, RegisteredPrompt>,
     resources: HashMap<String, RegisteredResource>,
     resource_templates: Vec<RegisteredResourceTemplate>,
@@ -42,9 +44,16 @@ pub struct McpServer {
     /// Allowed operations per permission set (from config).
     agent_operations: HashMap<String, HashSet<String>>,
     /// Operation classification per tool (from upstream auto-classify + overrides).
-    tool_operations: HashMap<String, navra_mcp::ToolOperation>,
+    /// Interior-mutable for upstream `list_changed` refreshes.
+    tool_operations: RwLock<HashMap<String, navra_mcp::ToolOperation>>,
     /// Semantic classification per tool/prompt/resource (domain:operation).
-    tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+    /// Interior-mutable for upstream `list_changed` refreshes.
+    tool_classifications: RwLock<HashMap<String, navra_auth::permissions::ResourceClass>>,
+    /// Tool names registered per module (for upstream registry swaps).
+    upstream_tool_index: RwLock<HashMap<String, Vec<String>>>,
+    /// Refresh watchers for upstream modules that advertise list_changed.
+    /// Drained by the embedding server after build() to spawn the loops.
+    upstream_watchers: RwLock<Vec<crate::UpstreamWatcher>>,
     /// Domain-based permission rules per permission set.
     domain_rules: HashMap<String, navra_auth::permissions::DomainRules>,
     /// Hook pipeline for pre/post tool-call interception.

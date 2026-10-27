@@ -282,7 +282,8 @@ pub(crate) async fn wire_modules(
             }
             let transport =
                 rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
-            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+            let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
                     tokio::spawn(async move {
@@ -307,11 +308,22 @@ pub(crate) async fn wire_modules(
                     };
                     let module = navra_core::UpstreamModule::discover(
                         &endpoint.domain,
-                        peer,
+                        peer.clone(),
                         Some(&mut scanner),
                         &Default::default(),
                     )
                     .await;
+                    let watcher = navra_core::UpstreamWatcher::new(
+                        endpoint.domain.clone(),
+                        peer,
+                        events,
+                        Some(scanner),
+                        None,
+                        navra_core::DiscoveryBounds::default(),
+                        Default::default(),
+                        std::time::Duration::from_millis(1000),
+                    );
+                    builder = builder.upstream_watcher(watcher);
                     tracing::info!(
                         domain = %endpoint.domain,
                         "Connected discovered upstream (rmcp)"
@@ -365,7 +377,8 @@ pub(crate) async fn wire_modules(
         for server in &lan_servers {
             let url = server.url();
             let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.clone());
-            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+            let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
                     tokio::spawn(async move {
@@ -389,11 +402,22 @@ pub(crate) async fn wire_modules(
                     };
                     let module = navra_core::UpstreamModule::discover(
                         &server.name,
-                        peer,
+                        peer.clone(),
                         Some(&mut scanner),
                         &Default::default(),
                     )
                     .await;
+                    let watcher = navra_core::UpstreamWatcher::new(
+                        server.name.clone(),
+                        peer,
+                        events,
+                        Some(scanner),
+                        None,
+                        navra_core::DiscoveryBounds::default(),
+                        Default::default(),
+                        std::time::Duration::from_millis(1000),
+                    );
+                    builder = builder.upstream_watcher(watcher);
                     tracing::info!(
                         name = %server.name,
                         url = %url,

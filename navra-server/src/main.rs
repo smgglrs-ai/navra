@@ -1403,7 +1403,16 @@ async fn serve_inner(
     // --- Build server ---
     let server = Arc::new(builder.build());
     let _ = server_cell.set(Arc::clone(&server));
-    team_registry_ref.set_tool_operations(server.tool_operations().clone());
+    team_registry_ref.set_tool_operations(server.tool_operations());
+
+    // --- Upstream list_changed refresh loops ---
+    // Each watcher re-runs the full discovery pipeline (scanner,
+    // manifest verification, bounds) when its upstream announces a
+    // tool-list change, and atomically swaps the registry.
+    for watcher in server.take_upstream_watchers() {
+        let server = Arc::clone(&server);
+        tokio::spawn(watcher.run(server));
+    }
 
     // --- Config watcher for hot reload ---
     let _config_watcher = if cfg.server.config_watch {
