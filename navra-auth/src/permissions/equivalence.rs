@@ -235,10 +235,6 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
                 ("tool_name", "echo"),
                 ("trust_state", "normal"),
                 ("manifest_verified", "false"),
-                // trust_score must be present: Cedar errors on missing
-                // attributes (skipping the policy) while Rego treats
-                // them as not-equal — a known divergence the harness
-                // avoids by always providing checked attributes.
                 ("trust_score", "low"),
             ],
         ),
@@ -277,6 +273,21 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
             action: action.to_string(),
             resource: resource.to_string(),
             context: ctx,
+        });
+    }
+
+    // Missing-attribute vectors: one per action with an EMPTY context.
+    // The baselines treat a missing attribute as "does not match"
+    // (Cedar via has-guards, Rego natively), so both engines must deny
+    // every one of these — this vector family turns any future policy
+    // that reintroduces the missing-attribute divergence into a test
+    // failure instead of a silent split-brain.
+    for action in &actions {
+        vectors.push(TestVector {
+            agent: "agent".into(),
+            action: action.to_string(),
+            resource: resource.to_string(),
+            context: HashMap::new(),
         });
     }
 
@@ -519,6 +530,15 @@ deny if { not allow }
                 .iter()
                 .any(|v| v.action == "upstream_tool_call" && v.context.get("tool_name").is_some()),
             "v2 namespaced dispatch vectors must set context.tool_name"
+        );
+
+        // Missing-attribute vectors: every action is tested with an
+        // empty context, enforcing the has-guard convention.
+        assert!(
+            actions.iter().all(|a| vectors
+                .iter()
+                .any(|v| v.action == *a && v.context.is_empty())),
+            "every action must have an empty-context (missing-attribute) vector"
         );
     }
 }
