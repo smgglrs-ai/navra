@@ -17,6 +17,13 @@ pub(crate) fn wire_hooks(
     safety_state: &SafetyFilterState,
     knowledge_store: &Option<Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>>,
 ) -> navra_core::McpServerBuilder {
+    // Shared declassification ledger: the SafetyHook records
+    // recommendations during post-call filtering; the gateway drains
+    // them and routes full-redaction step-downs through
+    // TaintTracker::declassify under the gateway's signing authority.
+    let declass_ledger = Arc::new(navra_core::safety::DeclassificationLedger::new());
+    builder = builder.declassification_ledger(Arc::clone(&declass_ledger));
+
     // --- BudgetHook + SafetyHook ---
     if cfg.budget.max_tool_output_tokens > 0 {
         use navra_core::hooks::{BudgetHook, TruncationStrategy};
@@ -39,7 +46,10 @@ pub(crate) fn wire_hooks(
         };
 
         // Build SafetyHook using the shared pipeline builder
-        let mut safety_hook = navra_core::hooks::SafetyHook::new(std::collections::HashMap::new());
+        let mut safety_hook = navra_core::hooks::SafetyHook::with_ledger(
+            std::collections::HashMap::new(),
+            Arc::clone(&declass_ledger),
+        );
         for (name, pset) in &cfg.permissions {
             let pipeline =
                 build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);

@@ -85,6 +85,16 @@ pub struct McpServer {
     session_log_levels: Arc<RwLock<HashMap<String, navra_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    /// Trusted declassification authority (the gateway's CapSigner).
+    /// When absent, declassification recommendations are honored only
+    /// as label elevations — never as step-downs (fail-safe).
+    declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
+    /// Ledger collecting declassification recommendations from safety
+    /// filtering (shared with the SafetyHook when hooks are wired).
+    declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
+    /// Recorded declassification witnesses (bounded, newest last).
+    declassification_witnesses:
+        std::sync::Mutex<Vec<(String, navra_auth::ifc::DeclassificationWitness)>>,
     /// Dynamic tool filters applied during `tools/list` (runtime context-aware).
     dynamic_filters: Vec<Box<dyn ToolFilter>>,
     /// Prometheus metrics counters.

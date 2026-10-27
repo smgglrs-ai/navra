@@ -1050,7 +1050,17 @@ async fn serve_inner(
         .process_table(process_table.clone())
         .metrics(metrics.clone())
         .max_sessions(cfg.server.max_sessions)
-        .session_ttl_secs(cfg.server.session_ttl_secs);
+        .session_ttl_secs(cfg.server.session_ttl_secs)
+        // IFC declassification authority: the gateway's root signer.
+        // Full-redaction recommendations from the safety pipeline are
+        // routed through TaintTracker::declassify under this key,
+        // producing signed witnesses.
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "navra-gateway",
+                Box::new(std::sync::Arc::clone(&root_signer)),
+            ),
+        ));
 
     // Persistent session store (SQLite)
     {

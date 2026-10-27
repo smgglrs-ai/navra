@@ -47,6 +47,8 @@ pub struct McpServerBuilder {
     opa_engine: Option<navra_auth::permissions::OpaEngine>,
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
+    declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
@@ -90,6 +92,8 @@ impl McpServerBuilder {
             opa_engine: None,
             dmn_engine: None,
             tool_disclosure: HashMap::new(),
+            declassification_authority: None,
+            declassification_ledger: None,
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
@@ -408,6 +412,30 @@ impl McpServerBuilder {
     ) -> Self {
         self.tool_disclosure
             .insert(permission_set.into(), disclosure);
+        self
+    }
+
+    /// Set the trusted declassification authority (the gateway's
+    /// CapSigner). Without an authority, full-redaction declassification
+    /// recommendations cannot step labels down — results stay at the
+    /// elevated label (fail-safe).
+    pub fn declassification_authority(
+        mut self,
+        authority: Arc<navra_auth::ifc::DeclassificationAuthority>,
+    ) -> Self {
+        self.declassification_authority = Some(authority);
+        self
+    }
+
+    /// Attach the shared declassification ledger. The same `Arc` must
+    /// be given to the `SafetyHook` (when hooks are wired) so that
+    /// recommendations recorded during post-call filtering reach the
+    /// gateway's declassification path.
+    pub fn declassification_ledger(
+        mut self,
+        ledger: Arc<crate::safety::DeclassificationLedger>,
+    ) -> Self {
+        self.declassification_ledger = Some(ledger);
         self
     }
 
@@ -940,6 +968,9 @@ impl McpServerBuilder {
             opa_engine: self.opa_engine.map(std::sync::Mutex::new),
             dmn_engine: self.dmn_engine,
             tool_disclosure: self.tool_disclosure,
+            declassification_authority: self.declassification_authority,
+            declassification_ledger: self.declassification_ledger,
+            declassification_witnesses: std::sync::Mutex::new(Vec::new()),
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),

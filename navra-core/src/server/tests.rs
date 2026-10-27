@@ -335,6 +335,218 @@ async fn safety_filter_blocks_when_configured() {
     assert!(result.is_error == Some(true));
 }
 
+/// Extract the `_var: v-xxxx_` ID appended to a tool result.
+fn extract_var_id(result: &CallToolResult) -> String {
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    let marker = text
+        .rfind("_var: ")
+        .expect("result should carry a _var marker");
+    let id = text[marker + "_var: ".len()..]
+        .trim_end()
+        .trim_end_matches('_')
+        .to_string();
+    assert!(id.starts_with("v-"), "unexpected var id: {id}");
+    id
+}
+
+#[tokio::test]
+async fn declassification_after_full_redaction_steps_label_down() {
+    use navra_auth::identity::Ed25519Signer;
+
+    let signer = Ed25519Signer::from_seed(&[7u8; 32]);
+    let authority_key = Ed25519Signer::from_seed(&signer.seed());
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(authority_key),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // Content was redacted before reaching the agent.
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(text.contains("[REDACTED:"));
+    assert!(!text.contains("123-45-6789"));
+
+    // The stored value's label was elevated to Pii, then stepped down
+    // to Sensitive by the recorded declassification.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Sensitive,
+        "full redaction must step the stored label down to Sensitive"
+    );
+    // Stored content is the filtered content, not the raw PII.
+    let stored_text: String = stored
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(!stored_text.contains("123-45-6789"));
+
+    // A signed witness was recorded for the Pii → Sensitive transition.
+    let witnesses = server.declassification_witnesses("test-session");
+    assert_eq!(witnesses.len(), 1, "exactly one witness expected");
+    let witness = &witnesses[0];
+    assert_eq!(
+        witness.original_label.confidentiality,
+        crate::ifc::Confidentiality::Pii
+    );
+    assert_eq!(
+        witness.new_label.confidentiality,
+        crate::ifc::Confidentiality::Sensitive
+    );
+    assert!(
+        witness.verify(&signer),
+        "witness must verify under the authority key"
+    );
+
+    // The persisted session label stepped down too.
+    assert_eq!(
+        server
+            .sessions()
+            .context_label("test-session")
+            .confidentiality,
+        crate::ifc::Confidentiality::Sensitive
+    );
+}
+
+#[tokio::test]
+async fn pseudonymized_result_keeps_label_and_no_witness() {
+    use navra_auth::identity::Ed25519Signer;
+
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("pseudonymize"))
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(Ed25519Signer::generate()),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // Pseudonymized content is still PII: the label stays elevated
+    // and no declassification witness is recorded.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "pseudonymized data must stay Pii"
+    );
+    assert!(
+        server.declassification_witnesses("test-session").is_empty(),
+        "no witness for pseudonymized results"
+    );
+    assert_eq!(
+        server
+            .sessions()
+            .context_label("test-session")
+            .confidentiality,
+        crate::ifc::Confidentiality::Pii
+    );
+}
+
+#[tokio::test]
+async fn redaction_without_authority_keeps_label_elevated() {
+    // Fail-safe: with no signing authority there is no auditable
+    // declassification — the label stays at Pii after full redaction.
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "without an authority the label must stay elevated"
+    );
+    assert!(server.declassification_witnesses("test-session").is_empty());
+}
+
 #[tokio::test]
 async fn no_safety_profile_passes_through() {
     let server = test_builder()
