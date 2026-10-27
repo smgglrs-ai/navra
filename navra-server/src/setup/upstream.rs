@@ -450,6 +450,9 @@ async fn wire_stdio_upstream(
                     let manifest = manifest_data
                         .as_mut()
                         .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
+                    let request_timeout = std::time::Duration::from_secs(
+                        upstream_cfg.request_timeout_secs.unwrap_or(45),
+                    );
                     let module = navra_core::UpstreamModule::discover_with(
                         &upstream_cfg.name,
                         peer.clone(),
@@ -457,6 +460,7 @@ async fn wire_stdio_upstream(
                             scanner: scanner.as_mut(),
                             manifest,
                             bounds: discovery_bounds(upstream_cfg),
+                            request_timeout,
                         },
                         &upstream_cfg.tool_overrides,
                     )
@@ -472,6 +476,7 @@ async fn wire_stdio_upstream(
                         std::time::Duration::from_millis(
                             upstream_cfg.refresh_debounce_ms.unwrap_or(1000),
                         ),
+                        request_timeout,
                     );
                     Ok((module, Some(watcher)))
                 }
@@ -530,6 +535,8 @@ async fn wire_http_upstream(
             let manifest = manifest_data
                 .as_mut()
                 .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
+            let request_timeout =
+                std::time::Duration::from_secs(upstream_cfg.request_timeout_secs.unwrap_or(45));
             let module = navra_core::UpstreamModule::discover_with(
                 &upstream_cfg.name,
                 peer.clone(),
@@ -537,6 +544,7 @@ async fn wire_http_upstream(
                     scanner: scanner.as_mut(),
                     manifest,
                     bounds: discovery_bounds(upstream_cfg),
+                    request_timeout,
                 },
                 &upstream_cfg.tool_overrides,
             )
@@ -550,6 +558,7 @@ async fn wire_http_upstream(
                 discovery_bounds(upstream_cfg),
                 upstream_cfg.tool_overrides.clone(),
                 std::time::Duration::from_millis(upstream_cfg.refresh_debounce_ms.unwrap_or(1000)),
+                request_timeout,
             );
             Ok((module, Some(watcher)))
         }

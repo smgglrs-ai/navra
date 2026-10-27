@@ -108,7 +108,7 @@ async fn upstream_manifest_valid_signed_manifest_passes() {
                 signed: &signed,
                 key_store: &mut key_store,
             }),
-            bounds: DiscoveryBounds::default(),
+            ..Default::default()
         },
         &Default::default(),
     )
@@ -138,7 +138,7 @@ async fn upstream_manifest_tampered_content_rejected() {
                 signed: &signed,
                 key_store: &mut key_store,
             }),
-            bounds: DiscoveryBounds::default(),
+            ..Default::default()
         },
         &Default::default(),
     )
@@ -178,7 +178,7 @@ async fn upstream_manifest_tool_set_mismatch_rejected() {
                 signed: &re_signed,
                 key_store: &mut key_store,
             }),
-            bounds: DiscoveryBounds::default(),
+            ..Default::default()
         },
         &Default::default(),
     )
@@ -209,7 +209,7 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
                     signed: &signed1,
                     key_store: &mut key_store,
                 }),
-                bounds: DiscoveryBounds::default(),
+                ..Default::default()
             },
             &Default::default(),
         )
@@ -236,7 +236,7 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
                 signed: &signed2,
                 key_store: &mut key_store,
             }),
-            bounds: DiscoveryBounds::default(),
+            ..Default::default()
         },
         &Default::default(),
     )
@@ -779,6 +779,7 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
         DiscoveryBounds::default(),
         Default::default(),
         std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
     );
     tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
 
@@ -806,4 +807,66 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
         .iter()
         .any(|e| e.outcome == "registry_refresh" && e.tool_name == "refresh-test");
     assert!(refreshed, "each refresh must emit a blackbox audit event");
+}
+
+// --- Request timeouts ---
+
+#[tokio::test]
+async fn upstream_tools_list_timeout_rejects_registration() {
+    // An upstream that never answers tools/list must not hang the
+    // gateway: discover_with fails closed within the timeout.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_STALL_TOOLS", "1")]).await;
+
+    let err = UpstreamModule::discover_with(
+        "stalled-tools",
+        peer,
+        DiscoveryOptions {
+            request_timeout: std::time::Duration::from_millis(500),
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("a stalled tools/list must reject the registration");
+    assert!(
+        err.contains("timed out"),
+        "error should name the timeout, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_tool_call_times_out_with_clear_error() {
+    use navra_core::Module;
+
+    // An upstream that stalls on tools/call must not hang the agent's
+    // call: the handler returns a timeout error.
+    let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_STALL_CALL", "1")]).await;
+
+    let module = UpstreamModule::discover_with(
+        "stalled-call",
+        peer,
+        DiscoveryOptions {
+            request_timeout: std::time::Duration::from_millis(500),
+            ..Default::default()
+        },
+        &Default::default(),
+    )
+    .await
+    .expect("discovery itself succeeds");
+
+    let tools = module.tools();
+    assert_eq!(tools.len(), 1);
+    let (_def, handler) = &tools[0];
+    let ctx = navra_core::auth::CallContext::new(
+        navra_core::auth::AgentIdentity::new("tester", "dev"),
+        "test",
+    );
+    let result = handler(serde_json::json!({"message": "hi"}), ctx).await;
+    assert!(result.is_error == Some(true), "stalled call must error");
+    let text = &result.content[0].raw.as_text().expect("text").text;
+    assert!(
+        text.contains("timed out"),
+        "error should name the timeout, got: {text}"
+    );
 }
