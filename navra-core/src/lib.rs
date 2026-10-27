@@ -44,6 +44,6 @@ pub use server::{
 };
 pub use session::Session;
 pub use upstream_module::{
-    DiscoveryBounds, DiscoveryOptions, ManifestCheck, UpstreamModule, UpstreamNotificationHandler,
-    UpstreamWatcher,
+    DEFAULT_UPSTREAM_REQUEST_TIMEOUT, DiscoveryBounds, DiscoveryOptions, ManifestCheck,
+    UpstreamModule, UpstreamNotificationHandler, UpstreamWatcher,
 };

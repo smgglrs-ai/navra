@@ -306,13 +306,30 @@ pub(crate) async fn wire_modules(
                             continue;
                         }
                     };
-                    let module = navra_core::UpstreamModule::discover(
+                    // Fail closed: a stalled or hostile endpoint that
+                    // cannot complete tools/list within the timeout is
+                    // skipped entirely rather than registered empty.
+                    let module = match navra_core::UpstreamModule::discover_with(
                         &endpoint.domain,
                         peer.clone(),
-                        Some(&mut scanner),
+                        navra_core::DiscoveryOptions {
+                            scanner: Some(&mut scanner),
+                            ..Default::default()
+                        },
                         &Default::default(),
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(module) => module,
+                        Err(e) => {
+                            tracing::warn!(
+                                domain = %endpoint.domain,
+                                error = %e,
+                                "Failed to discover tools on discovered endpoint — skipping (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
                     let watcher = navra_core::UpstreamWatcher::new(
                         endpoint.domain.clone(),
                         peer,
@@ -322,6 +339,7 @@ pub(crate) async fn wire_modules(
                         navra_core::DiscoveryBounds::default(),
                         Default::default(),
                         std::time::Duration::from_millis(1000),
+                        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
                     );
                     builder = builder.upstream_watcher(watcher);
                     tracing::info!(
@@ -400,13 +418,30 @@ pub(crate) async fn wire_modules(
                             continue;
                         }
                     };
-                    let module = navra_core::UpstreamModule::discover(
+                    // Fail closed: a stalled LAN upstream that cannot
+                    // complete tools/list within the timeout is skipped
+                    // rather than registered empty.
+                    let module = match navra_core::UpstreamModule::discover_with(
                         &server.name,
                         peer.clone(),
-                        Some(&mut scanner),
+                        navra_core::DiscoveryOptions {
+                            scanner: Some(&mut scanner),
+                            ..Default::default()
+                        },
                         &Default::default(),
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(module) => module,
+                        Err(e) => {
+                            tracing::warn!(
+                                name = %server.name,
+                                error = %e,
+                                "Failed to discover tools on LAN upstream — skipping (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
                     let watcher = navra_core::UpstreamWatcher::new(
                         server.name.clone(),
                         peer,
@@ -416,6 +451,7 @@ pub(crate) async fn wire_modules(
                         navra_core::DiscoveryBounds::default(),
                         Default::default(),
                         std::time::Duration::from_millis(1000),
+                        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
                     );
                     builder = builder.upstream_watcher(watcher);
                     tracing::info!(

@@ -541,7 +541,7 @@ request_timeout_secs = 60
 | `cwd` | string | -- | Working directory for stdio transport |
 | `url` | string | -- | URL for http/sse transport |
 | `enabled` | bool | `true` | Enable or disable this upstream |
-| `request_timeout_secs` | u64 | `45` | Request timeout |
+| `request_timeout_secs` | u64 | `45` | Per-request timeout for MCP upstreams: bounds discovery listings (a `tools/list` timeout rejects the registration) and forwarded tool calls. Also used by the OpenAPI bridge |
 | `retry_base_delay_ms` | u64 | `1000` | Retry base delay |
 | `retry_max_delay_ms` | u64 | `30000` | Maximum retry delay |
 | `retry_budget_secs` | u64 | `600` | Total retry budget |

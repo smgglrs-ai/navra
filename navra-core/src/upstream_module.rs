@@ -176,6 +176,11 @@ fn schema_depth(schema: &serde_json::Map<String, serde_json::Value>) -> usize {
     schema.values().map(json_depth).max().map_or(1, |d| d + 1)
 }
 
+/// Default per-request timeout for upstream rmcp calls (discovery
+/// listings and forwarded tool calls).
+pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(45);
+
 /// Options for [`UpstreamModule::discover_with`].
 pub struct DiscoveryOptions<'a> {
     /// Supply-chain scanner (tool poisoning, rug pulls, ...).
@@ -184,15 +189,24 @@ pub struct DiscoveryOptions<'a> {
     pub manifest: Option<ManifestCheck<'a>>,
     /// Content bounds enforced over the discovered definitions.
     pub bounds: DiscoveryBounds,
+    /// Per-request timeout for upstream calls: discovery listings
+    /// (a tools/list timeout rejects the registration — fail closed)
+    /// and forwarded tool calls. Default: 45s. Without a timeout an
+    /// upstream that never answers (or whose response cannot be
+    /// decoded — rmcp hangs on undecodable responses) would hang the
+    /// gateway.
+    pub request_timeout: std::time::Duration,
 }
 
 impl<'a> DiscoveryOptions<'a> {
-    /// Options with no scanner, no manifest, and default bounds.
+    /// Options with no scanner, no manifest, default bounds, and the
+    /// default request timeout.
     pub fn new() -> Self {
         Self {
             scanner: None,
             manifest: None,
             bounds: DiscoveryBounds::default(),
+            request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
         }
     }
 }
@@ -212,6 +226,8 @@ pub struct UpstreamModule {
     tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
     prompts: Vec<PromptDefinition>,
     resources: Vec<ResourceDefinition>,
+    /// Per-call timeout applied to forwarded tool calls.
+    call_timeout: std::time::Duration,
 }
 
 impl UpstreamModule {
@@ -238,34 +254,50 @@ impl UpstreamModule {
     /// Connect to an upstream via rmcp and discover its capabilities.
     ///
     /// Calls `tools/list`, `prompts/list`, and `resources/list` on the
-    /// upstream, caching the definitions. Errors during discovery are
-    /// logged but don't prevent the module from being created — the
-    /// corresponding capability will simply be empty.
+    /// upstream, caching the definitions. Errors during discovery —
+    /// including a `tools/list` timeout — are logged but don't prevent
+    /// the module from being created: the corresponding capability
+    /// will simply be empty.
     ///
-    /// This infallible form performs no manifest verification; use
-    /// [`UpstreamModule::discover_with`] to enforce a signed manifest.
+    /// This infallible form performs no manifest verification and
+    /// swallows discovery failures; production wiring that must fail
+    /// closed (reject the registration) should use
+    /// [`UpstreamModule::discover_with`].
     pub async fn discover(
         name: &str,
         peer: rmcp::Peer<rmcp::RoleClient>,
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
     ) -> Self {
-        Self::discover_with(
+        let peer_for_empty = peer.clone();
+        match Self::discover_with(
             name,
             peer,
             DiscoveryOptions {
                 scanner,
                 manifest: None,
                 bounds: DiscoveryBounds::default(),
+                request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
             },
             tool_overrides,
         )
         .await
-        // Structural invariant: with no manifest check and default
-        // bounds, discovery above never returns Err. If this ever
-        // changes, fail loudly instead of silently registering an
-        // empty module.
-        .unwrap_or_else(|e| panic!("discovery without manifest check failed: {e}"))
+        {
+            Ok(module) => module,
+            Err(e) => {
+                tracing::error!(upstream = %name, error = %e, "Discovery failed — registering empty capabilities");
+                Self {
+                    name: name.to_string(),
+                    peer: peer_for_empty,
+                    tools: Vec::new(),
+                    tool_operations: HashMap::new(),
+                    tool_classifications: HashMap::new(),
+                    prompts: Vec::new(),
+                    resources: Vec::new(),
+                    call_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+                }
+            }
+        }
     }
 
     /// Connect to an upstream via rmcp and discover its capabilities,
@@ -288,20 +320,34 @@ impl UpstreamModule {
             scanner,
             manifest,
             bounds,
+            request_timeout,
         } = options;
 
-        let discovered =
-            discover_tools(name, &peer, scanner, manifest, &bounds, tool_overrides).await?;
+        let discovered = discover_tools(
+            name,
+            &peer,
+            scanner,
+            manifest,
+            &bounds,
+            tool_overrides,
+            request_timeout,
+        )
+        .await?;
 
-        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
-            Vec::new()
-        });
-
-        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
-            Vec::new()
-        });
+        let prompts = list_with_timeout(
+            name,
+            "prompts/list",
+            request_timeout,
+            peer.list_all_prompts(),
+        )
+        .await;
+        let resources = list_with_timeout(
+            name,
+            "resources/list",
+            request_timeout,
+            peer.list_all_resources(),
+        )
+        .await;
 
         tracing::info!(
             upstream = %name,
@@ -319,7 +365,35 @@ impl UpstreamModule {
             tool_classifications: discovered.tool_classifications,
             prompts,
             resources,
+            call_timeout: request_timeout,
         })
+    }
+}
+
+/// Run a discovery listing with a timeout. Timeouts and errors are
+/// logged and yield an empty list — matching the historical error
+/// handling for prompts/resources (their absence is not fatal). The
+/// tools/list timeout is handled fail-closed inside `discover_tools`.
+async fn list_with_timeout<T>(
+    upstream: &str,
+    what: &str,
+    timeout: std::time::Duration,
+    fut: impl std::future::Future<Output = Result<Vec<T>, rmcp::service::ServiceError>>,
+) -> Vec<T> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(Ok(list)) => list,
+        Ok(Err(e)) => {
+            tracing::warn!(upstream = %upstream, error = %e, "Failed to discover {what}");
+            Vec::new()
+        }
+        Err(_) => {
+            tracing::warn!(
+                upstream = %upstream,
+                timeout_secs = timeout.as_secs(),
+                "{what} timed out — capability will be empty"
+            );
+            Vec::new()
+        }
     }
 }
 
@@ -336,7 +410,10 @@ pub struct DiscoveredTools {
 ///
 /// Shared by initial registration and by `list_changed` refreshes so
 /// both paths enforce identical gates. Malicious tools are dropped,
-/// Suspicious tools pass with a warning.
+/// Suspicious tools pass with a warning. A `tools/list` timeout (or
+/// an upstream that never answers) rejects the discovery — an empty
+/// registration would silently mask a hung upstream behind a
+/// "working" one.
 async fn discover_tools(
     name: &str,
     peer: &rmcp::Peer<rmcp::RoleClient>,
@@ -344,12 +421,27 @@ async fn discover_tools(
     manifest: Option<ManifestCheck<'_>>,
     bounds: &DiscoveryBounds,
     tool_overrides: &HashMap<String, String>,
+    request_timeout: std::time::Duration,
 ) -> Result<DiscoveredTools, String> {
     {
-        let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
-            Vec::new()
-        });
+        let tools = match tokio::time::timeout(request_timeout, peer.list_all_tools()).await {
+            Ok(Ok(tools)) => tools,
+            Ok(Err(e)) => {
+                // rmcp request error: historically logged + empty. When
+                // a manifest is configured, the fingerprint comparison
+                // below rejects the empty set unless the manifest is
+                // legitimately empty too.
+                tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
+                Vec::new()
+            }
+            Err(_) => {
+                return Err(format!(
+                    "upstream '{name}': tools/list timed out after {}s — rejecting \
+                     registration (fail closed)",
+                    request_timeout.as_secs()
+                ));
+            }
+        };
 
         // Content bounds first: the definitions are untrusted input
         // and must be bounded before any further processing.
@@ -486,11 +578,15 @@ async fn discover_tools(
 /// Build (definition, handler) pairs for a set of upstream tools.
 ///
 /// Each handler closes over the upstream peer and the tool name,
-/// forwarding calls over rmcp. Used both at registration and when
+/// forwarding calls over rmcp under the per-call timeout — an
+/// upstream that never answers (or whose response cannot be decoded,
+/// which makes rmcp hang) fails with a clear error instead of
+/// hanging the agent's call. Used both at registration and when
 /// rebuilding the registry after a `list_changed` refresh.
 pub fn upstream_tool_handlers(
     peer: &rmcp::Peer<rmcp::RoleClient>,
     tools: &[ToolDefinition],
+    call_timeout: std::time::Duration,
 ) -> Vec<(ToolDefinition, ToolHandler)> {
     tools
         .iter()
@@ -500,16 +596,24 @@ pub fn upstream_tool_handlers(
             let handler: ToolHandler = Arc::new(move |args, _ctx| {
                 let peer = peer.clone();
                 let name = tool_name.clone();
+                let call_timeout = call_timeout;
                 Box::pin(async move {
                     let mut params = CallToolParams::new(name);
                     if let Some(obj) = args.as_object() {
                         params = params.with_arguments(obj.clone());
                     }
-                    match peer.call_tool(params).await {
-                        Ok(result) => result,
-                        Err(e) => {
+                    match tokio::time::timeout(call_timeout, peer.call_tool(params)).await {
+                        Ok(Ok(result)) => result,
+                        Ok(Err(e)) => {
                             use navra_protocol::compat::CallToolResultExt;
                             CallToolResult::error_msg(format!("upstream error: {e}"))
+                        }
+                        Err(_) => {
+                            use navra_protocol::compat::CallToolResultExt;
+                            CallToolResult::error_msg(format!(
+                                "upstream call timed out after {}s",
+                                call_timeout.as_secs()
+                            ))
                         }
                     }
                 })
@@ -570,6 +674,7 @@ pub struct UpstreamWatcher {
     bounds: DiscoveryBounds,
     tool_overrides: HashMap<String, String>,
     min_refresh_interval: std::time::Duration,
+    call_timeout: std::time::Duration,
 }
 
 impl UpstreamWatcher {
@@ -589,6 +694,7 @@ impl UpstreamWatcher {
         bounds: DiscoveryBounds,
         tool_overrides: HashMap<String, String>,
         min_refresh_interval: std::time::Duration,
+        call_timeout: std::time::Duration,
     ) -> Self {
         Self {
             name: name.into(),
@@ -599,6 +705,7 @@ impl UpstreamWatcher {
             bounds,
             tool_overrides,
             min_refresh_interval,
+            call_timeout,
         }
     }
 
@@ -639,9 +746,10 @@ impl UpstreamWatcher {
             manifest_check,
             &self.bounds,
             &self.tool_overrides,
+            self.call_timeout,
         )
         .await?;
-        let handlers = upstream_tool_handlers(&self.peer, &discovered.tools);
+        let handlers = upstream_tool_handlers(&self.peer, &discovered.tools, self.call_timeout);
         server.swap_upstream_tools(
             &self.name,
             handlers,
@@ -658,7 +766,7 @@ impl Module for UpstreamModule {
     }
 
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
-        upstream_tool_handlers(&self.peer, &self.tools)
+        upstream_tool_handlers(&self.peer, &self.tools, self.call_timeout)
     }
 
     fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {
