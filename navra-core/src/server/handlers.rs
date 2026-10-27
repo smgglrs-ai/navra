@@ -1146,9 +1146,10 @@ impl McpServer {
         // stored content is what the agent saw — storing pre-filter
         // content would let `var://` references bypass redaction.
         let var_id = crate::ifc::value_store::generate_var_id();
+        let stored_content = result.content.clone();
         session_store.store(crate::ifc::value_store::StoredValue {
             id: var_id.clone(),
-            content: result.content.clone(),
+            content: stored_content.clone(),
             label: result_label,
             source_tool: params.name.to_string(),
             created_at: std::time::Instant::now(),
@@ -1184,7 +1185,7 @@ impl McpServer {
                         self.sessions
                             .declassify_context_label(&ctx.session_id, new_conf);
                         // Apply the declassified label to the stored value.
-                        session_store.update(&var_id, result.content.clone(), final_label);
+                        session_store.update(&var_id, stored_content.clone(), final_label);
                         tracing::info!(
                             tool = %params.name,
                             session_id = %ctx.session_id,
