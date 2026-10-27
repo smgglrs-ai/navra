@@ -27,6 +27,18 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     ToolOperation::Read
 }
 
+/// Signed-manifest verification to run during upstream discovery.
+///
+/// When provided, the upstream's registration fails closed unless the
+/// manifest signature verifies, the TOFU key pin matches, and the
+/// served tool set matches the signed manifest exactly.
+pub struct ManifestCheck<'a> {
+    /// The signed manifest supplied by configuration.
+    pub signed: &'a navra_auth::manifest::SignedManifest,
+    /// TOFU key store (persistent pins).
+    pub key_store: &'a mut navra_auth::manifest::ManifestKeyStore,
+}
+
 /// A module backed by an upstream MCP server via rmcp.
 pub struct UpstreamModule {
     name: String,
@@ -66,16 +78,82 @@ impl UpstreamModule {
     /// logged but don't prevent the module from being created — the
     /// corresponding capability will simply be empty.
     ///
+    /// This infallible form performs no manifest verification; use
+    /// [`UpstreamModule::discover_with`] to enforce a signed manifest.
     pub async fn discover(
         name: &str,
         peer: rmcp::Peer<rmcp::RoleClient>,
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
     ) -> Self {
+        Self::discover_with(name, peer, scanner, None, tool_overrides)
+            .await
+            // Structural invariant: with no manifest check, discovery
+            // above never returns Err. If this ever changes, fail
+            // loudly instead of silently registering an empty module.
+            .unwrap_or_else(|e| panic!("discovery without manifest check failed: {e}"))
+    }
+
+    /// Connect to an upstream via rmcp and discover its capabilities,
+    /// verifying a signed tool manifest when one is configured.
+    ///
+    /// Fail-closed: a manifest whose signature does not verify (tampered
+    /// content), whose signing key changed since the TOFU pin, or whose
+    /// tool set does not match what the upstream serves rejects the
+    /// upstream entirely with a clear error.
+    pub async fn discover_with(
+        name: &str,
+        peer: rmcp::Peer<rmcp::RoleClient>,
+        scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
+        manifest: Option<ManifestCheck<'_>>,
+        tool_overrides: &HashMap<String, String>,
+    ) -> Result<Self, String> {
         let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
             tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
             Vec::new()
         });
+
+        if let Some(check) = manifest {
+            use navra_auth::manifest::{ManifestVerification, verify_signed_manifest};
+            match verify_signed_manifest(check.signed, check.key_store) {
+                ManifestVerification::Trusted => {
+                    tracing::info!(
+                        upstream = %name,
+                        signer = %check.signed.signer_did,
+                        "Upstream manifest verified (TOFU: trusted)"
+                    );
+                }
+                ManifestVerification::FirstUse => {
+                    tracing::info!(
+                        upstream = %name,
+                        signer = %check.signed.signer_did,
+                        "Upstream manifest verified — key pinned (TOFU: first use)"
+                    );
+                }
+                ManifestVerification::KeyChanged { pinned, presented } => {
+                    return Err(format!(
+                        "upstream '{name}': manifest signing key changed \
+                         (pinned {pinned}, presented {presented}) — \
+                         rejecting upstream; remove the old pin manually to re-pin"
+                    ));
+                }
+                ManifestVerification::InvalidSignature => {
+                    return Err(format!(
+                        "upstream '{name}': manifest signature verification failed \
+                         (tampered content or invalid signature) — rejecting upstream"
+                    ));
+                }
+            }
+
+            let expected = check.signed.manifest.tools_fingerprint();
+            let served = navra_auth::manifest::tools_fingerprint(&tools);
+            if expected != served {
+                return Err(format!(
+                    "upstream '{name}': served tools do not match the signed manifest \
+                     (possible rug pull) — rejecting upstream"
+                ));
+            }
+        }
 
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
@@ -173,7 +251,7 @@ impl UpstreamModule {
             "Discovered upstream capabilities"
         );
 
-        Self {
+        Ok(Self {
             name: name.to_string(),
             peer,
             tools: accepted_tools,
@@ -181,7 +259,7 @@ impl UpstreamModule {
             tool_classifications,
             prompts,
             resources,
-        }
+        })
     }
 }
 

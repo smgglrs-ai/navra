@@ -150,6 +150,19 @@ A key change triggers rejection even if the new signature is cryptographically v
 
 The fail-closed property is formally verified: Verus proofs show that an invalid signature always rejects regardless of TOFU state, and a KeyChanged result always rejects regardless of signature validity.
 
+### Wiring during discovery
+
+Manifest verification is enforced on the production upstream wiring.
+Configure a signed manifest per upstream (path or inline JSON, plus a
+keystore location) and navra verifies it during `discover()`: the
+signature over the canonical manifest bytes, the TOFU pin, *and* that
+the tools the upstream actually serves match the signed set (an
+order-insensitive fingerprint per tool). Any drift — tampered manifest
+content, key change, or a served tool set that differs from the signed
+one — rejects the upstream entirely. Pins persist in
+`~/.local/share/navra/manifest_keys.json`, following the same
+data-file convention as the scanner's `tool_hashes.json`.
+
 ## Supply chain guard hook
 
 The tool scanner inspects definitions at discovery time. The `SupplyChainGuardHook` complements it by inspecting tool call *arguments* at execution time.

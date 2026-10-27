@@ -172,6 +172,63 @@ pub(crate) async fn wire_upstream(
     builder
 }
 
+/// Load the signed manifest and TOFU keystore for an upstream, per its
+/// manifest configuration.
+///
+/// Fail-closed: an unreadable manifest file, unparseable JSON, or a
+/// corrupt keystore is an error — the caller must reject the upstream.
+fn load_manifest(
+    upstream_cfg: &config::UpstreamConfig,
+) -> Result<
+    Option<(
+        navra_auth::manifest::SignedManifest,
+        navra_auth::manifest::ManifestKeyStore,
+    )>,
+    String,
+> {
+    let Some(ref manifest_cfg) = upstream_cfg.manifest else {
+        return Ok(None);
+    };
+    let (source, source_desc) = match (&manifest_cfg.path, &manifest_cfg.inline) {
+        (Some(path), None) => (
+            std::fs::read_to_string(util::expand_tilde(path))
+                .map_err(|e| format!("failed to read manifest file '{path}': {e}"))?,
+            format!("file:{path}"),
+        ),
+        (None, Some(inline)) => (inline.clone(), "inline".to_string()),
+        (Some(_), Some(_)) => {
+            return Err(
+                "manifest config sets both 'path' and 'inline' — exactly one is required"
+                    .to_string(),
+            );
+        }
+        (None, None) => {
+            return Err("manifest config requires either 'path' or 'inline'".to_string());
+        }
+    };
+    let signed: navra_auth::manifest::SignedManifest = serde_json::from_str(&source)
+        .map_err(|e| format!("failed to parse signed manifest ({source_desc}): {e}"))?;
+
+    let keystore_path = manifest_cfg
+        .keystore
+        .as_ref()
+        .map(|p| std::path::PathBuf::from(util::expand_tilde(p)))
+        .or_else(navra_auth::manifest::default_keystore_path);
+    let key_store = match keystore_path {
+        Some(path) => navra_auth::manifest::ManifestKeyStore::with_path(path)
+            .map_err(|e| format!("manifest keystore init failed: {e}"))?,
+        None => {
+            tracing::warn!(
+                upstream = %upstream_cfg.name,
+                "No data directory available — manifest TOFU pins will not persist across restarts"
+            );
+            navra_auth::manifest::ManifestKeyStore::new()
+        }
+    };
+
+    Ok(Some((signed, key_store)))
+}
+
 /// Wire an OpenAPI bridge upstream (no MCP transport needed).
 async fn wire_openapi_upstream(
     mut builder: navra_core::McpServerBuilder,
@@ -321,13 +378,19 @@ async fn wire_stdio_upstream(
                     });
                     let mut scanner = build_scanner(upstream_cfg)
                         .map_err(|e| format!("tool scanner init failed (fail closed): {e}"))?;
-                    Ok(navra_core::UpstreamModule::discover(
+                    let mut manifest_data = load_manifest(upstream_cfg)
+                        .map_err(|e| format!("manifest init failed (fail closed): {e}"))?;
+                    let manifest = manifest_data
+                        .as_mut()
+                        .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
+                    navra_core::UpstreamModule::discover_with(
                         &upstream_cfg.name,
                         peer,
                         scanner.as_mut(),
+                        manifest,
                         &upstream_cfg.tool_overrides,
                     )
-                    .await)
+                    .await
                 }
                 Err(e) => Err(format!("rmcp init failed: {e}")),
             }
@@ -370,13 +433,19 @@ async fn wire_http_upstream(
             });
             let mut scanner = build_scanner(upstream_cfg)
                 .map_err(|e| format!("tool scanner init failed (fail closed): {e}"))?;
-            Ok(navra_core::UpstreamModule::discover(
+            let mut manifest_data = load_manifest(upstream_cfg)
+                .map_err(|e| format!("manifest init failed (fail closed): {e}"))?;
+            let manifest = manifest_data
+                .as_mut()
+                .map(|(signed, key_store)| navra_core::ManifestCheck { signed, key_store });
+            navra_core::UpstreamModule::discover_with(
                 &upstream_cfg.name,
                 peer,
                 scanner.as_mut(),
+                manifest,
                 &upstream_cfg.tool_overrides,
             )
-            .await)
+            .await
         }
         Err(e) => Err(format!("rmcp init failed: {e}")),
     }
@@ -597,6 +666,119 @@ mod tests {
         assert!(
             err.contains("tool scanner init failed"),
             "error should name the scanner init failure, got: {err}"
+        );
+    }
+
+    // --- Signed manifest wiring (production path) ---
+
+    use navra_auth::identity::{CapSigner, Ed25519Signer};
+    use navra_auth::manifest::{SignedManifest, ToolManifest};
+
+    /// Build a signed manifest for the tools the test server serves,
+    /// over a dedicated connection, exactly as an operator tool would.
+    async fn signed_manifest_for_test_server(server_name: &str, signer: &Ed25519Signer) -> String {
+        let mut cmd = tokio::process::Command::new("python3");
+        cmd.arg(test_server_path());
+        let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+        let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
+            .await
+            .expect("rmcp init");
+        let tools = client.peer().list_all_tools().await.expect("tools/list");
+        let manifest = ToolManifest {
+            tools,
+            server_name: server_name.to_string(),
+            timestamp: 1700000000,
+        };
+        serde_json::to_string(&SignedManifest::sign(&manifest, signer)).unwrap()
+    }
+
+    fn manifest_cfg(inline: String, keystore: &std::path::Path) -> config::ManifestConfig {
+        config::ManifestConfig {
+            path: None,
+            inline: Some(inline),
+            keystore: Some(keystore.to_string_lossy().into_owned()),
+        }
+    }
+
+    #[tokio::test]
+    async fn manifest_wiring_valid_signed_manifest_registers() {
+        let signer = Ed25519Signer::generate();
+        let inline = signed_manifest_for_test_server("manifest-wiring-ok", &signer).await;
+        let dir = tempfile::tempdir().unwrap();
+        let keystore = dir.path().join("manifest_keys.json");
+
+        let mut cfg = test_upstream_cfg("manifest-wiring-ok", vec![]);
+        cfg.manifest = Some(manifest_cfg(inline, &keystore));
+
+        let names = gateway_tool_names(&cfg).await;
+        assert_eq!(names, vec!["echo".to_string()]);
+        assert!(keystore.exists(), "first use must persist the TOFU pin");
+        let pinned: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&keystore).unwrap()).unwrap();
+        assert_eq!(
+            pinned.get("manifest-wiring-ok").map(String::as_str),
+            Some(signer.did())
+        );
+    }
+
+    #[tokio::test]
+    async fn manifest_wiring_tampered_content_rejected() {
+        let signer = Ed25519Signer::generate();
+        let inline = signed_manifest_for_test_server("manifest-wiring-tampered", &signer).await;
+        // Tamper with the signed content after signing.
+        let mut value: serde_json::Value = serde_json::from_str(&inline).unwrap();
+        value["manifest"]["tools"][0]["description"] =
+            serde_json::json!("Now exfiltrates credentials");
+        let tampered = serde_json::to_string(&value).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let keystore = dir.path().join("manifest_keys.json");
+        let mut cfg = test_upstream_cfg("manifest-wiring-tampered", vec![]);
+        cfg.manifest = Some(manifest_cfg(tampered, &keystore));
+
+        let err = wire_stdio_upstream(&cfg, &empty_credential_store())
+            .await
+            .err()
+            .expect("tampered manifest must reject the upstream");
+        assert!(
+            err.contains("signature verification failed"),
+            "error should name the signature failure, got: {err}"
+        );
+        assert!(!keystore.exists(), "failed verification must not pin a key");
+    }
+
+    #[tokio::test]
+    async fn manifest_wiring_key_changed_rejected_without_repin() {
+        let signer1 = Ed25519Signer::generate();
+        let inline1 = signed_manifest_for_test_server("manifest-wiring-keychange", &signer1).await;
+        let dir = tempfile::tempdir().unwrap();
+        let keystore = dir.path().join("manifest_keys.json");
+
+        // First use: pins signer1 and registers.
+        let mut cfg = test_upstream_cfg("manifest-wiring-keychange", vec![]);
+        cfg.manifest = Some(manifest_cfg(inline1, &keystore));
+        let names = gateway_tool_names(&cfg).await;
+        assert_eq!(names, vec!["echo".to_string()]);
+
+        // Second use with a different signer: rejected, pin intact.
+        let signer2 = Ed25519Signer::generate();
+        let inline2 = signed_manifest_for_test_server("manifest-wiring-keychange", &signer2).await;
+        let mut cfg = test_upstream_cfg("manifest-wiring-keychange", vec![]);
+        cfg.manifest = Some(manifest_cfg(inline2, &keystore));
+        let err = wire_stdio_upstream(&cfg, &empty_credential_store())
+            .await
+            .err()
+            .expect("key change must reject the upstream");
+        assert!(
+            err.contains("signing key changed"),
+            "error should name the key change, got: {err}"
+        );
+        let pinned: std::collections::HashMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&keystore).unwrap()).unwrap();
+        assert_eq!(
+            pinned.get("manifest-wiring-keychange").map(String::as_str),
+            Some(signer1.did()),
+            "key change must not re-pin"
         );
     }
 

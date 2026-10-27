@@ -96,6 +96,12 @@ pub struct UpstreamConfig {
     /// LLM context windows. Default: 32768 (32 KB).
     #[serde(default)]
     pub max_response_bytes: Option<usize>,
+    /// Signed tool manifest for this upstream. When set, the upstream
+    /// is only registered if the manifest signature verifies under
+    /// TOFU pinning and the served tools match the signed set exactly.
+    /// A key change after pinning rejects the upstream (no re-pin).
+    #[serde(default)]
+    pub manifest: Option<ManifestConfig>,
     /// Scan tool definitions advertised by this upstream for
     /// supply-chain threats (tool poisoning, typosquatting, schema
     /// abuse, hidden unicode, rug pulls, ...). Tools classified
@@ -154,6 +160,32 @@ pub struct UpstreamConfig {
     #[serde(default)]
     #[schemars(skip)]
     pub tls: Option<navra_protocol::TlsConfig>,
+}
+
+/// Signed tool manifest configuration for an upstream.
+///
+/// Exactly one of `path` or `inline` must be set. The manifest is a
+/// JSON [`navra_auth::manifest::SignedManifest`] — a tool list signed
+/// with the upstream's Ed25519 key. Verification pins the signing key
+/// on first use (TOFU); a later key change rejects the upstream.
+///
+/// ```toml
+/// [upstream.manifest]
+/// path = "manifests/github.signed.json"
+/// keystore = "~/.local/share/navra/manifest_keys.json"  # optional
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ManifestConfig {
+    /// Path to the signed manifest JSON file.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Inline signed manifest JSON (alternative to `path`).
+    #[serde(default)]
+    pub inline: Option<String>,
+    /// TOFU keystore location. Default:
+    /// `~/.local/share/navra/manifest_keys.json`.
+    #[serde(default)]
+    pub keystore: Option<String>,
 }
 
 /// Network egress policy controlling which external endpoints a sandboxed
