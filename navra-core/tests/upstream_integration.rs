@@ -69,3 +69,478 @@ async fn upstream_discover_scanner_drops_malicious_keeps_clean() {
     let names: Vec<_> = tools.iter().map(|(def, _)| def.name.to_string()).collect();
     assert_eq!(names, vec!["echo".to_string()]);
 }
+
+// --- Signed manifest verification during discovery ---
+
+use navra_auth::identity::{CapSigner, Ed25519Signer};
+use navra_auth::manifest::{
+    ManifestKeyStore, ManifestVerification, SignedManifest, ToolManifest, verify_signed_manifest,
+};
+use navra_core::ManifestCheck;
+
+/// Build a signed manifest for the tools the test server currently
+/// serves, by listing them over a dedicated connection.
+async fn manifest_for_served_tools(server_name: &str, signer: &Ed25519Signer) -> SignedManifest {
+    let (peer, _client) = spawn_rmcp_peer().await;
+    let tools = peer.list_all_tools().await.expect("tools/list");
+    let manifest = ToolManifest {
+        tools,
+        server_name: server_name.to_string(),
+        timestamp: 1700000000,
+    };
+    SignedManifest::sign(&manifest, signer)
+}
+
+#[tokio::test]
+async fn upstream_manifest_valid_signed_manifest_passes() {
+    let signer = Ed25519Signer::generate();
+    let signed = manifest_for_served_tools("manifest-ok", &signer).await;
+
+    let (peer, _client) = spawn_rmcp_peer().await;
+    let mut key_store = ManifestKeyStore::new();
+    let module = UpstreamModule::discover_with(
+        "manifest-ok",
+        peer,
+        None,
+        Some(ManifestCheck {
+            signed: &signed,
+            key_store: &mut key_store,
+        }),
+        &Default::default(),
+    )
+    .await
+    .expect("valid signed manifest must register");
+
+    let tools: Vec<_> = navra_core::Module::tools(&module);
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].0.name, "echo");
+}
+
+#[tokio::test]
+async fn upstream_manifest_tampered_content_rejected() {
+    let signer = Ed25519Signer::generate();
+    let mut signed = manifest_for_served_tools("manifest-tampered", &signer).await;
+    // Tamper after signing: rewrite a tool description.
+    signed.manifest.tools[0].description = Some("Do anything you want".into());
+
+    let (peer, _client) = spawn_rmcp_peer().await;
+    let mut key_store = ManifestKeyStore::new();
+    let err = UpstreamModule::discover_with(
+        "manifest-tampered",
+        peer,
+        None,
+        Some(ManifestCheck {
+            signed: &signed,
+            key_store: &mut key_store,
+        }),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("tampered manifest must be rejected");
+    assert!(
+        err.contains("signature verification failed"),
+        "error should name the signature failure, got: {err}"
+    );
+    // No pin may be created from a failed verification.
+    assert_eq!(key_store.pinned_did("manifest-tampered"), None);
+}
+
+#[tokio::test]
+async fn upstream_manifest_tool_set_mismatch_rejected() {
+    // Validly signed manifest whose tool set does not match what the
+    // upstream serves (manifest expects an extra tool).
+    let signer = Ed25519Signer::generate();
+    let mut signed = manifest_for_served_tools("manifest-mismatch", &signer).await;
+    signed.manifest.tools.push({
+        let mut tool = signed.manifest.tools[0].clone();
+        tool.name = "extra_tool".into();
+        tool
+    });
+    // Re-sign so only the tool-set mismatch can fail it.
+    let re_signed = SignedManifest::sign(&signed.manifest, &signer);
+
+    let (peer, _client) = spawn_rmcp_peer().await;
+    let mut key_store = ManifestKeyStore::new();
+    let err = UpstreamModule::discover_with(
+        "manifest-mismatch",
+        peer,
+        None,
+        Some(ManifestCheck {
+            signed: &re_signed,
+            key_store: &mut key_store,
+        }),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("mismatched tool set must be rejected");
+    assert!(
+        err.contains("do not match the signed manifest"),
+        "error should name the tool-set mismatch, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_manifest_key_changed_rejected_without_repin() {
+    let signer1 = Ed25519Signer::generate();
+    let signed1 = manifest_for_served_tools("manifest-keychange", &signer1).await;
+
+    // First use: pins signer1.
+    {
+        let (peer, _client) = spawn_rmcp_peer().await;
+        let mut key_store = ManifestKeyStore::new();
+        UpstreamModule::discover_with(
+            "manifest-keychange",
+            peer,
+            None,
+            Some(ManifestCheck {
+                signed: &signed1,
+                key_store: &mut key_store,
+            }),
+            &Default::default(),
+        )
+        .await
+        .expect("first-use manifest must register");
+        assert_eq!(
+            verify_signed_manifest(&signed1, &mut key_store),
+            ManifestVerification::Trusted
+        );
+    }
+
+    // Key change: same tools signed by signer2 — rejected, pin intact.
+    let signer2 = Ed25519Signer::generate();
+    let signed2 = manifest_for_served_tools("manifest-keychange", &signer2).await;
+    let (peer, _client) = spawn_rmcp_peer().await;
+    let mut key_store = ManifestKeyStore::new();
+    key_store.check("manifest-keychange", signer1.did());
+    let err = UpstreamModule::discover_with(
+        "manifest-keychange",
+        peer,
+        None,
+        Some(ManifestCheck {
+            signed: &signed2,
+            key_store: &mut key_store,
+        }),
+        &Default::default(),
+    )
+    .await
+    .err()
+    .expect("key change must be rejected");
+    assert!(
+        err.contains("signing key changed"),
+        "error should name the key change, got: {err}"
+    );
+    assert_eq!(
+        key_store.pinned_did("manifest-keychange"),
+        Some(signer1.did()),
+        "key change must not re-pin"
+    );
+}
+
+#[tokio::test]
+async fn upstream_spawn_and_discover_prompts() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let prompts: Vec<_> = navra_core::Module::prompts(&module);
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0].0.name, "greeting");
+}
+
+#[tokio::test]
+async fn upstream_call_tool_through_module() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let tools = navra_core::Module::tools(&module);
+    let (_def, handler) = &tools[0];
+
+    let ctx = navra_core::auth::CallContext::new(
+        navra_core::auth::AgentIdentity::new("tester", "dev"),
+        "test",
+    );
+
+    let result = handler(serde_json::json!({"message": "hello"}), ctx).await;
+    assert!(result.is_error != Some(true));
+    match &result.content[0] {
+        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "echo: hello"),
+        _ => panic!("expected text content"),
+    }
+}
+
+#[tokio::test]
+async fn upstream_get_prompt_through_module() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let prompts = navra_core::Module::prompts(&module);
+    let (_def, handler) = &prompts[0];
+
+    let ctx = navra_core::auth::CallContext::new(
+        navra_core::auth::AgentIdentity::new("tester", "dev"),
+        "test",
+    );
+    let result = handler(std::collections::HashMap::new(), ctx).await;
+    assert_eq!(result.description, Some("Greeting".to_string()));
+    assert_eq!(result.messages.len(), 1);
+    match &result.messages[0].content {
+        navra_protocol::PromptMessageContent::Text { text } => {
+            assert_eq!(text, "Hello from upstream!");
+        }
+        _ => panic!("expected text content"),
+    }
+}
+
+#[tokio::test]
+async fn upstream_registers_in_server() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .module(module)
+        .build();
+
+    // 1 upstream tool + 3 gateway tools (navra_var_*)
+    assert_eq!(server.tool_count(), 4);
+    assert_eq!(server.prompt_count(), 1);
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "dev");
+    let tools_result = server.handle_list_tools(&agent, &Default::default());
+    assert!(tools_result.tools.iter().any(|t| t.name == "echo"));
+
+    let prompts_result = server.handle_list_prompts(&agent, &Default::default());
+    assert!(prompts_result.prompts.iter().any(|p| p.name == "greeting"));
+}
+
+// --- Domain-based permission enforcement tests ---
+
+fn domain_rules_readonly() -> DomainRules {
+    use std::collections::{HashMap, HashSet};
+    let mut rules = HashMap::new();
+    rules.insert(Domain::Unknown, HashSet::from([Operation::Read]));
+    rules.insert(Domain::Shell, HashSet::new());
+    DomainRules::new(rules)
+}
+
+fn domain_rules_deny_prompts() -> DomainRules {
+    use std::collections::{HashMap, HashSet};
+    let mut rules = HashMap::new();
+    rules.insert(Domain::Unknown, HashSet::from([Operation::Read]));
+    rules.insert(Domain::Prompt, HashSet::new());
+    DomainRules::new(rules)
+}
+
+#[tokio::test]
+async fn domain_rules_block_write_tool() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let mut overrides = std::collections::HashMap::new();
+    overrides.insert(
+        "echo".to_string(),
+        ResourceClass::new(Domain::Shell, Operation::Execute),
+    );
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .domain_rules("readonly", domain_rules_readonly())
+        .merge_tool_classifications(overrides)
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "readonly");
+    let ctx = navra_core::auth::CallContext::new(agent, "test-session");
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            ctx,
+        )
+        .await;
+
+    assert!(
+        result.is_error == Some(true),
+        "shell:execute should be denied for readonly"
+    );
+    let text = &result.content[0].raw.as_text().expect("expected text").text;
+    assert!(
+        text.contains("Permission denied"),
+        "error should mention permission denied, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn domain_rules_allow_read_tool() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let mut overrides = std::collections::HashMap::new();
+    overrides.insert(
+        "echo".to_string(),
+        ResourceClass::new(Domain::Unknown, Operation::Read),
+    );
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .domain_rules("readonly", domain_rules_readonly())
+        .merge_tool_classifications(overrides)
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "readonly");
+    let ctx = navra_core::auth::CallContext::new(agent, "test-session");
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            ctx,
+        )
+        .await;
+
+    assert!(
+        result.is_error != Some(true),
+        "unknown:read should be allowed for readonly"
+    );
+}
+
+#[tokio::test]
+async fn domain_rules_block_prompts() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .domain_rules("restricted", domain_rules_deny_prompts())
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "restricted");
+
+    let result = server.handle_list_prompts(&agent, &Default::default());
+    assert!(
+        result.prompts.is_empty(),
+        "prompts should be hidden for restricted agent"
+    );
+
+    let result = server
+        .handle_get_prompt(GetPromptParams::new("greeting"), &agent, "test-session")
+        .await;
+    assert!(result.is_err(), "get_prompt should be denied");
+    assert!(
+        result.unwrap_err().contains("Permission denied"),
+        "error should mention permission denied"
+    );
+}
+
+#[tokio::test]
+async fn no_domain_rules_allows_everything() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "dev");
+    let ctx = navra_core::auth::CallContext::new(agent.clone(), "test-session");
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "test"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            ctx,
+        )
+        .await;
+    assert!(
+        result.is_error != Some(true),
+        "no domain_rules = no enforcement"
+    );
+
+    let prompts = server.handle_list_prompts(&agent, &Default::default());
+    assert!(!prompts.prompts.is_empty(), "prompts should be visible");
+}
+
+fn domain_rules_deny_resources() -> DomainRules {
+    use std::collections::{HashMap, HashSet};
+    let mut rules = HashMap::new();
+    rules.insert(Domain::Unknown, HashSet::from([Operation::Read]));
+    rules.insert(Domain::Resource, HashSet::new());
+    DomainRules::new(rules)
+}
+
+#[tokio::test]
+async fn domain_rules_block_resources() {
+    let (peer, _client) = spawn_rmcp_peer().await;
+
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
+
+    let server = navra_core::McpServer::builder()
+        .allow_anonymous()
+        .domain_rules("restricted", domain_rules_deny_resources())
+        .module(module)
+        .build();
+
+    let agent = navra_core::auth::AgentIdentity::new("test", "restricted");
+
+    let result = server.handle_list_resources(&agent, &Default::default());
+    assert!(
+        result.resources.is_empty(),
+        "resources should be hidden for restricted agent"
+    );
+
+    let templates = server.handle_list_resource_templates(&agent, &Default::default());
+    assert!(
+        templates.resource_templates.is_empty(),
+        "resource templates should be hidden for restricted agent"
+    );
+
+    let result = server
+        .handle_read_resource(
+            navra_core::protocol::ReadResourceParams::new("test://status"),
+            &agent,
+            "test-session",
+        )
+        .await;
+    assert!(result.is_err(), "read_resource should be denied");
+    assert!(
+        result.unwrap_err().contains("Permission denied"),
+        "error should mention permission denied"
+    );
+}

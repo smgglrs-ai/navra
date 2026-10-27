@@ -532,6 +532,7 @@ request_timeout_secs = 60
 | `tool_overrides` | map | `{}` | Per-tool operation overrides: `read`, `write`, `deny` |
 | `scan_tools` | bool | `true` | Scan tool definitions for supply-chain threats (poisoning, rug pulls, schema abuse). Malicious tools are dropped, suspicious tools register with a warning. Disabling logs a startup warning |
 | `tool_hash_path` | string | `~/.local/share/navra/tool_hashes.json` | Rug-pull hash store location for this upstream |
+| `manifest` | table | -- | Signed tool manifest + TOFU keystore config (see below) |
 | `max_response_bytes` | usize | `32768` | Max response body size for OpenAPI upstreams |
 | `openapi` | string | -- | OpenAPI 3.x spec URL or file path |
 | `env` | map | `{}` | Environment variables (`${credential:label}` for keyring) |
@@ -543,6 +544,36 @@ request_timeout_secs = 60
 [upstream.tool_class]
 zip_files = { domain = "filesystem", operation = "write" }
 ```
+
+### Upstream signed manifests (TOFU)
+
+Pin an upstream's tool set with an Ed25519-signed manifest. When
+configured, the upstream only registers if the signature verifies, the
+signing key matches the TOFU pin, and the served tools match the signed
+set exactly. A key change after pinning rejects the upstream (remove
+the pin from the keystore file to re-pin deliberately).
+
+```toml
+[[upstream]]
+name = "github"
+transport = "stdio"
+command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+
+[upstream.manifest]
+path = "manifests/github.signed.json"   # or inline = '{ ... }'
+keystore = "~/.local/share/navra/manifest_keys.json"  # optional
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `path` | string | -- | Path to the signed manifest JSON file |
+| `inline` | string | -- | Inline signed manifest JSON (alternative to `path`) |
+| `keystore` | string | `~/.local/share/navra/manifest_keys.json` | TOFU key pin store location |
+
+The manifest is a JSON document of the form
+`{"manifest": {"tools": [...], "server_name": "...", "timestamp": ...},
+"signature": "<hex>", "signer_did": "did:key:..."}`, produced by
+signing the upstream's `tools/list` output with its key.
 
 ### OpenAPI authentication
 
