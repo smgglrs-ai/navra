@@ -747,10 +747,13 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
 
     let dir = tempfile::tempdir().unwrap();
     let blackbox = navra_core::blackbox::Blackbox::open(&dir.path().join("blackbox.db")).unwrap();
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let mut sse_rx = broadcaster.subscribe("client-session");
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
             .allow_anonymous()
             .blackbox(blackbox)
+            .broadcaster(broadcaster)
             .module(module)
             .build(),
     );
@@ -807,6 +810,21 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
         .iter()
         .any(|e| e.outcome == "registry_refresh" && e.tool_name == "refresh-test");
     assert!(refreshed, "each refresh must emit a blackbox audit event");
+
+    // Connected clients were told the tool list changed.
+    let notified = loop {
+        match sse_rx.try_recv() {
+            Ok(event) if event.data.contains("notifications/tools/list_changed") => break true,
+            Ok(_other) => continue,
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break false,
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break false,
+        }
+    };
+    assert!(
+        notified,
+        "the registry swap must broadcast tools/list_changed to connected clients"
+    );
 }
 
 // --- Request timeouts ---
