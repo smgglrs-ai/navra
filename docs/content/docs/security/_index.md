@@ -260,7 +260,7 @@ The scanner checks for eight categories:
 | **SchemaAbuse** | High | Input fields requesting secrets (api_key, password, credentials) |
 | **HiddenUnicode** | Critical | Zero-width characters, RTL overrides, invisible formatters |
 | **DescriptionInjection** | High | Imperative overrides ("you must always call this tool first") |
-| **CrossServerReference** | Medium | References to tools on other servers |
+| **CrossServerReference** | High–Critical | Descriptions or schema text directing the agent to another server's tools; Critical when targeting credentials |
 | **IntentBehaviorMismatch** | Medium | Read-only description with required write parameters |
 | **RugPull** | High | Tool definition changed since last scan (hash comparison) |
 
