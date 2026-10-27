@@ -117,6 +117,19 @@ safety = "standard"
 # transport = "http"
 # url = "http://localhost:8001/mcp"
 
+# Per-upstream security options (all optional):
+# scan_tools = true                # tool-definition scanning (default)
+# refresh_debounce_ms = 1000       # min interval between list_changed refreshes
+# [upstream.bounds]                # discovery content bounds (fail closed)
+# max_tools = 1000
+# max_input_schema_depth = 32
+# max_description_length = 4096
+# max_total_definition_bytes = 4194304
+# truncate_oversized = false       # truncate instead of reject where sound
+# [upstream.manifest]              # signed manifest + TOFU pinning
+# path = "manifests/remote-tools.signed.json"
+# keystore = "~/.local/share/navra/manifest_keys.json"
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
