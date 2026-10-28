@@ -176,10 +176,7 @@ impl Hook for SandboxHook {
                 let mut new_content = Vec::new();
                 for content in &result.content {
                     match content {
-                        navra_protocol::Content {
-                            raw: navra_protocol::RawContent::Text(t),
-                            ..
-                        } => {
+                        navra_protocol::Content::Text(t) => {
                             let redacted = Self::redact_text(&t.text, patterns, replacement);
                             new_content.push(navra_protocol::Content::text(redacted));
                         }
@@ -252,8 +249,8 @@ mod tests {
             .await;
         match decision {
             HookDecision::Simulate(result) => match &result.content[0] {
-                c if c.raw.as_text().is_some() => {
-                    assert_eq!(c.raw.as_text().unwrap().text, "write simulated OK");
+                c if c.as_text().is_some() => {
+                    assert_eq!(c.as_text().unwrap().text, "write simulated OK");
                 }
                 _ => panic!("expected text"),
             },
@@ -367,7 +364,7 @@ mod tests {
 
         match decision {
             HookDecision::ModifyResult(new_result) => {
-                let t = new_result.content[0].raw.as_text().expect("expected text");
+                let t = new_result.content[0].as_text().expect("expected text");
                 assert_eq!(t.text, "SSN: [SSN] is sensitive");
                 assert!(!t.text.contains("123-45-6789"));
             }

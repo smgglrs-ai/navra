@@ -1,0 +1,54 @@
+id: NAVRA-188
+title: "Forward upstream MRTR input_required responses through the gateway"
+status: open
+priority: medium
+effort: 2-4d
+description: |
+  Since NAVRA-187 (rmcp 3.8), navra's upstream forwarding keeps
+  single-round semantics: rmcp's macro-generated
+  Peer::{call_tool, get_prompt, read_resource} return the final
+  result and fail with an "unexpected response" ServiceError when an
+  upstream answers with a SEP-2322 `input_required` (multi
+  round-trip request) intermediate result. The agent sees a generic
+  upstream error instead of the input request.
+
+  The 3.x API now makes pass-through structurally possible:
+  - Client side: Peer::call_tool_once / get_prompt_once /
+    read_resource_once return the CallToolResponse / GetPromptResponse
+    / ReadResourceResponse unions (Complete | InputRequired | Task).
+  - Server side: NavraHandler::call_tool already returns
+    CallToolResponse, so an InputRequiredResult can be forwarded to
+    navra's client, whose input_responses would flow back on the next
+    tools/call round (CallToolRequestParams carries them).
+
+  Security design questions that must be answered before enabling
+  pass-through (the reason it was out of scope for the upgrade):
+  - The InputRequiredResult's input_requests carry upstream-controlled
+    request descriptions (elicitation/sampling/roots prompts) — the
+    same injection surface tool descriptions get. Decide whether the
+    safety-hook/IFC pipeline must inspect them before they reach
+    navra's clients.
+  - Each follow-up round (input_responses in hand) must re-enter the
+    full permission/IFC pipeline, not inherit the first round's
+    grant — the responses are agent-controlled content flowing to the
+    upstream.
+  - The Task variant (SEP-2663 tasks extension) must NOT be
+    forwarded: navra does not declare the tasks capability and does
+    not forward tasks/get polling. Keep failing it closed with a
+    clear error.
+
+  Alternative to pass-through, if the security review lands against
+  it: keep single-round semantics but replace the generic ServiceError
+  with a navra-shaped CallToolResult::error explaining that the
+  upstream requires interactive input navra does not forward.
+notes: |
+  - Discovered during the NAVRA-187 migration; deliberately deferred
+    (see NAVRA-187 notes) to keep the upgrade behavior-compatible
+    with rmcp 1.8 forwarding semantics.
+  - Upstreams that use MRTR are rare today; single-round behavior
+    matches what navra did on rmcp 1.8, where the union did not
+    exist. Nothing regressed — this is a capability gap, not a
+    defect.
+  - Tests to extend: navra-core/tests/upstream_integration.rs needs a
+    python test-server mode answering tools/call with
+    resultType "input_required".

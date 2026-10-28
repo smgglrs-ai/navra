@@ -1,0 +1,47 @@
+id: NAVRA-189
+title: "Serve subscriptions/listen for 2026-07-28 peers"
+status: open
+priority: low
+effort: 2-3d
+description: |
+  MCP 2026-07-28 replaced `resources/subscribe` with transport-neutral
+  subscription streams (`subscriptions/listen`, SEP-2575-adjacent):
+  the client opens one listen request with a notification filter, the
+  server acknowledges, streams notifications, and the request
+  lifecycle itself is the cancellation. rmcp 3.8 exposes this on the
+  server side through two ServerHandler hooks:
+
+  - `accepted_subscription_filter(&self, requested) -> Option<Filter>`
+    (default: None = subscriptions/listen unimplemented)
+  - `listen(&self, context: SubscriptionContext)` — run one
+    established subscription until cancelled or closed
+
+  navra today implements only the legacy surface: its own raw JSON-RPC
+  dispatch handles `resources/subscribe` /
+  `resources/unsubscribe` against the session-keyed
+  resource_subscriptions map (navra-core/src/server/handlers.rs,
+  handle_resource_subscribe) and advertises
+  `subscribe: Some(true)` in ResourcesCapability.
+
+  Work needed:
+  - Implement the two ServerHandler hooks on NavraHandler, bridging
+    rmcp's SubscriptionContext onto navra's existing subscription map
+    and the SSE/broadcaster notification path (tools/list_changed
+    forwarding from NAVRA-186 is the pattern to follow).
+  - Decide the capability advertisement split: legacy
+    `resources/subscribe` answers for pre-2026-07-28 peers,
+    `subscriptions/listen` for 2026-07-28 peers. rmcp intersects the
+    accepted filter with the requested filter and the advertised
+    notification capabilities, so the two surfaces cannot drift
+    independently.
+  - Keep the existing legacy dispatch working — Claude Desktop and
+    other current clients still use resources/subscribe.
+notes: |
+  - Deferred out of NAVRA-187: the upgrade kept navra's existing
+    subscription behavior unchanged; rmcp 3.8 serves
+    subscriptions/listen as unimplemented by default, so 2026-07-28
+    peers that try to subscribe get a clean method-not-found rather
+    than a hang.
+  - The deprecated `Peer::subscribe`/`unsubscribe` methods remain
+    available on the client side for legacy upstreams; navra's
+    upstream forwarding does not use them.

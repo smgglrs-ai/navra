@@ -204,7 +204,6 @@ mod tests {
 
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text
@@ -226,7 +225,6 @@ mod tests {
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text
@@ -248,7 +246,6 @@ mod tests {
         let result = handler(args, test_ctx(Some("did:test:agent"))).await;
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text
@@ -267,7 +264,6 @@ mod tests {
 
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text
@@ -286,7 +282,6 @@ mod tests {
 
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text
@@ -305,7 +300,6 @@ mod tests {
 
         assert!(result.is_err());
         let text = result.content[0]
-            .raw
             .as_text()
             .expect("expected text content")
             .text

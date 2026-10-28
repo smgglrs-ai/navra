@@ -163,6 +163,10 @@ impl McpServer {
         crate::protocol::ServerInfo::new(self.name.clone(), self.version.clone())
     }
 
+    /// Advertised capabilities derived from registered modules.
+    ///
+    /// rmcp 3.x marks the capability structs `#[non_exhaustive]`, so they
+    /// are built from `Default` with field mutation rather than literals.
     pub fn capabilities(&self) -> crate::protocol::ServerCapabilities {
         let mut extensions = std::collections::HashMap::new();
         if self.enterprise_auth {
@@ -172,34 +176,23 @@ impl McpServer {
             );
         }
 
+        let mut tools_cap = crate::protocol::ToolsCapability::default();
+        tools_cap.list_changed = Some(true);
+        let mut resources_cap = crate::protocol::ResourcesCapability::default();
+        resources_cap.subscribe = Some(true);
+        resources_cap.list_changed = Some(false);
+        let mut prompts_cap = crate::protocol::PromptsCapability::default();
+        prompts_cap.list_changed = Some(false);
+
         crate::protocol::ServerCapabilities {
-            tools: if self
+            tools: (!self
                 .tools
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
-                .is_empty()
-            {
-                None
-            } else {
-                Some(crate::protocol::ToolsCapability {
-                    list_changed: Some(true),
-                })
-            },
-            resources: if self.resources.is_empty() {
-                None
-            } else {
-                Some(crate::protocol::ResourcesCapability {
-                    subscribe: Some(true),
-                    list_changed: Some(false),
-                })
-            },
-            prompts: if self.prompts.is_empty() {
-                None
-            } else {
-                Some(crate::protocol::PromptsCapability {
-                    list_changed: Some(false),
-                })
-            },
+                .is_empty())
+            .then_some(tools_cap),
+            resources: (!self.resources.is_empty()).then_some(resources_cap),
+            prompts: (!self.prompts.is_empty()).then_some(prompts_cap),
             permissions: Some(navra_protocol::permissions::PermissionsCapability {}),
             extensions,
         }
@@ -302,6 +295,7 @@ impl McpServer {
             tools,
             next_cursor,
             meta: None,
+            ..Default::default()
         }
     }
 
@@ -361,6 +355,7 @@ impl McpServer {
             tools,
             next_cursor,
             meta: None,
+            ..Default::default()
         }
     }
 
@@ -1238,7 +1233,7 @@ impl McpServer {
             let result_text = result
                 .content
                 .iter()
-                .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
+                .filter_map(|c| c.as_text().map(|t| t.text.as_str()))
                 .collect::<Vec<_>>()
                 .join("");
             let result_trunc = truncate_str(&result_text, 4096);
@@ -1265,7 +1260,7 @@ impl McpServer {
             let output_text: String = result
                 .content
                 .iter()
-                .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
+                .filter_map(|c| c.as_text().map(|t| t.text.as_str()))
                 .collect::<Vec<_>>()
                 .join("");
             let output_trunc = truncate_str(&output_text, 2048);
@@ -1320,7 +1315,7 @@ impl McpServer {
         let mut filtered_content = Vec::new();
         let mut recommendations = Vec::new();
         for content in result.content.drain(..) {
-            match &content.raw {
+            match &content {
                 crate::protocol::RawContent::Text(text) => {
                     let (processed, declass) = pipeline
                         .process_with_declassification(&text.text, &filter_ctx)
@@ -1420,6 +1415,7 @@ impl McpServer {
             prompts,
             next_cursor,
             meta: None,
+            ..Default::default()
         }
     }
 
@@ -1472,6 +1468,7 @@ impl McpServer {
                     resources: Vec::new(),
                     next_cursor: None,
                     meta: None,
+                    ..Default::default()
                 };
             }
         }
@@ -1489,6 +1486,7 @@ impl McpServer {
             resources,
             next_cursor,
             meta: None,
+            ..Default::default()
         }
     }
 
@@ -1540,6 +1538,7 @@ impl McpServer {
                     resource_templates: Vec::new(),
                     next_cursor: None,
                     meta: None,
+                    ..Default::default()
                 };
             }
         }
@@ -1557,6 +1556,7 @@ impl McpServer {
             resource_templates,
             next_cursor,
             meta: None,
+            ..Default::default()
         }
     }
 
@@ -1727,19 +1727,26 @@ impl McpServer {
                 .take(100)
                 .cloned()
                 .collect(),
+            // Reference is #[non_exhaustive] upstream: unknown reference
+            // kinds get no suggestions.
+            _ => Vec::new(),
         };
         let total = values.len() as u32;
         let has_more = total > 100;
         let values: Vec<String> = values.into_iter().take(100).collect();
-        let completion = navra_protocol::rmcp::model::CompletionInfo {
-            values,
-            total: Some(total),
-            has_more: Some(has_more),
-        };
+        // CompletionInfo is #[non_exhaustive] in rmcp 3.x: build via new()
+        // then set the pagination hints.
+        let mut completion = navra_protocol::rmcp::model::CompletionInfo::new(values)
+            .expect("values are pre-truncated to CompletionInfo::MAX_VALUES");
+        completion.total = Some(total);
+        completion.has_more = Some(has_more);
         crate::protocol::CompleteResult::new(completion)
     }
 
     /// Handle logging/setLevel: set the minimum log level for a session.
+    // SEP-2577 deprecates protocol-level logging; navra keeps answering the
+    // wire method for older clients.
+    #[allow(deprecated)]
     pub fn handle_set_log_level(&self, params: crate::protocol::SetLevelParams, session_id: &str) {
         let mut levels = self.session_log_levels.write().unwrap_or_else(|e| {
             tracing::warn!("session_log_levels RwLock poisoned, recovering");
@@ -1807,6 +1814,9 @@ impl McpServer {
     }
 
     /// Send a log message notification to sessions with appropriate log level.
+    // SEP-2577 deprecates protocol-level logging; navra keeps answering the
+    // wire method for older clients.
+    #[allow(deprecated)]
     pub fn send_log_message(
         &self,
         level: crate::protocol::LoggingLevel,

@@ -80,8 +80,8 @@ fn build_ifc_server() -> McpServer {
 fn extract_var_id(result: &CallToolResult) -> Option<String> {
     for content in &result.content {
         match content {
-            c if c.raw.as_text().is_some() => {
-                let t = c.raw.as_text().unwrap();
+            c if c.as_text().is_some() => {
+                let t = c.as_text().unwrap();
                 if let Some(line) = t.text.lines().find(|l| l.contains("_var: ")) {
                     let start = line.find("_var: ")? + 6;
                     let rest = &line[start..];
@@ -100,8 +100,8 @@ fn extract_var_id(result: &CallToolResult) -> Option<String> {
 fn is_ifc_error(result: &CallToolResult) -> bool {
     result.is_error == Some(true)
         && result.content.iter().any(|c| match c {
-            c if c.raw.as_text().is_some() => {
-                let t = c.raw.as_text().unwrap();
+            c if c.as_text().is_some() => {
+                let t = c.as_text().unwrap();
                 t.text.contains("Permission denied")
                     || t.text.contains("Access denied")
                     || t.text.contains("Approval required")
@@ -439,8 +439,8 @@ async fn var_list_shows_stored_variables() {
     // Parse the JSON list — should have at least 2 user variables
     // (plus the var_list result itself gets auto-stored)
     match &list_result.content[0] {
-        c if c.raw.as_text().is_some() => {
-            let t = c.raw.as_text().unwrap();
+        c if c.as_text().is_some() => {
+            let t = c.as_text().unwrap();
             let vars: Vec<serde_json::Value> = serde_json::from_str(&t.text).unwrap();
             // At least 2 from file_read (the var_list call itself hasn't been stored yet)
             assert!(
@@ -751,7 +751,6 @@ async fn llm_exfiltration_attempt_blocked() {
     let var_id = extract_var_id(&read_result).unwrap();
 
     let file_content = read_result.content[0]
-        .raw
         .as_text()
         .expect("expected text content")
         .text
@@ -858,7 +857,7 @@ async fn llm_exfiltration_attempt_blocked() {
     let read_content_full: Vec<String> = read_result
         .content
         .iter()
-        .map(|c| c.raw.as_text().expect("expected text content").text.clone())
+        .map(|c| c.as_text().expect("expected text content").text.clone())
         .collect();
 
     eprintln!("\n{}", "=".repeat(70));
@@ -953,7 +952,6 @@ async fn llm_exfiltration_attempt_blocked() {
 
                 let ifc_blocked = is_ifc_error(&write_result);
                 let error_msg = write_result.content[0]
-                    .raw
                     .as_text()
                     .expect("expected text content")
                     .text

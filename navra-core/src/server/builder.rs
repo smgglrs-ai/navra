@@ -719,12 +719,9 @@ impl McpServerBuilder {
             resources.insert(
                 "navra://proc".to_string(),
                 RegisteredResource {
-                    definition: crate::protocol::ResourceDefinition {
-                        raw: crate::protocol::RawResource::new("navra://proc", "Process table")
-                            .with_description("Connected agents, privilege rings, call counts")
-                            .with_mime_type("application/json"),
-                        annotations: None,
-                    },
+                    definition: crate::protocol::RawResource::new("navra://proc", "Process table")
+                        .with_description("Connected agents, privilege rings, call counts")
+                        .with_mime_type("application/json"),
                     handler: Arc::new(move |uri, _ctx| {
                         let pt = pt.clone();
                         Box::pin(async move {
@@ -750,12 +747,12 @@ impl McpServerBuilder {
             resources.insert(
                 "navra://ifc/labels".to_string(),
                 RegisteredResource {
-                    definition: crate::protocol::ResourceDefinition {
-                        raw: crate::protocol::RawResource::new("navra://ifc/labels", "IFC labels")
-                            .with_description("Current IFC taint labels for all sessions")
-                            .with_mime_type("application/json"),
-                        annotations: None,
-                    },
+                    definition: crate::protocol::RawResource::new(
+                        "navra://ifc/labels",
+                        "IFC labels",
+                    )
+                    .with_description("Current IFC taint labels for all sessions")
+                    .with_mime_type("application/json"),
                     handler: Arc::new(move |uri, _ctx| {
                         let sess = sess.clone();
                         Box::pin(async move {
@@ -791,15 +788,12 @@ impl McpServerBuilder {
             resources.insert(
                 "navra://audit/recent".to_string(),
                 RegisteredResource {
-                    definition: crate::protocol::ResourceDefinition {
-                        raw: crate::protocol::RawResource::new(
-                            "navra://audit/recent",
-                            "Recent audit entries",
-                        )
-                        .with_description("Last 50 blackbox audit entries")
-                        .with_mime_type("application/json"),
-                        annotations: None,
-                    },
+                    definition: crate::protocol::RawResource::new(
+                        "navra://audit/recent",
+                        "Recent audit entries",
+                    )
+                    .with_description("Last 50 blackbox audit entries")
+                    .with_mime_type("application/json"),
                     handler: Arc::new(move |uri, _ctx| {
                         let bb = bb.clone();
                         Box::pin(async move {
@@ -829,12 +823,9 @@ impl McpServerBuilder {
             resources.insert(
                 "navra://budget/gpu".to_string(),
                 RegisteredResource {
-                    definition: crate::protocol::ResourceDefinition {
-                        raw: crate::protocol::RawResource::new("navra://budget/gpu", "GPU budget")
+                    definition: crate::protocol::RawResource::new("navra://budget/gpu", "GPU budget")
                             .with_description("GPU semaphore: permits used/available")
                             .with_mime_type("application/json"),
-                        annotations: None,
-                    },
                     handler: Arc::new(|uri, _ctx| {
                         Box::pin(async move {
                             let json = serde_json::json!({
@@ -858,15 +849,12 @@ impl McpServerBuilder {
         {
             let sess = sessions.clone();
             resource_templates.push(RegisteredResourceTemplate {
-                template: crate::protocol::ResourceTemplate {
-                    raw: crate::protocol::RawResourceTemplate::new(
-                        "navra://proc/{agent}/taint",
-                        "Agent taint label",
-                    )
-                    .with_description("Current IFC taint label for a specific agent session")
-                    .with_mime_type("application/json"),
-                    annotations: None,
-                },
+                template: crate::protocol::RawResourceTemplate::new(
+                    "navra://proc/{agent}/taint",
+                    "Agent taint label",
+                )
+                .with_description("Current IFC taint label for a specific agent session")
+                .with_mime_type("application/json"),
                 handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
                     Box::pin(async move {
@@ -916,15 +904,12 @@ impl McpServerBuilder {
         {
             let sess = sessions.clone();
             resource_templates.push(RegisteredResourceTemplate {
-                template: crate::protocol::ResourceTemplate {
-                    raw: crate::protocol::RawResourceTemplate::new(
-                        "navra://proc/{agent}/capabilities",
-                        "Agent capabilities",
-                    )
-                    .with_description("Active capability set for a specific agent")
-                    .with_mime_type("application/json"),
-                    annotations: None,
-                },
+                template: crate::protocol::RawResourceTemplate::new(
+                    "navra://proc/{agent}/capabilities",
+                    "Agent capabilities",
+                )
+                .with_description("Active capability set for a specific agent")
+                .with_mime_type("application/json"),
                 handler: Arc::new(move |uri, _ctx| {
                     let sess = sess.clone();
                     Box::pin(async move {

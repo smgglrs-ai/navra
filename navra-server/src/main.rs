@@ -1582,6 +1582,8 @@ mod tests {
         match rc {
             ResourceContent::TextResourceContents { text, .. } => text.clone(),
             ResourceContent::BlobResourceContents { blob, .. } => blob.clone(),
+            // ResourceContents is #[non_exhaustive] upstream.
+            _ => String::new(),
         }
     }
 
@@ -1765,6 +1767,7 @@ mod tests {
 mod cedar_wiring_tests {
     use super::*;
 
+    #[cfg(feature = "cedar")]
     fn cfg_with_cedar(files: &[String]) -> config::Config {
         let mut cfg = config::Config::default();
         cfg.permissions.insert(

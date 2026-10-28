@@ -25,8 +25,10 @@ pub use jsonrpc::{
     BatchRequest, CONTENT_TOO_LARGE, ErrorCode, ErrorData as JsonRpcErrorData, JsonRpcError,
     JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, REQUEST_CANCELLED, RequestId,
 };
+// The list re-exports logging types that rmcp marks deprecated (SEP-2577);
+// navra keeps answering the wire methods for older clients.
+#[allow(deprecated)]
 pub use mcp::{
-    Annotated,
     // rmcp re-exports (MCP domain types)
     AudioContent,
     CallToolParams,

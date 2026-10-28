@@ -9,13 +9,12 @@
 use std::sync::Arc;
 
 use navra_protocol::{
-    CallToolResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
-    PaginatedRequest,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolRequestParams, ErrorData, GetPromptRequestParams, GetPromptResult,
-    ReadResourceRequestParams, ReadResourceResult,
+    CallToolRequestParams, CallToolResponse, ErrorData, GetPromptRequestParams, GetPromptResponse,
+    ReadResourceRequestParams, ReadResourceResponse,
 };
 use rmcp::service::{RequestContext, RoleServer};
 
@@ -66,7 +65,7 @@ impl NavraHandler {
 }
 
 impl ServerHandler for NavraHandler {
-    fn get_info(&self) -> rmcp::model::ServerInfo {
+    fn get_info(&self) -> rmcp::model::ServerConfig {
         let navra_caps = self.server.capabilities();
         let mut rmcp_caps = rmcp::model::ServerCapabilities::default();
         rmcp_caps.tools = navra_caps.tools;
@@ -98,7 +97,7 @@ impl ServerHandler for NavraHandler {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
         let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
 
@@ -109,8 +108,11 @@ impl ServerHandler for NavraHandler {
         let persisted_label = self.server.sessions().context_label(&session_id);
         ctx.taint.absorb(persisted_label);
 
+        // handle_call_tool always returns a final result: navra does not
+        // emit MRTR `input_required` responses itself, so the union maps
+        // deterministically onto the Complete arm.
         let result = self.server.handle_call_tool(request, ctx).await;
-        Ok(result)
+        Ok(CallToolResponse::Complete(result))
     }
 
     async fn list_tools(
@@ -137,12 +139,13 @@ impl ServerHandler for NavraHandler {
         &self,
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, ErrorData> {
+    ) -> Result<GetPromptResponse, ErrorData> {
         let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_get_prompt(request, &agent, &session_id)
             .await
+            .map(GetPromptResponse::Complete)
             .map_err(|msg| ErrorData::invalid_params(msg, None))
     }
 
@@ -160,12 +163,13 @@ impl ServerHandler for NavraHandler {
         &self,
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
+    ) -> Result<ReadResourceResponse, ErrorData> {
         let agent = Self::agent_from_context(&context, &self.server);
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_read_resource(request, &agent, &session_id)
             .await
+            .map(ReadResourceResponse::Complete)
             .map_err(|msg| ErrorData::invalid_params(msg, None))
     }
 }

@@ -172,7 +172,7 @@ fn result_text(result: &CallToolResult) -> String {
     result
         .content
         .iter()
-        .filter_map(|c| c.raw.as_text().map(|t| t.text.as_str()))
+        .filter_map(|c| c.as_text().map(|t| t.text.as_str()))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -367,10 +367,7 @@ policies:
         match decision {
             HookDecision::ModifyResult(modified) => {
                 let text = match &modified.content[0] {
-                    navra_protocol::Content {
-                        raw: navra_protocol::RawContent::Text(t),
-                        ..
-                    } => t.text.as_str(),
+                    navra_protocol::Content::Text(t) => t.text.as_str(),
                     _ => panic!("Expected text content"),
                 };
                 assert_eq!(text, "[REDACTED]");

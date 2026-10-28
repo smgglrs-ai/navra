@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 13 active items
+# 14 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -82,15 +82,21 @@ items:
     priority: low
     effort: 5-10d
 
-  - id: "NAVRA-187"
-    title: "Upgrade rmcp 1.8 to 3.x"
+  - id: "NAVRA-188"
+    title: "Forward upstream MRTR input_required responses through the gateway"
     status: open
     priority: medium
-    effort: 3-5d
+    effort: 2-4d
 
   - id: "NAVRA-062"
     title: "NemoClaw MCP bridge"
     status: wont_do
     priority: low
     effort: M
+
+  - id: "NAVRA-189"
+    title: "Serve subscriptions/listen for 2026-07-28 peers"
+    status: open
+    priority: low
+    effort: 2-3d
 

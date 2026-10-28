@@ -180,6 +180,11 @@ async fn mcp_initialize_returns_capabilities() {
     let (mut child, _port, url, _data_dir) = spawn_navra(BASIC_CONFIG).await;
 
     let client = reqwest::Client::new();
+
+    // SEP-2567 removed the initialize handshake from 2026-07-28: a client
+    // naming that revision over the legacy method is answered with the
+    // newest version that still has a handshake (2025-11-25). 2026-07-28
+    // clients use server/discover instead.
     let resp = client
         .post(format!("{url}/mcp"))
         .header("accept", MCP_ACCEPT)
@@ -200,7 +205,31 @@ async fn mcp_initialize_returns_capabilities() {
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
     let json = parse_sse_json(&body);
-    assert_eq!(json["result"]["protocolVersion"], "2026-07-28");
+    assert_eq!(json["result"]["protocolVersion"], "2025-11-25");
+    assert!(json["result"]["capabilities"]["tools"].is_object());
+
+    // A legacy handshake version is echoed back unchanged.
+    let resp = client
+        .post(format!("{url}/mcp"))
+        .header("accept", MCP_ACCEPT)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "id": 2,
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "e2e-test", "version": "0.1.0"}
+            }
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    let json = parse_sse_json(&body);
+    assert_eq!(json["result"]["protocolVersion"], "2025-03-26");
     assert!(json["result"]["capabilities"]["tools"].is_object());
 
     child.kill().await.ok();
