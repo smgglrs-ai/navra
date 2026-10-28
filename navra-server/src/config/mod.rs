@@ -20,6 +20,8 @@ use std::path::PathBuf;
 
 pub use crate::grpc_manager::GrpcModuleConfig;
 pub use agents::{AgentConfig, OpenApiAuthConfig, UpstreamConfig};
+#[cfg(test)]
+pub use agents::{ManifestConfig, UpstreamBoundsConfig};
 pub use libraries::LibraryConfig;
 pub use models::{BudgetConfig, ModelConfig};
 pub use modules::{ApprovalConfig, ModulesConfig};
@@ -430,6 +432,8 @@ impl Default for Config {
                 kubernetes_agent_template: None,
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
+                cedar_action_version: 1,
+                hide_denied_tools: None,
             },
             modules: ModulesConfig::default(),
             approval: ApprovalConfig::default(),

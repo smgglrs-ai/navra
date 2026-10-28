@@ -41,7 +41,7 @@ pub struct AgentConfig {
     pub max_context: Option<u32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UpstreamConfig {
     /// Unique name for this upstream server.
     pub name: String,
@@ -96,6 +96,35 @@ pub struct UpstreamConfig {
     /// LLM context windows. Default: 32768 (32 KB).
     #[serde(default)]
     pub max_response_bytes: Option<usize>,
+    /// Signed tool manifest for this upstream. When set, the upstream
+    /// is only registered if the manifest signature verifies under
+    /// TOFU pinning and the served tools match the signed set exactly.
+    /// A key change after pinning rejects the upstream (no re-pin).
+    #[serde(default)]
+    pub manifest: Option<ManifestConfig>,
+    /// Scan tool definitions advertised by this upstream for
+    /// supply-chain threats (tool poisoning, typosquatting, schema
+    /// abuse, hidden unicode, rug pulls, ...). Tools classified
+    /// Malicious are dropped; Suspicious tools are registered with a
+    /// warning. Default: `true`. Disabling is discouraged — it removes
+    /// the only gate between upstream tool descriptions and agent
+    /// context.
+    #[serde(default)]
+    pub scan_tools: Option<bool>,
+    /// Content bounds for this upstream's discovery response. Defaults
+    /// are applied per field; see [`UpstreamBoundsConfig`].
+    #[serde(default)]
+    pub bounds: Option<UpstreamBoundsConfig>,
+    /// Minimum interval between `tools/list_changed` refreshes for
+    /// this upstream, in milliseconds (debounce against a chatty
+    /// upstream). Default: 1000.
+    #[serde(default)]
+    pub refresh_debounce_ms: Option<u64>,
+    /// Override the rug-pull hash store location for this upstream.
+    /// Default: `~/.local/share/navra/tool_hashes.json`. Set per
+    /// upstream to isolate hash stores between navra instances.
+    #[serde(default)]
+    pub tool_hash_path: Option<String>,
     /// OpenAPI 3.x spec source (URL or file path).
     /// When set, transport/command/url are ignored — navra parses the spec
     /// and exposes operations as MCP tools directly.
@@ -140,6 +169,71 @@ pub struct UpstreamConfig {
     #[serde(default)]
     #[schemars(skip)]
     pub tls: Option<navra_protocol::TlsConfig>,
+}
+
+/// Signed tool manifest configuration for an upstream.
+///
+/// Exactly one of `path` or `inline` must be set. The manifest is a
+/// JSON [`navra_auth::manifest::SignedManifest`] — a tool list signed
+/// with the upstream's Ed25519 key. Verification pins the signing key
+/// on first use (TOFU); a later key change rejects the upstream.
+///
+/// ```toml
+/// [upstream.manifest]
+/// path = "manifests/github.signed.json"
+/// keystore = "~/.local/share/navra/manifest_keys.json"  # optional
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ManifestConfig {
+    /// Path to the signed manifest JSON file.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Inline signed manifest JSON (alternative to `path`).
+    #[serde(default)]
+    pub inline: Option<String>,
+    /// TOFU keystore location. Default:
+    /// `~/.local/share/navra/manifest_keys.json`.
+    #[serde(default)]
+    pub keystore: Option<String>,
+}
+
+/// Content bounds for upstream discovery responses.
+///
+/// Upstream `tools/list` responses are untrusted input. Without
+/// bounds, a hostile server can flood the gateway with tool
+/// definitions or absurdly nested schemas. Exceeding a bound rejects
+/// the upstream registration with a clear error (fail closed) unless
+/// `truncate_oversized = true`, in which case descriptions are
+/// truncated and excess tools dropped with warnings. Schema depth can
+/// never be truncated and always rejects.
+///
+/// ```toml
+/// [upstream.bounds]
+/// max_tools = 500
+/// max_description_length = 2048
+/// truncate_oversized = false
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct UpstreamBoundsConfig {
+    /// Maximum number of tools accepted from one upstream.
+    /// Default: 1000.
+    #[serde(default)]
+    pub max_tools: Option<usize>,
+    /// Maximum JSON nesting depth of any tool's input schema.
+    /// Default: 32.
+    #[serde(default)]
+    pub max_input_schema_depth: Option<usize>,
+    /// Maximum length (bytes) of any tool description. Default: 4096.
+    #[serde(default)]
+    pub max_description_length: Option<usize>,
+    /// Maximum total size (bytes) of all serialized tool definitions.
+    /// Default: 4194304 (4 MiB).
+    #[serde(default)]
+    pub max_total_definition_bytes: Option<u64>,
+    /// Truncate instead of reject where truncation is sound
+    /// (descriptions, tool count). Default: `false` (fail closed).
+    #[serde(default)]
+    pub truncate_oversized: Option<bool>,
 }
 
 /// Network egress policy controlling which external endpoints a sandboxed

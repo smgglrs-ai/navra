@@ -23,22 +23,53 @@ use navra_auth::ifc::is_write_tool;
 /// set name and applies it:
 /// - **post_tool_use**: outbound filtering on all tool responses
 /// - **pre_tool_use**: inbound filtering on write-path tool arguments
+///
+/// When constructed with a declassification ledger (via
+/// [`SafetyHook::with_ledger`] or [`SafetyHook::set_ledger`]), the
+/// post path also records declassification recommendations for the
+/// gateway to route through `TaintTracker::declassify`.
 pub struct SafetyHook {
     /// Safety pipelines keyed by permission set name.
     pipelines: HashMap<String, FilterPipeline>,
+    /// Shared declassification recommendation ledger.
+    ledger: Option<std::sync::Arc<navra_safety::DeclassificationLedger>>,
 }
 
 impl SafetyHook {
     /// Create a new safety hook with the given pipelines.
     pub fn new(pipelines: HashMap<String, FilterPipeline>) -> Self {
-        Self { pipelines }
+        Self {
+            pipelines,
+            ledger: None,
+        }
     }
 
     /// Create a safety hook from a single permission set and pipeline.
     pub fn single(permission_set: impl Into<String>, pipeline: FilterPipeline) -> Self {
         let mut pipelines = HashMap::new();
         pipelines.insert(permission_set.into(), pipeline);
-        Self { pipelines }
+        Self {
+            pipelines,
+            ledger: None,
+        }
+    }
+
+    /// Create a safety hook that records declassification
+    /// recommendations into the shared ledger (the same `Arc` the
+    /// gateway holds via `McpServerBuilder::declassification_ledger`).
+    pub fn with_ledger(
+        pipelines: HashMap<String, FilterPipeline>,
+        ledger: std::sync::Arc<navra_safety::DeclassificationLedger>,
+    ) -> Self {
+        Self {
+            pipelines,
+            ledger: Some(ledger),
+        }
+    }
+
+    /// Set or replace the declassification ledger.
+    pub fn set_ledger(&mut self, ledger: std::sync::Arc<navra_safety::DeclassificationLedger>) {
+        self.ledger = Some(ledger);
     }
 
     /// Add a pipeline for a permission set.
@@ -138,9 +169,12 @@ impl Hook for SafetyHook {
         for content in &result.content {
             match &content.raw {
                 RawContent::Text(text) => {
-                    let (processed, _findings) = pipeline
-                        .process_outbound_with_findings(&text.text, &filter_ctx)
+                    let (processed, declass) = pipeline
+                        .process_with_declassification(&text.text, &filter_ctx)
                         .await;
+                    if let Some(ref ledger) = self.ledger {
+                        ledger.record(declass);
+                    }
                     match processed {
                         Ok(text) => {
                             filtered_content.push(Content::text(text));
@@ -157,9 +191,12 @@ impl Hook for SafetyHook {
                             mime_type, text, ..
                         } => {
                             if mime_type.as_deref().is_some_and(|m| m.starts_with("text/")) {
-                                let (processed, _findings) = pipeline
-                                    .process_outbound_with_findings(text, &filter_ctx)
+                                let (processed, declass) = pipeline
+                                    .process_with_declassification(text, &filter_ctx)
                                     .await;
+                                if let Some(ref ledger) = self.ledger {
+                                    ledger.record(declass);
+                                }
                                 match processed {
                                     Ok(t) => filtered_content.push(Content::text(t)),
                                     Err(reason) => {
@@ -265,6 +302,54 @@ mod tests {
             .await;
 
         assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    #[tokio::test]
+    async fn safety_hook_records_declassification_recommendations() {
+        // With a ledger attached, the post path records one
+        // recommendation per filtered content block; a full redaction
+        // recommends the Pii → Sensitive step-down.
+        let ledger = std::sync::Arc::new(crate::safety::DeclassificationLedger::new());
+        let mut pipelines = std::collections::HashMap::new();
+        pipelines.insert("dev".to_string(), crate::safety::build_pipeline("standard"));
+        let hook = SafetyHook::with_ledger(pipelines, std::sync::Arc::clone(&ledger));
+
+        let result = CallToolResult::text("SSN: 123-45-6789".to_string());
+        let decision = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+        assert!(matches!(decision, HookDecision::ModifyResult(_)));
+
+        let drained = ledger.drain();
+        assert_eq!(drained.len(), 1, "one recommendation per content block");
+        assert!(drained[0].findings_count > 0);
+        assert!(drained[0].all_handled);
+        assert_eq!(
+            drained[0].recommends_declassification(),
+            Some(crate::safety::Confidentiality::Sensitive)
+        );
+        assert!(ledger.drain().is_empty(), "drain empties the ledger");
+    }
+
+    #[tokio::test]
+    async fn safety_hook_pseudonymize_records_no_step_down() {
+        let ledger = std::sync::Arc::new(crate::safety::DeclassificationLedger::new());
+        let hook = SafetyHook::with_ledger(
+            std::collections::HashMap::from([(
+                "dev".to_string(),
+                crate::safety::build_pipeline("pseudonymize"),
+            )]),
+            std::sync::Arc::clone(&ledger),
+        );
+
+        let result = CallToolResult::text("SSN: 123-45-6789".to_string());
+        let _ = hook
+            .post_tool_use("echo", &serde_json::json!({}), &result, &test_ctx())
+            .await;
+
+        let drained = ledger.drain();
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].recommends_declassification(), None);
     }
 
     #[tokio::test]

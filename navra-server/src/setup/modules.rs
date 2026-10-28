@@ -282,19 +282,66 @@ pub(crate) async fn wire_modules(
             }
             let transport =
                 rmcp::transport::StreamableHttpClientTransport::from_uri(endpoint.url.clone());
-            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+            let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
                     tokio::spawn(async move {
                         let _ = client.waiting().await;
                     });
-                    let module = navra_core::UpstreamModule::discover(
-                        &endpoint.domain,
-                        peer,
+                    // Auto-discovered upstreams have no per-upstream scan
+                    // config — scanning stays on (fail closed): a scanner
+                    // that cannot initialize skips the endpoint entirely.
+                    let mut scanner = match navra_auth::tool_scanner::ToolScanner::production(
+                        navra_auth::tool_scanner::ToolScanConfig::default(),
                         None,
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!(
+                                domain = %endpoint.domain,
+                                error = %e,
+                                "Tool scanner init failed — refusing to register discovered upstream (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
+                    // Fail closed: a stalled or hostile endpoint that
+                    // cannot complete tools/list within the timeout is
+                    // skipped entirely rather than registered empty.
+                    let module = match navra_core::UpstreamModule::discover_with(
+                        &endpoint.domain,
+                        peer.clone(),
+                        navra_core::DiscoveryOptions {
+                            scanner: Some(&mut scanner),
+                            ..Default::default()
+                        },
                         &Default::default(),
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(module) => module,
+                        Err(e) => {
+                            tracing::warn!(
+                                domain = %endpoint.domain,
+                                error = %e,
+                                "Failed to discover tools on discovered endpoint — skipping (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
+                    let watcher = navra_core::UpstreamWatcher::new(
+                        endpoint.domain.clone(),
+                        peer,
+                        events,
+                        Some(scanner),
+                        None,
+                        navra_core::DiscoveryBounds::default(),
+                        Default::default(),
+                        std::time::Duration::from_millis(1000),
+                        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+                    );
+                    builder = builder.upstream_watcher(watcher);
                     tracing::info!(
                         domain = %endpoint.domain,
                         "Connected discovered upstream (rmcp)"
@@ -348,19 +395,65 @@ pub(crate) async fn wire_modules(
         for server in &lan_servers {
             let url = server.url();
             let transport = rmcp::transport::StreamableHttpClientTransport::from_uri(url.clone());
-            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport).await {
+            let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+            match rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport).await {
                 Ok(client) => {
                     let peer = client.peer().clone();
                     tokio::spawn(async move {
                         let _ = client.waiting().await;
                     });
-                    let module = navra_core::UpstreamModule::discover(
-                        &server.name,
-                        peer,
+                    // mDNS-discovered upstreams have no per-upstream scan
+                    // config — scanning stays on (fail closed).
+                    let mut scanner = match navra_auth::tool_scanner::ToolScanner::production(
+                        navra_auth::tool_scanner::ToolScanConfig::default(),
                         None,
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::error!(
+                                name = %server.name,
+                                error = %e,
+                                "Tool scanner init failed — refusing to register LAN upstream (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
+                    // Fail closed: a stalled LAN upstream that cannot
+                    // complete tools/list within the timeout is skipped
+                    // rather than registered empty.
+                    let module = match navra_core::UpstreamModule::discover_with(
+                        &server.name,
+                        peer.clone(),
+                        navra_core::DiscoveryOptions {
+                            scanner: Some(&mut scanner),
+                            ..Default::default()
+                        },
                         &Default::default(),
                     )
-                    .await;
+                    .await
+                    {
+                        Ok(module) => module,
+                        Err(e) => {
+                            tracing::warn!(
+                                name = %server.name,
+                                error = %e,
+                                "Failed to discover tools on LAN upstream — skipping (fail closed)"
+                            );
+                            continue;
+                        }
+                    };
+                    let watcher = navra_core::UpstreamWatcher::new(
+                        server.name.clone(),
+                        peer,
+                        events,
+                        Some(scanner),
+                        None,
+                        navra_core::DiscoveryBounds::default(),
+                        Default::default(),
+                        std::time::Duration::from_millis(1000),
+                        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+                    );
+                    builder = builder.upstream_watcher(watcher);
                     tracing::info!(
                         name = %server.name,
                         url = %url,

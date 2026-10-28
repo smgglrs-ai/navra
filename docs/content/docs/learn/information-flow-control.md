@@ -308,6 +308,36 @@ Three constraints make this safe:
 
 The practical use case: the PII safety filter detects a name in tool output, replaces it with `[REDACTED:pii]`, and declassifies the result from `Pii` to `Sensitive`. The witness records that the PII filter performed the redaction. If an auditor asks "why was PII-tainted data written to this location?", the witness chain provides the answer.
 
+### How the gateway wires it
+
+The gateway enforces this end-to-end on every tool call:
+
+1. Post-call safety filtering (the `SafetyHook`, or the direct
+   pipeline path when no hooks are configured) processes each text
+   block and produces a declassification recommendation per the rule
+   table: full redaction recommends `Pii → Sensitive`; partial
+   redaction and pseudonymization never recommend a step-down.
+2. Any findings elevate the result's label to `Pii` first — the
+   elevated label is what gets absorbed into session taint and stored
+   in the per-value store (storing the *filtered* content, so
+   `var://` references cannot retrieve redacted data).
+3. A full-redaction recommendation is routed through
+   `TaintTracker::declassify` with the gateway's root key as the
+   `DeclassificationAuthority`. The signed witness is recorded on the
+   server (`declassification_witnesses()`), the persisted session
+   label steps down, and the stored value's label follows.
+
+Without a configured authority (embedded deployments that never wire
+a signer), step 3 is skipped and labels stay elevated — fail-safe,
+never fail-open.
+
+The rule table's *partial redaction* row is reachable through the
+`redaction_threshold` permission-set option: findings below the
+confidence threshold are left in the text, the result is marked
+partially redacted, and no declassification may follow (raw PII may
+remain). The default threshold of 0.0 redacts every finding — full
+redaction.
+
 
 ## The formal guarantees
 

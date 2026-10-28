@@ -39,7 +39,11 @@ pub use module::serve_module;
 pub use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperation};
 pub use navra_protocol::RetryConfig;
 pub use server::{
-    McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker, UsagePruningFilter,
+    CedarActionVersion, McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker,
+    UsagePruningFilter,
 };
 pub use session::Session;
-pub use upstream_module::UpstreamModule;
+pub use upstream_module::{
+    DEFAULT_UPSTREAM_REQUEST_TIMEOUT, DiscoveryBounds, DiscoveryOptions, ManifestCheck,
+    UpstreamModule, UpstreamNotificationHandler, UpstreamWatcher,
+};

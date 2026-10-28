@@ -118,6 +118,24 @@ impl ValueStore {
         })
     }
 
+    /// Update a stored value's content and label in place.
+    ///
+    /// Used after post-call safety filtering: the gateway stores a
+    /// tool result, then replaces it with the filtered content and the
+    /// post-filter label (elevated on findings, or stepped down after
+    /// a recorded declassification). Returns false if the ID is unknown.
+    pub fn update(&self, id: &str, content: Vec<Content>, label: DataLabel) -> bool {
+        let mut values = self.values.write().unwrap();
+        match values.get_mut(id) {
+            Some(stored) => {
+                stored.content = content;
+                stored.label = label;
+                true
+            }
+            None => false,
+        }
+    }
+
     /// List all non-expired values (summaries only, no content).
     pub fn list(&self) -> Vec<StoredValueSummary> {
         let values = self.values.read().unwrap();

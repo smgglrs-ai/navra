@@ -59,6 +59,108 @@ fn builder_with_name_and_version() {
     assert_eq!(info.version, "2.0.0");
 }
 
+#[cfg(feature = "cedar")]
+#[tokio::test]
+async fn cedar_v2_namespaces_upstream_tool_calls() {
+    use crate::permissions::CedarEngine;
+    use crate::server::CedarActionVersion;
+
+    // Policy: allow everything, except the modeled upstream action.
+    let policy = r#"
+        permit(principal, action, resource);
+        forbid(principal, action == Action::"upstream_tool_call", resource);
+    "#;
+
+    // v2: the upstream-owned test_ping dispatches
+    // Action::"upstream_tool_call" → denied by the policy.
+    let server_v2 = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .cedar_action_version(CedarActionVersion::V2UpstreamNamespaced)
+        .upstream_module("test")
+        .module(TestModule)
+        .build();
+    let result = server_v2
+        .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
+        .await;
+    assert!(
+        result.is_error == Some(true),
+        "v2 must dispatch upstream tool calls as upstream_tool_call (denied here)"
+    );
+
+    // v1 (default): bare tool name → the policy does not match → allowed.
+    let server_v1 = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .upstream_module("test")
+        .module(TestModule)
+        .build();
+    let result = server_v1
+        .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
+        .await;
+    assert!(
+        result.is_error != Some(true),
+        "v1 keeps bare tool-name actions (compatibility)"
+    );
+
+    // v2 with a non-upstream tool: bare name dispatch → allowed.
+    let server_v2_local = test_builder()
+        .allow_anonymous()
+        .cedar_engine(CedarEngine::from_policies(policy).unwrap())
+        .cedar_action_version(CedarActionVersion::V2UpstreamNamespaced)
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .build();
+    let result = server_v2_local
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(
+        result.is_error != Some(true),
+        "v2 keeps bare actions for gateway-local tools"
+    );
+}
+
+#[cfg(feature = "cedar")]
+#[tokio::test]
+async fn cedar_upstream_discover_dispatched_at_registration() {
+    use crate::permissions::CedarEngine;
+    use std::collections::HashMap;
+
+    // A policy that withdraws trust-on-first-use for unsigned
+    // upstreams: only signed discoveries are permitted.
+    let policy = r#"
+        permit(principal, action == Action::"upstream_discover", resource)
+        when { context.manifest_signed == "true" };
+    "#;
+    let builder = test_builder().cedar_engine(CedarEngine::from_policies(policy).unwrap());
+
+    let unsigned: HashMap<String, String> = HashMap::from([
+        ("manifest_signed".to_string(), "false".to_string()),
+        ("trust_on_first_use".to_string(), "true".to_string()),
+    ]);
+    assert!(
+        !builder.cedar_allows("upstream_discover", "upstream-a", &unsigned),
+        "unsigned upstream discovery must be deniable by policy"
+    );
+
+    let signed: HashMap<String, String> = HashMap::from([
+        ("manifest_signed".to_string(), "true".to_string()),
+        ("trust_on_first_use".to_string(), "true".to_string()),
+    ]);
+    assert!(
+        builder.cedar_allows("upstream_discover", "upstream-a", &signed),
+        "signed upstream discovery must be permitted"
+    );
+
+    // No engine configured → allow (Cedar only further restricts).
+    let no_engine = test_builder();
+    assert!(no_engine.cedar_allows("upstream_discover", "upstream-a", &unsigned));
+}
+
 #[test]
 fn register_tool_and_list() {
     let server = test_builder()
@@ -333,6 +435,319 @@ async fn safety_filter_blocks_when_configured() {
         .await;
 
     assert!(result.is_error == Some(true));
+}
+
+/// Extract the `_var: v-xxxx_` ID appended to a tool result.
+fn extract_var_id(result: &CallToolResult) -> String {
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    let marker = text
+        .rfind("_var: ")
+        .expect("result should carry a _var marker");
+    let id = text[marker + "_var: ".len()..]
+        .trim_end()
+        .trim_end_matches('_')
+        .to_string();
+    assert!(id.starts_with("v-"), "unexpected var id: {id}");
+    id
+}
+
+#[tokio::test]
+async fn declassification_after_full_redaction_steps_label_down() {
+    use navra_auth::identity::Ed25519Signer;
+
+    let signer = Ed25519Signer::from_seed(&[7u8; 32]);
+    let authority_key = Ed25519Signer::from_seed(&signer.seed());
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(authority_key),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // Content was redacted before reaching the agent.
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(text.contains("[REDACTED:"));
+    assert!(!text.contains("123-45-6789"));
+
+    // The stored value's label was elevated to Pii, then stepped down
+    // to Sensitive by the recorded declassification.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Sensitive,
+        "full redaction must step the stored label down to Sensitive"
+    );
+    // Stored content is the filtered content, not the raw PII.
+    let stored_text: String = stored
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(!stored_text.contains("123-45-6789"));
+
+    // A signed witness was recorded for the Pii → Sensitive transition.
+    let witnesses = server.declassification_witnesses("test-session");
+    assert_eq!(witnesses.len(), 1, "exactly one witness expected");
+    let witness = &witnesses[0];
+    assert_eq!(
+        witness.original_label.confidentiality,
+        crate::ifc::Confidentiality::Pii
+    );
+    assert_eq!(
+        witness.new_label.confidentiality,
+        crate::ifc::Confidentiality::Sensitive
+    );
+    assert!(
+        witness.verify(&signer),
+        "witness must verify under the authority key"
+    );
+
+    // The persisted session label stepped down too.
+    assert_eq!(
+        server
+            .sessions()
+            .context_label("test-session")
+            .confidentiality,
+        crate::ifc::Confidentiality::Sensitive
+    );
+}
+
+#[tokio::test]
+async fn pseudonymized_result_keeps_label_and_no_witness() {
+    use navra_auth::identity::Ed25519Signer;
+
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("pseudonymize"))
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(Ed25519Signer::generate()),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // Pseudonymized content is still PII: the label stays elevated
+    // and no declassification witness is recorded.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "pseudonymized data must stay Pii"
+    );
+    assert!(
+        server.declassification_witnesses("test-session").is_empty(),
+        "no witness for pseudonymized results"
+    );
+    assert_eq!(
+        server
+            .sessions()
+            .context_label("test-session")
+            .confidentiality,
+        crate::ifc::Confidentiality::Pii
+    );
+}
+
+#[tokio::test]
+async fn partially_redacted_result_keeps_label_and_no_witness() {
+    use navra_auth::identity::Ed25519Signer;
+
+    // Partial redaction (findings below the confidence threshold stay
+    // in the text): the label is elevated to Pii but NOT declassified,
+    // and no witness is recorded — the rule table's partial row,
+    // exercised end-to-end through the gateway handler.
+    struct MixedConfidenceFilter;
+
+    impl crate::safety::ContentFilter for MixedConfidenceFilter {
+        fn name(&self) -> &str {
+            "mixed-confidence"
+        }
+        fn scan(
+            &self,
+            _content: &str,
+            _ctx: &crate::safety::FilterContext,
+        ) -> Vec<crate::safety::Finding> {
+            vec![
+                crate::safety::Finding {
+                    start: 0,
+                    end: 4,
+                    category: "pii".to_string(),
+                    confidence: 0.2,
+                },
+                crate::safety::Finding {
+                    start: 5,
+                    end: 9,
+                    category: "pii".to_string(),
+                    confidence: 0.95,
+                },
+            ]
+        }
+    }
+
+    let mut pipeline = crate::safety::FilterPipeline::new(crate::safety::FilterAction::Redact);
+    pipeline.add_filter(MixedConfidenceFilter);
+    pipeline.set_redaction_threshold(0.5);
+
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", pipeline)
+        .declassification_authority(std::sync::Arc::new(
+            navra_auth::ifc::DeclassificationAuthority::new(
+                "test-gateway",
+                Box::new(Ed25519Signer::generate()),
+            ),
+        ))
+        .build();
+    server.ensure_session("test-session", &test_agent());
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "AAAA BBBB"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    // The high-confidence span is redacted; the low-confidence one stays.
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .collect();
+    assert!(text.contains("AAAA"), "below-threshold finding stays");
+    assert!(
+        text.contains("[REDACTED:pii]"),
+        "above-threshold finding is redacted"
+    );
+
+    // Partially redacted: label elevated to Pii, no declassification,
+    // no witness.
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "partially redacted result must stay at Pii"
+    );
+    assert!(
+        server.declassification_witnesses("test-session").is_empty(),
+        "no witness for partially redacted results"
+    );
+}
+
+#[tokio::test]
+async fn redaction_without_authority_keeps_label_elevated() {
+    // Fail-safe: with no signing authority there is no auditable
+    // declassification — the label stays at Pii after full redaction.
+    let server = test_builder()
+        .tool(echo_tool_def(), |args, _ctx| {
+            Box::pin(async move {
+                let msg = args.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                CallToolResult::text(msg.to_string())
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .build();
+
+    let result = server
+        .handle_call_tool(
+            {
+                let mut p = CallToolParams::new("echo");
+                p.arguments = Some(
+                    serde_json::json!({"message": "SSN: 123-45-6789"})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                );
+                p
+            },
+            test_ctx(),
+        )
+        .await;
+
+    let var_id = extract_var_id(&result);
+    let store = server.value_stores().get_or_create("test-session");
+    let stored = store.get(&var_id).expect("value must be stored");
+    assert_eq!(
+        stored.label.confidentiality,
+        crate::ifc::Confidentiality::Pii,
+        "without an authority the label must stay elevated"
+    );
+    assert!(server.declassification_witnesses("test-session").is_empty());
 }
 
 #[tokio::test]
@@ -800,6 +1215,110 @@ async fn tool_permissions_deny_blocks_tool() {
             .expect("expected text content");
         assert!(t.text.contains("Permission denied"));
     }
+}
+
+#[tokio::test]
+async fn denied_tool_hidden_from_list_and_still_denied_on_call() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    // Default (hide_denied_tools = true): a statically denied tool is
+    // absent from tools/list while allowed tools remain visible, and
+    // calling the denied tool by name is still refused.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool(
+            ToolDefinition::new("status_check", "Check status", empty_input_schema()),
+            |_args, _ctx| Box::pin(async { CallToolResult::text("ok") }),
+        )
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let agent = test_agent();
+    let listed: Vec<String> = server
+        .handle_list_tools(&agent, &Default::default())
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(
+        !listed.contains(&"echo".to_string()),
+        "denied tool must be hidden from tools/list, got: {listed:?}"
+    );
+    assert!(
+        listed.contains(&"status_check".to_string()),
+        "allowed tool must stay visible, got: {listed:?}"
+    );
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(
+        result.is_error == Some(true),
+        "hidden tool must still be denied when called by name"
+    );
+
+    // The dynamic listing behaves the same way.
+    let ctx = test_ctx();
+    let listed: Vec<String> = server
+        .handle_list_tools_dynamic(&agent, &Default::default(), &ctx)
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(!listed.contains(&"echo".to_string()));
+    assert!(listed.contains(&"status_check".to_string()));
+}
+
+#[tokio::test]
+async fn hide_denied_tools_off_restores_listing() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    // Flag off restores the historical behavior: denied tools are
+    // listed (their descriptions visible) while calls stay denied.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async { CallToolResult::text("should not reach") })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .hide_denied_tools(false)
+        .build();
+
+    let agent = test_agent();
+    let listed: Vec<String> = server
+        .handle_list_tools(&agent, &Default::default())
+        .tools
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    assert!(
+        listed.contains(&"echo".to_string()),
+        "flag off must restore listing denied tools, got: {listed:?}"
+    );
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await;
+    assert!(result.is_error == Some(true));
 }
 
 #[tokio::test]

@@ -27,6 +27,196 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     ToolOperation::Read
 }
 
+/// Signed-manifest verification to run during upstream discovery.
+///
+/// When provided, the upstream's registration fails closed unless the
+/// manifest signature verifies, the TOFU key pin matches, and the
+/// served tool set matches the signed manifest exactly.
+pub struct ManifestCheck<'a> {
+    /// The signed manifest supplied by configuration.
+    pub signed: &'a navra_auth::manifest::SignedManifest,
+    /// TOFU key store (persistent pins).
+    pub key_store: &'a mut navra_auth::manifest::ManifestKeyStore,
+}
+
+/// Content bounds for upstream discovery.
+///
+/// Upstream `tools/list` responses are untrusted input: without
+/// bounds, a hostile server can flood the gateway with tool
+/// definitions (memory/CPU during scanning and registration) or with
+/// absurdly nested schemas and descriptions. Exceeding a bound fails
+/// closed — the upstream registration is rejected with a clear error —
+/// unless `truncate_oversized` is set, in which case descriptions are
+/// truncated and excess tools dropped with warnings. Schema depth can
+/// never be truncated and always rejects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DiscoveryBounds {
+    /// Maximum number of tools accepted from one upstream.
+    pub max_tools: usize,
+    /// Maximum JSON nesting depth of any tool's input schema.
+    pub max_input_schema_depth: usize,
+    /// Maximum length (bytes) of any tool description.
+    pub max_description_length: usize,
+    /// Maximum total size (bytes) of all serialized tool definitions.
+    pub max_total_definition_bytes: u64,
+    /// Truncate instead of reject where truncation is sound
+    /// (descriptions, tool count). Depth violations always reject.
+    pub truncate_oversized: bool,
+}
+
+impl Default for DiscoveryBounds {
+    fn default() -> Self {
+        Self {
+            max_tools: 1000,
+            max_input_schema_depth: 32,
+            max_description_length: 4096,
+            max_total_definition_bytes: 4 * 1024 * 1024,
+            truncate_oversized: false,
+        }
+    }
+}
+
+impl DiscoveryBounds {
+    /// Enforce the bounds over a set of discovered tool definitions.
+    ///
+    /// In reject mode any violation is an error naming the bound. In
+    /// truncate mode descriptions are truncated to
+    /// `max_description_length`, tools beyond `max_tools` are dropped,
+    /// and only non-truncatable violations (schema depth, total size
+    /// after truncation) still error.
+    fn enforce(
+        &self,
+        upstream: &str,
+        mut tools: Vec<ToolDefinition>,
+    ) -> Result<Vec<ToolDefinition>, String> {
+        if tools.len() > self.max_tools {
+            if self.truncate_oversized {
+                tracing::warn!(
+                    upstream = %upstream,
+                    tools = tools.len(),
+                    max_tools = self.max_tools,
+                    "Upstream exceeds max_tools — dropping excess (truncate mode)"
+                );
+                tools.truncate(self.max_tools);
+            } else {
+                return Err(format!(
+                    "upstream '{upstream}': advertises {} tools, exceeding \
+                     max_tools_per_upstream ({}) — rejecting registration",
+                    tools.len(),
+                    self.max_tools
+                ));
+            }
+        }
+
+        let mut total_bytes: u64 = 0;
+        let mut bounded = Vec::with_capacity(tools.len());
+        for mut tool in tools {
+            let depth = schema_depth(tool.input_schema.as_ref());
+            if depth > self.max_input_schema_depth {
+                return Err(format!(
+                    "upstream '{upstream}': tool '{}' has an input schema nested \
+                     {depth} levels deep, exceeding max_input_schema_depth ({}) — \
+                     rejecting registration (schema depth cannot be truncated)",
+                    tool.name, self.max_input_schema_depth
+                ));
+            }
+
+            if let Some(desc) = tool.description.as_deref()
+                && desc.len() > self.max_description_length
+            {
+                if self.truncate_oversized {
+                    tracing::warn!(
+                        upstream = %upstream,
+                        tool = %tool.name,
+                        length = desc.len(),
+                        max = self.max_description_length,
+                        "Tool description exceeds max_description_length — truncating"
+                    );
+                    let boundary = desc.floor_char_boundary(self.max_description_length);
+                    tool.description = Some(format!("{}…[truncated]", &desc[..boundary]).into());
+                } else {
+                    return Err(format!(
+                        "upstream '{upstream}': tool '{}' has a {}-byte description, \
+                         exceeding max_description_length ({}) — rejecting registration",
+                        tool.name,
+                        desc.len(),
+                        self.max_description_length
+                    ));
+                }
+            }
+
+            total_bytes += serde_json::to_string(&tool)
+                .map(|s| s.len() as u64)
+                .unwrap_or(u64::MAX);
+            if total_bytes > self.max_total_definition_bytes {
+                return Err(format!(
+                    "upstream '{upstream}': total tool definition size exceeds \
+                     max_total_definition_bytes ({}) — rejecting registration",
+                    self.max_total_definition_bytes
+                ));
+            }
+            bounded.push(tool);
+        }
+        Ok(bounded)
+    }
+}
+
+/// Maximum JSON nesting depth of a serde_json value (an object or
+/// array counts as one level over its children).
+fn json_depth(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Object(map) => map.values().map(json_depth).max().map_or(1, |d| d + 1),
+        serde_json::Value::Array(arr) => arr.iter().map(json_depth).max().map_or(1, |d| d + 1),
+        _ => 0,
+    }
+}
+
+/// Nesting depth of a JSON schema object (the map itself is one level).
+fn schema_depth(schema: &serde_json::Map<String, serde_json::Value>) -> usize {
+    schema.values().map(json_depth).max().map_or(1, |d| d + 1)
+}
+
+/// Default per-request timeout for upstream rmcp calls (discovery
+/// listings and forwarded tool calls).
+pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(45);
+
+/// Options for [`UpstreamModule::discover_with`].
+pub struct DiscoveryOptions<'a> {
+    /// Supply-chain scanner (tool poisoning, rug pulls, ...).
+    pub scanner: Option<&'a mut navra_auth::tool_scanner::ToolScanner>,
+    /// Signed manifest + TOFU keystore verification.
+    pub manifest: Option<ManifestCheck<'a>>,
+    /// Content bounds enforced over the discovered definitions.
+    pub bounds: DiscoveryBounds,
+    /// Per-request timeout for upstream calls: discovery listings
+    /// (a tools/list timeout rejects the registration — fail closed)
+    /// and forwarded tool calls. Default: 45s. Without a timeout an
+    /// upstream that never answers (or whose response cannot be
+    /// decoded — rmcp hangs on undecodable responses) would hang the
+    /// gateway.
+    pub request_timeout: std::time::Duration,
+}
+
+impl<'a> DiscoveryOptions<'a> {
+    /// Options with no scanner, no manifest, default bounds, and the
+    /// default request timeout.
+    pub fn new() -> Self {
+        Self {
+            scanner: None,
+            manifest: None,
+            bounds: DiscoveryBounds::default(),
+            request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+        }
+    }
+}
+
+impl<'a> Default for DiscoveryOptions<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A module backed by an upstream MCP server via rmcp.
 pub struct UpstreamModule {
     name: String,
@@ -36,6 +226,8 @@ pub struct UpstreamModule {
     tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
     prompts: Vec<PromptDefinition>,
     resources: Vec<ResourceDefinition>,
+    /// Per-call timeout applied to forwarded tool calls.
+    call_timeout: std::time::Duration,
 }
 
 impl UpstreamModule {
@@ -62,23 +254,255 @@ impl UpstreamModule {
     /// Connect to an upstream via rmcp and discover its capabilities.
     ///
     /// Calls `tools/list`, `prompts/list`, and `resources/list` on the
-    /// upstream, caching the definitions. Errors during discovery are
-    /// logged but don't prevent the module from being created — the
-    /// corresponding capability will simply be empty.
+    /// upstream, caching the definitions. Errors during discovery —
+    /// including a `tools/list` timeout — are logged but don't prevent
+    /// the module from being created: the corresponding capability
+    /// will simply be empty.
+    ///
+    /// This infallible form performs no manifest verification and
+    /// swallows discovery failures; production wiring that must fail
+    /// closed (reject the registration) should use
+    /// [`UpstreamModule::discover_with`].
     pub async fn discover(
         name: &str,
         peer: rmcp::Peer<rmcp::RoleClient>,
         scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
         tool_overrides: &HashMap<String, String>,
     ) -> Self {
-        let tools = peer.list_all_tools().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
+        let peer_for_empty = peer.clone();
+        match Self::discover_with(
+            name,
+            peer,
+            DiscoveryOptions {
+                scanner,
+                manifest: None,
+                bounds: DiscoveryBounds::default(),
+                request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+            },
+            tool_overrides,
+        )
+        .await
+        {
+            Ok(module) => module,
+            Err(e) => {
+                tracing::error!(upstream = %name, error = %e, "Discovery failed — registering empty capabilities");
+                Self {
+                    name: name.to_string(),
+                    peer: peer_for_empty,
+                    tools: Vec::new(),
+                    tool_operations: HashMap::new(),
+                    tool_classifications: HashMap::new(),
+                    prompts: Vec::new(),
+                    resources: Vec::new(),
+                    call_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+                }
+            }
+        }
+    }
+
+    /// Connect to an upstream via rmcp and discover its capabilities,
+    /// verifying a signed tool manifest when one is configured and
+    /// enforcing content bounds over the discovered definitions.
+    ///
+    /// Fail-closed: a manifest whose signature does not verify (tampered
+    /// content), whose signing key changed since the TOFU pin, or whose
+    /// tool set does not match what the upstream serves rejects the
+    /// upstream entirely with a clear error. The same applies to
+    /// content-bound violations (tool count, schema depth, description
+    /// length, total definition bytes) unless truncation was opted into.
+    pub async fn discover_with(
+        name: &str,
+        peer: rmcp::Peer<rmcp::RoleClient>,
+        options: DiscoveryOptions<'_>,
+        tool_overrides: &HashMap<String, String>,
+    ) -> Result<Self, String> {
+        let DiscoveryOptions {
+            scanner,
+            manifest,
+            bounds,
+            request_timeout,
+        } = options;
+
+        let discovered = discover_tools(
+            name,
+            &peer,
+            scanner,
+            manifest,
+            &bounds,
+            tool_overrides,
+            request_timeout,
+        )
+        .await?;
+
+        let prompts = list_with_timeout(
+            name,
+            "prompts/list",
+            request_timeout,
+            peer.list_all_prompts(),
+        )
+        .await;
+        let resources = list_with_timeout(
+            name,
+            "resources/list",
+            request_timeout,
+            peer.list_all_resources(),
+        )
+        .await;
+
+        tracing::info!(
+            upstream = %name,
+            tools = discovered.tools.len(),
+            prompts = prompts.len(),
+            resources = resources.len(),
+            "Discovered upstream capabilities"
+        );
+
+        Ok(Self {
+            name: name.to_string(),
+            peer,
+            tools: discovered.tools,
+            tool_operations: discovered.tool_operations,
+            tool_classifications: discovered.tool_classifications,
+            prompts,
+            resources,
+            call_timeout: request_timeout,
+        })
+    }
+}
+
+/// Run a discovery listing with a timeout. Timeouts and errors are
+/// logged and yield an empty list — matching the historical error
+/// handling for prompts/resources (their absence is not fatal). The
+/// tools/list timeout is handled fail-closed inside `discover_tools`.
+async fn list_with_timeout<T>(
+    upstream: &str,
+    what: &str,
+    timeout: std::time::Duration,
+    fut: impl std::future::Future<Output = Result<Vec<T>, rmcp::service::ServiceError>>,
+) -> Vec<T> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(Ok(list)) => list,
+        Ok(Err(e)) => {
+            tracing::warn!(upstream = %upstream, error = %e, "Failed to discover {what}");
             Vec::new()
-        });
+        }
+        Err(_) => {
+            tracing::warn!(
+                upstream = %upstream,
+                timeout_secs = timeout.as_secs(),
+                "{what} timed out — capability will be empty"
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// The accepted tool set produced by one discovery run.
+pub struct DiscoveredTools {
+    pub tools: Vec<ToolDefinition>,
+    pub tool_operations: HashMap<String, ToolOperation>,
+    pub tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+}
+
+/// Run the discovery pipeline over an upstream peer: list tools,
+/// enforce content bounds, verify the signed manifest (if any), scan
+/// for supply-chain threats, and apply tool overrides.
+///
+/// Shared by initial registration and by `list_changed` refreshes so
+/// both paths enforce identical gates. Malicious tools are dropped,
+/// Suspicious tools pass with a warning. A `tools/list` timeout (or
+/// an upstream that never answers) rejects the discovery — an empty
+/// registration would silently mask a hung upstream behind a
+/// "working" one.
+async fn discover_tools(
+    name: &str,
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    scanner: Option<&mut navra_auth::tool_scanner::ToolScanner>,
+    manifest: Option<ManifestCheck<'_>>,
+    bounds: &DiscoveryBounds,
+    tool_overrides: &HashMap<String, String>,
+    request_timeout: std::time::Duration,
+) -> Result<DiscoveredTools, String> {
+    {
+        let tools = match tokio::time::timeout(request_timeout, peer.list_all_tools()).await {
+            Ok(Ok(tools)) => tools,
+            Ok(Err(e)) => {
+                // rmcp request error: historically logged + empty. When
+                // a manifest is configured, the fingerprint comparison
+                // below rejects the empty set unless the manifest is
+                // legitimately empty too.
+                tracing::warn!(upstream = %name, error = %e, "Failed to discover tools");
+                Vec::new()
+            }
+            Err(_) => {
+                return Err(format!(
+                    "upstream '{name}': tools/list timed out after {}s — rejecting \
+                     registration (fail closed)",
+                    request_timeout.as_secs()
+                ));
+            }
+        };
+
+        // Content bounds first: the definitions are untrusted input
+        // and must be bounded before any further processing.
+        let tools = bounds.enforce(name, tools)?;
+
+        if let Some(check) = manifest {
+            use navra_auth::manifest::{ManifestVerification, verify_signed_manifest};
+            match verify_signed_manifest(check.signed, check.key_store) {
+                ManifestVerification::Trusted => {
+                    tracing::info!(
+                        upstream = %name,
+                        signer = %check.signed.signer_did,
+                        "Upstream manifest verified (TOFU: trusted)"
+                    );
+                }
+                ManifestVerification::FirstUse => {
+                    tracing::info!(
+                        upstream = %name,
+                        signer = %check.signed.signer_did,
+                        "Upstream manifest verified — key pinned (TOFU: first use)"
+                    );
+                }
+                ManifestVerification::KeyChanged { pinned, presented } => {
+                    return Err(format!(
+                        "upstream '{name}': manifest signing key changed \
+                         (pinned {pinned}, presented {presented}) — \
+                         rejecting upstream; remove the old pin manually to re-pin"
+                    ));
+                }
+                ManifestVerification::InvalidSignature => {
+                    return Err(format!(
+                        "upstream '{name}': manifest signature verification failed \
+                         (tampered content or invalid signature) — rejecting upstream"
+                    ));
+                }
+            }
+
+            let expected = check.signed.manifest.tools_fingerprint();
+            let served = navra_auth::manifest::tools_fingerprint(&tools);
+            if expected != served {
+                return Err(format!(
+                    "upstream '{name}': served tools do not match the signed manifest \
+                     (possible rug pull) — rejecting upstream"
+                ));
+            }
+        }
 
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
             let results = scanner.scan_tools(name, &tools);
+            if results.len() != tools.len() {
+                // Fail closed: a count mismatch means the scanner
+                // misbehaved. zip() below drops unmatched tools, which
+                // is stricter than treating them as Suspicious.
+                tracing::error!(
+                    upstream = %name,
+                    expected = tools.len(),
+                    got = results.len(),
+                    "Scanner returned wrong number of results — dropping unmatched tools (fail closed)"
+                );
+            }
             let mut filtered = Vec::new();
             for (tool, result) in tools.into_iter().zip(results.iter()) {
                 match &result.verdict {
@@ -143,33 +567,196 @@ impl UpstreamModule {
             );
         }
 
-        let prompts = peer.list_all_prompts().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover prompts");
-            Vec::new()
-        });
-
-        let resources = peer.list_all_resources().await.unwrap_or_else(|e| {
-            tracing::warn!(upstream = %name, error = %e, "Failed to discover resources");
-            Vec::new()
-        });
-
-        tracing::info!(
-            upstream = %name,
-            tools = accepted_tools.len(),
-            prompts = prompts.len(),
-            resources = resources.len(),
-            "Discovered upstream capabilities"
-        );
-
-        Self {
-            name: name.to_string(),
-            peer,
+        Ok(DiscoveredTools {
             tools: accepted_tools,
             tool_operations,
             tool_classifications,
-            prompts,
-            resources,
+        })
+    }
+}
+
+/// Build (definition, handler) pairs for a set of upstream tools.
+///
+/// Each handler closes over the upstream peer and the tool name,
+/// forwarding calls over rmcp under the per-call timeout — an
+/// upstream that never answers (or whose response cannot be decoded,
+/// which makes rmcp hang) fails with a clear error instead of
+/// hanging the agent's call. Used both at registration and when
+/// rebuilding the registry after a `list_changed` refresh.
+pub fn upstream_tool_handlers(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    tools: &[ToolDefinition],
+    call_timeout: std::time::Duration,
+) -> Vec<(ToolDefinition, ToolHandler)> {
+    tools
+        .iter()
+        .map(|def| {
+            let tool_name = def.name.clone();
+            let peer = peer.clone();
+            let handler: ToolHandler = Arc::new(move |args, _ctx| {
+                let peer = peer.clone();
+                let name = tool_name.clone();
+                let call_timeout = call_timeout;
+                Box::pin(async move {
+                    let mut params = CallToolParams::new(name);
+                    if let Some(obj) = args.as_object() {
+                        params = params.with_arguments(obj.clone());
+                    }
+                    match tokio::time::timeout(call_timeout, peer.call_tool(params)).await {
+                        Ok(Ok(result)) => result,
+                        Ok(Err(e)) => {
+                            use navra_protocol::compat::CallToolResultExt;
+                            CallToolResult::error_msg(format!("upstream error: {e}"))
+                        }
+                        Err(_) => {
+                            use navra_protocol::compat::CallToolResultExt;
+                            CallToolResult::error_msg(format!(
+                                "upstream call timed out after {}s",
+                                call_timeout.as_secs()
+                            ))
+                        }
+                    }
+                })
+            });
+            (def.clone(), handler)
+        })
+        .collect()
+}
+
+/// rmcp client handler that forwards upstream `tools/list_changed`
+/// notifications to an [`UpstreamWatcher`].
+///
+/// Construct with [`UpstreamNotificationHandler::new`], which returns
+/// the handler (to pass to `serve`) and the receiving end of the
+/// notification channel.
+pub struct UpstreamNotificationHandler {
+    tx: tokio::sync::mpsc::UnboundedSender<()>,
+}
+
+impl UpstreamNotificationHandler {
+    /// Create the handler and the notification receiver.
+    pub fn new() -> (Self, tokio::sync::mpsc::UnboundedReceiver<()>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (Self { tx }, rx)
+    }
+}
+
+impl rmcp::handler::client::ClientHandler for UpstreamNotificationHandler {
+    fn on_tool_list_changed(
+        &self,
+        _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
+        let _ = self.tx.send(());
+        tracing::debug!("Upstream sent tools/list_changed");
+        std::future::ready(())
+    }
+}
+
+/// Refresh loop for an upstream that advertises `list_changed`.
+///
+/// Owned by the server after build; spawn [`UpstreamWatcher::run`]
+/// with the `Arc<McpServer>`. On each notification (debounced to at
+/// most one refresh per `min_refresh_interval`) the watcher re-runs
+/// the full discovery pipeline — scanner, manifest verification, and
+/// bounds included — and atomically swaps the module's tool registry.
+/// A failed refresh keeps the existing tools (fail closed to the last
+/// known-good set); tools that turned Malicious on refresh are not
+/// registered.
+pub struct UpstreamWatcher {
+    name: String,
+    peer: rmcp::Peer<rmcp::RoleClient>,
+    events: tokio::sync::mpsc::UnboundedReceiver<()>,
+    scanner: Option<navra_auth::tool_scanner::ToolScanner>,
+    manifest: Option<(
+        navra_auth::manifest::SignedManifest,
+        navra_auth::manifest::ManifestKeyStore,
+    )>,
+    bounds: DiscoveryBounds,
+    tool_overrides: HashMap<String, String>,
+    min_refresh_interval: std::time::Duration,
+    call_timeout: std::time::Duration,
+}
+
+impl UpstreamWatcher {
+    /// Assemble a watcher from the pieces used for the initial
+    /// discovery (the scanner and manifest data are reused so rug-pull
+    /// hashes and TOFU pins persist across refreshes).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        name: impl Into<String>,
+        peer: rmcp::Peer<rmcp::RoleClient>,
+        events: tokio::sync::mpsc::UnboundedReceiver<()>,
+        scanner: Option<navra_auth::tool_scanner::ToolScanner>,
+        manifest: Option<(
+            navra_auth::manifest::SignedManifest,
+            navra_auth::manifest::ManifestKeyStore,
+        )>,
+        bounds: DiscoveryBounds,
+        tool_overrides: HashMap<String, String>,
+        min_refresh_interval: std::time::Duration,
+        call_timeout: std::time::Duration,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            peer,
+            events,
+            scanner,
+            manifest,
+            bounds,
+            tool_overrides,
+            min_refresh_interval,
+            call_timeout,
         }
+    }
+
+    /// Run the refresh loop until the notification channel closes.
+    pub async fn run(mut self, server: std::sync::Arc<crate::server::McpServer>) {
+        loop {
+            if self.events.recv().await.is_none() {
+                // Upstream connection dropped; nothing left to watch.
+                return;
+            }
+            // Debounce: wait out the minimum interval, then swallow
+            // any notifications that arrived inside the window so a
+            // chatty upstream triggers one refresh, not a storm.
+            tokio::time::sleep(self.min_refresh_interval).await;
+            while self.events.try_recv().is_ok() {}
+            if let Err(e) = self.refresh_once(&server).await {
+                tracing::error!(
+                    upstream = %self.name,
+                    error = %e,
+                    "list_changed refresh failed — keeping the existing tool registry (fail closed)"
+                );
+            }
+        }
+    }
+
+    async fn refresh_once(
+        &mut self,
+        server: &std::sync::Arc<crate::server::McpServer>,
+    ) -> Result<(), String> {
+        let manifest_check = self
+            .manifest
+            .as_mut()
+            .map(|(signed, key_store)| ManifestCheck { signed, key_store });
+        let discovered = discover_tools(
+            &self.name,
+            &self.peer,
+            self.scanner.as_mut(),
+            manifest_check,
+            &self.bounds,
+            &self.tool_overrides,
+            self.call_timeout,
+        )
+        .await?;
+        let handlers = upstream_tool_handlers(&self.peer, &discovered.tools, self.call_timeout);
+        server.swap_upstream_tools(
+            &self.name,
+            handlers,
+            discovered.tool_operations,
+            discovered.tool_classifications,
+        );
+        Ok(())
     }
 }
 
@@ -179,31 +766,7 @@ impl Module for UpstreamModule {
     }
 
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
-        self.tools
-            .iter()
-            .map(|def| {
-                let tool_name = def.name.clone();
-                let peer = self.peer.clone();
-                let handler: ToolHandler = Arc::new(move |args, _ctx| {
-                    let peer = peer.clone();
-                    let name = tool_name.clone();
-                    Box::pin(async move {
-                        let mut params = CallToolParams::new(name);
-                        if let Some(obj) = args.as_object() {
-                            params = params.with_arguments(obj.clone());
-                        }
-                        match peer.call_tool(params).await {
-                            Ok(result) => result,
-                            Err(e) => {
-                                use navra_protocol::compat::CallToolResultExt;
-                                CallToolResult::error_msg(format!("upstream error: {e}"))
-                            }
-                        }
-                    })
-                });
-                (def.clone(), handler)
-            })
-            .collect()
+        upstream_tool_handlers(&self.peer, &self.tools, self.call_timeout)
     }
 
     fn prompts(&self) -> Vec<(PromptDefinition, PromptHandler)> {

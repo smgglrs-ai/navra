@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
 
 use super::McpServer;
@@ -43,10 +44,18 @@ pub struct McpServerBuilder {
     broadcaster: Option<crate::transport::sse::SseBroadcaster>,
     #[cfg(feature = "cedar")]
     cedar_engine: Option<navra_auth::permissions::CedarEngine>,
+    #[cfg(feature = "cedar")]
+    cedar_action_version: Option<super::CedarActionVersion>,
     #[cfg(feature = "opa")]
     opa_engine: Option<navra_auth::permissions::OpaEngine>,
     dmn_engine: Option<navra_auth::permissions::DmnEngine>,
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    hide_denied_tools: bool,
+    declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
+    declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
+    upstream_watchers: Vec<crate::UpstreamWatcher>,
+    /// Tool names registered per module (for upstream registry swaps).
+    module_tool_index: HashMap<String, Vec<String>>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
@@ -86,10 +95,17 @@ impl McpServerBuilder {
             broadcaster: None,
             #[cfg(feature = "cedar")]
             cedar_engine: None,
+            #[cfg(feature = "cedar")]
+            cedar_action_version: None,
             #[cfg(feature = "opa")]
             opa_engine: None,
             dmn_engine: None,
             tool_disclosure: HashMap::new(),
+            hide_denied_tools: true,
+            declassification_authority: None,
+            declassification_ledger: None,
+            upstream_watchers: Vec::new(),
+            module_tool_index: HashMap::new(),
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
@@ -209,6 +225,7 @@ impl McpServerBuilder {
     /// `git_status`) to avoid collisions.
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();
+        let mut mod_tools = Vec::new();
         for (definition, handler) in module.tools() {
             let tool_name = definition.name.to_string();
             if self.tools.contains_key(&tool_name) {
@@ -222,6 +239,7 @@ impl McpServerBuilder {
                 tool = %tool_name,
                 "Registered tool"
             );
+            mod_tools.push(tool_name.clone());
             self.tools.insert(
                 tool_name,
                 RegisteredTool {
@@ -230,6 +248,7 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_tool_index.insert(mod_name.clone(), mod_tools);
         for (definition, handler) in module.prompts() {
             let prompt_name = definition.name.clone();
             if self.prompts.contains_key(&prompt_name) {
@@ -411,6 +430,48 @@ impl McpServerBuilder {
         self
     }
 
+    /// Set the trusted declassification authority (the gateway's
+    /// CapSigner). Without an authority, full-redaction declassification
+    /// recommendations cannot step labels down — results stay at the
+    /// elevated label (fail-safe).
+    pub fn declassification_authority(
+        mut self,
+        authority: Arc<navra_auth::ifc::DeclassificationAuthority>,
+    ) -> Self {
+        self.declassification_authority = Some(authority);
+        self
+    }
+
+    /// Attach the shared declassification ledger. The same `Arc` must
+    /// be given to the `SafetyHook` (when hooks are wired) so that
+    /// recommendations recorded during post-call filtering reach the
+    /// gateway's declassification path.
+    pub fn declassification_ledger(
+        mut self,
+        ledger: Arc<crate::safety::DeclassificationLedger>,
+    ) -> Self {
+        self.declassification_ledger = Some(ledger);
+        self
+    }
+
+    /// Register a refresh watcher for an upstream module that
+    /// advertises `list_changed`. The embedding server must drain the
+    /// watchers after `build()` and spawn `UpstreamWatcher::run`.
+    pub fn upstream_watcher(mut self, watcher: crate::UpstreamWatcher) -> Self {
+        self.upstream_watchers.push(watcher);
+        self
+    }
+
+    /// Control whether tools with a static `Deny` in `tool_rules` are
+    /// hidden from `tools/list`. Default: true (deny-wins philosophy —
+    /// a denied tool's description is pure injection surface for a
+    /// tool the agent cannot call). Setting false restores the
+    /// historical behavior where denied tools remain listed.
+    pub fn hide_denied_tools(mut self, hide: bool) -> Self {
+        self.hide_denied_tools = hide;
+        self
+    }
+
     /// Add a dynamic tool filter.
     ///
     /// Dynamic filters run during `handle_list_tools_dynamic()` after
@@ -431,6 +492,38 @@ impl McpServerBuilder {
     pub fn cedar_engine(mut self, engine: navra_auth::permissions::CedarEngine) -> Self {
         self.cedar_engine = Some(engine);
         self
+    }
+
+    /// Select the Cedar action dispatch version (default v1, bare
+    /// tool names). See [`CedarActionVersion`] for the v2 upstream
+    /// namespacing semantics.
+    #[cfg(feature = "cedar")]
+    pub fn cedar_action_version(mut self, version: super::CedarActionVersion) -> Self {
+        self.cedar_action_version = Some(version);
+        self
+    }
+
+    /// Evaluate a Cedar action against the configured engine.
+    ///
+    /// Used at wiring time for actions that are not tool calls —
+    /// notably `upstream_discover`, dispatched when an upstream's
+    /// discovery results are accepted for registration. Returns true
+    /// (allow) when no Cedar engine is configured: the Cedar gate can
+    /// only further restrict, never grant.
+    #[cfg(feature = "cedar")]
+    pub fn cedar_allows(
+        &self,
+        action: &str,
+        resource: &str,
+        context: &std::collections::HashMap<String, String>,
+    ) -> bool {
+        match &self.cedar_engine {
+            None => true,
+            Some(engine) => matches!(
+                engine.is_authorized("navra-gateway", action, resource, context),
+                crate::permissions::CedarDecision::Allow
+            ),
+        }
     }
 
     /// Set the OPA/Rego policy engine for conditional access control.
@@ -905,7 +998,6 @@ impl McpServerBuilder {
         McpServer {
             name: self.name,
             version: self.version,
-            tools,
             prompts: self.prompts,
             resources,
             resource_templates,
@@ -914,8 +1006,6 @@ impl McpServerBuilder {
             safety_pipelines: self.safety_pipelines,
             tool_permissions: self.tool_permissions,
             agent_operations: self.agent_operations,
-            tool_operations: self.tool_operations,
-            tool_classifications: self.tool_classifications,
             domain_rules: self.domain_rules,
             hooks,
             paused: Arc::new(AtomicBool::new(false)),
@@ -936,10 +1026,21 @@ impl McpServerBuilder {
             broadcaster: self.broadcaster,
             #[cfg(feature = "cedar")]
             cedar_engine: self.cedar_engine,
+            #[cfg(feature = "cedar")]
+            cedar_action_version: self.cedar_action_version.unwrap_or_default(),
             #[cfg(feature = "opa")]
             opa_engine: self.opa_engine.map(std::sync::Mutex::new),
             dmn_engine: self.dmn_engine,
             tool_disclosure: self.tool_disclosure,
+            hide_denied_tools: self.hide_denied_tools,
+            declassification_authority: self.declassification_authority,
+            declassification_ledger: self.declassification_ledger,
+            declassification_witnesses: std::sync::Mutex::new(Vec::new()),
+            tools: RwLock::new(tools),
+            tool_operations: RwLock::new(self.tool_operations),
+            tool_classifications: RwLock::new(self.tool_classifications),
+            upstream_tool_index: RwLock::new(self.module_tool_index),
+            upstream_watchers: RwLock::new(self.upstream_watchers),
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(
                 std::collections::HashMap::new(),

@@ -7,8 +7,15 @@
 use crate::identity::CapSigner;
 use navra_protocol::ToolDefinition;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use vstd::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct ManifestSignature {
+    pub signature: Vec<u8>,
+    pub signer_did: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolManifest {
@@ -17,10 +24,128 @@ pub struct ToolManifest {
     pub timestamp: i64,
 }
 
-#[derive(Debug, Clone)]
-pub struct ManifestSignature {
-    pub signature: Vec<u8>,
+impl ToolManifest {
+    /// Order-insensitive fingerprint of the signed tool set.
+    ///
+    /// Canonicalizes each tool definition (sorted by name) and hashes
+    /// the concatenation. Used to check that the tools an upstream
+    /// actually serves match the signed manifest — any drift (rug
+    /// pull, description rewrite) fails the comparison.
+    pub fn tools_fingerprint(&self) -> [u8; 32] {
+        tools_fingerprint(&self.tools)
+    }
+}
+
+/// Order-insensitive SHA-256 fingerprint over a set of tool
+/// definitions (sorted by name, canonical JSON per tool).
+pub fn tools_fingerprint(tools: &[ToolDefinition]) -> [u8; 32] {
+    let mut tools = tools.to_vec();
+    tools.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut hasher = Sha256::new();
+    for tool in &tools {
+        hasher.update(tool.name.as_bytes());
+        let value = serde_json::to_value(tool).unwrap_or(serde_json::Value::Null);
+        hasher.update(canonical_json_bytes(&value));
+    }
+    hasher.finalize().into()
+}
+
+/// Wire format for a signed tool manifest (JSON, suitable for a file
+/// or inline config).
+///
+/// Produced by signing a [`ToolManifest`] with an upstream's key:
+///
+/// ```
+/// # use navra_auth::identity::Ed25519Signer;
+/// # use navra_auth::manifest::{SignedManifest, ToolManifest};
+/// # fn example(manifest: ToolManifest) {
+/// let signer = Ed25519Signer::generate();
+/// let signed = SignedManifest::sign(&manifest, &signer);
+/// let json = serde_json::to_string_pretty(&signed).unwrap();
+/// # }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignedManifest {
+    pub manifest: ToolManifest,
+    /// Hex-encoded Ed25519 signature over the manifest canonical bytes.
+    pub signature: String,
+    /// DID:key of the signing key.
     pub signer_did: String,
+}
+
+impl SignedManifest {
+    /// Sign a manifest with the given signer.
+    pub fn sign(manifest: &ToolManifest, signer: &dyn CapSigner) -> Self {
+        let sig = manifest.sign(signer);
+        Self {
+            manifest: manifest.clone(),
+            signature: hex::encode(&sig.signature),
+            signer_did: sig.signer_did,
+        }
+    }
+
+    /// Decode the hex signature into the raw bytes.
+    fn signature_bytes(&self) -> Result<Vec<u8>, String> {
+        hex::decode(&self.signature)
+            .map_err(|e| format!("manifest signature is not valid hex: {e}"))
+    }
+}
+
+/// Outcome of verifying a signed manifest against a TOFU key store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManifestVerification {
+    /// Signature valid and key pinned from a previous run.
+    Trusted,
+    /// Signature valid and key pinned now (first use).
+    FirstUse,
+    /// Signature valid but the signer differs from the pinned key.
+    /// The pin is NOT updated — the caller must reject the upstream.
+    KeyChanged { pinned: String, presented: String },
+    /// Signature missing, malformed, or it does not match the manifest
+    /// content (tampering). The key store is untouched.
+    InvalidSignature,
+}
+
+/// Verify a signed manifest: signature over canonical bytes, then
+/// TOFU key pinning.
+///
+/// Fail-closed semantics:
+/// - tampered content or a bad signature → [`ManifestVerification::InvalidSignature`]
+/// - key change after pinning → [`ManifestVerification::KeyChanged`]
+///   without re-pinning
+/// - first use → pins the key and returns [`ManifestVerification::FirstUse`]
+pub fn verify_signed_manifest(
+    signed: &SignedManifest,
+    key_store: &mut ManifestKeyStore,
+) -> ManifestVerification {
+    let sig_bytes = match signed.signature_bytes() {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::warn!(server = %signed.manifest.server_name, error = %e, "Invalid manifest signature encoding");
+            return ManifestVerification::InvalidSignature;
+        }
+    };
+    let verifier = match crate::identity::Ed25519Verifier::from_did(&signed.signer_did) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(server = %signed.manifest.server_name, did = %signed.signer_did, error = %e, "Manifest signer DID is not a usable Ed25519 key");
+            return ManifestVerification::InvalidSignature;
+        }
+    };
+    if !verifier.verify(&signed.manifest.canonical_bytes(), &sig_bytes) {
+        return ManifestVerification::InvalidSignature;
+    }
+    match key_store.check(&signed.manifest.server_name, &signed.signer_did) {
+        TofuResult::Trusted => ManifestVerification::Trusted,
+        TofuResult::FirstUse => ManifestVerification::FirstUse,
+        TofuResult::KeyChanged => ManifestVerification::KeyChanged {
+            pinned: key_store
+                .pinned_did(&signed.manifest.server_name)
+                .unwrap_or_default()
+                .to_string(),
+            presented: signed.signer_did.clone(),
+        },
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,15 +155,51 @@ pub enum TofuResult {
     KeyChanged,
 }
 
+#[derive(Debug)]
 pub struct ManifestKeyStore {
     known_keys: HashMap<String, String>,
+    path: Option<std::path::PathBuf>,
 }
 
 impl ManifestKeyStore {
     pub fn new() -> Self {
         Self {
             known_keys: HashMap::new(),
+            path: None,
         }
+    }
+
+    /// Open a persistent key store, failing closed when the file is
+    /// unreadable or corrupt.
+    ///
+    /// A missing file is normal (first run) and yields an empty store.
+    /// Pins are written back on first use. Follows the same data-file
+    /// convention as the tool scanner's `tool_hashes.json`.
+    pub fn with_path(path: std::path::PathBuf) -> Result<Self, String> {
+        let known_keys = match std::fs::read_to_string(&path) {
+            Ok(data) => serde_json::from_str(&data).map_err(|e| {
+                format!(
+                    "corrupt manifest keystore {} (delete it to re-pin from scratch): {e}",
+                    path.display()
+                )
+            })?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            Err(e) => {
+                return Err(format!(
+                    "failed to read manifest keystore {}: {e}",
+                    path.display()
+                ));
+            }
+        };
+        Ok(Self {
+            known_keys,
+            path: Some(path),
+        })
+    }
+
+    /// The DID currently pinned for a server, if any.
+    pub fn pinned_did(&self, server_name: &str) -> Option<&str> {
+        self.known_keys.get(server_name).map(|s| s.as_str())
     }
 
     pub fn check(&mut self, server_name: &str, signer_did: &str) -> TofuResult {
@@ -46,10 +207,29 @@ impl ManifestKeyStore {
             None => {
                 self.known_keys
                     .insert(server_name.to_string(), signer_did.to_string());
+                self.persist();
                 TofuResult::FirstUse
             }
             Some(pinned) if pinned == signer_did => TofuResult::Trusted,
             Some(_) => TofuResult::KeyChanged,
+        }
+    }
+
+    /// Write pins back to disk (only when a path was configured).
+    fn persist(&self) {
+        let Some(path) = &self.path else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match serde_json::to_string_pretty(&self.known_keys) {
+            Ok(data) => {
+                if let Err(e) = std::fs::write(path, data) {
+                    tracing::warn!(path = %path.display(), error = %e, "Failed to persist manifest keystore");
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "Failed to serialize manifest keystore"),
         }
     }
 }
@@ -58,6 +238,12 @@ impl Default for ManifestKeyStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Default keystore location, following the same data-file convention
+/// as the tool scanner's hash store: `~/.local/share/navra/manifest_keys.json`.
+pub fn default_keystore_path() -> Option<std::path::PathBuf> {
+    dirs::data_dir().map(|d| d.join("navra").join("manifest_keys.json"))
 }
 
 impl ToolManifest {
@@ -271,6 +457,123 @@ mod tests {
         let sig2 = manifest.sign(&signer2);
         let r2 = verify_manifest_option(&manifest, Some(&sig2), &mut store, &signer2);
         assert_eq!(r2, Some(false));
+    }
+
+    // --- SignedManifest wire format + verify_signed_manifest ---
+
+    fn test_signed_manifest() -> (SignedManifest, Ed25519Signer) {
+        let signer = Ed25519Signer::generate();
+        (SignedManifest::sign(&test_manifest(), &signer), signer)
+    }
+
+    #[test]
+    fn signed_manifest_wire_roundtrip_first_use() {
+        let (signed, _signer) = test_signed_manifest();
+        let json = serde_json::to_string(&signed).unwrap();
+        let back: SignedManifest = serde_json::from_str(&json).unwrap();
+
+        let mut store = ManifestKeyStore::new();
+        assert_eq!(
+            verify_signed_manifest(&back, &mut store),
+            ManifestVerification::FirstUse
+        );
+        // Pinned now; a second verification is Trusted.
+        assert_eq!(
+            verify_signed_manifest(&back, &mut store),
+            ManifestVerification::Trusted
+        );
+    }
+
+    #[test]
+    fn signed_manifest_tampered_content_rejected() {
+        let (mut signed, _signer) = test_signed_manifest();
+        // Tamper with the signed content: change a tool description.
+        signed.manifest.tools[0].description = Some("Read any file, no restrictions".into());
+        let mut store = ManifestKeyStore::new();
+        assert_eq!(
+            verify_signed_manifest(&signed, &mut store),
+            ManifestVerification::InvalidSignature
+        );
+        // The failed verification must not have pinned anything.
+        assert_eq!(store.pinned_did("test-upstream"), None);
+    }
+
+    #[test]
+    fn signed_manifest_key_changed_rejected_without_repin() {
+        // Pin signer1's key, then present a manifest signed by signer2.
+        let (signed1, signer1) = test_signed_manifest();
+        let mut store = ManifestKeyStore::new();
+        assert_eq!(
+            verify_signed_manifest(&signed1, &mut store),
+            ManifestVerification::FirstUse
+        );
+
+        let signer2 = Ed25519Signer::generate();
+        let signed2 = SignedManifest::sign(&test_manifest(), &signer2);
+        let result = verify_signed_manifest(&signed2, &mut store);
+        match result {
+            ManifestVerification::KeyChanged {
+                ref pinned,
+                ref presented,
+            } => {
+                assert_eq!(pinned, &signer1.did());
+                assert_eq!(presented, &signer2.did());
+            }
+            other => panic!("expected KeyChanged, got {other:?}"),
+        }
+        // No silent re-pin: signer1's key must still be pinned.
+        assert_eq!(store.pinned_did("test-upstream"), Some(signer1.did()));
+        // And the original manifest still verifies as Trusted.
+        assert_eq!(
+            verify_signed_manifest(&signed1, &mut store),
+            ManifestVerification::Trusted
+        );
+    }
+
+    #[test]
+    fn keystore_persists_pins_across_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("manifest_keys.json");
+        let signer = Ed25519Signer::generate();
+
+        let mut store = ManifestKeyStore::with_path(path.clone()).unwrap();
+        assert_eq!(store.check("server-a", signer.did()), TofuResult::FirstUse);
+        assert!(path.exists(), "pin must be persisted on first use");
+
+        let mut reopened = ManifestKeyStore::with_path(path).unwrap();
+        assert_eq!(
+            reopened.check("server-a", signer.did()),
+            TofuResult::Trusted
+        );
+    }
+
+    #[test]
+    fn keystore_corrupt_file_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("manifest_keys.json");
+        std::fs::write(&path, b"{not json").unwrap();
+        let result = ManifestKeyStore::with_path(path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("corrupt manifest keystore"));
+    }
+
+    #[test]
+    fn tools_fingerprint_ignores_order_detects_changes() {
+        let m1 = test_manifest();
+        let mut m2 = test_manifest();
+        m2.tools.reverse();
+        assert_eq!(
+            m1.tools_fingerprint(),
+            m2.tools_fingerprint(),
+            "same tools in a different order must share a fingerprint"
+        );
+
+        m2.tools[0].description = Some("Changed description".into());
+        assert_ne!(
+            m1.tools_fingerprint(),
+            m2.tools_fingerprint(),
+            "a changed tool definition must change the fingerprint"
+        );
     }
 }
 
