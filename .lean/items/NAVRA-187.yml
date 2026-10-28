@@ -74,8 +74,9 @@ notes: |
     semantics — rmcp 3.8's macro-generated Peer::{call_tool,
     get_prompt, read_resource} return the final result and error on
     input_required/task responses. Transparent InputRequired
-    pass-through (and the ACL/IFC questions it raises) is future
-    work, not part of this upgrade.
+    pass-through (and the ACL/IFC questions it raises) is tracked as
+    NAVRA-188; serving subscriptions/listen for 2026-07-28 peers is
+    tracked as NAVRA-189.
   - navra-protocol compat layer absorbed the content-model
     flattening: Content = ContentBlock, the Raw* names alias the flat
     types (RawContent = ContentBlock, RawResource = Resource, ...),
