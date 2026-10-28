@@ -90,7 +90,7 @@ pub async fn execute_operation(
         let body_text = r
             .content
             .first()
-            .and_then(|c| c.raw.as_text())
+            .and_then(|c| c.as_text())
             .map(|t| t.text.as_str())
             .unwrap_or("");
         if body_text.contains("HTTP 401") || body_text.contains("HTTP 403") {

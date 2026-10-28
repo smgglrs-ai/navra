@@ -342,10 +342,7 @@ impl Module for GrpcModule {
                 if !def.mime_type.is_empty() {
                     raw_resource = raw_resource.with_mime_type(def.mime_type.clone());
                 }
-                let resource_def = ResourceDefinition {
-                    raw: raw_resource,
-                    annotations: None,
-                };
+                let resource_def = raw_resource;
 
                 let client = self.client.clone();
 
@@ -565,19 +562,10 @@ mod tests {
             mime_type: "text/markdown".to_string(),
         };
 
-        let resource_def = navra_protocol::Annotated::new(
-            navra_protocol::RawResource {
-                uri: proto_def.uri.clone(),
-                name: proto_def.name.clone(),
-                title: None,
-                description: Some(proto_def.description.clone()),
-                mime_type: Some(proto_def.mime_type.clone()),
-                size: None,
-                icons: None,
-                meta: None,
-            },
-            None,
-        );
+        let resource_def =
+            navra_protocol::RawResource::new(proto_def.uri.clone(), proto_def.name.clone())
+                .with_description(proto_def.description.clone())
+                .with_mime_type(proto_def.mime_type.clone());
 
         assert_eq!(resource_def.uri, "file:///workspace/readme.md");
         assert_eq!(resource_def.mime_type, Some("text/markdown".to_string()));

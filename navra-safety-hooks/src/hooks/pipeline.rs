@@ -368,10 +368,7 @@ mod tests {
             _ctx: &CallContext,
         ) -> HookDecision {
             let text = match &result.content[0] {
-                navra_protocol::Content {
-                    raw: navra_protocol::RawContent::Text(t),
-                    ..
-                } => &t.text,
+                navra_protocol::Content::Text(t) => &t.text,
                 _ => return HookDecision::Continue,
             };
             HookDecision::ModifyResult(CallToolResult::text(format!("{}{}", text, self.suffix)))
@@ -477,7 +474,7 @@ mod tests {
             .run_post("echo", &serde_json::json!({}), original, &test_ctx())
             .await;
 
-        match &result.content[0].raw {
+        match &result.content[0] {
             navra_protocol::RawContent::Text(t) => {
                 assert_eq!(t.text, "hello [filtered]");
             }
@@ -501,7 +498,7 @@ mod tests {
             .await;
 
         // Post-hooks run in reverse: B first, then A
-        match &result.content[0].raw {
+        match &result.content[0] {
             navra_protocol::RawContent::Text(t) => {
                 assert_eq!(t.text, "base [B] [A]");
             }
@@ -794,7 +791,7 @@ mod tests {
             .await;
 
         match outcome {
-            PreHookOutcome::Simulated(result) => match &result.content[0].raw {
+            PreHookOutcome::Simulated(result) => match &result.content[0] {
                 navra_protocol::RawContent::Text(t) => {
                     assert_eq!(t.text, "simulated response");
                 }

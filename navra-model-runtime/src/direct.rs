@@ -245,6 +245,6 @@ mod tests {
         };
         let result = rt.health(&endpoint).await;
         // Connection refused → Ok(false)
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 }

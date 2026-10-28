@@ -195,10 +195,7 @@ async fn handler_can_be_called() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error != Some(true));
-    let t = result.content[0]
-        .raw
-        .as_text()
-        .expect("expected text content");
+    let t = result.content[0].as_text().expect("expected text content");
     assert_eq!(t.text, "hello");
 }
 
@@ -225,10 +222,7 @@ async fn missing_required_arg_returns_error() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error == Some(true));
-    let t = result.content[0]
-        .raw
-        .as_text()
-        .expect("expected text content");
+    let t = result.content[0].as_text().expect("expected text content");
     assert!(t.text.contains("Missing required parameter: message"));
 }
 
@@ -299,10 +293,7 @@ async fn state_handler_passes_state_to_function() {
     );
     let result = handler(args, ctx).await;
     assert!(result.is_error != Some(true));
-    let t = result.content[0]
-        .raw
-        .as_text()
-        .expect("expected text content");
+    let t = result.content[0].as_text().expect("expected text content");
     assert_eq!(t.text, ">>world");
 }
 

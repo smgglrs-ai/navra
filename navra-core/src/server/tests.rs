@@ -246,7 +246,7 @@ async fn call_module_tool() {
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
-        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "pong"),
+        c if c.as_text().is_some() => assert_eq!(c.as_text().unwrap().text, "pong"),
         _ => panic!("expected text content"),
     }
 }
@@ -297,7 +297,7 @@ async fn call_registered_tool() {
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
-        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "echo: hello"),
+        c if c.as_text().is_some() => assert_eq!(c.as_text().unwrap().text, "echo: hello"),
         _ => panic!("expected text content"),
     }
 }
@@ -397,10 +397,7 @@ async fn safety_filter_redacts_secrets() {
 
     assert!(result.is_error != Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("[REDACTED:aws-key]"));
         assert!(!t.text.contains("AKIAIOSFODNN7EXAMPLE"));
     }
@@ -442,7 +439,7 @@ fn extract_var_id(result: &CallToolResult) -> String {
     let text: String = result
         .content
         .iter()
-        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
         .collect();
     let marker = text
         .rfind("_var: ")
@@ -498,7 +495,7 @@ async fn declassification_after_full_redaction_steps_label_down() {
     let text: String = result
         .content
         .iter()
-        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
         .collect();
     assert!(text.contains("[REDACTED:"));
     assert!(!text.contains("123-45-6789"));
@@ -517,7 +514,7 @@ async fn declassification_after_full_redaction_steps_label_down() {
     let stored_text: String = stored
         .content
         .iter()
-        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
         .collect();
     assert!(!stored_text.contains("123-45-6789"));
 
@@ -685,7 +682,7 @@ async fn partially_redacted_result_keeps_label_and_no_witness() {
     let text: String = result
         .content
         .iter()
-        .filter_map(|c| c.raw.as_text().map(|t| t.text.clone()))
+        .filter_map(|c| c.as_text().map(|t| t.text.clone()))
         .collect();
     assert!(text.contains("AAAA"), "below-threshold finding stays");
     assert!(
@@ -764,10 +761,7 @@ async fn no_safety_profile_passes_through() {
 
     // No safety profile configured → content passes through unmodified
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("AKIAIOSFODNN7EXAMPLE"));
     }
 }
@@ -853,7 +847,7 @@ async fn call_registered_prompt() {
     let result = result.unwrap();
     assert_eq!(result.description, Some("A greeting".to_string()));
     match &result.messages[0].content {
-        crate::protocol::PromptMessageContent::Text { text } => assert_eq!(text, "Hello, Alice!"),
+        crate::protocol::PromptMessageContent::Text(t) => assert_eq!(t.text, "Hello, Alice!"),
         _ => panic!("expected text content"),
     }
 }
@@ -907,19 +901,12 @@ fn duplicate_prompt_name_panics() {
 // --- Resource tests ---
 
 fn info_resource_def() -> crate::protocol::ResourceDefinition {
-    navra_protocol::Annotated::new(
-        crate::protocol::RawResource {
-            uri: "info://server/status".to_string(),
-            name: "Server Status".to_string(),
-            title: None,
-            description: Some("Current server status".to_string()),
-            mime_type: Some("text/plain".to_string()),
-            size: None,
-            icons: None,
-            meta: None,
-        },
-        None,
+    crate::protocol::RawResource::new(
+        "info://server/status".to_string(),
+        "Server Status".to_string(),
     )
+    .with_description("Current server status".to_string())
+    .with_mime_type("text/plain".to_string())
 }
 
 fn info_resource_handler() -> ResourceHandler {
@@ -1209,10 +1196,7 @@ async fn tool_permissions_deny_blocks_tool() {
 
     assert!(result.is_error == Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("Permission denied"));
     }
 }
@@ -1347,7 +1331,7 @@ async fn tool_permissions_allow_passes_through() {
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
-        c if c.raw.as_text().is_some() => assert_eq!(c.raw.as_text().unwrap().text, "reached"),
+        c if c.as_text().is_some() => assert_eq!(c.as_text().unwrap().text, "reached"),
         _ => panic!("expected text content"),
     }
 }
@@ -1378,10 +1362,7 @@ async fn tool_permissions_approve_returns_approval_required() {
 
     assert!(result.is_error == Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("Approval required"));
     }
 }
@@ -1485,10 +1466,7 @@ async fn cap_token_denies_unmatched_tool() {
 
     assert!(result.is_error == Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("not in capability token"));
     }
 }
@@ -1702,6 +1680,7 @@ async fn dispatch_request_inner(
         }
 
         "logging/setLevel" => {
+            #[allow(deprecated)]
             let p: crate::protocol::SetLevelParams =
                 match params.and_then(|p| serde_json::from_value(p).ok()) {
                     Some(p) => p,
@@ -2192,7 +2171,6 @@ async fn ifc_deny_write_after_untrusted_read() {
     assert!(write_result.is_error == Some(true));
     {
         let t = write_result.content[0]
-            .raw
             .as_text()
             .expect("expected text content");
         assert!(t.text.contains("Permission denied"));
@@ -2410,10 +2388,7 @@ async fn hook_safety_filter_via_pipeline() {
 
     assert!(result.is_error != Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("[REDACTED:aws-key]"));
     }
 }
@@ -2452,10 +2427,7 @@ async fn hook_blocks_tool_call() {
 
     assert!(result.is_error == Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(
             t.text.contains("Permission denied"),
             "Expected sanitized denial, got: {}",
@@ -2495,10 +2467,7 @@ async fn legacy_safety_filter_still_works_without_hooks() {
 
     assert!(result.is_error != Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("[REDACTED:aws-key]"));
     }
 }
@@ -2522,10 +2491,7 @@ async fn paused_server_rejects_tool_calls() {
 
     assert!(result.is_error == Some(true));
     {
-        let t = result.content[0]
-            .raw
-            .as_text()
-            .expect("expected text content");
+        let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("paused"));
     }
 }
@@ -2781,10 +2747,7 @@ async fn static_deny_cannot_be_overridden_by_dynamic_grant() {
         Some(true),
         "static deny must not be overridden by dynamic session grant"
     );
-    let text = result.content[0]
-        .raw
-        .as_text()
-        .expect("expected text content");
+    let text = result.content[0].as_text().expect("expected text content");
     assert!(
         text.text.contains("Permission denied"),
         "expected denial message, got: {}",
@@ -3172,10 +3135,7 @@ async fn deny_wins_over_session_grant() {
         .await;
 
     assert_eq!(result.is_error, Some(true));
-    let text = result.content[0]
-        .raw
-        .as_text()
-        .expect("expected text content");
+    let text = result.content[0].as_text().expect("expected text content");
     assert!(
         text.text.contains("Permission denied"),
         "static deny must not be overridden by session grant, got: {}",

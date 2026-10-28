@@ -478,7 +478,7 @@ pub(crate) async fn run_flow_file(
     let start_text = start_result
         .content
         .first()
-        .and_then(|c| c.raw.as_text())
+        .and_then(|c| c.as_text())
         .map(|t| t.text.clone())
         .unwrap_or_default();
 
@@ -505,7 +505,7 @@ pub(crate) async fn run_flow_file(
         let status_text = status_result
             .content
             .first()
-            .and_then(|c| c.raw.as_text())
+            .and_then(|c| c.as_text())
             .map(|t| t.text.clone())
             .unwrap_or_default();
 
@@ -527,7 +527,7 @@ pub(crate) async fn run_flow_file(
         .call_tool("flow_result", serde_json::json!({"flow_id": flow_id}))
         .await?;
     for content in &result.content {
-        if let Some(text) = content.raw.as_text() {
+        if let Some(text) = content.as_text() {
             println!("{}", text.text);
         }
     }

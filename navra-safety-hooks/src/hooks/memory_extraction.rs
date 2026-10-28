@@ -9,7 +9,7 @@
 use super::{Hook, HookDecision, glob_match};
 use navra_auth::auth::CallContext;
 use navra_protocol::compat::CallToolResultExt;
-use navra_protocol::{CallToolResult, Content, RawContent};
+use navra_protocol::{CallToolResult, Content};
 use std::sync::Arc;
 
 /// Trait for the storage backend used by `MemoryExtractionHook`.
@@ -151,10 +151,7 @@ fn extract_text_length(result: &CallToolResult) -> usize {
         .content
         .iter()
         .filter_map(|c| match c {
-            Content {
-                raw: RawContent::Text(t),
-                ..
-            } => Some(t.text.len()),
+            Content::Text(t) => Some(t.text.len()),
             _ => None,
         })
         .sum()
@@ -164,11 +161,7 @@ fn extract_text_length(result: &CallToolResult) -> usize {
 fn extract_text_content(result: &CallToolResult, max_len: usize) -> String {
     let mut buf = String::new();
     for content in &result.content {
-        if let Content {
-            raw: RawContent::Text(t),
-            ..
-        } = content
-        {
+        if let Content::Text(t) = content {
             if buf.len() + t.text.len() > max_len {
                 let remaining = max_len.saturating_sub(buf.len());
                 if remaining > 0 {

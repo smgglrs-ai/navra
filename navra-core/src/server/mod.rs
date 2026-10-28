@@ -91,6 +91,9 @@ pub struct McpServer {
     /// Resource subscriptions: session_id → set of subscribed resource URIs.
     resource_subscriptions: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     /// Per-session log level filter (MCP logging/setLevel).
+    // SEP-2577 deprecates protocol-level logging; navra keeps answering the
+    // wire method for older clients, so the deprecated types stay.
+    #[allow(deprecated)]
     session_log_levels: Arc<RwLock<HashMap<String, navra_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,

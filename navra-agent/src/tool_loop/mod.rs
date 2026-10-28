@@ -760,7 +760,7 @@ mod tests {
     }
 
     impl rmcp::ServerHandler for MockServer {
-        fn get_info(&self) -> ServerInfo {
+        fn get_info(&self) -> rmcp::model::ServerConfig {
             InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
                 .with_server_info(Implementation::new("test", "0.1.0"))
         }
@@ -774,6 +774,7 @@ mod tests {
                 meta: None,
                 tools: self.tools.clone(),
                 next_cursor: None,
+                ..Default::default()
             })
         }
 
@@ -781,7 +782,7 @@ mod tests {
             &self,
             _request: CallToolRequestParams,
             _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-        ) -> Result<CallToolResult, rmcp::ErrorData> {
+        ) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
             let resp = {
                 let mut responses = self.call_responses.lock().unwrap();
                 if responses.is_empty() {
@@ -790,7 +791,7 @@ mod tests {
                     responses.remove(0)
                 }
             };
-            Ok(resp)
+            Ok(rmcp::model::CallToolResponse::Complete(resp))
         }
     }
 
