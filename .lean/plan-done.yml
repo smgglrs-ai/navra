@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 172 completed items
+# 173 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1145,4 +1145,10 @@ IFC benchmark, ASSERT, and ADR-Bench docs.
     priority: high
     effort: 3-5d
     feeds: ['NAVRA-179', 'NAVRA-180']
+
+  - id: "NAVRA-186"
+    title: "Security-wiring follow-ups from the cross-project review"
+    status: done
+    priority: low
+    effort: 1-2d
 

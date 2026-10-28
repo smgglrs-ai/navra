@@ -127,6 +127,23 @@ deny if {
 
 # ── Allow rules (operational permits) ───────────────────────────────
 
+# Upstream tool calls (dispatched as "upstream_tool_call" under
+# cedar_action_version = 2, with input.tool_name carrying the concrete
+# tool). Permitted under trust-on-first-use, navra's upstream trust
+# model; the ASI01/ASI10 deny rules above still apply.
+allow if {
+    input.action == "upstream_tool_call"
+    input.trust_state == "normal"
+}
+
+# Accepting upstream discovery results for registration. Permitted
+# under trust-on-first-use; the ASI04 deny rule above still applies
+# when an operator policy withdraws that trust.
+allow if {
+    input.action == "upstream_discover"
+    input.trust_on_first_use == "true"
+}
+
 # Write/push permits (require approval + normal trust)
 allow if {
     input.action == "file_write"

@@ -29,7 +29,9 @@ use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, Re
 pub struct McpServer {
     pub(crate) name: String,
     pub(crate) version: String,
-    tools: HashMap<String, RegisteredTool>,
+    /// Registered tools. Interior-mutable: upstream modules that
+    /// advertise `list_changed` swap their tool sets at runtime.
+    tools: RwLock<HashMap<String, RegisteredTool>>,
     prompts: HashMap<String, RegisteredPrompt>,
     resources: HashMap<String, RegisteredResource>,
     resource_templates: Vec<RegisteredResourceTemplate>,
@@ -42,9 +44,16 @@ pub struct McpServer {
     /// Allowed operations per permission set (from config).
     agent_operations: HashMap<String, HashSet<String>>,
     /// Operation classification per tool (from upstream auto-classify + overrides).
-    tool_operations: HashMap<String, navra_mcp::ToolOperation>,
+    /// Interior-mutable for upstream `list_changed` refreshes.
+    tool_operations: RwLock<HashMap<String, navra_mcp::ToolOperation>>,
     /// Semantic classification per tool/prompt/resource (domain:operation).
-    tool_classifications: HashMap<String, navra_auth::permissions::ResourceClass>,
+    /// Interior-mutable for upstream `list_changed` refreshes.
+    tool_classifications: RwLock<HashMap<String, navra_auth::permissions::ResourceClass>>,
+    /// Tool names registered per module (for upstream registry swaps).
+    upstream_tool_index: RwLock<HashMap<String, Vec<String>>>,
+    /// Refresh watchers for upstream modules that advertise list_changed.
+    /// Drained by the embedding server after build() to spawn the loops.
+    upstream_watchers: RwLock<Vec<crate::UpstreamWatcher>>,
     /// Domain-based permission rules per permission set.
     domain_rules: HashMap<String, navra_auth::permissions::DomainRules>,
     /// Hook pipeline for pre/post tool-call interception.
@@ -85,6 +94,20 @@ pub struct McpServer {
     session_log_levels: Arc<RwLock<HashMap<String, navra_protocol::LoggingLevel>>>,
     /// Tool disclosure rules per permission set (progressive tool disclosure).
     tool_disclosure: HashMap<String, navra_auth::permissions::ToolDisclosure>,
+    /// Hide tools with a static `Deny` in tool_rules from tools/list.
+    /// Default: true — a denied tool's description is pure injection
+    /// surface for a tool the agent cannot call.
+    hide_denied_tools: bool,
+    /// Trusted declassification authority (the gateway's CapSigner).
+    /// When absent, declassification recommendations are honored only
+    /// as label elevations — never as step-downs (fail-safe).
+    declassification_authority: Option<Arc<navra_auth::ifc::DeclassificationAuthority>>,
+    /// Ledger collecting declassification recommendations from safety
+    /// filtering (shared with the SafetyHook when hooks are wired).
+    declassification_ledger: Option<Arc<crate::safety::DeclassificationLedger>>,
+    /// Recorded declassification witnesses (bounded, newest last).
+    declassification_witnesses:
+        std::sync::Mutex<Vec<(String, navra_auth::ifc::DeclassificationWitness)>>,
     /// Dynamic tool filters applied during `tools/list` (runtime context-aware).
     dynamic_filters: Vec<Box<dyn ToolFilter>>,
     /// Prometheus metrics counters.
@@ -107,8 +130,40 @@ pub struct McpServer {
     tool_routing: routing::ToolRoutingConfig,
     /// Module names that came from upstream MCP servers (for per-agent filtering).
     pub(crate) upstream_modules: HashSet<String>,
+    /// Cedar action dispatch version (see [`CedarActionVersion`]).
+    #[cfg(feature = "cedar")]
+    cedar_action_version: CedarActionVersion,
     /// Per-agent concurrency semaphores (created on first use).
     concurrency_semaphores: dashmap::DashMap<String, Arc<tokio::sync::Semaphore>>,
+}
+
+/// How the Cedar dispatch site names actions for tool calls.
+///
+/// Cedar matches action ids exactly (no prefix or wildcard matching),
+/// which constrains how upstream tool calls can be namespaced:
+///
+/// - **v1** dispatches the bare tool name as the action. Compatible
+///   with policies written against tool names; the modeled
+///   `Action::"upstream_tool_call"` rules never fire.
+/// - **v2** dispatches `Action::"upstream_tool_call"` for tools owned
+///   by upstream modules (with `context.tool_name` carrying the
+///   concrete tool), so the bundled ASI01/ASI10 rules — and per-tool
+///   refinements via `context.tool_name` — apply to upstream calls as
+///   a class. Gateway-local tools keep bare-name actions in both
+///   versions.
+///
+/// A literal `upstream_tool_call:<tool>` action id is deliberately NOT
+/// used: no generic Cedar policy could match it, and Cedar's
+/// deny-by-default would then block every upstream tool call under
+/// the bundled baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CedarActionVersion {
+    /// Bare tool-name actions (default; compatibility).
+    #[default]
+    V1BareToolNames,
+    /// Upstream tool calls dispatch the modeled
+    /// `Action::"upstream_tool_call"` with `context.tool_name`.
+    V2UpstreamNamespaced,
 }
 
 /// A pending permission request awaiting grant or deny.

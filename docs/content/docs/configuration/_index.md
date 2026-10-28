@@ -40,6 +40,7 @@ config_watch_debounce_ms = 50
 | `session_ttl_secs` | u64 | `3600` | Session idle TTL in seconds (stale sessions expired on new connection) |
 | `config_watch` | bool | `false` | Watch config file for changes and hot-reload |
 | `config_watch_debounce_ms` | u64 | `50` | Debounce interval for config file watch events |
+| `cedar_action_version` | u32 | `1` | Cedar action dispatch: `1` = bare tool names, `2` = upstream tool calls dispatch `Action::"upstream_tool_call"` with `context.tool_name` (see security docs for the migration note) |
 
 ### PII models
 
@@ -142,6 +143,8 @@ and `default_tool_policy`, not a flat `tools` list. Path access uses
 | `upstream` | string[] | `[]` | Visible upstream MCP servers (by name). Empty = all visible |
 | `max_concurrent` | u32 | -- | Maximum concurrent tool calls per agent session |
 | `max_context` | u32 | -- | Context window cap passed to the model |
+| `cedar_policies` | string[] | `[]` | Cedar policy files combined into one engine (requires the `cedar` feature; fail closed on errors) |
+| `redaction_threshold` | f32 | `0.0` | Minimum finding confidence for redaction. Below-threshold findings stay in the text — the result is partially redacted and never declassified |
 | `chain_policy` | object | -- | Actor-chain delegation policy (see below) |
 
 ### Safety profiles
@@ -269,6 +272,22 @@ using any DMN 1.3+ editor (Camunda Modeler, Trisotech, etc.).
 
 See the [DMN guardrails guide]({{< relref "/docs/guides/dmn-guardrails" >}})
 for details on authoring decision tables.
+
+### Cedar policies
+
+Cedar policy files as a second authorization gate (can only further
+restrict — never grant beyond TOML rules). Requires building navra
+with the `cedar` feature; files from all permission sets are combined
+into one engine, and policies can branch on `context.permission_set`.
+
+```toml
+[permissions.default]
+cedar_policies = ["policies/owasp-asi-baseline.cedar"]
+```
+
+An unreadable or unparsable policy file aborts startup (fail closed).
+See the [security docs]({{< relref "/docs/security" >}}) for the action
+dispatch versions and the bundled OWASP ASI baseline.
 
 ### Chain policy
 
@@ -524,12 +543,17 @@ request_timeout_secs = 60
 | `cwd` | string | -- | Working directory for stdio transport |
 | `url` | string | -- | URL for http/sse transport |
 | `enabled` | bool | `true` | Enable or disable this upstream |
-| `request_timeout_secs` | u64 | `45` | Request timeout |
+| `request_timeout_secs` | u64 | `45` | Per-request timeout for MCP upstreams: bounds discovery listings (a `tools/list` timeout rejects the registration) and forwarded tool calls. Also used by the OpenAPI bridge |
 | `retry_base_delay_ms` | u64 | `1000` | Retry base delay |
 | `retry_max_delay_ms` | u64 | `30000` | Maximum retry delay |
 | `retry_budget_secs` | u64 | `600` | Total retry budget |
 | `tool_filter` | string[] | `[]` | Glob patterns to filter exposed tools |
 | `tool_overrides` | map | `{}` | Per-tool operation overrides: `read`, `write`, `deny` |
+| `scan_tools` | bool | `true` | Scan tool definitions for supply-chain threats (poisoning, rug pulls, schema abuse). Malicious tools are dropped, suspicious tools register with a warning. Disabling logs a startup warning |
+| `tool_hash_path` | string | `~/.local/share/navra/tool_hashes.json` | Rug-pull hash store location for this upstream |
+| `bounds` | table | defaults below | Discovery content bounds (see below) |
+| `refresh_debounce_ms` | u64 | `1000` | Minimum interval between `tools/list_changed` refreshes for this upstream |
+| `manifest` | table | -- | Signed tool manifest + TOFU keystore config (see below) |
 | `max_response_bytes` | usize | `32768` | Max response body size for OpenAPI upstreams |
 | `openapi` | string | -- | OpenAPI 3.x spec URL or file path |
 | `env` | map | `{}` | Environment variables (`${credential:label}` for keyring) |
@@ -541,6 +565,56 @@ request_timeout_secs = 60
 [upstream.tool_class]
 zip_files = { domain = "filesystem", operation = "write" }
 ```
+
+### Upstream discovery bounds
+
+Upstream `tools/list` responses are untrusted input. navra bounds them
+before scanning or registration; exceeding a bound rejects the
+upstream with a clear error (fail closed):
+
+```toml
+[upstream.bounds]
+max_tools = 1000                     # max tools per upstream
+max_input_schema_depth = 32          # max JSON nesting in input schemas
+max_description_length = 4096        # max tool description bytes
+max_total_definition_bytes = 4194304 # max total definition bytes (4 MiB)
+truncate_oversized = false           # truncate instead of reject where sound
+```
+
+`truncate_oversized = true` truncates oversized descriptions and drops
+tools beyond `max_tools` with warnings. Schema depth can never be
+truncated and always rejects. Auto-discovered upstreams (AID/mDNS)
+always use the default bounds.
+
+### Upstream signed manifests (TOFU)
+
+Pin an upstream's tool set with an Ed25519-signed manifest. When
+configured, the upstream only registers if the signature verifies, the
+signing key matches the TOFU pin, and the served tools match the signed
+set exactly. A key change after pinning rejects the upstream (remove
+the pin from the keystore file to re-pin deliberately).
+
+```toml
+[[upstream]]
+name = "github"
+transport = "stdio"
+command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+
+[upstream.manifest]
+path = "manifests/github.signed.json"   # or inline = '{ ... }'
+keystore = "~/.local/share/navra/manifest_keys.json"  # optional
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `path` | string | -- | Path to the signed manifest JSON file |
+| `inline` | string | -- | Inline signed manifest JSON (alternative to `path`) |
+| `keystore` | string | `~/.local/share/navra/manifest_keys.json` | TOFU key pin store location |
+
+The manifest is a JSON document of the form
+`{"manifest": {"tools": [...], "server_name": "...", "timestamp": ...},
+"signature": "<hex>", "signer_did": "did:key:..."}`, produced by
+signing the upstream's `tools/list` output with its key.
 
 ### OpenAPI authentication
 

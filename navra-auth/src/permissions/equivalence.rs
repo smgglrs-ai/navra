@@ -216,6 +216,81 @@ pub fn generate_test_vectors() -> Vec<TestVector> {
         });
     }
 
+    // Vectors for the v2 namespaced dispatch: upstream tool calls
+    // arrive as action "upstream_tool_call" with tool_name in the
+    // context, and upstream registration as "upstream_discover" with
+    // manifest/trust context.
+    let dispatch_contexts: Vec<(&str, Vec<(&str, &str)>)> = vec![
+        (
+            "upstream_tool_call",
+            vec![
+                ("tool_name", "echo"),
+                ("trust_state", "normal"),
+                ("manifest_verified", "true"),
+            ],
+        ),
+        (
+            "upstream_tool_call",
+            vec![
+                ("tool_name", "echo"),
+                ("trust_state", "normal"),
+                ("manifest_verified", "false"),
+                ("trust_score", "low"),
+            ],
+        ),
+        (
+            "upstream_tool_call",
+            vec![
+                ("tool_name", "echo"),
+                ("trust_state", "normal"),
+                ("scan_category_blocked", "true"),
+            ],
+        ),
+        (
+            "upstream_discover",
+            vec![("manifest_signed", "false"), ("trust_on_first_use", "true")],
+        ),
+        (
+            "upstream_discover",
+            vec![("manifest_signed", "true"), ("trust_on_first_use", "false")],
+        ),
+        (
+            "upstream_discover",
+            vec![
+                ("manifest_signed", "false"),
+                ("trust_on_first_use", "false"),
+            ],
+        ),
+    ];
+
+    for (action, ctx_pairs) in &dispatch_contexts {
+        let mut ctx = HashMap::new();
+        for (k, v) in ctx_pairs {
+            ctx.insert(k.to_string(), v.to_string());
+        }
+        vectors.push(TestVector {
+            agent: "agent".into(),
+            action: action.to_string(),
+            resource: resource.to_string(),
+            context: ctx,
+        });
+    }
+
+    // Missing-attribute vectors: one per action with an EMPTY context.
+    // The baselines treat a missing attribute as "does not match"
+    // (Cedar via has-guards, Rego natively), so both engines must deny
+    // every one of these — this vector family turns any future policy
+    // that reintroduces the missing-attribute divergence into a test
+    // failure instead of a silent split-brain.
+    for action in &actions {
+        vectors.push(TestVector {
+            agent: "agent".into(),
+            action: action.to_string(),
+            resource: resource.to_string(),
+            context: HashMap::new(),
+        });
+    }
+
     // Vectors for risk_tier interactions with write actions
     for action in ["file_write", "file_delete"] {
         for risk_tier in &risk_tiers {
@@ -447,5 +522,23 @@ deny if { not allow }
         assert!(actions.contains("git_push"));
         assert!(actions.contains("exec_command"));
         assert!(actions.contains("upstream_tool_call"));
+        assert!(actions.contains("upstream_discover"));
+
+        // v2 dispatch vectors carry the tool name in the context.
+        assert!(
+            vectors
+                .iter()
+                .any(|v| v.action == "upstream_tool_call" && v.context.get("tool_name").is_some()),
+            "v2 namespaced dispatch vectors must set context.tool_name"
+        );
+
+        // Missing-attribute vectors: every action is tested with an
+        // empty context, enforcing the has-guard convention.
+        assert!(
+            actions.iter().all(|a| vectors
+                .iter()
+                .any(|v| v.action == *a && v.context.is_empty())),
+            "every action must have an empty-context (missing-attribute) vector"
+        );
     }
 }

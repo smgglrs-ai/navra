@@ -139,6 +139,20 @@ pub struct PermissionSet {
     /// Name of the DMN decision to evaluate (must match a `<decision name="...">` in the DMN file).
     #[serde(default)]
     pub dmn_decision: Option<String>,
+    /// Paths to Cedar policy files for this permission set (e.g. the
+    /// bundled `policies/owasp-asi-baseline.cedar`). Files from all
+    /// permission sets are combined into one engine; policies can
+    /// branch on `context.permission_set`. Requires the `cedar`
+    /// feature. Unreadable or unparsable files abort startup (fail
+    /// closed).
+    #[serde(default)]
+    pub cedar_policies: Vec<String>,
+    /// Minimum finding confidence for redaction in this set's safety
+    /// pipeline. Findings below the threshold are left in the text and
+    /// the result is marked partially redacted — no declassification
+    /// (raw PII may remain). Default 0.0: every finding is redacted.
+    #[serde(default)]
+    pub redaction_threshold: Option<f32>,
     /// Actor-chain delegation policy. When set, the gateway enforces
     /// chain depth limits and optionally requires a WIMSE-identified root.
     #[serde(default)]
@@ -267,6 +281,8 @@ impl Default for PermissionSet {
             max_context: None,
             dmn_policies: None,
             dmn_decision: None,
+            cedar_policies: Vec::new(),
+            redaction_threshold: None,
             chain_policy: None,
         }
     }

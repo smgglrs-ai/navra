@@ -52,6 +52,18 @@ pub(crate) fn build_safety_pipeline(
 ) -> navra_core::safety::FilterPipeline {
     let mut pipeline = navra_core::safety::build_pipeline(&pset.safety);
 
+    // Confidence threshold for redaction: findings below it stay in
+    // the text and the result is marked partially redacted (no
+    // declassification). Default 0.0 = full redaction.
+    if let Some(threshold) = pset.redaction_threshold {
+        pipeline.set_redaction_threshold(threshold);
+        tracing::info!(
+            permission_set = %name,
+            threshold,
+            "Redaction confidence threshold set — below-threshold findings are not redacted (partial redaction, no declassification)"
+        );
+    }
+
     // Add canary tokens if configured
     if !canary_tokens.is_empty() {
         match pset.safety.as_str() {
