@@ -168,9 +168,9 @@ async fn handle_exec_run(
 
 #[cfg(test)]
 mod tests {
-    use navra_protocol::compat::CallToolResponseExt;
     use super::*;
     use navra_core::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResponseExt;
 
     fn test_ctx(did: Option<&str>) -> CallContext {
         CallContext::new(
