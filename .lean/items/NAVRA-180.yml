@@ -24,6 +24,32 @@ blocked_reason: |
   Requires an accepted upstream OpenShell RFC for the Policy
   Information Point interface.
 
+  PROTOTYPE EXISTS (2026-10-30): branch feat/policy-information-point
+  in the local OpenShell fork (~/Code/github.com/NVIDIA/OpenShell)
+  carries a supervisor-side implementation (~1050 lines, RFC 0019 +
+  proto/pip.proto + crates/openshell-supervisor-network/src/pip.rs +
+  OPA input.pip injection at all five evaluation points + 8 passing
+  tests) and the RFC carried over as rfc/0019 (correctly renumbered,
+  authors @fdupont, issue link TODO). Reviewed 2026-10-30: faithful
+  to the design (supervisor-initiated streams, SO_PEERCRED + TOFU
+  SHA256 verification gating the RPC, disconnect/empty = null,
+  deny-only in the baked policy with a dedicated deny reason, socket
+  dir 0750, one clippy lint fixed in 20653d285). Gaps, in priority
+  order: (1) deny-only is enforced only in the baked policy — the
+  RFC's validator requirement (reject input.pip references in
+  authored allow rules) is unimplemented, acknowledged in the
+  branch README as a prototype follow-up; (2) non-Linux builds skip
+  identity verification entirely (cfg gate returns Ok) — should
+  refuse to connect instead of failing open; (3) merge semantics
+  are lexicographic-by-pip-name, not the RFC's latest-writer-wins
+  (deterministic, but the doc and the test name say otherwise).
+  The navra-side publisher is still unwritten; the branch's mock
+  publisher (pip.rs tests) is the template.
+
+  Upstream sequencing remains: feature issue first (maintainers
+  assign the RFC number), then the RFC, then this implementation as
+  the PR. The branch is the ready payload.
+
   Verified 2026-10-30: the draft RFC
   (docs/openshell/rfc-0002-policy-information-point.md) was never
   submitted — no PIP discussion, issue, or RFC exists upstream
