@@ -663,17 +663,32 @@ pub fn upstream_tool_handlers(
 
 /// rmcp client handler that forwards upstream `tools/list_changed`
 /// notifications to an [`UpstreamWatcher`].
+/// Events an upstream can push to its [`UpstreamWatcher`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpstreamEvent {
+    /// `tools/list_changed` — the tool registry must be re-verified.
+    ToolsListChanged,
+    /// `resources/updated` — forward to subscribed sessions immediately.
+    ResourceUpdated(String),
+}
+
+/// Maximum accepted length for a resource URI arriving in an upstream
+/// `resources/updated` notification. The URI is upstream-controlled
+/// text that flows into client-facing notifications; longer values are
+/// dropped (the subscription map only holds registered URIs anyway).
+pub const MAX_UPSTREAM_NOTIFICATION_URI: usize = 4096;
+
 ///
 /// Construct with [`UpstreamNotificationHandler::new`], which returns
 /// the handler (to pass to `serve`) and the receiving end of the
 /// notification channel.
 pub struct UpstreamNotificationHandler {
-    tx: tokio::sync::mpsc::UnboundedSender<()>,
+    tx: tokio::sync::mpsc::UnboundedSender<UpstreamEvent>,
 }
 
 impl UpstreamNotificationHandler {
     /// Create the handler and the notification receiver.
-    pub fn new() -> (Self, tokio::sync::mpsc::UnboundedReceiver<()>) {
+    pub fn new() -> (Self, tokio::sync::mpsc::UnboundedReceiver<UpstreamEvent>) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         (Self { tx }, rx)
     }
@@ -684,8 +699,25 @@ impl rmcp::handler::client::ClientHandler for UpstreamNotificationHandler {
         &self,
         _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
     ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
-        let _ = self.tx.send(());
+        let _ = self.tx.send(UpstreamEvent::ToolsListChanged);
         tracing::debug!("Upstream sent tools/list_changed");
+        std::future::ready(())
+    }
+
+    fn on_resource_updated(
+        &self,
+        params: navra_protocol::ResourceUpdatedParams,
+        _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
+        if params.uri.len() > MAX_UPSTREAM_NOTIFICATION_URI {
+            tracing::warn!(
+                uri_len = params.uri.len(),
+                "Upstream resources/updated URI exceeds the notification bound — dropped"
+            );
+        } else {
+            let _ = self.tx.send(UpstreamEvent::ResourceUpdated(params.uri));
+            tracing::debug!("Upstream sent resources/updated");
+        }
         std::future::ready(())
     }
 }
@@ -703,7 +735,7 @@ impl rmcp::handler::client::ClientHandler for UpstreamNotificationHandler {
 pub struct UpstreamWatcher {
     name: String,
     peer: rmcp::Peer<rmcp::RoleClient>,
-    events: tokio::sync::mpsc::UnboundedReceiver<()>,
+    events: tokio::sync::mpsc::UnboundedReceiver<UpstreamEvent>,
     scanner: Option<navra_auth::tool_scanner::ToolScanner>,
     manifest: Option<(
         navra_auth::manifest::SignedManifest,
@@ -723,7 +755,7 @@ impl UpstreamWatcher {
     pub fn new(
         name: impl Into<String>,
         peer: rmcp::Peer<rmcp::RoleClient>,
-        events: tokio::sync::mpsc::UnboundedReceiver<()>,
+        events: tokio::sync::mpsc::UnboundedReceiver<UpstreamEvent>,
         scanner: Option<navra_auth::tool_scanner::ToolScanner>,
         manifest: Option<(
             navra_auth::manifest::SignedManifest,
@@ -750,15 +782,28 @@ impl UpstreamWatcher {
     /// Run the refresh loop until the notification channel closes.
     pub async fn run(mut self, server: std::sync::Arc<crate::server::McpServer>) {
         loop {
-            if self.events.recv().await.is_none() {
+            let Some(event) = self.events.recv().await else {
                 // Upstream connection dropped; nothing left to watch.
                 return;
+            };
+            if let UpstreamEvent::ResourceUpdated(uri) = event {
+                // Forward immediately: no debounce (a session subscribed
+                // to this URI wants the update now) and no registry
+                // refresh (the URI is already registered).
+                server.notify_resource_updated(&uri);
+                continue;
             }
             // Debounce: wait out the minimum interval, then swallow
-            // any notifications that arrived inside the window so a
-            // chatty upstream triggers one refresh, not a storm.
+            // any list_changed notifications that arrived inside the
+            // window so a chatty upstream triggers one refresh, not a
+            // storm. Resource updates are never swallowed — they are
+            // forwarded, not debounced.
             tokio::time::sleep(self.min_refresh_interval).await;
-            while self.events.try_recv().is_ok() {}
+            while let Ok(event) = self.events.try_recv() {
+                if let UpstreamEvent::ResourceUpdated(uri) = event {
+                    server.notify_resource_updated(&uri);
+                }
+            }
             if let Err(e) = self.refresh_once(&server).await {
                 tracing::error!(
                     upstream = %self.name,
