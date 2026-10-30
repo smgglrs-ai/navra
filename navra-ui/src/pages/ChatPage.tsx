@@ -28,6 +28,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   toolCalls?: { name: string; arguments: string; result?: string }[];
+  ifc_label?: string;
 }
 
 export function ChatPage() {
@@ -40,6 +41,9 @@ export function ChatPage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [persona, setPersona] = useState('');
+  const [sessionTitles, setSessionTitles] = useState<Record<string, string>>({});
+  const [promptTokens, setPromptTokens] = useState(0);
+  const [completionTokens, setCompletionTokens] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -64,6 +68,11 @@ export function ChatPage() {
 
   useEffect(scrollToBottom, [messages, scrollToBottom]);
 
+  useEffect(() => {
+    setPromptTokens(0);
+    setCompletionTokens(0);
+  }, [sessionId]);
+
   const loadSession = async (id: string) => {
     setSessionId(id);
     try {
@@ -79,6 +88,11 @@ export function ChatPage() {
       }
       if (loaded.length === 0) {
         loaded.push({ role: 'system', content: 'Session loaded. No messages yet.' });
+      } else {
+        const firstUser = loaded.find(m => m.role === 'user');
+        if (firstUser) {
+          setSessionTitles(prev => ({ ...prev, [id]: firstUser.content.slice(0, 40) }));
+        }
       }
       setMessages(loaded);
     } catch {
@@ -142,6 +156,7 @@ export function ChatPage() {
       const decoder = new TextDecoder();
       let fullText = '';
       let buffer = '';
+      let currentIfc: string | undefined;
       const toolCalls: Message['toolCalls'] = [];
 
       while (true) {
@@ -158,9 +173,10 @@ export function ChatPage() {
             const event: ChatEvent = JSON.parse(line);
             if (event.type === 'text' && event.content) {
               fullText += event.content;
+              if (event.ifc_label) currentIfc = event.ifc_label;
               setMessages(prev => {
                 const updated = [...prev];
-                updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls] };
+                updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls], ifc_label: currentIfc };
                 return updated;
               });
             } else if (event.type === 'tool_call') {
@@ -171,12 +187,19 @@ export function ChatPage() {
               });
               setMessages(prev => {
                 const updated = [...prev];
-                updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls] };
+                updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls], ifc_label: currentIfc };
                 return updated;
               });
             } else if (event.type === 'done') {
-              const sid = (event as Record<string, unknown>).session_id as string | undefined;
-              if (sid && !sessionId) setSessionId(sid);
+              const sid = event.session_id;
+              if (sid && !sessionId) {
+                setSessionId(sid);
+                setSessionTitles(prev => ({ ...prev, [sid]: text.slice(0, 40) }));
+              }
+              if (event.usage) {
+                setPromptTokens(prev => prev + event.usage!.input_tokens);
+                setCompletionTokens(prev => prev + event.usage!.output_tokens);
+              }
             }
           } catch {
             fullText += line;
@@ -186,7 +209,7 @@ export function ChatPage() {
 
       setMessages(prev => {
         const updated = [...prev];
-        updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls] };
+        updated[assistantIdx] = { role: 'assistant', content: fullText, toolCalls: [...toolCalls], ifc_label: currentIfc };
         return updated;
       });
       queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
@@ -226,8 +249,8 @@ export function ChatPage() {
               className={`chat-session-item ${sessionId === s.id ? 'active' : ''}`}
               onClick={() => loadSession(s.id)}
             >
-              <div style={{ fontSize: '0.8rem', fontWeight: sessionId === s.id ? 600 : 400 }}>
-                {s.id.slice(0, 8)}...
+              <div style={{ fontSize: '0.8rem', fontWeight: sessionId === s.id ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sessionTitles[s.id] ?? `${s.id.slice(0, 8)}...`}
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{s.turn_count} turns</span>
@@ -263,7 +286,14 @@ export function ChatPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
               {msg.role === 'assistant' ? (
-                <Markdown>{msg.content}</Markdown>
+                <>
+                  <Markdown>{msg.content}</Markdown>
+                  {msg.ifc_label && (
+                    <span style={{ fontSize: '0.7rem', fontFamily: 'monospace', color: 'var(--text-dim)', marginTop: '4px', display: 'inline-block', padding: '1px 6px', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                      {msg.ifc_label}
+                    </span>
+                  )}
+                </>
               ) : (
                 msg.content
               )}
@@ -308,6 +338,11 @@ export function ChatPage() {
             Send
           </button>
         </div>
+        {(promptTokens > 0 || completionTokens > 0) && (
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', padding: '4px 12px', textAlign: 'right' }}>
+            ↑ {promptTokens} ↓ {completionTokens}
+          </div>
+        )}
       </div>
     </div>
   );

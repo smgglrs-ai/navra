@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { fetchJson } from '../hooks/useApi';
-import { mutateApi } from '../hooks/useMutation';
 import { useAuth } from '../contexts/AuthContext';
 import { Spinner } from '../components/shared/Spinner';
 import { EmptyState } from '../components/shared/EmptyState';
@@ -11,7 +10,10 @@ import type { FlowInfo, FlowRunSummary } from '../types/api';
 export function FlowsPage() {
   const { token } = useAuth();
   const queryClient = useQueryClient();
-  const [running, setRunning] = useState<string | null>(null);
+  const [runningFlow, setRunningFlow] = useState<string | null>(null);
+  const [openFlowForm, setOpenFlowForm] = useState<string | null>(null);
+  const [flowPrompt, setFlowPrompt] = useState('Execute the flow');
+  const [cancellingFlow, setCancellingFlow] = useState<string | null>(null);
 
   const { data: flows, isLoading: loadingDefs } = useQuery({
     queryKey: ['flows'],
@@ -22,14 +24,35 @@ export function FlowsPage() {
   const { data: runs, isLoading: loadingRuns } = useQuery({
     queryKey: ['flow-runs'],
     queryFn: () => fetchJson<FlowRunSummary[]>('/api/flow-runs', token),
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return 2000;
+      const anyRunning = data.some((r: FlowRunSummary) => r.status === 'running');
+      return anyRunning ? 2000 : false;
+    },
     retry: false,
   });
 
-  const runFlow = async (name: string) => {
-    setRunning(name);
+  const openRunForm = (name: string) => {
+    if (openFlowForm === name) {
+      setOpenFlowForm(null);
+    } else {
+      setOpenFlowForm(name);
+      setFlowPrompt('Execute the flow');
+    }
+  };
+
+  const runFlow = async (name: string, prompt: string) => {
+    setRunningFlow(name);
+    setOpenFlowForm(null);
     try {
-      const resp = await mutateApi(`/api/flows/${name}/run`, 'POST', { prompt: 'Execute the flow' }, token);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const resp = await fetch(`/api/flows/${name}/run`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ prompt }),
+      });
       if (resp.ok) {
         queryClient.invalidateQueries({ queryKey: ['flow-runs'] });
       } else {
@@ -37,7 +60,19 @@ export function FlowsPage() {
         alert(`Flow failed: ${err}`);
       }
     } finally {
-      setRunning(null);
+      setRunningFlow(null);
+    }
+  };
+
+  const cancelFlow = async (flowId: string) => {
+    setCancellingFlow(flowId);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(`/api/flow-runs/${flowId}`, { method: 'DELETE', headers });
+      queryClient.invalidateQueries({ queryKey: ['flow-runs'] });
+    } finally {
+      setCancellingFlow(null);
     }
   };
 
@@ -61,17 +96,31 @@ export function FlowsPage() {
           <h2 style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>Running</h2>
           <div className="flow-list" style={{ marginBottom: '24px' }}>
             {runs.map(run => (
-              <Link key={run.flow_id} to={`/flows/${run.flow_id}`} style={{ textDecoration: 'none' }}>
-                <div className="model-card">
-                  <div>
-                    <div className="model-name">{run.name}</div>
-                    <div className="model-meta">{run.node_count} tasks &middot; {run.elapsed_secs}s</div>
+              <div key={run.flow_id}>
+                <Link to={`/flows/${run.flow_id}`} style={{ textDecoration: 'none' }}>
+                  <div className="model-card">
+                    <div>
+                      <div className="model-name">{run.name}</div>
+                      <div className="model-meta">{run.node_count} tasks &middot; {run.elapsed_secs}s</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`badge ${run.status === 'completed' ? 'success' : run.status === 'running' ? 'info' : 'danger'}`}>
+                        {run.status}
+                      </span>
+                      {run.status === 'running' && (
+                        <button
+                          className="btn danger"
+                          disabled={cancellingFlow === run.flow_id}
+                          onClick={e => { e.preventDefault(); cancelFlow(run.flow_id); }}
+                          style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+                        >
+                          {cancellingFlow === run.flow_id ? '...' : 'Cancel'}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className={`badge ${run.status === 'completed' ? 'success' : run.status === 'running' ? 'info' : 'danger'}`}>
-                    {run.status}
-                  </span>
-                </div>
-              </Link>
+                </Link>
+              </div>
             ))}
           </div>
         </>
@@ -82,18 +131,35 @@ export function FlowsPage() {
           <h2 style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '8px' }}>Definitions</h2>
           <div className="flow-list">
             {flows.map(flow => (
-              <div key={flow.name} className="model-card">
-                <div>
-                  <div className="model-name">{flow.name}</div>
-                  <div className="model-meta">{flow.tasks} tasks</div>
+              <div key={flow.name}>
+                <div className="model-card">
+                  <div>
+                    <div className="model-name">{flow.name}</div>
+                    <div className="model-meta">{flow.tasks} tasks</div>
+                  </div>
+                  <button
+                    className="btn primary"
+                    onClick={() => openRunForm(flow.name)}
+                    disabled={runningFlow === flow.name}
+                  >
+                    {runningFlow === flow.name ? 'Starting...' : 'Run'}
+                  </button>
                 </div>
-                <button
-                  className="btn primary"
-                  onClick={() => runFlow(flow.name)}
-                  disabled={running === flow.name}
-                >
-                  {running === flow.name ? 'Starting...' : 'Run'}
-                </button>
+                {openFlowForm === flow.name && (
+                  <div style={{ padding: '8px 12px 12px', borderTop: '1px solid var(--border)', background: 'var(--surface-alt)' }}>
+                    <textarea
+                      value={flowPrompt}
+                      onChange={e => setFlowPrompt(e.target.value)}
+                      rows={3}
+                      style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: '0.85rem', padding: '6px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', resize: 'vertical' }}
+                      placeholder="Enter prompt..."
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px', gap: '8px' }}>
+                      <button className="btn" onClick={() => setOpenFlowForm(null)}>Cancel</button>
+                      <button className="btn primary" onClick={() => runFlow(flow.name, flowPrompt)}>Submit</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

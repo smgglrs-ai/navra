@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchJson } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,24 +11,22 @@ export function DashboardPage() {
   const { token } = useAuth();
   const { subscribe } = useWs();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: status } = useQuery({
     queryKey: ['status'],
     queryFn: () => fetchJson<ServerStatus>('/api/status', token),
-    refetchInterval: 30_000,
   });
 
   const { data: processes } = useQuery({
     queryKey: ['process'],
     queryFn: () => fetchJson<ProcessSnapshot[]>('/api/process', token),
-    refetchInterval: 30_000,
     retry: false,
   });
 
   const { data: audit } = useQuery({
     queryKey: ['audit-recent'],
     queryFn: () => fetchJson<{ entries: BlackboxEntry[]; total: number }>('/api/audit?limit=15', token),
-    refetchInterval: 30_000,
     retry: false,
   });
 
@@ -94,7 +93,13 @@ export function DashboardPage() {
           </thead>
           <tbody>
             {audit.entries.map(entry => (
-              <tr key={entry.seq}>
+              <tr
+                key={entry.seq}
+                onClick={() => navigate(`/audit?agent=${encodeURIComponent(entry.agent_name)}&outcome=${encodeURIComponent(entry.outcome)}`)}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--surface-2)')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
+              >
                 <td className="mono">{formatTimestamp(entry.timestamp_ms)}</td>
                 <td>{entry.agent_name}</td>
                 <td className="mono">{entry.tool_name}</td>
