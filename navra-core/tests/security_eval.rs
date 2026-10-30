@@ -13,6 +13,7 @@ use navra_core::auth::chain::{CapabilityAuthenticator, ChainAuthenticator};
 use navra_core::auth::{AgentIdentity, Authenticator, TokenAuthenticator};
 use navra_core::credentials::{CredentialMapping, CredentialStore, MappedCredentialStore};
 use navra_core::identity::{CapSigner, Ed25519Signer};
+use navra_protocol::compat::CallToolResponseExt;
 use std::collections::HashMap;
 
 // =====================================================================
@@ -642,7 +643,8 @@ mod audit {
         let ctx = navra_core::auth::CallContext::new(agent, "audit-test-session");
         let result = server
             .handle_call_tool(CallToolParams::new("allowed_tool"), ctx)
-            .await;
+            .await
+            .expect_complete();
 
         // The call must be denied
         assert!(result.is_error == Some(true));
@@ -701,7 +703,8 @@ mod audit {
         let ctx = navra_core::auth::CallContext::new(agent, "audit-session-2");
         let result = server
             .handle_call_tool(CallToolParams::new("secret_tool"), ctx)
-            .await;
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
 
         let bb_ref = server.blackbox().unwrap();

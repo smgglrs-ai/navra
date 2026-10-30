@@ -424,6 +424,7 @@ mod tests {
     use super::*;
     use crate::test_support::test_perm_engine;
     use navra_mcp::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResponseExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("test", "dev"), "test")
@@ -505,7 +506,9 @@ mod tests {
         });
 
         let (_, handler) = handle_status_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(!result.is_err());
         let text = navra_protocol::compat::content_as_text(&result.content[0])
             .expect("expected text content");
@@ -632,7 +635,8 @@ mod tests {
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
         assert!(!result.is_err());
         let text = navra_protocol::compat::content_as_text(&result.content[0])
@@ -667,7 +671,8 @@ mod tests {
             serde_json::json!({"query": "test query", "limit": 3}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
         assert!(!result.is_err());
         let text = navra_protocol::compat::content_as_text(&result.content[0])
@@ -735,7 +740,9 @@ mod tests {
         // Request limit=1, but RERANK_OVERFETCH_FACTOR=4 so it should
         // fetch 4 candidates then return 1 after reranking.
         let (_, handler) = handle_query_handler(state);
-        let result = handler(serde_json::json!({"query": "test", "limit": 1}), test_ctx()).await;
+        let result = handler(serde_json::json!({"query": "test", "limit": 1}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err());
         let text = navra_protocol::compat::content_as_text(&result.content[0])

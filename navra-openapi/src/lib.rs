@@ -220,15 +220,19 @@ impl Module for OpenApiModule {
                     let meta = meta.clone();
                     let auth = auth.clone();
                     Box::pin(async move {
-                        handler::execute_operation(
-                            &client,
-                            &base_url,
-                            &meta,
-                            &args,
-                            &auth,
-                            max_response_bytes,
+                        // OpenAPI bridge tools always produce a final
+                        // result; widen into the response union.
+                        navra_protocol::CallToolResponse::Complete(
+                            handler::execute_operation(
+                                &client,
+                                &base_url,
+                                &meta,
+                                &args,
+                                &auth,
+                                max_response_bytes,
+                            )
+                            .await,
                         )
-                        .await
                     })
                 });
 

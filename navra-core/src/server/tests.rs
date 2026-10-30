@@ -4,6 +4,7 @@ use crate::auth::CallContext;
 use crate::module::{Module, PromptHandler, ResourceHandler};
 use crate::protocol::{CallToolParams, CallToolResult, ToolDefinition};
 use navra_mcp::ToolHandler;
+use navra_protocol::compat::CallToolResponseExt;
 use navra_protocol::compat::{CallToolResultExt, empty_input_schema};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,7 +36,11 @@ impl Module for TestModule {
     fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
         vec![(
             ToolDefinition::new("test_ping", "Returns pong", empty_input_schema()),
-            Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("pong") })),
+            Arc::new(|_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+                })
+            }),
         )]
     }
 }
@@ -82,7 +87,8 @@ async fn cedar_v2_namespaces_upstream_tool_calls() {
         .build();
     let result = server_v2
         .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error == Some(true),
         "v2 must dispatch upstream tool calls as upstream_tool_call (denied here)"
@@ -97,7 +103,8 @@ async fn cedar_v2_namespaces_upstream_tool_calls() {
         .build();
     let result = server_v1
         .handle_call_tool(CallToolParams::new("test_ping"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error != Some(true),
         "v1 keeps bare tool-name actions (compatibility)"
@@ -117,7 +124,8 @@ async fn cedar_v2_namespaces_upstream_tool_calls() {
         .build();
     let result = server_v2_local
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error != Some(true),
         "v2 keeps bare actions for gateway-local tools"
@@ -193,7 +201,11 @@ fn register_multiple_modules() {
         fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
             vec![(
                 ToolDefinition::new_with_raw("another_hello", None, empty_input_schema()),
-                Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("hi") })),
+                Arc::new(|_args, _ctx| {
+                    Box::pin(async {
+                        navra_protocol::CallToolResponse::Complete(CallToolResult::text("hi"))
+                    })
+                }),
             )]
         }
     }
@@ -218,7 +230,11 @@ fn duplicate_tool_name_panics() {
         fn tools(&self) -> Vec<(ToolDefinition, ToolHandler)> {
             vec![(
                 ToolDefinition::new_with_raw("test_ping", None, empty_input_schema()),
-                Arc::new(|_args, _ctx| Box::pin(async { CallToolResult::text("dup") })),
+                Arc::new(|_args, _ctx| {
+                    Box::pin(async {
+                        navra_protocol::CallToolResponse::Complete(CallToolResult::text("dup"))
+                    })
+                }),
             )]
         }
     }
@@ -242,7 +258,8 @@ async fn call_module_tool() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
@@ -259,7 +276,9 @@ fn capabilities_reflect_tools() {
 
     let with_tool = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .build();
     assert!(with_tool.capabilities().tools.is_some());
@@ -293,7 +312,8 @@ async fn call_registered_tool() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
@@ -307,7 +327,8 @@ async fn call_unknown_tool() {
     let server = test_builder().build();
     let result = server
         .handle_call_tool(CallToolParams::new("nonexistent"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(result.is_error == Some(true));
 }
 
@@ -393,7 +414,8 @@ async fn safety_filter_redacts_secrets() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     {
@@ -429,7 +451,8 @@ async fn safety_filter_blocks_when_configured() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
 }
@@ -489,7 +512,8 @@ async fn declassification_after_full_redaction_steps_label_down() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Content was redacted before reaching the agent.
     let text: String = result
@@ -580,7 +604,8 @@ async fn pseudonymized_result_keeps_label_and_no_witness() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Pseudonymized content is still PII: the label stays elevated
     // and no declassification witness is recorded.
@@ -676,7 +701,8 @@ async fn partially_redacted_result_keeps_label_and_no_witness() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // The high-confidence span is redacted; the low-confidence one stays.
     let text: String = result
@@ -734,7 +760,8 @@ async fn redaction_without_authority_keeps_label_elevated() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     let var_id = extract_var_id(&result);
     let store = server.value_stores().get_or_create("test-session");
@@ -751,13 +778,18 @@ async fn redaction_without_authority_keeps_label_elevated() {
 async fn no_safety_profile_passes_through() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("AKIAIOSFODNN7EXAMPLE") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text(
+                    "AKIAIOSFODNN7EXAMPLE",
+                ))
+            })
         })
         .build();
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     // No safety profile configured → content passes through unmodified
     {
@@ -1176,7 +1208,9 @@ async fn tool_permissions_deny_blocks_tool() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -1192,7 +1226,8 @@ async fn tool_permissions_deny_blocks_tool() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
     {
@@ -1210,11 +1245,17 @@ async fn denied_tool_hidden_from_list_and_still_denied_on_call() {
     // calling the denied tool by name is still refused.
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool(
             ToolDefinition::new("status_check", "Check status", empty_input_schema()),
-            |_args, _ctx| Box::pin(async { CallToolResult::text("ok") }),
+            |_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+                })
+            },
         )
         .tool_permissions(
             "dev",
@@ -1246,7 +1287,8 @@ async fn denied_tool_hidden_from_list_and_still_denied_on_call() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error == Some(true),
         "hidden tool must still be denied when called by name"
@@ -1272,7 +1314,9 @@ async fn hide_denied_tools_off_restores_listing() {
     // listed (their descriptions visible) while calls stay denied.
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -1301,7 +1345,8 @@ async fn hide_denied_tools_off_restores_listing() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(result.is_error == Some(true));
 }
 
@@ -1311,7 +1356,9 @@ async fn tool_permissions_allow_passes_through() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("reached") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("reached"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -1327,7 +1374,8 @@ async fn tool_permissions_allow_passes_through() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     match &result.content[0] {
@@ -1342,7 +1390,9 @@ async fn tool_permissions_approve_returns_approval_required() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -1358,7 +1408,8 @@ async fn tool_permissions_approve_returns_approval_required() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
     {
@@ -1372,13 +1423,16 @@ async fn no_tool_permissions_allows_all() {
     // No tool_permissions registered at all — everything should pass
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .build();
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
 }
@@ -1420,13 +1474,16 @@ fn cap_ctx(tools: Vec<&str>) -> CallContext {
 async fn cap_token_allows_matching_tool() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .build();
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), cap_ctx(vec!["echo", "file_*"]))
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
 }
@@ -1435,7 +1492,9 @@ async fn cap_token_allows_matching_tool() {
 async fn cap_token_allows_glob_matching_tool() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .build();
 
@@ -1444,7 +1503,8 @@ async fn cap_token_allows_glob_matching_tool() {
             CallToolParams::new("echo"),
             cap_ctx(vec!["*"]), // wildcard grants all
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
 }
@@ -1453,7 +1513,9 @@ async fn cap_token_allows_glob_matching_tool() {
 async fn cap_token_denies_unmatched_tool() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .build();
 
@@ -1462,7 +1524,8 @@ async fn cap_token_denies_unmatched_tool() {
             CallToolParams::new("echo"),
             cap_ctx(vec!["file_*", "git_*"]), // no match for "echo"
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
     {
@@ -1479,7 +1542,9 @@ async fn cap_token_bypasses_tool_permissions() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .tool_permissions(
             "cap:ring1",
@@ -1495,7 +1560,8 @@ async fn cap_token_bypasses_tool_permissions() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), cap_ctx(vec!["echo"]))
-        .await;
+        .await
+        .expect_complete();
 
     // Cap token allows — tool_permissions not consulted
     assert!(result.is_error != Some(true));
@@ -1593,7 +1659,8 @@ async fn dispatch_request_inner(
             let mut ctx = crate::auth::CallContext::new(agent.clone(), sid.to_string());
             let persisted_label = server.sessions().context_label(sid);
             ctx.taint.absorb(persisted_label);
-            let result = server.handle_call_tool(p, ctx).await;
+            let result =
+                crate::server::flatten_tool_response(server.handle_call_tool(p, ctx).await);
             JsonRpcResponse::success(id, serde_json::to_value(&result).unwrap())
         }
 
@@ -2125,7 +2192,9 @@ async fn ifc_deny_write_after_untrusted_read() {
             })
         })
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
         .build();
@@ -2146,7 +2215,8 @@ async fn ifc_deny_write_after_untrusted_read() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(read_result.is_error != Some(true));
 
     // Simulate taint propagation (in real flow, ctx is mutable across calls)
@@ -2167,7 +2237,8 @@ async fn ifc_deny_write_after_untrusted_read() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(write_result.is_error == Some(true));
     {
         let t = write_result.content[0]
@@ -2182,14 +2253,17 @@ async fn ifc_allow_write_without_taint() {
     // No prior read — session is clean, write should succeed
     let server = test_builder()
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
         .build();
 
     let result = server
         .handle_call_tool(CallToolParams::new("file_write"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(result.is_error != Some(true));
 }
 
@@ -2198,7 +2272,9 @@ async fn ifc_no_policy_denies_tainted_write() {
     // No IFC policy configured — tainted writes default to deny (fail-closed)
     let server = test_builder()
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .build();
 
@@ -2207,7 +2283,8 @@ async fn ifc_no_policy_denies_tainted_write() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("file_write"), ctx)
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error == Some(true),
         "missing IFC policy should default to deny"
@@ -2219,13 +2296,16 @@ async fn ifc_read_tool_auto_labels_untrusted() {
     // file_read output should be auto-labeled as Untrusted
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("file data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("file data"))
+            })
         })
         .build();
 
     let _result = server
         .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     // The result should be labeled Untrusted (confidentiality stays Public)
     // Label field was removed in rmcp migration — IFC labels tracked separately
@@ -2236,7 +2316,9 @@ async fn ifc_trusted_path_keeps_trusted_label() {
     // file_read of a trusted path should stay Trusted
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("my code") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("my code"))
+            })
         })
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
@@ -2255,7 +2337,8 @@ async fn ifc_trusted_path_keeps_trusted_label() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 }
 
 #[tokio::test]
@@ -2263,7 +2346,9 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
     // file_read of a non-trusted path should be Untrusted
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("external data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("external data"))
+            })
         })
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
@@ -2282,7 +2367,8 @@ async fn ifc_untrusted_path_still_labeled_untrusted() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 }
 
 #[tokio::test]
@@ -2290,14 +2376,17 @@ async fn ifc_trusted_path_no_path_arg_labels_untrusted() {
     // file_read without a path argument should default to Untrusted
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("data"))
+            })
         })
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
         .build();
 
     let _result = server
         .handle_call_tool(CallToolParams::new("file_read"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 }
 
 #[tokio::test]
@@ -2305,10 +2394,14 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
     // Full flow: read trusted path → session stays clean → write succeeds
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("my code") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("my code"))
+            })
         })
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .ifc_policy("dev", crate::ifc::TaintedWritePolicy::Deny)
         .trusted_paths("dev", vec!["/home/user/Code/**".to_string()])
@@ -2331,7 +2424,8 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Write — should succeed because session is not tainted
     let mut write_ctx = CallContext::new(test_agent(), sid);
@@ -2347,7 +2441,7 @@ async fn ifc_trusted_path_prevents_taint_so_write_succeeds() {
             },
             write_ctx,
         )
-        .await;
+        .await.expect_complete();
     assert!(write_result.is_error != Some(true));
 }
 
@@ -2384,7 +2478,8 @@ async fn hook_safety_filter_via_pipeline() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     {
@@ -2416,14 +2511,17 @@ async fn hook_blocks_tool_call() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .hook(BlockAll)
         .build();
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
     {
@@ -2463,7 +2561,8 @@ async fn legacy_safety_filter_still_works_without_hooks() {
             },
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
     {
@@ -2478,7 +2577,9 @@ async fn legacy_safety_filter_still_works_without_hooks() {
 async fn paused_server_rejects_tool_calls() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .build();
 
@@ -2487,7 +2588,8 @@ async fn paused_server_rejects_tool_calls() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error == Some(true));
     {
@@ -2500,7 +2602,9 @@ async fn paused_server_rejects_tool_calls() {
 async fn resumed_server_accepts_tool_calls() {
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("ok") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok"))
+            })
         })
         .build();
 
@@ -2510,7 +2614,8 @@ async fn resumed_server_accepts_tool_calls() {
 
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert!(result.is_error != Some(true));
 }
@@ -2699,7 +2804,9 @@ async fn static_deny_cannot_be_overridden_by_dynamic_grant() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -2716,7 +2823,8 @@ async fn static_deny_cannot_be_overridden_by_dynamic_grant() {
     // Without dynamic grant, tool is denied
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert!(result.is_error == Some(true));
 
     // Grant the tool dynamically for the session
@@ -2741,7 +2849,8 @@ async fn static_deny_cannot_be_overridden_by_dynamic_grant() {
     // Deny-wins invariant: static deny MUST NOT be overridden by session grant
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
     assert_eq!(
         result.is_error,
         Some(true),
@@ -2906,10 +3015,14 @@ fn ifc_tool_filter_hides_write_tools_when_tainted() {
 
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("data"))
+            })
         })
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .tool_filter(IFCToolFilter)
         .build();
@@ -2936,10 +3049,14 @@ fn ifc_tool_filter_shows_all_when_clean() {
 
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("data"))
+            })
         })
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .tool_filter(IFCToolFilter)
         .build();
@@ -2965,13 +3082,19 @@ fn dynamic_filter_composes_with_static_disclosure() {
 
     let server = test_builder()
         .tool(read_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("data") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("data"))
+            })
         })
         .tool(write_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("written") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("written"))
+            })
         })
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("echo") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("echo"))
+            })
         })
         // Static disclosure: only show file_* tools for "dev"
         .tool_disclosure(
@@ -3096,7 +3219,9 @@ async fn deny_wins_over_session_grant() {
 
     let server = test_builder()
         .tool(echo_tool_def(), |_args, _ctx| {
-            Box::pin(async { CallToolResult::text("should not reach") })
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("should not reach"))
+            })
         })
         .tool_permissions(
             "dev",
@@ -3132,7 +3257,8 @@ async fn deny_wins_over_session_grant() {
     // Despite the session grant, the static deny rule must win
     let result = server
         .handle_call_tool(CallToolParams::new("echo"), test_ctx())
-        .await;
+        .await
+        .expect_complete();
 
     assert_eq!(result.is_error, Some(true));
     let text = result.content[0].as_text().expect("expected text content");

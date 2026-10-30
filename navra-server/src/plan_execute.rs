@@ -399,7 +399,8 @@ async fn execute_tool_step(
     let params = CallToolParams::new(step.tool.clone()).with_arguments(args_map);
 
     // Call the tool through the server's dispatch
-    let result = server.handle_call_tool(params, ctx.clone()).await;
+    let result =
+        navra_core::flatten_tool_response(server.handle_call_tool(params, ctx.clone()).await);
 
     // Extract text from result content
     let result_text: String = result
@@ -2225,6 +2226,8 @@ steps:
             agent: navra_core::auth::AgentIdentity::new("test-agent", "readonly"),
             session_id: "test-session".to_string(),
             taint: navra_core::ifc::TaintTracker::new(),
+            mrtr_input_responses: None,
+            mrtr_request_state: None,
             remaining_tokens: None,
             sandbox: None,
         }

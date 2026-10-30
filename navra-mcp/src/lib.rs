@@ -28,13 +28,18 @@ pub use navra_model as models;
 
 use navra_auth::auth::CallContext;
 use navra_protocol::{
-    CallToolResult, GetPromptResult, PromptDefinition, ReadResourceResult, ResourceDefinition,
+    CallToolResponse, GetPromptResult, PromptDefinition, ReadResourceResult, ResourceDefinition,
     ToolDefinition,
 };
 
 /// Async tool handler function type.
+///
+/// The handler returns a [`CallToolResponse`]: `Complete` for a final
+/// result, or `InputRequired` when an upstream defers completion to a
+/// multi-round (MRTR, SEP-2322) follow-up. Handlers returning a plain
+/// `CallToolResult` wrap it with `.into()`.
 pub type ToolHandler = Arc<
-    dyn Fn(serde_json::Value, CallContext) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
+    dyn Fn(serde_json::Value, CallContext) -> Pin<Box<dyn Future<Output = CallToolResponse> + Send>>
         + Send
         + Sync,
 >;

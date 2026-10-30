@@ -23,7 +23,12 @@ use vstd::prelude::*;
 
 // --- Tools ---
 pub use rmcp::model::CallToolRequestParams as CallToolParams;
+pub use rmcp::model::CallToolResponse;
 pub use rmcp::model::CallToolResult;
+pub use rmcp::model::InputRequest;
+pub use rmcp::model::InputRequests;
+pub use rmcp::model::InputRequiredResult;
+pub use rmcp::model::InputResponses;
 pub use rmcp::model::ListToolsResult;
 pub use rmcp::model::Tool as ToolDefinition;
 pub use rmcp::model::ToolAnnotations;
