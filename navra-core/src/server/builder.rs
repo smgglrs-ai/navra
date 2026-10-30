@@ -5,6 +5,7 @@ use crate::protocol::CallToolResult;
 use crate::quota::QuotaEngine;
 use crate::safety::FilterPipeline;
 use crate::session::SessionStore;
+use navra_mcp::ToolHandler;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
@@ -16,6 +17,27 @@ use super::McpServer;
 use super::types::{
     RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool,
 };
+
+/// Widen a `CallToolResult`-producing handler closure into the
+/// `CallToolResponse`-producing [`ToolHandler`] shape that
+/// `RegisteredTool` stores. Inline builder tools always produce final
+/// results; the response union exists for upstream MRTR forwarding.
+fn widen<F>(handler: F) -> ToolHandler
+where
+    F: Fn(
+            serde_json::Value,
+            crate::auth::CallContext,
+        ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
+        + Send
+        + Sync
+        + 'static,
+{
+    let handler = Arc::new(handler);
+    Arc::new(move |args, ctx| {
+        let handler = Arc::clone(&handler);
+        Box::pin(async move { handler(args, ctx).await.into() })
+    })
+}
 
 /// Builder for constructing an McpServer.
 pub struct McpServerBuilder {
@@ -168,23 +190,32 @@ impl McpServerBuilder {
     }
 
     /// Register an individual tool with its handler.
-    pub fn tool(
-        mut self,
-        definition: crate::protocol::ToolDefinition,
-        handler: impl Fn(
-            serde_json::Value,
-            crate::auth::CallContext,
-        ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
-        + Send
-        + Sync
-        + 'static,
-    ) -> Self {
+    ///
+    /// The handler may return a final `CallToolResult` (widened into
+    /// the response union) or a full `CallToolResponse` for modules
+    /// that surface MRTR `input_required` results.
+    pub fn tool<T, F>(mut self, definition: crate::protocol::ToolDefinition, handler: F) -> Self
+    where
+        T: Into<crate::protocol::CallToolResponse> + Send + 'static,
+        F: Fn(
+                serde_json::Value,
+                crate::auth::CallContext,
+            ) -> Pin<Box<dyn Future<Output = T> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    {
         let name = definition.name.to_string();
+        let handler = Arc::new(handler);
+        let adapted: ToolHandler = Arc::new(move |args, ctx| {
+            let handler = Arc::clone(&handler);
+            Box::pin(async move { handler(args, ctx).await.into() })
+        });
         self.tools.insert(
             name,
             RegisteredTool {
                 definition,
-                handler: Arc::new(handler),
+                handler: adapted,
             },
         );
         self
@@ -602,7 +633,7 @@ impl McpServerBuilder {
                         "List all IFC-tracked variables in the current session",
                         navra_protocol::compat::empty_input_schema(),
                     ),
-                    handler: Arc::new(move |_args, ctx| {
+                    handler: widen(move |_args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
                             let store = vs.get_or_create(&ctx.session_id);
@@ -643,7 +674,7 @@ impl McpServerBuilder {
                             Some(vec!["id".to_string()]),
                         ),
                     ),
-                    handler: Arc::new(move |args, ctx| {
+                    handler: widen(move |args, ctx| {
                         let vs = vs.clone();
                         let sess = sess.clone();
                         Box::pin(async move {
@@ -684,7 +715,7 @@ impl McpServerBuilder {
                             Some(vec!["id".to_string()]),
                         ),
                     ),
-                    handler: Arc::new(move |args, ctx| {
+                    handler: widen(move |args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
                             let var_id = match args.get("id").and_then(|v| v.as_str()) {

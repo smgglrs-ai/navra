@@ -1,6 +1,7 @@
 use navra_macros::tool;
 use navra_mcp::auth::CallContext;
 use navra_protocol::CallToolResult;
+use navra_protocol::compat::CallToolResponseExt;
 use navra_protocol::compat::CallToolResultExt;
 
 // --- Basic tool: single required arg ---
@@ -193,7 +194,7 @@ async fn handler_can_be_called() {
         },
         "test-session",
     );
-    let result = handler(args, ctx).await;
+    let result = handler(args, ctx).await.expect_complete();
     assert!(result.is_error != Some(true));
     let t = result.content[0].as_text().expect("expected text content");
     assert_eq!(t.text, "hello");
@@ -220,7 +221,7 @@ async fn missing_required_arg_returns_error() {
         },
         "test-session",
     );
-    let result = handler(args, ctx).await;
+    let result = handler(args, ctx).await.expect_complete();
     assert!(result.is_error == Some(true));
     let t = result.content[0].as_text().expect("expected text content");
     assert!(t.text.contains("Missing required parameter: message"));
@@ -291,7 +292,7 @@ async fn state_handler_passes_state_to_function() {
         },
         "test-session",
     );
-    let result = handler(args, ctx).await;
+    let result = handler(args, ctx).await.expect_complete();
     assert!(result.is_error != Some(true));
     let t = result.content[0].as_text().expect("expected text content");
     assert_eq!(t.text, ">>world");

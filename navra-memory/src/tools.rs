@@ -467,6 +467,7 @@ mod tests {
     use super::*;
     use crate::types::{MemoryEntry, MemoryType};
     use navra_mcp::auth::AgentIdentity;
+    use navra_protocol::compat::CallToolResponseExt;
 
     fn test_ctx() -> CallContext {
         CallContext::new(AgentIdentity::new("test", "dev"), "test-session")
@@ -565,7 +566,9 @@ mod tests {
         });
 
         let (_, handler) = handle_search_handler(state);
-        let result = handler(serde_json::json!({"query": "Rust safety"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"query": "Rust safety"}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err(), "search should succeed");
         let t = result.content[0].as_text().expect("expected text content");
@@ -588,7 +591,9 @@ mod tests {
         });
 
         let (_, handler) = handle_search_handler(state);
-        let result = handler(serde_json::json!({"query": ""}), test_ctx()).await;
+        let result = handler(serde_json::json!({"query": ""}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_err());
     }
 
@@ -608,7 +613,9 @@ mod tests {
         });
 
         let (_, handler) = handle_search_handler(state);
-        let result = handler(serde_json::json!({"query": "xyznonexistent"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"query": "xyznonexistent"}), test_ctx())
+            .await
+            .expect_complete();
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("No results"));
@@ -630,7 +637,9 @@ mod tests {
         });
 
         let (_, handler) = handle_graph_query_handler(state);
-        let result = handler(serde_json::json!({"entity": "Alice"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"entity": "Alice"}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -660,7 +669,8 @@ mod tests {
             serde_json::json!({"entity": "Alice", "hops": 2}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -686,7 +696,9 @@ mod tests {
         });
 
         let (_, handler) = handle_graph_query_handler(state);
-        let result = handler(serde_json::json!({"entity": ""}), test_ctx()).await;
+        let result = handler(serde_json::json!({"entity": ""}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_err());
     }
 
@@ -706,7 +718,9 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(serde_json::json!({"entry_ids": "e1, e2"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"entry_ids": "e1, e2"}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -731,7 +745,9 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(serde_json::json!({"entry_ids": "all"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"entry_ids": "all"}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -755,7 +771,9 @@ mod tests {
         });
 
         let (_, handler) = handle_decay_score_handler(state);
-        let result = handler(serde_json::json!({"entry_ids": "nonexistent"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"entry_ids": "nonexistent"}), test_ctx())
+            .await
+            .expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -785,7 +803,7 @@ mod tests {
             }),
             test_ctx(),
         )
-        .await;
+        .await.expect_complete();
 
         assert!(!result.is_err());
         let t = result.content[0].as_text().expect("expected text content");
@@ -813,7 +831,9 @@ mod tests {
         });
 
         let (_, handler) = handle_distill_handler(state);
-        let result = handler(serde_json::json!({"text": ""}), test_ctx()).await;
+        let result = handler(serde_json::json!({"text": ""}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_err());
     }
 }

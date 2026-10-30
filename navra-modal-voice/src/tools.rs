@@ -407,6 +407,7 @@ mod tests {
         TranscribeResponse,
     };
     use navra_mcp::permissions::PathAcl;
+    use navra_protocol::compat::CallToolResponseExt;
     use std::collections::HashSet;
 
     fn test_perm_engine() -> PermissionEngine {
@@ -508,7 +509,9 @@ mod tests {
     async fn status_shows_device_info() {
         let state = test_state();
         let (_, handler) = handle_status_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error != Some(true));
         let t = result.content[0].as_text().expect("expected text content");
         assert!(t.text.contains("Voice Module Status"));
@@ -519,7 +522,9 @@ mod tests {
     async fn transcribe_rejects_missing_path() {
         let state = test_state();
         let (_, handler) = handle_transcribe_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -527,7 +532,9 @@ mod tests {
     async fn speak_rejects_empty_text() {
         let state = test_state();
         let (_, handler) = handle_speak_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 }

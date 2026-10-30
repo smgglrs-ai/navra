@@ -323,6 +323,7 @@ mod tests {
     use navra_auth::auth::AgentIdentity;
     use navra_mcp::models::{GenerateResponse, ModelBackend, ModelError};
     use navra_mcp::permissions::{PathAcl, PermissionEngine};
+    use navra_protocol::compat::CallToolResponseExt;
     use std::collections::HashSet;
     use std::io::Write;
 
@@ -641,7 +642,9 @@ mod tests {
     async fn describe_rejects_missing_path() {
         let state = make_state();
         let (_, handler) = handle_describe_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -653,7 +656,8 @@ mod tests {
             serde_json::json!({"path": "/nonexistent/image.png"}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -665,7 +669,8 @@ mod tests {
             serde_json::json!({"path": "relative/image.png"}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -681,7 +686,8 @@ mod tests {
             serde_json::json!({"path": path.to_str().unwrap()}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(
             result.is_error != Some(true),
             "describe should succeed with valid PNG"
@@ -692,7 +698,9 @@ mod tests {
     async fn ocr_rejects_missing_path() {
         let state = make_state();
         let (_, handler) = handle_ocr_handler(state);
-        let result = handler(serde_json::json!({}), test_ctx()).await;
+        let result = handler(serde_json::json!({}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -708,7 +716,8 @@ mod tests {
             serde_json::json!({"path": path.to_str().unwrap()}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(result.is_error != Some(true));
     }
 
@@ -716,7 +725,9 @@ mod tests {
     async fn ask_rejects_missing_question() {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
-        let result = handler(serde_json::json!({"path": "/tmp/test.png"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"path": "/tmp/test.png"}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -732,7 +743,8 @@ mod tests {
             serde_json::json!({"path": path.to_str().unwrap(), "question": ""}),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -740,7 +752,9 @@ mod tests {
     async fn ask_rejects_missing_path() {
         let state = make_state();
         let (_, handler) = handle_ask_handler(state);
-        let result = handler(serde_json::json!({"question": "What is this?"}), test_ctx()).await;
+        let result = handler(serde_json::json!({"question": "What is this?"}), test_ctx())
+            .await
+            .expect_complete();
         assert!(result.is_error == Some(true));
     }
 
@@ -759,7 +773,8 @@ mod tests {
             }),
             test_ctx(),
         )
-        .await;
+        .await
+        .expect_complete();
         assert!(result.is_error != Some(true));
     }
 
@@ -784,7 +799,9 @@ mod tests {
         std::fs::write(&path, tiny_png()).unwrap();
 
         let (_, handler) = handle_describe_handler(state);
-        let result = handler(serde_json::json!({"path": path.to_str().unwrap()}), ctx).await;
+        let result = handler(serde_json::json!({"path": path.to_str().unwrap()}), ctx)
+            .await
+            .expect_complete();
         // With an unknown permission set, the engine should deny
         assert!(result.is_error == Some(true));
     }

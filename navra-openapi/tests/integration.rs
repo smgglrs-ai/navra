@@ -2,6 +2,7 @@ use axum::{Json, Router, routing};
 use navra_mcp::Module;
 use navra_openapi::OpenApiModule;
 use navra_openapi::auth::AuthConfig;
+use navra_protocol::compat::CallToolResponseExt;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -169,7 +170,7 @@ async fn call_get_tool() {
         .find(|(d, _)| d.name == "api_listitems")
         .unwrap();
 
-    let result = handler(json!({}), dummy_ctx()).await;
+    let result = handler(json!({}), dummy_ctx()).await.expect_complete();
     assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
@@ -190,7 +191,9 @@ async fn call_get_with_path_param() {
     let tools = module.tools();
     let (_, handler) = tools.iter().find(|(d, _)| d.name == "api_getitem").unwrap();
 
-    let result = handler(json!({"itemId": "42"}), dummy_ctx()).await;
+    let result = handler(json!({"itemId": "42"}), dummy_ctx())
+        .await
+        .expect_complete();
     assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
@@ -214,7 +217,9 @@ async fn call_post_with_body() {
         .find(|(d, _)| d.name == "api_createitem")
         .unwrap();
 
-    let result = handler(json!({"body": {"name": "fish"}}), dummy_ctx()).await;
+    let result = handler(json!({"body": {"name": "fish"}}), dummy_ctx())
+        .await
+        .expect_complete();
     assert!(result.is_error != Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();
@@ -235,7 +240,7 @@ async fn missing_path_param_returns_error() {
     let tools = module.tools();
     let (_, handler) = tools.iter().find(|(d, _)| d.name == "api_getitem").unwrap();
 
-    let result = handler(json!({}), dummy_ctx()).await;
+    let result = handler(json!({}), dummy_ctx()).await.expect_complete();
     assert!(result.is_error == Some(true));
 
     tokio::fs::remove_file(&tmpfile).await.ok();

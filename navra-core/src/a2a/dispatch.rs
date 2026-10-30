@@ -154,7 +154,8 @@ pub async fn handle_message_send(
         }
         p
     };
-    let tool_result = server.handle_call_tool(call_params, ctx).await;
+    let tool_result =
+        crate::server::flatten_tool_response(server.handle_call_tool(call_params, ctx).await);
 
     // Build artifact from result
     let artifact = Artifact {
@@ -353,7 +354,8 @@ pub async fn handle_message_stream(
         }
         p
     };
-    let tool_result = server.handle_call_tool(call_params, ctx).await;
+    let tool_result =
+        crate::server::flatten_tool_response(server.handle_call_tool(call_params, ctx).await);
 
     // Event 3: Artifact update
     let artifact = Artifact {

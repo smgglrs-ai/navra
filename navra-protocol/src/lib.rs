@@ -32,6 +32,7 @@ pub use mcp::{
     // rmcp re-exports (MCP domain types)
     AudioContent,
     CallToolParams,
+    CallToolResponse,
     CallToolResult,
     ClientCapabilities,
     ClientInfo,
@@ -48,6 +49,10 @@ pub use mcp::{
     ImageContent,
     InitializeParams,
     InitializeResult,
+    InputRequest,
+    InputRequests,
+    InputRequiredResult,
+    InputResponses,
     ListPromptsResult,
     ListResourceTemplatesResult,
     ListResourcesResult,

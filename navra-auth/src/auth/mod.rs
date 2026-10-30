@@ -57,6 +57,14 @@ pub struct CallContext {
     /// When `Some`, the `SandboxHook` applies per-tool transformations
     /// (simulate, redact, rate-limit, path rewrite).
     pub sandbox: Option<sandbox_profile::SandboxProfile>,
+    /// MRTR (SEP-2322) retry fields from the client's `tools/call`
+    /// request: responses to a previous `input_required` round and the
+    /// opaque request state to echo back. Forwarded verbatim to
+    /// upstreams on follow-up rounds; local tools ignore them.
+    pub mrtr_input_responses: Option<std::collections::BTreeMap<String, serde_json::Value>>,
+    /// Opaque MRTR request state from the client's `tools/call`
+    /// request. See [`Self::mrtr_input_responses`].
+    pub mrtr_request_state: Option<String>,
 }
 
 impl CallContext {
@@ -68,6 +76,8 @@ impl CallContext {
             taint: crate::ifc::TaintTracker::new(),
             remaining_tokens: None,
             sandbox: None,
+            mrtr_input_responses: None,
+            mrtr_request_state: None,
         }
     }
 }

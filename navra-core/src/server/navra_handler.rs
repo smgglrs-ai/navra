@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use navra_protocol::{
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
+    CallToolResult, InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+    PaginatedRequest,
 };
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
@@ -17,6 +18,8 @@ use rmcp::model::{
     ReadResourceRequestParams, ReadResourceResponse,
 };
 use rmcp::service::{RequestContext, RoleServer};
+
+use navra_protocol::compat::CallToolResultExt;
 
 use super::McpServer;
 use crate::auth::{AgentIdentity, CallContext};
@@ -55,6 +58,22 @@ impl NavraHandler {
 
     fn session_id_for(agent: &AgentIdentity) -> String {
         format!("rmcp:{}", agent.name)
+    }
+
+    /// Does the requesting peer support SEP-2322 `input_required`
+    /// results? Only peers that negotiated 2026-07-28 or newer may
+    /// receive them. Initialize-handshake peers have their negotiated
+    /// version in `peer_info`; HTTP stateless peers get `peer_info`
+    /// from the `MCP-Protocol-Version` header; discover-based
+    /// duplex/stdio peers carry the version per-request in `_meta`.
+    fn peer_supports_mrtr(context: &RequestContext<RoleServer>) -> bool {
+        if let Some(info) = context.peer.peer_info() {
+            return info.protocol_version >= rmcp::model::ProtocolVersion::V_2026_07_28;
+        }
+        context
+            .meta
+            .protocol_version()
+            .is_some_and(|version| version >= rmcp::model::ProtocolVersion::V_2026_07_28)
     }
 
     fn pagination(params: &Option<rmcp::model::PaginatedRequestParams>) -> PaginatedRequest {
@@ -108,11 +127,22 @@ impl ServerHandler for NavraHandler {
         let persisted_label = self.server.sessions().context_label(&session_id);
         ctx.taint.absorb(persisted_label);
 
-        // handle_call_tool always returns a final result: navra does not
-        // emit MRTR `input_required` responses itself, so the union maps
-        // deterministically onto the Complete arm.
-        let result = self.server.handle_call_tool(request, ctx).await;
-        Ok(CallToolResponse::Complete(result))
+        let response = self.server.handle_call_tool(request, ctx).await;
+        // SEP-2322 `input_required` is only valid on the wire for peers
+        // that negotiated 2026-07-28 or newer — rmcp rejects it for
+        // legacy peers. Downgrade to a tool-level error for them so
+        // agent loops keep receiving an error result (rather than a
+        // protocol error aborting the run).
+        Ok(match response {
+            CallToolResponse::InputRequired(_) if !Self::peer_supports_mrtr(&context) => {
+                CallToolResponse::Complete(CallToolResult::error_msg(
+                    "upstream requested interactive input (MCP input_required), \
+                     which requires protocol version 2026-07-28 and an \
+                     MRTR-capable client",
+                ))
+            }
+            other => other,
+        })
     }
 
     async fn list_tools(

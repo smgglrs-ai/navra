@@ -583,6 +583,15 @@ async fn discover_tools(
 /// which makes rmcp hang) fails with a clear error instead of
 /// hanging the agent's call. Used both at registration and when
 /// rebuilding the registry after a `list_changed` refresh.
+///
+/// MRTR (SEP-2322): a single round is sent per handler invocation.
+/// An upstream `input_required` response is surfaced as
+/// [`CallToolResponse::InputRequired`] so the gateway can forward it
+/// (the client answers through a follow-up `tools/call` whose
+/// `input_responses`/`request_state` are carried here via the
+/// [`CallContext`](navra_auth::auth::CallContext) retry fields). The
+/// SEP-2663 tasks-extension `task` result is not forwarded — navra
+/// does not declare the tasks capability — and fails closed.
 pub fn upstream_tool_handlers(
     peer: &rmcp::Peer<rmcp::RoleClient>,
     tools: &[ToolDefinition],
@@ -593,28 +602,57 @@ pub fn upstream_tool_handlers(
         .map(|def| {
             let tool_name = def.name.clone();
             let peer = peer.clone();
-            let handler: ToolHandler = Arc::new(move |args, _ctx| {
+            let handler: ToolHandler = Arc::new(move |args, ctx| {
                 let peer = peer.clone();
                 let name = tool_name.clone();
                 let call_timeout = call_timeout;
                 Box::pin(async move {
+                    use navra_protocol::compat::CallToolResultExt;
+
                     let mut params = CallToolParams::new(name);
                     if let Some(obj) = args.as_object() {
                         params = params.with_arguments(obj.clone());
                     }
-                    match tokio::time::timeout(call_timeout, peer.call_tool(params)).await {
-                        Ok(Ok(result)) => result,
-                        Ok(Err(e)) => {
-                            use navra_protocol::compat::CallToolResultExt;
-                            CallToolResult::error_msg(format!("upstream error: {e}"))
+                    // MRTR retry fields from the client's original
+                    // tools/call request, forwarded verbatim.
+                    if let Some(responses) = ctx.mrtr_input_responses.clone() {
+                        params = params.with_input_responses(responses);
+                    }
+                    if let Some(state) = ctx.mrtr_request_state.clone() {
+                        params = params.with_request_state(state);
+                    }
+                    match tokio::time::timeout(call_timeout, peer.call_tool_once(params)).await {
+                        Ok(Ok(navra_protocol::CallToolResponse::Complete(result))) => {
+                            navra_protocol::CallToolResponse::Complete(result)
                         }
-                        Err(_) => {
-                            use navra_protocol::compat::CallToolResultExt;
+                        Ok(Ok(navra_protocol::CallToolResponse::InputRequired(ir))) => {
+                            navra_protocol::CallToolResponse::InputRequired(ir)
+                        }
+                        Ok(Ok(navra_protocol::CallToolResponse::Task(_))) => {
+                            // Fail closed: navra does not declare the
+                            // SEP-2663 tasks extension, so a task result
+                            // cannot be polled through the gateway.
+                            navra_protocol::CallToolResponse::Complete(CallToolResult::error_msg(
+                                "upstream returned a task result (SEP-2663 tasks \
+                                     extension), which navra does not forward",
+                            ))
+                        }
+                        // CallToolResponse is #[non_exhaustive] upstream:
+                        // unknown result kinds fail closed.
+                        Ok(Ok(_other)) => {
+                            navra_protocol::CallToolResponse::Complete(CallToolResult::error_msg(
+                                "upstream returned an unsupported response kind",
+                            ))
+                        }
+                        Ok(Err(e)) => navra_protocol::CallToolResponse::Complete(
+                            CallToolResult::error_msg(format!("upstream error: {e}")),
+                        ),
+                        Err(_) => navra_protocol::CallToolResponse::Complete(
                             CallToolResult::error_msg(format!(
                                 "upstream call timed out after {}s",
                                 call_timeout.as_secs()
-                            ))
-                        }
+                            )),
+                        ),
                     }
                 })
             });
