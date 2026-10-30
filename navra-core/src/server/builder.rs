@@ -78,6 +78,8 @@ pub struct McpServerBuilder {
     upstream_watchers: Vec<crate::UpstreamWatcher>,
     /// Tool names registered per module (for upstream registry swaps).
     module_tool_index: HashMap<String, Vec<String>>,
+    module_prompt_index: HashMap<String, Vec<String>>,
+    module_resource_index: HashMap<String, Vec<String>>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
@@ -128,6 +130,8 @@ impl McpServerBuilder {
             declassification_ledger: None,
             upstream_watchers: Vec::new(),
             module_tool_index: HashMap::new(),
+            module_prompt_index: HashMap::new(),
+            module_resource_index: HashMap::new(),
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
@@ -280,6 +284,7 @@ impl McpServerBuilder {
             );
         }
         self.module_tool_index.insert(mod_name.clone(), mod_tools);
+        let mut mod_prompts = Vec::new();
         for (definition, handler) in module.prompts() {
             let prompt_name = definition.name.clone();
             if self.prompts.contains_key(&prompt_name) {
@@ -293,6 +298,7 @@ impl McpServerBuilder {
                 prompt = %prompt_name,
                 "Registered prompt"
             );
+            mod_prompts.push(prompt_name.clone());
             self.prompts.insert(
                 prompt_name,
                 RegisteredPrompt {
@@ -301,6 +307,9 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_prompt_index
+            .insert(mod_name.clone(), mod_prompts);
+        let mut mod_resources = Vec::new();
         for (definition, handler) in module.resources() {
             let resource_uri = definition.uri.clone();
             if self.resources.contains_key(&resource_uri) {
@@ -314,6 +323,7 @@ impl McpServerBuilder {
                 resource = %resource_uri,
                 "Registered resource"
             );
+            mod_resources.push(resource_uri.clone());
             self.resources.insert(
                 resource_uri,
                 RegisteredResource {
@@ -322,6 +332,8 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_resource_index
+            .insert(mod_name.clone(), mod_resources);
         self
     }
 
@@ -1014,8 +1026,8 @@ impl McpServerBuilder {
         McpServer {
             name: self.name,
             version: self.version,
-            prompts: self.prompts,
-            resources,
+            prompts: RwLock::new(self.prompts),
+            resources: RwLock::new(resources),
             resource_templates,
             sessions,
             authenticator,
@@ -1056,6 +1068,8 @@ impl McpServerBuilder {
             tool_operations: RwLock::new(self.tool_operations),
             tool_classifications: RwLock::new(self.tool_classifications),
             upstream_tool_index: RwLock::new(self.module_tool_index),
+            upstream_prompt_index: RwLock::new(self.module_prompt_index),
+            upstream_resource_index: RwLock::new(self.module_resource_index),
             upstream_watchers: RwLock::new(self.upstream_watchers),
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(

@@ -78,7 +78,7 @@ Not every message expects a response. JSON-RPC 2.0 defines *notifications* -- me
 
 The server sends this when tools are added or removed at runtime. The client can re-fetch the tool list, or ignore the notification entirely. There is no `id`, so there is no response.
 
-From protocol version 2026-07-28, clients that want a reliable stream of these events use `subscriptions/listen` instead of passively receiving notifications: the client opens one long-lived request with a filter naming the notification categories it wants (tool list changes, per-URI resource updates), the server acknowledges with the subset it accepts, and every subsequent notification on that subscription carries the request's id. Cancelling the request ends the subscription. navra serves both surfaces -- legacy peers keep receiving bare notifications, and 2026-07-28 peers can subscribe.
+From protocol version 2026-07-28, clients that want a reliable stream of these events use `subscriptions/listen` instead of passively receiving notifications: the client opens one long-lived request with a filter naming the notification categories it wants (tool, prompt, and resource list changes, per-URI resource updates), the server acknowledges with the subset it accepts, and every subsequent notification on that subscription carries the request's id. Cancelling the request ends the subscription. navra serves both surfaces -- legacy peers keep receiving bare notifications, and 2026-07-28 peers can subscribe.
 
 ## Batching
 

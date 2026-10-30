@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 #[cfg(feature = "cedar")]
 use super::CedarActionVersion;
 use super::McpServer;
-use super::types::RegisteredTool;
+use super::types::{RegisteredPrompt, RegisteredResource, RegisteredTool};
 
 /// Dynamic tool filter applied during `tools/list`.
 ///
@@ -181,9 +181,12 @@ impl McpServer {
         tools_cap.list_changed = Some(true);
         let mut resources_cap = crate::protocol::ResourcesCapability::default();
         resources_cap.subscribe = Some(true);
-        resources_cap.list_changed = Some(false);
+        // Upstream resources/list_changed refreshes swap the registry
+        // and notify (swap_upstream_resources), so the capability is
+        // honestly advertised.
+        resources_cap.list_changed = Some(true);
         let mut prompts_cap = crate::protocol::PromptsCapability::default();
-        prompts_cap.list_changed = Some(false);
+        prompts_cap.list_changed = Some(true);
 
         crate::protocol::ServerCapabilities {
             tools: (!self
@@ -192,8 +195,18 @@ impl McpServer {
                 .unwrap_or_else(|e| e.into_inner())
                 .is_empty())
             .then_some(tools_cap),
-            resources: (!self.resources.is_empty()).then_some(resources_cap),
-            prompts: (!self.prompts.is_empty()).then_some(prompts_cap),
+            resources: (!self
+                .resources
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty())
+            .then_some(resources_cap),
+            prompts: (!self
+                .prompts
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty())
+            .then_some(prompts_cap),
             permissions: Some(navra_protocol::permissions::PermissionsCapability {}),
             extensions,
         }
@@ -1571,6 +1584,8 @@ impl McpServer {
     ) -> ListPromptsResult {
         let all_prompts: Vec<_> = self
             .prompts
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|p| p.definition.clone())
             .collect();
@@ -1615,7 +1630,13 @@ impl McpServer {
             }
         }
 
-        match self.prompts.get(params.name.as_str()) {
+        let prompt = self
+            .prompts
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(params.name.as_str())
+            .cloned();
+        match prompt {
             Some(prompt) => {
                 let ctx = CallContext::new(agent.clone(), session_id);
                 let args: std::collections::HashMap<String, String> = params
@@ -1631,7 +1652,7 @@ impl McpServer {
     }
 
     pub fn prompt_count(&self) -> usize {
-        self.prompts.len()
+        self.prompts.read().unwrap_or_else(|e| e.into_inner()).len()
     }
 
     pub fn handle_list_resources(
@@ -1654,6 +1675,8 @@ impl McpServer {
 
         let all_resources: Vec<_> = self
             .resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|r| r.definition.clone())
             .collect();
@@ -1687,7 +1710,13 @@ impl McpServer {
         }
 
         let ctx = CallContext::new(agent.clone(), session_id);
-        if let Some(resource) = self.resources.get(&params.uri) {
+        let resource = self
+            .resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&params.uri)
+            .cloned();
+        if let Some(resource) = resource {
             if !self.agent_can_see_resource(agent, &resource.definition.uri) {
                 return Err("Permission denied".to_string());
             }
@@ -1740,7 +1769,10 @@ impl McpServer {
     }
 
     pub fn resource_count(&self) -> usize {
-        self.resources.len()
+        self.resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
     }
 
     // --- Permission negotiation handlers ---
@@ -1874,6 +1906,8 @@ impl McpServer {
             Reference::Prompt(_) => {
                 let matching: Vec<String> = self
                     .prompts
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
                     .values()
                     .filter_map(|p| {
                         p.definition.arguments.as_ref().and_then(|args| {
@@ -1888,6 +1922,8 @@ impl McpServer {
                     .collect();
                 if matching.is_empty() {
                     self.prompts
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner())
                         .values()
                         .flat_map(|p| p.definition.arguments.as_deref().unwrap_or_default().iter())
                         .filter(|a| a.name == params.argument.name)
@@ -1899,6 +1935,8 @@ impl McpServer {
             }
             Reference::Resource(_) => self
                 .resources
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
                 .keys()
                 .filter(|uri| {
                     params.argument.value.is_empty() || uri.starts_with(&params.argument.value)
@@ -1941,7 +1979,12 @@ impl McpServer {
 
     /// Handle resources/subscribe: register a session's interest in a resource URI.
     pub fn handle_resource_subscribe(&self, uri: &str, session_id: &str) -> Result<(), String> {
-        if !self.resources.contains_key(uri) {
+        if !self
+            .resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(uri)
+        {
             return Err(format!("Unknown resource: {}", uri));
         }
         let mut subs = self.resource_subscriptions.write().unwrap_or_else(|e| {
@@ -1959,7 +2002,10 @@ impl McpServer {
     /// subscriptions/listen filter to narrow requested resource URIs
     /// to the ones navra can actually serve.
     pub fn resource_exists(&self, uri: &str) -> bool {
-        self.resources.contains_key(uri)
+        self.resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(uri)
     }
 
     /// Handle resources/unsubscribe: remove a session's subscription to a resource URI.
@@ -2233,6 +2279,179 @@ impl McpServer {
         // No notification when the swap is a no-op.
         if !added.is_empty() || !removed.is_empty() {
             self.notify("notifications/tools/list_changed", None);
+        }
+    }
+
+    /// Atomically swap an upstream module's prompt registry after a
+    /// `prompts/list_changed` refresh. Mirrors
+    /// [`Self::swap_upstream_tools`]: removes the module's previous
+    /// prompts, registers the new set (refusing cross-module name
+    /// collisions, fail closed), audits the swap, and notifies
+    /// connected clients only when the list actually changed.
+    pub fn swap_upstream_prompts(
+        &self,
+        module_name: &str,
+        prompts: Vec<(crate::protocol::PromptDefinition, navra_mcp::PromptHandler)>,
+    ) {
+        let previous: Vec<String> = {
+            let index = self
+                .upstream_prompt_index
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            index.get(module_name).cloned().unwrap_or_default()
+        };
+        let new_names: Vec<String> = prompts.iter().map(|(def, _)| def.name.clone()).collect();
+
+        {
+            let mut prompts_map = self.prompts.write().unwrap_or_else(|e| e.into_inner());
+            for name in &previous {
+                prompts_map.remove(name);
+            }
+            for (definition, handler) in prompts {
+                let name = definition.name.clone();
+                if prompts_map.contains_key(&name) {
+                    tracing::error!(
+                        module = %module_name,
+                        prompt = %name,
+                        "Refreshed upstream prompt collides with another module's prompt — refusing registration (fail closed)"
+                    );
+                    continue;
+                }
+                prompts_map.insert(
+                    name,
+                    RegisteredPrompt {
+                        definition,
+                        handler,
+                    },
+                );
+            }
+        }
+        {
+            let mut index = self
+                .upstream_prompt_index
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            index.insert(module_name.to_string(), new_names.clone());
+        }
+
+        let removed: Vec<&String> = previous.iter().filter(|n| !new_names.contains(n)).collect();
+        let added: Vec<&String> = new_names.iter().filter(|n| !previous.contains(n)).collect();
+        tracing::info!(
+            module = %module_name,
+            prompts = new_names.len(),
+            removed = ?removed,
+            added = ?added,
+            "Upstream prompt registry refreshed (list_changed)"
+        );
+        if let Some(ref bb) = self.blackbox {
+            bb.record(
+                "navra-gateway",
+                "system",
+                "",
+                module_name,
+                "prompts/list_changed",
+                &format!(
+                    "{{\"removed\": {:?}, \"added\": {:?}, \"total\": {}}}",
+                    removed,
+                    added,
+                    new_names.len()
+                ),
+                "registry_refresh",
+                0,
+                "N/A",
+                &crate::blackbox::generate_trace_id(),
+            );
+        }
+        if !added.is_empty() || !removed.is_empty() {
+            self.notify(crate::protocol::NOTIFY_PROMPTS_LIST_CHANGED, None);
+        }
+    }
+
+    /// Atomically swap an upstream module's resource registry after a
+    /// `resources/list_changed` refresh. Mirrors
+    /// [`Self::swap_upstream_tools`]: removes the module's previous
+    /// resources (keyed by URI), registers the new set (refusing
+    /// cross-module URI collisions, fail closed), audits the swap, and
+    /// notifies connected clients only when the list actually changed.
+    pub fn swap_upstream_resources(
+        &self,
+        module_name: &str,
+        resources: Vec<(
+            crate::protocol::ResourceDefinition,
+            navra_mcp::ResourceHandler,
+        )>,
+    ) {
+        let previous: Vec<String> = {
+            let index = self
+                .upstream_resource_index
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            index.get(module_name).cloned().unwrap_or_default()
+        };
+        let new_uris: Vec<String> = resources.iter().map(|(def, _)| def.uri.clone()).collect();
+
+        {
+            let mut resources_map = self.resources.write().unwrap_or_else(|e| e.into_inner());
+            for uri in &previous {
+                resources_map.remove(uri);
+            }
+            for (definition, handler) in resources {
+                let uri = definition.uri.clone();
+                if resources_map.contains_key(&uri) {
+                    tracing::error!(
+                        module = %module_name,
+                        resource = %uri,
+                        "Refreshed upstream resource collides with another module's resource — refusing registration (fail closed)"
+                    );
+                    continue;
+                }
+                resources_map.insert(
+                    uri,
+                    RegisteredResource {
+                        definition,
+                        handler,
+                    },
+                );
+            }
+        }
+        {
+            let mut index = self
+                .upstream_resource_index
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            index.insert(module_name.to_string(), new_uris.clone());
+        }
+
+        let removed: Vec<&String> = previous.iter().filter(|n| !new_uris.contains(n)).collect();
+        let added: Vec<&String> = new_uris.iter().filter(|n| !previous.contains(n)).collect();
+        tracing::info!(
+            module = %module_name,
+            resources = new_uris.len(),
+            removed = ?removed,
+            added = ?added,
+            "Upstream resource registry refreshed (list_changed)"
+        );
+        if let Some(ref bb) = self.blackbox {
+            bb.record(
+                "navra-gateway",
+                "system",
+                "",
+                module_name,
+                "resources/list_changed",
+                &format!(
+                    "{{\"removed\": {:?}, \"added\": {:?}, \"total\": {}}}",
+                    removed,
+                    added,
+                    new_uris.len()
+                ),
+                "registry_refresh",
+                0,
+                "N/A",
+                &crate::blackbox::generate_trace_id(),
+            );
+        }
+        if !added.is_empty() || !removed.is_empty() {
+            self.notify(crate::protocol::NOTIFY_RESOURCES_LIST_CHANGED, None);
         }
     }
 

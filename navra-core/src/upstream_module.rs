@@ -374,6 +374,26 @@ impl UpstreamModule {
 /// logged and yield an empty list — matching the historical error
 /// handling for prompts/resources (their absence is not fatal). The
 /// tools/list timeout is handled fail-closed inside `discover_tools`.
+/// Like [`list_with_timeout`], but propagates failures instead of
+/// degrading to an empty list — registry refreshes must fail closed,
+/// not wipe the registry on a listing error.
+async fn list_strict<T>(
+    upstream: &str,
+    what: &str,
+    timeout: std::time::Duration,
+    fut: impl std::future::Future<Output = Result<Vec<T>, rmcp::service::ServiceError>>,
+) -> Result<Vec<T>, String> {
+    match tokio::time::timeout(timeout, fut).await {
+        Ok(Ok(list)) => Ok(list),
+        Ok(Err(e)) => Err(format!("{what} failed: {e}")),
+        Err(_) => Err(format!("{what} timed out after {}s", timeout.as_secs())),
+    }
+    .map_err(|e| {
+        tracing::warn!(upstream = %upstream, error = %e, "{what} refresh failed");
+        e
+    })
+}
+
 async fn list_with_timeout<T>(
     upstream: &str,
     what: &str,
@@ -668,6 +688,11 @@ pub fn upstream_tool_handlers(
 pub enum UpstreamEvent {
     /// `tools/list_changed` — the tool registry must be re-verified.
     ToolsListChanged,
+    /// `prompts/list_changed` — the prompt registry must be re-verified.
+    PromptsListChanged,
+    /// `resources/list_changed` — the resource registry must be
+    /// re-verified.
+    ResourcesListChanged,
     /// `resources/updated` — forward to subscribed sessions immediately.
     ResourceUpdated(String),
 }
@@ -701,6 +726,24 @@ impl rmcp::handler::client::ClientHandler for UpstreamNotificationHandler {
     ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
         let _ = self.tx.send(UpstreamEvent::ToolsListChanged);
         tracing::debug!("Upstream sent tools/list_changed");
+        std::future::ready(())
+    }
+
+    fn on_prompt_list_changed(
+        &self,
+        _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
+        let _ = self.tx.send(UpstreamEvent::PromptsListChanged);
+        tracing::debug!("Upstream sent prompts/list_changed");
+        std::future::ready(())
+    }
+
+    fn on_resource_list_changed(
+        &self,
+        _context: rmcp::service::NotificationContext<rmcp::service::RoleClient>,
+    ) -> impl std::future::Future<Output = ()> + rmcp::service::MaybeSendFuture + '_ {
+        let _ = self.tx.send(UpstreamEvent::ResourcesListChanged);
+        tracing::debug!("Upstream sent resources/list_changed");
         std::future::ready(())
     }
 
@@ -786,29 +829,46 @@ impl UpstreamWatcher {
                 // Upstream connection dropped; nothing left to watch.
                 return;
             };
-            if let UpstreamEvent::ResourceUpdated(uri) = event {
-                // Forward immediately: no debounce (a session subscribed
-                // to this URI wants the update now) and no registry
-                // refresh (the URI is already registered).
-                server.notify_resource_updated(&uri);
-                continue;
+            let mut refresh_tools = false;
+            let mut refresh_prompts = false;
+            let mut refresh_resources = false;
+            match event {
+                UpstreamEvent::ResourceUpdated(uri) => {
+                    // Forward immediately: no debounce (a session
+                    // subscribed to this URI wants the update now) and
+                    // no registry refresh (the URI is already
+                    // registered).
+                    server.notify_resource_updated(&uri);
+                    continue;
+                }
+                UpstreamEvent::ToolsListChanged => refresh_tools = true,
+                UpstreamEvent::PromptsListChanged => refresh_prompts = true,
+                UpstreamEvent::ResourcesListChanged => refresh_resources = true,
             }
             // Debounce: wait out the minimum interval, then swallow
             // any list_changed notifications that arrived inside the
-            // window so a chatty upstream triggers one refresh, not a
-            // storm. Resource updates are never swallowed — they are
-            // forwarded, not debounced.
+            // window so a chatty upstream triggers one refresh per
+            // registry, not a storm. Resource updates are never
+            // swallowed — they are forwarded, not debounced.
             tokio::time::sleep(self.min_refresh_interval).await;
             while let Ok(event) = self.events.try_recv() {
-                if let UpstreamEvent::ResourceUpdated(uri) = event {
-                    server.notify_resource_updated(&uri);
+                match event {
+                    UpstreamEvent::ResourceUpdated(uri) => {
+                        server.notify_resource_updated(&uri);
+                    }
+                    UpstreamEvent::ToolsListChanged => refresh_tools = true,
+                    UpstreamEvent::PromptsListChanged => refresh_prompts = true,
+                    UpstreamEvent::ResourcesListChanged => refresh_resources = true,
                 }
             }
-            if let Err(e) = self.refresh_once(&server).await {
+            if let Err(e) = self
+                .refresh_once(&server, refresh_tools, refresh_prompts, refresh_resources)
+                .await
+            {
                 tracing::error!(
                     upstream = %self.name,
                     error = %e,
-                    "list_changed refresh failed — keeping the existing tool registry (fail closed)"
+                    "list_changed refresh failed — keeping the existing registry (fail closed)"
                 );
             }
         }
@@ -817,28 +877,58 @@ impl UpstreamWatcher {
     async fn refresh_once(
         &mut self,
         server: &std::sync::Arc<crate::server::McpServer>,
+        refresh_tools: bool,
+        refresh_prompts: bool,
+        refresh_resources: bool,
     ) -> Result<(), String> {
-        let manifest_check = self
-            .manifest
-            .as_mut()
-            .map(|(signed, key_store)| ManifestCheck { signed, key_store });
-        let discovered = discover_tools(
-            &self.name,
-            &self.peer,
-            self.scanner.as_mut(),
-            manifest_check,
-            &self.bounds,
-            &self.tool_overrides,
-            self.call_timeout,
-        )
-        .await?;
-        let handlers = upstream_tool_handlers(&self.peer, &discovered.tools, self.call_timeout);
-        server.swap_upstream_tools(
-            &self.name,
-            handlers,
-            discovered.tool_operations,
-            discovered.tool_classifications,
-        );
+        if refresh_tools {
+            let manifest_check = self
+                .manifest
+                .as_mut()
+                .map(|(signed, key_store)| ManifestCheck { signed, key_store });
+            let discovered = discover_tools(
+                &self.name,
+                &self.peer,
+                self.scanner.as_mut(),
+                manifest_check,
+                &self.bounds,
+                &self.tool_overrides,
+                self.call_timeout,
+            )
+            .await?;
+            let handlers = upstream_tool_handlers(&self.peer, &discovered.tools, self.call_timeout);
+            server.swap_upstream_tools(
+                &self.name,
+                handlers,
+                discovered.tool_operations,
+                discovered.tool_classifications,
+            );
+        }
+        if refresh_prompts {
+            // A failed listing keeps the existing registry (fail
+            // closed); only a successful listing swaps, even when the
+            // new list is genuinely empty.
+            let prompts = list_strict(
+                &self.name,
+                "prompts/list",
+                self.call_timeout,
+                self.peer.list_all_prompts(),
+            )
+            .await?;
+            let handlers = upstream_prompt_handlers(&self.peer, &prompts);
+            server.swap_upstream_prompts(&self.name, handlers);
+        }
+        if refresh_resources {
+            let resources = list_strict(
+                &self.name,
+                "resources/list",
+                self.call_timeout,
+                self.peer.list_all_resources(),
+            )
+            .await?;
+            let handlers = upstream_resource_handlers(&self.peer, &resources);
+            server.swap_upstream_resources(&self.name, handlers);
+        }
         Ok(())
     }
 }
@@ -912,6 +1002,78 @@ impl Module for UpstreamModule {
             })
             .collect()
     }
+}
+
+/// Build forwarding prompt handlers for a set of upstream prompt
+/// definitions. Shared by initial registration and list_changed
+/// refreshes.
+pub fn upstream_prompt_handlers(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    prompts: &[PromptDefinition],
+) -> Vec<(PromptDefinition, PromptHandler)> {
+    prompts
+        .iter()
+        .map(|def| {
+            let prompt_name = def.name.clone();
+            let peer = peer.clone();
+            let handler: PromptHandler = Arc::new(move |args: HashMap<String, String>, _ctx| {
+                let peer = peer.clone();
+                let name = prompt_name.clone();
+                Box::pin(async move {
+                    let mut params = GetPromptParams::new(name);
+                    if !args.is_empty() {
+                        let obj: serde_json::Map<String, serde_json::Value> = args
+                            .into_iter()
+                            .map(|(k, v)| (k, serde_json::Value::String(v)))
+                            .collect();
+                        params.arguments = Some(obj);
+                    }
+                    match peer.get_prompt(params).await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            let mut r = crate::protocol::GetPromptResult::new(vec![]);
+                            r.description = Some(format!("upstream error: {e}"));
+                            r
+                        }
+                    }
+                })
+            });
+            (def.clone(), handler)
+        })
+        .collect()
+}
+
+/// Build forwarding resource handlers for a set of upstream resource
+/// definitions. Shared by initial registration and list_changed
+/// refreshes.
+pub fn upstream_resource_handlers(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    resources: &[ResourceDefinition],
+) -> Vec<(ResourceDefinition, ResourceHandler)> {
+    resources
+        .iter()
+        .map(|def| {
+            let peer = peer.clone();
+            let handler: ResourceHandler = Arc::new(move |uri: String, _ctx| {
+                let peer = peer.clone();
+                Box::pin(async move {
+                    let params = ReadResourceParams::new(uri.clone());
+                    match peer.read_resource(params).await {
+                        Ok(result) => result,
+                        Err(e) => crate::protocol::ReadResourceResult::new(vec![
+                            crate::protocol::ResourceContent::TextResourceContents {
+                                uri,
+                                mime_type: Some("text/plain".to_string()),
+                                text: format!("upstream error: {e}"),
+                                meta: None,
+                            },
+                        ]),
+                    }
+                })
+            });
+            (def.clone(), handler)
+        })
+        .collect()
 }
 
 #[cfg(test)]

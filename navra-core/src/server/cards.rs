@@ -26,6 +26,8 @@ impl McpServer {
 
         let prompts: Vec<_> = self
             .prompts
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|p| {
                 serde_json::json!({
@@ -38,6 +40,8 @@ impl McpServer {
 
         let resources: Vec<_> = self
             .resources
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .map(|r| {
                 serde_json::json!({

@@ -231,10 +231,11 @@ impl ServerHandler for NavraHandler {
         self.server.broadcaster()?;
 
         let mut accepted = rmcp::model::SubscriptionFilter::new();
-        // navra emits tools/list_changed (registry swaps) and
-        // resources/updated; it never emits prompts or resources
-        // list_changed, so those categories are not accepted.
+        // navra emits tools/prompts/resources list_changed (upstream
+        // registry swaps) and resources/updated (upstream forwards).
         accepted.tools_list_changed = requested.tools_list_changed;
+        accepted.prompts_list_changed = requested.prompts_list_changed;
+        accepted.resources_list_changed = requested.resources_list_changed;
         accepted.resource_subscriptions = requested.resource_subscriptions.as_ref().map(|uris| {
             uris.iter()
                 .filter(|uri| self.server.resource_exists(uri))
@@ -281,6 +282,12 @@ impl ServerHandler for NavraHandler {
                         let send = match method.as_str() {
                             crate::protocol::NOTIFY_TOOLS_LIST_CHANGED => {
                                 sink.notify_tool_list_changed().await
+                            }
+                            crate::protocol::NOTIFY_PROMPTS_LIST_CHANGED => {
+                                sink.notify_prompt_list_changed().await
+                            }
+                            crate::protocol::NOTIFY_RESOURCES_LIST_CHANGED => {
+                                sink.notify_resource_list_changed().await
                             }
                             crate::protocol::NOTIFY_RESOURCES_UPDATED => {
                                 let Some(uri) = uri else { continue };

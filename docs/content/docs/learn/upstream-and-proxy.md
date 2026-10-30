@@ -84,6 +84,10 @@ Two properties hold on the forwarding path:
 
 The SEP-2663 tasks extension is not forwarded: an upstream answering with a task result fails closed with a clear error, because navra does not declare the tasks capability and cannot forward `tasks/get` polling.
 
+## Upstream notification forwarding
+
+navra forwards the notifications an upstream sends about itself. `resources/updated` reaches the sessions subscribed to that URI immediately. `tools/list_changed`, `prompts/list_changed`, and `resources/list_changed` each trigger a re-verification of the corresponding registry — scanner, manifest, and bounds included — followed by an atomic swap; connected clients are told the list changed only when the swap actually differs. A failed re-listing keeps the existing registry (fail closed), and an over-long URI in an update notification is dropped rather than forwarded.
+
 ## Authentication isolation
 
 navra handles authentication to upstream servers independently of agent authentication. The agent authenticates to navra with its own token. navra authenticates to the upstream server with the upstream's configured credentials. The agent never sees the upstream API key.
