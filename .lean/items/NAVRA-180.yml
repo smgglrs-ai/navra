@@ -65,6 +65,47 @@ blocked_reason: |
   assign the RFC number), then the RFC, then this implementation as
   the PR. The branch is the ready payload.
 
+  TOPOLOGY CORRECTION (2026-10-30): navra is NOT deployed inside
+  OpenShell sandboxes. The actual topology (the one
+  docs/openshell/opa-sandbox-policy.rego implements) is navra as an
+  external gateway: agent inside the sandbox, egress proxy allows
+  exactly the navra gateway + model endpoint + OpenShell gateway.
+  The original item and RFC assumed the architecture doc's Mode 1
+  (navra inside alongside the agent), which is a taxonomic mode, not
+  the deployment. Consequences, resolved 2026-10-30:
+
+  - navra cannot create a socket inside the sandbox's mount
+    namespace, so /run/openshell/pip/navra.sock is unreachable —
+    but this is a DISCOVERY-path constraint, not a mechanical one:
+    wherever navra and the supervisor share a filesystem view
+    (same host), navra binds a supervisor-visible socket and the
+    prototype's SO_PEERCRED → /proc/<pid>/exe → SHA256 TOFU chain
+    works verbatim (the supervisor's /proc view already spans
+    sandbox processes; that is how per-connection binary identity
+    works).
+  - Design settled as "one PIP contract, two publisher sources":
+    in-sandbox sockets for untrusted frameworks (zero-config
+    discovery, TOFU), operator-configured endpoints for operator
+    infrastructure like navra (config-time authorization, same
+    StreamContext/cache/input.pip/deny-only; Unix socket same-host,
+    authenticated network endpoint for Kubernetes, mirroring
+    middleware registration). Both RFC copies and the issue draft
+    were rewritten on this basis.
+  - The branch prototype implements the in-sandbox class only; the
+    operator-side dialer (supervisor-side directory watch + configured
+    endpoints) is follow-up implementation on the same branch.
+  - The middleware-composition alternative analysis was also
+    corrected: with navra external, a host-side middleware CAN reach
+    it directly — the rejection now rests on failure semantics
+    (fail_closed = gateway is a hard egress dependency; fail_open =
+    tainted traffic released when the gateway is down; PIP degrades
+    to baseline), hot-path blocking queries vs streamed state, and
+    endpoint-scoped chains vs sandbox-wide context.
+  - Remaining hard problem either way: sandbox↔session correlation
+    (navra keys taint per agent session; the per-sandbox
+    StreamContext needs a sandbox→session map, most naturally a
+    provisioning-time credential binding).
+
   Verified 2026-10-30: the draft RFC
   (docs/openshell/rfc-0002-policy-information-point.md) was never
   submitted — no PIP discussion, issue, or RFC exists upstream
@@ -168,14 +209,21 @@ description: |
   exfiltrated via a non-MCP channel that OpenShell allows.
 
   navra-side work (1-2 days once RFC is accepted):
-  - Expose PolicyInformationPoint gRPC service on Unix socket
+  - Expose PolicyInformationPoint gRPC service on a supervisor-
+    visible endpoint (same-host Unix socket; configured network
+    endpoint for Kubernetes deployments)
   - Stream taint context (data_classification, trust_state) from
-    navra's TaintTracker to the supervisor
+    navra's TaintTracker to the supervisor, keyed by sandbox_id
   - Supervisor injects into OPA input.pip for deny rules
+  - Correlation binding: map agent credentials to sandbox ids at
+    provisioning so the per-sandbox StreamContext resolves
 
   RFC draft: docs/openshell/rfc-0002-policy-information-point.md
 acceptance:
-  - navra exposes PIP gRPC service on /run/openshell/pip/navra.sock
+  - navra exposes PIP gRPC service on an operator-side (supervisor-
+    visible or configured) endpoint; the in-sandbox socket path does
+    not apply — navra is deployed as an external gateway, not inside
+    the sandbox
   - Supervisor queries and injects taint into OPA input
   - Integration test: tainted data blocked at proxy
 scope:
