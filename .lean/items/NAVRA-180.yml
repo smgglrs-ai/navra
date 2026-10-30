@@ -8,11 +8,36 @@ feeds: ["NAVRA-179"]
 source: OPENSHELL.md gap analysis (2026-07-28)
 tags: [security, openshell, ifc]
 blocked_reason: |
-  Requires OpenShell RFC 0002 (Policy Information Point) to be
-  accepted. The RFC proposes a supervisor-initiated gRPC streaming
-  interface where the supervisor queries governance frameworks for
-  runtime security context. Draft RFC written and ready for
-  GitHub Discussion submission.
+  Requires an accepted upstream OpenShell RFC for the Policy
+  Information Point interface.
+
+  Verified 2026-10-30: the draft RFC
+  (docs/openshell/rfc-0002-policy-information-point.md) was never
+  submitted — no PIP discussion, issue, or RFC exists upstream
+  (checked discussions, issues, and the rfc/ directory). Two stale
+  assumptions in the draft need fixing before submission:
+
+  1. OpenShell's RFC process now starts with a GitHub issue
+     (feature request template); maintainers assign the RFC number
+     only if they decide broad review is needed. "GitHub Discussion
+     submission" is no longer the entry point, and the local "0002"
+     number is navra-side numbering (upstream RFC 0002 is
+     agent-driven-policy-management) — any submission gets a
+     maintainer-assigned number.
+
+  2. Upstream has since merged RFC 0009 (supervisor middleware,
+     2026-07): L7 traffic inspection that can inspect/deny/replace
+     HTTP bodies and WebSocket text. Adjacent but not equivalent —
+     middleware sees traffic content, the PIP is a
+     supervisor-initiated query of in-sandbox application security
+     state feeding OPA input as deny-only context. The draft must be
+     repositioned against 0009 as complementary, or reviewers will
+     ask why middleware is insufficient.
+
+  Next step: refresh the draft (drop the number, reposition vs
+  RFC 0009, note the issue-first process), then file the upstream
+  feature-request issue. The 1-2d navra-side work starts only after
+  upstream acceptance.
 description: |
   navra's IFC taint labels travel as MCP-level metadata. OpenShell's
   egress proxy cannot see them. A tainted response could be
