@@ -71,6 +71,34 @@ blocked_reason: |
     telemetry and control-plane revisions respectively, not policy
     inputs from inside the sandbox.
 
+  Also checked for generic-gap artifacts and alternative hooks
+  (2026-10-30): no issue or PR describes the gap in any phrasing
+  (searched by PIP name and by generic terms — application state,
+  runtime context, external data, OPA input extension, governance
+  query). The nearest artifacts are the middleware issue #1733
+  threads, where maintainers discuss "trusted middleware / guard
+  service" shapes and ATR-style rule evaluation at the egress hook —
+  adjacent thinking, but nobody has asked for in-sandbox governance
+  state to influence egress policy.
+
+  Generic-hook analysis — a TODAY workaround exists, and the RFC's
+  alternatives section must address it: operator middleware (RFC
+  0009) receives RequestContext { sandbox_id, originating process }
+  plus request content per egress request, so a bespoke "taint
+  guard" middleware could query navra inside that sandbox (reachable
+  via service expose + the isolation-backend LoopbackConnect, which
+  the source confirms exists) and deny on taint. But the composition
+  is strictly worse than the PIP: (a) wrong failure semantics —
+  middleware fail_closed makes navra a hard dependency on ALL
+  egress and fail_open lets tainted traffic through when navra is
+  down, while the PIP degrades to the baseline allowlist on
+  disconnect; (b) per-request synchronous side-query through the
+  gateway relay vs the PIP's supervisor-held streamed state; (c) no
+  supervisor verification of the responder's binary identity. The
+  LoopbackConnect transport also proves the PIP's plumbing is
+  feasible upstream — only the policy-time query semantics are
+  missing.
+
   Additional positioning insight for the draft refresh: the
   architecture docs state the trust principle "the sandbox ... never
   makes policy decisions." The strongest reviewer objection to the
