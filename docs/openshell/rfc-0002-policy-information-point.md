@@ -78,7 +78,7 @@ The supervisor merges the latest cached properties from all connected PIPs into 
 }
 ```
 
-When no PIP is connected, `input.pip` is null. Existing policies that do not reference `input.pip` are unaffected. When multiple PIPs are connected, their properties are merged with latest-writer-wins per key.
+When no PIP is connected, `input.pip` is null. Existing policies that do not reference `input.pip` are unaffected. When multiple PIPs are connected, their properties are merged; a key published by more than one PIP resolves deterministically to the lexicographically-later publisher name. Publishers should prefix their keys by convention (`defenseclaw.scan_status`) so collisions do not occur.
 
 Policy authors use `input.pip` in deny rules only:
 

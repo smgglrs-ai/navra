@@ -46,6 +46,21 @@ blocked_reason: |
   The navra-side publisher is still unwritten; the branch's mock
   publisher (pip.rs tests) is the template.
 
+  Review fixes landed on the branch (b558860e7): non-Linux builds
+  now refuse to connect instead of skipping identity verification
+  (fail-closed, terminal error), and the merge semantics are
+  documented as deterministic lexicographic-by-publisher-name in
+  the RFC, merged() docs, and the test (was mislabeled
+  latest-writer-wins). The upstream feature-request issue draft is
+  ready at docs/openshell/issue-policy-information-point.md
+  (written against OpenShell's feature_request.yml template —
+  personal user story, workflow-level design, acceptance criteria,
+  alternatives incl. the middleware-composition rejection, agent
+  investigation findings, and an offer to contribute the RFC +
+  prototype). Submission sequence: file the issue, maintainers
+  decide on the RFC number, then the RFC 0019 + implementation
+  from the branch become the PRs.
+
   Upstream sequencing remains: feature issue first (maintainers
   assign the RFC number), then the RFC, then this implementation as
   the PR. The branch is the ready payload.
