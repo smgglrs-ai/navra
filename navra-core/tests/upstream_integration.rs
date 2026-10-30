@@ -1217,7 +1217,8 @@ async fn upstream_resource_updated_over_bound_uri_is_dropped() {
         let _ = client.waiting().await;
     });
 
-    let module = UpstreamModule::discover("resupd-long", peer.clone(), None, &Default::default()).await;
+    let module =
+        UpstreamModule::discover("resupd-long", peer.clone(), None, &Default::default()).await;
     let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
@@ -1264,4 +1265,114 @@ async fn upstream_resource_updated_over_bound_uri_is_dropped() {
         ),
         "an over-bound resources/updated URI must be dropped, not forwarded"
     );
+}
+
+// --- Upstream resources/prompts list_changed refresh ---
+
+async fn spawn_watched_mutating_upstream(
+    module_name: &str,
+) -> (
+    std::sync::Arc<navra_core::McpServer>,
+    rmcp::Peer<rmcp::RoleClient>,
+) {
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string())
+        .env("NAVRA_TEST_MUTATE_RESOURCES", "1");
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module =
+        UpstreamModule::discover(module_name, peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster)
+            .module(module)
+            .build(),
+    );
+    let trigger = peer.clone();
+    let watcher = navra_core::UpstreamWatcher::new(
+        module_name,
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+    (server, trigger)
+}
+
+#[tokio::test]
+async fn upstream_resources_list_changed_swaps_registry_and_notifies() {
+    let (server, trigger) = spawn_watched_mutating_upstream("resmut").await;
+    let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
+
+    // First discovery saw only test://status from the upstream (the
+    // builder's own navra:// resources are always present).
+    let uris = || {
+        server
+            .handle_list_resources(&agent, &Default::default())
+            .resources
+            .iter()
+            .map(|r| r.uri.clone())
+            .filter(|uri| uri.starts_with("test://"))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(uris(), vec!["test://status".to_string()]);
+
+    // Trigger the upstream announcements on the watched connection.
+    trigger
+        .call_tool(navra_protocol::CallToolParams::new("emit_list_changed"))
+        .await
+        .expect("trigger");
+
+    // The watcher refreshes the resource and prompt registries.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let current = uris();
+        if current.contains(&"test://extra".to_string()) {
+            assert_eq!(
+                current.len(),
+                2,
+                "the mutated listing must replace, not append"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "resources/list_changed never refreshed the registry, got {current:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    // The prompt registry swapped too.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let names: Vec<_> = server
+            .handle_list_prompts(&agent, &Default::default())
+            .prompts
+            .iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        if names.contains(&"farewell".to_string()) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "prompts/list_changed never refreshed the registry, got {names:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }

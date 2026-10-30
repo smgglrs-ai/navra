@@ -176,7 +176,7 @@ async fn subscription_filter_strips_unknown_uris_and_unsupported_categories() {
     let acknowledged = subscription.acknowledged();
     assert_eq!(
         acknowledged.prompts_list_changed, None,
-        "navra does not emit prompts list_changed"
+        "the test module registers no prompts, so the prompts capability          is absent and the category is stripped by the capability gate"
     );
     let uris = acknowledged
         .resource_subscriptions
@@ -187,5 +187,30 @@ async fn subscription_filter_strips_unknown_uris_and_unsupported_categories() {
         &vec!["test://status".to_string()],
         "only registered URIs are accepted"
     );
+    let _ = subscription.cancel().await;
+}
+
+#[tokio::test]
+async fn subscription_delivers_resources_list_changed() {
+    let (server, peer) = serve_and_connect().await;
+
+    // resources.listChanged is advertised (upstream registry swaps
+    // notify), so the category must be accepted and delivered.
+    let filter = rmcp::model::SubscriptionFilter::builder()
+        .resources_list_changed()
+        .build();
+    let mut subscription = peer.listen(filter).await.expect("listen");
+    assert_eq!(
+        subscription.acknowledged().resources_list_changed,
+        Some(true),
+        "resources_list_changed must be acknowledged"
+    );
+
+    server.notify("notifications/resources/list_changed", None);
+
+    match next_notification(&mut subscription).await {
+        rmcp::model::ServerNotification::ResourceListChangedNotification(_) => {}
+        other => panic!("expected resources/list_changed, got {other:?}"),
+    }
     let _ = subscription.cancel().await;
 }

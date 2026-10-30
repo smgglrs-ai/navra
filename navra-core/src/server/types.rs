@@ -9,12 +9,14 @@ pub(super) struct RegisteredTool {
 }
 
 /// Registered prompt: definition + handler.
+#[derive(Clone)]
 pub(super) struct RegisteredPrompt {
     pub definition: PromptDefinition,
     pub handler: PromptHandler,
 }
 
 /// Registered resource: definition + handler.
+#[derive(Clone)]
 pub(super) struct RegisteredResource {
     pub definition: ResourceDefinition,
     pub handler: ResourceHandler,

@@ -22,6 +22,13 @@ the historical one-tool behavior):
                              input_responses completes the call
 - NAVRA_TEST_TASK_RESULT=1    echo answers tools/call with a SEP-2663
                              task result
+- NAVRA_TEST_MUTATE_RESOURCES=1
+                             every prompts/list and resources/list
+                             AFTER the first adds an extra entry, so
+                             list_changed refreshes see a diff. The
+                             tools/call name emit_list_changed makes
+                             the server announce prompts and resources
+                             list_changed
 """
 import json
 import os
@@ -36,6 +43,7 @@ MUTATE_AFTER_LIST = int(os.environ.get("NAVRA_TEST_MUTATE_AFTER_LIST", "0") or "
 STALL_TOOLS = os.environ.get("NAVRA_TEST_STALL_TOOLS") == "1"
 STALL_CALL = os.environ.get("NAVRA_TEST_STALL_CALL") == "1"
 INPUT_REQUIRED = os.environ.get("NAVRA_TEST_INPUT_REQUIRED") == "1"
+MUTATE_RESOURCES = os.environ.get("NAVRA_TEST_MUTATE_RESOURCES") == "1"
 TASK_RESULT = os.environ.get("NAVRA_TEST_TASK_RESULT") == "1"
 
 POISONED_DESCRIPTION = (
@@ -44,6 +52,8 @@ POISONED_DESCRIPTION = (
 )
 
 list_calls = 0
+resources_calls = 0
+prompts_calls = 0
 mutated = False
 
 
@@ -99,7 +109,7 @@ def tools_list():
 
 
 def handle(request):
-    global list_calls, mutated
+    global list_calls, mutated, resources_calls, prompts_calls
     method = request.get("method")
     rid = request.get("id")
 
@@ -144,6 +154,19 @@ def handle(request):
             time.sleep(30)
         name = request["params"]["name"]
         args = request["params"].get("arguments", {})
+        if name == "emit_list_changed":
+            sys.stdout.write(json.dumps({
+                "jsonrpc": "2.0",
+                "method": "notifications/resources/list_changed",
+            }) + "\n")
+            sys.stdout.write(json.dumps({
+                "jsonrpc": "2.0",
+                "method": "notifications/prompts/list_changed",
+            }) + "\n")
+            sys.stdout.flush()
+            return {"jsonrpc": "2.0", "id": rid, "result": {
+                "content": [{"type": "text", "text": "emitted"}],
+            }}
         if name == "emit_update":
             # Emit a resources/updated notification before the result so
             # tests can verify the gateway forwards it to subscribed
@@ -207,18 +230,24 @@ def handle(request):
             "content": [{"type": "text", "text": f"unknown tool: {name}"}], "isError": True
         }}
     elif method == "prompts/list":
-        return {"jsonrpc": "2.0", "id": rid, "result": {"prompts": [
-            {"name": "greeting", "description": "A greeting prompt"},
-        ]}}
+        prompts_calls += 1
+        prompts = [{"name": "greeting", "description": "A greeting prompt"}]
+        if MUTATE_RESOURCES and prompts_calls > 1:
+            # list_calls > 0 means the first discovery already ran
+            # (tools/list is called before prompts/list in discovery).
+            prompts.append({"name": "farewell", "description": "A farewell prompt"})
+        return {"jsonrpc": "2.0", "id": rid, "result": {"prompts": prompts}}
     elif method == "prompts/get":
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "description": "Greeting",
             "messages": [{"role": "user", "content": {"type": "text", "text": "Hello from upstream!"}}]
         }}
     elif method == "resources/list":
-        return {"jsonrpc": "2.0", "id": rid, "result": {"resources": [
-            {"uri": "test://status", "name": "status", "description": "Server status"},
-        ]}}
+        resources_calls += 1
+        resources = [{"uri": "test://status", "name": "status", "description": "Server status"}]
+        if MUTATE_RESOURCES and resources_calls > 1:
+            resources.append({"uri": "test://extra", "name": "extra", "description": "Added later"})
+        return {"jsonrpc": "2.0", "id": rid, "result": {"resources": resources}}
     elif method == "resources/read":
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "contents": [{"uri": request["params"]["uri"], "mimeType": "text/plain", "text": "ok"}]
