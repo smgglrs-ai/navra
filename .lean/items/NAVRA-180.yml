@@ -38,6 +38,39 @@ blocked_reason: |
   RFC 0009, note the issue-first process), then file the upstream
   feature-request issue. The 1-2d navra-side work starts only after
   upstream acceptance.
+
+  Capability check (2026-10-30): OpenShell has NOT independently
+  built the PIP capability. What shipped instead, and why none of it
+  covers the gap:
+
+  - Supervisor middleware (RFC 0009, shipped): content-driven — the
+    supervisor calls operator-registered host-side gRPC services with
+    request/response bodies for per-request allow/deny/transform. No
+    query of in-sandbox application state, and middleware services
+    run outside the sandbox.
+  - OPA input: built per-request from request/L7 context
+    (l7_request_policy_input); Rego data files are static/local. No
+    runtime application-state injection path.
+  - Sandbox service exposure (`service expose`, RFC 0017 draft):
+    inbound ingress through the gateway relay — not a supervisor
+    control-plane query, and RFC 0017 explicitly lists replacing
+    egress policy as a non-goal.
+  - OpenShell-Research "Egress Gate": external request evaluator the
+    supervisor consults — closest in shape, but still content-driven
+    and a research artifact, not the product.
+  - Detection findings (OCSF) and dynamic policy updates are
+    telemetry and control-plane revisions respectively, not policy
+    inputs from inside the sandbox.
+
+  Additional positioning insight for the draft refresh: the
+  architecture docs state the trust principle "the sandbox ... never
+  makes policy decisions." The strongest reviewer objection to the
+  PIP is this principle, not middleware — the draft must lead with
+  its existing mitigations (deny-only context, supervisor verifies
+  the responder, PIP disconnect = baseline policy unchanged). The
+  middleware issue threads show maintainers actively discussing
+  "trusted guard service" shapes at the egress hook, so the audience
+  is receptive.
 description: |
   navra's IFC taint labels travel as MCP-level metadata. OpenShell's
   egress proxy cannot see them. A tainted response could be
