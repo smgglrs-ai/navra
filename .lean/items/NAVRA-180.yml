@@ -7,6 +7,19 @@ depends_on: []
 feeds: ["NAVRA-179"]
 source: OPENSHELL.md gap analysis (2026-07-28)
 tags: [security, openshell, ifc]
+relates: |
+  OpenShell issue #2378 (supervisor-owned MCP response
+  isolation/declassification, state:stale since 2026-10-18) is the
+  complementary direction — inbound response gating vs the PIP's
+  outbound state flow; they compose, neither implements the other.
+  navra itself is a working reference implementation of #2378's
+  invariant list at the MCP application layer (discovery bounds,
+  scanner/manifests, redaction + IFC declassification modes, tool
+  ACLs/disclosure, fail-closed behaviors — the NAVRA-186/187
+  security-wiring work). Engaging on #2378 may be a lower-friction
+  OpenShell community entry point than the PIP RFC; the undecodable
+  -response hang found in NAVRA-187 is directly relevant to its
+  "malformed responses fail closed" invariant.
 blocked_reason: |
   Requires an accepted upstream OpenShell RFC for the Policy
   Information Point interface.
