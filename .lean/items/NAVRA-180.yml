@@ -40,8 +40,17 @@ blocked_reason: |
   upstream acceptance.
 
   Capability check (2026-10-30): OpenShell has NOT independently
-  built the PIP capability. What shipped instead, and why none of it
-  covers the gap:
+  built the PIP capability — verified against the web docs AND the
+  source at ~/Code/github.com/NVIDIA/OpenShell (clean clone at
+  3a5dfcd2f, 2026-10-30). Source-level specifics: OPA input is
+  built per-request from network/L7 context (NetworkInput {
+  binary_path, host, port }; l7_request_policy_input; opa.rs),
+  the supervisor's only dial-into-sandbox connection is the SSH
+  relay Unix socket with peer-PID verification (supervisor_session.rs
+  ~1192), and the "governance" code hits are gateway-interceptor
+  config test fixtures plus examples/governance-interceptor —
+  control-plane RPC interception, not egress. What shipped instead,
+  and why none of it covers the gap:
 
   - Supervisor middleware (RFC 0009, shipped): content-driven — the
     supervisor calls operator-registered host-side gRPC services with
