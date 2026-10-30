@@ -77,7 +77,11 @@ fn test_server() -> Arc<McpServer> {
             })
             .tool(
                 ToolDefinition::new("ping", "Returns pong", empty_input_schema()),
-                |_args, _ctx| Box::pin(async { CallToolResult::text("pong") }),
+                |_args, _ctx| {
+                    Box::pin(async {
+                        navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+                    })
+                },
             )
             .module(TestPromptModule)
             .module(TestResourceModule)

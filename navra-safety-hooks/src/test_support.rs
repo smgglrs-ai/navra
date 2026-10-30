@@ -22,6 +22,8 @@ pub(crate) fn test_ctx() -> CallContext {
         },
         session_id: "sess-1".to_string(),
         taint: navra_auth::ifc::TaintTracker::new(),
+        mrtr_input_responses: None,
+        mrtr_request_state: None,
         remaining_tokens: None,
         sandbox: None,
     }

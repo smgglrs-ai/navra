@@ -426,8 +426,10 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
                         Some(v) => v,
                         None => return {
                             use navra_protocol::compat::CallToolResultExt;
-                            navra_protocol::CallToolResult::error_msg(
-                                format!("Missing required parameter: {}", #field)
+                            navra_protocol::CallToolResponse::Complete(
+                                navra_protocol::CallToolResult::error_msg(
+                                    format!("Missing required parameter: {}", #field)
+                                )
                             )
                         },
                     };
@@ -484,18 +486,22 @@ fn expand_tool(attrs: ToolAttrs, func: &ItemFn) -> syn::Result<TokenStream2> {
 
         #vis fn #handler_fn(#(#state_params),*) -> (navra_protocol::ToolDefinition, std::sync::Arc<
             dyn Fn(serde_json::Value, navra_mcp::auth::CallContext)
-                -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResult> + Send>>
+                -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResponse> + Send>>
                 + Send + Sync
         >) {
             let handler: std::sync::Arc<
                 dyn Fn(serde_json::Value, navra_mcp::auth::CallContext)
-                    -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResult> + Send>>
+                    -> std::pin::Pin<Box<dyn std::future::Future<Output = navra_protocol::CallToolResponse> + Send>>
                     + Send + Sync
             > = std::sync::Arc::new(move |args: serde_json::Value, ctx: navra_mcp::auth::CallContext| {
                 #(#state_clones)*
                 Box::pin(async move {
                     #(#arg_extractions)*
-                    #func_name(#(#call_args),*).await
+                    // Tool functions produce a final result; widen it
+                    // into the response union for the ToolHandler type.
+                    navra_protocol::CallToolResponse::Complete(
+                        #func_name(#(#call_args),*).await
+                    )
                 })
             });
             (#tool_def_fn(), handler)

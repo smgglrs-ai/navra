@@ -2,9 +2,10 @@ use vstd::prelude::*;
 
 use crate::auth::CallContext;
 use crate::protocol::{
-    CallToolParams, CallToolResult, Content, GetPromptParams, GetPromptResult, InitializeParams,
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, PaginatedRequest,
-    ReadResourceParams, ReadResourceResult, ToolDefinition,
+    CallToolParams, CallToolResponse, CallToolResult, Content, GetPromptParams, GetPromptResult,
+    InitializeParams, InitializeResult, InputRequest, InputRequiredResult, ListPromptsResult,
+    ListResourcesResult, ListToolsResult, PaginatedRequest, ReadResourceParams, ReadResourceResult,
+    ToolDefinition,
 };
 use crate::safety::{FilterContext, FilterPipeline};
 use crate::session::Session;
@@ -361,9 +362,9 @@ impl McpServer {
 
     pub async fn handle_call_tool(
         &self,
-        params: CallToolParams,
+        mut params: CallToolParams,
         mut ctx: CallContext,
-    ) -> CallToolResult {
+    ) -> CallToolResponse {
         self.metrics
             .tools
             .calls_total
@@ -377,6 +378,11 @@ impl McpServer {
             ctx.sandbox = Some(sandbox.clone());
         }
 
+        // MRTR (SEP-2322): carry the client's retry fields so upstream
+        // forwarding can echo them on input_required follow-up rounds.
+        ctx.mrtr_input_responses = params.input_responses.take();
+        ctx.mrtr_request_state = params.request_state.take();
+
         let arguments = params
             .arguments
             .as_ref()
@@ -387,7 +393,8 @@ impl McpServer {
         if self.paused.load(Ordering::Relaxed) {
             return CallToolResult::error_msg(
                 "Server is paused. Resume from the system tray to continue.".to_string(),
-            );
+            )
+            .into();
         }
 
         // Rate limit check (kernel-enforced)
@@ -399,7 +406,8 @@ impl McpServer {
             return CallToolResult::error_msg(format!(
                 "Rate limit exceeded for agent '{}'",
                 ctx.agent.name
-            ));
+            ))
+            .into();
         }
 
         // Concurrency limit check (per-agent)
@@ -410,7 +418,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Concurrency limit ({max}) reached for agent '{}'",
                         ctx.agent.name
-                    ));
+                    ))
+                    .into();
                 }
             }
         } else {
@@ -458,7 +467,8 @@ impl McpServer {
                 return CallToolResult::error_msg(format!(
                     "Permission denied: tool '{}' not in capability token grants",
                     params.name
-                ));
+                ))
+                .into();
             }
         } else if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
             match tp.check(&params.name) {
@@ -474,7 +484,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: tool '{}' is blocked",
                         params.name,
-                    ));
+                    ))
+                    .into();
                 }
                 crate::permissions::tool_rules::ToolPolicy::Approve => {
                     // Check if a dynamic session grant overrides the approval requirement
@@ -496,7 +507,8 @@ impl McpServer {
                         return CallToolResult::error_msg(format!(
                             "Approval required: '{}'",
                             params.name
-                        ));
+                        ))
+                        .into();
                     }
                     tracing::info!(
                         tool = %params.name,
@@ -535,13 +547,15 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
-                    ));
+                    ))
+                    .into();
                 }
                 navra_mcp::ToolOperation::Deny => {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
-                    ));
+                    ))
+                    .into();
                 }
                 _ => {}
             }
@@ -575,7 +589,8 @@ impl McpServer {
                 permission_set = %ctx.agent.permissions,
                 "Domain classification denied"
             );
-            return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name));
+            return CallToolResult::error_msg(format!("Permission denied: '{}'", params.name))
+                .into();
         }
 
         // Cedar policy check (second gate — can only further restrict)
@@ -628,7 +643,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
-                    ));
+                    ))
+                    .into();
                 }
             }
         }
@@ -664,7 +680,8 @@ impl McpServer {
                         return CallToolResult::error_msg(format!(
                             "Permission denied: '{}'",
                             params.name
-                        ));
+                        ))
+                        .into();
                     }
                 }
             }
@@ -705,7 +722,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
-                    ));
+                    ))
+                    .into();
                 }
             }
         }
@@ -754,7 +772,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Access denied: path '{}' blocked by ACL policy",
                         path_str
-                    ));
+                    ))
+                    .into();
                 }
             }
         }
@@ -775,7 +794,7 @@ impl McpServer {
                         .tools
                         .calls_denied
                         .fetch_add(1, Ordering::Relaxed);
-                    return CallToolResult::error_msg(msg);
+                    return CallToolResult::error_msg(msg).into();
                 }
             };
 
@@ -815,7 +834,8 @@ impl McpServer {
                         return CallToolResult::error_msg(format!(
                             "Permission denied: '{}'",
                             params.name
-                        ));
+                        ))
+                        .into();
                     }
                     Some(crate::ifc::TaintedWritePolicy::Approve) => {
                         self.process_table.record_denied(
@@ -827,7 +847,8 @@ impl McpServer {
                         return CallToolResult::error_msg(format!(
                             "Approval required: '{}'",
                             params.name
-                        ));
+                        ))
+                        .into();
                     }
                     Some(crate::ifc::TaintedWritePolicy::Allow) => {} // Explicitly allowed
                     None => {
@@ -847,7 +868,8 @@ impl McpServer {
                         return CallToolResult::error_msg(format!(
                             "Permission denied: '{}'",
                             params.name
-                        ));
+                        ))
+                        .into();
                     }
                 }
             }
@@ -885,7 +907,7 @@ impl McpServer {
                 crate::hooks::PreHookOutcome::Simulated(result) => {
                     self.process_table
                         .complete_call(&ctx.agent.name, &params.name);
-                    return result;
+                    return result.into();
                 }
                 crate::hooks::PreHookOutcome::Blocked(reason) => {
                     self.process_table
@@ -898,7 +920,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Permission denied: '{}'",
                         params.name
-                    ));
+                    ))
+                    .into();
                 }
                 crate::hooks::PreHookOutcome::Pending { request_id, reason } => {
                     tracing::info!(
@@ -910,7 +933,8 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Approval required: '{}' (request: {})",
                         params.name, request_id
-                    ));
+                    ))
+                    .into();
                 }
             }
         } else {
@@ -921,7 +945,7 @@ impl McpServer {
         let trace_id = crate::blackbox::generate_trace_id();
         let tools_snapshot: HashMap<String, RegisteredTool> =
             self.tools.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let result = match tools_snapshot.get(params.name.as_ref()) {
+        let response = match tools_snapshot.get(params.name.as_ref()) {
             Some(tool) => (tool.handler)(arguments.clone(), ctx.clone()).await,
             None => {
                 // Multi-hypothesis tool routing: try fuzzy matching
@@ -972,6 +996,7 @@ impl McpServer {
                             (tool.handler)(arguments.clone(), ctx.clone()).await
                         } else {
                             CallToolResult::error_msg(format!("Unknown tool: {}", params.name))
+                                .into()
                         }
                     } else if !candidates.is_empty() {
                         // Suggest candidates below auto-route threshold
@@ -985,11 +1010,13 @@ impl McpServer {
                             "Unknown tool: {}. Did you mean:\n{}",
                             params.name,
                             suggestions.join("\n")
-                        ));
+                        ))
+                        .into();
                     } else {
                         self.process_table
                             .complete_call(&ctx.agent.name, &params.name);
-                        return CallToolResult::error_msg(format!("Unknown tool: {}", params.name));
+                        return CallToolResult::error_msg(format!("Unknown tool: {}", params.name))
+                            .into();
                     }
                 } else {
                     self.process_table
@@ -1008,11 +1035,82 @@ impl McpServer {
                             &trace_id,
                         );
                     }
-                    return CallToolResult::error_msg(format!("Unknown tool: {}", params.name));
+                    return CallToolResult::error_msg(format!("Unknown tool: {}", params.name))
+                        .into();
                 }
             }
         };
         let tool_duration_us = tool_start.elapsed().as_micros() as u64;
+
+        // MRTR (SEP-2322): an upstream may defer completion to the
+        // client with an `input_required` intermediate result. The
+        // upstream-controlled text inside its input requests gets the
+        // same safety filtering as result content, the session taint
+        // rules apply, and the result is audited — but there is no
+        // final content to store in the var store, declassify, or
+        // validate against DMN output policy, so those steps are
+        // skipped for the intermediate round.
+        let result = match response {
+            CallToolResponse::Complete(result) => result,
+            CallToolResponse::InputRequired(ir) => {
+                let mut declass_recs: Vec<crate::safety::Declassification> = Vec::new();
+                let ir = match self
+                    .filter_input_required(ir, &params.name, &arguments, &ctx, &mut declass_recs)
+                    .await
+                {
+                    Ok(ir) => ir,
+                    Err(blocked) => return CallToolResponse::Complete(blocked),
+                };
+
+                self.metrics
+                    .tools
+                    .duration_us_sum
+                    .fetch_add(tool_duration_us, Ordering::Relaxed);
+                tracing::info!(
+                    tool.name = %params.name,
+                    agent.name = %ctx.agent.name,
+                    duration_us = tool_duration_us,
+                    "tool_call.input_required"
+                );
+
+                let result_label = self.result_label_for(&params.name, &arguments, &ctx);
+                let result_label = crate::ifc::DataLabel {
+                    confidentiality: result_label
+                        .confidentiality
+                        .max(elevated_confidentiality(&declass_recs)),
+                    ..result_label
+                };
+
+                // IFC: absorb the (intermediate) result label into the
+                // session taint — the input request text is upstream
+                // content the client will render.
+                ctx.taint.absorb(result_label);
+                self.sessions
+                    .update_context_label(&ctx.session_id, result_label);
+
+                self.process_table
+                    .complete_call(&ctx.agent.name, &params.name);
+                if let Some(ref bb) = self.blackbox {
+                    bb.record(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        &ctx.session_id,
+                        &params.name,
+                        &arguments.to_string(),
+                        "input_required",
+                        "input_required",
+                        tool_duration_us,
+                        &format!("{:?}", result_label),
+                        &trace_id,
+                    );
+                }
+                return CallToolResponse::InputRequired(ir);
+            }
+            // Tool handlers never produce Task or future response kinds
+            // (the upstream forwarding fails those closed); flatten
+            // defensively if one ever does.
+            other => return flatten_tool_response(other).into(),
+        };
         self.metrics
             .tools
             .duration_us_sum
@@ -1037,31 +1135,7 @@ impl McpServer {
         // elevated below when the safety pipeline finds sensitive
         // content — result.label was removed in the rmcp migration, so
         // the label is derived here and from the filter pipeline.
-        let result_label = crate::ifc::DataLabel::TRUSTED_PUBLIC;
-
-        // IFC: auto-label external read tool outputs as Untrusted
-        let result_label = if crate::ifc::is_external_read_tool(&params.name) {
-            let path_arg = arguments.get("path").and_then(|v| v.as_str());
-            let is_trusted = path_arg.is_some_and(|p| {
-                self.trusted_paths
-                    .get(&ctx.agent.permissions)
-                    .is_some_and(|patterns| crate::ifc::is_trusted_path(p, patterns))
-            });
-            if !is_trusted {
-                self.metrics
-                    .ifc
-                    .taint_elevations
-                    .fetch_add(1, Ordering::Relaxed);
-                crate::ifc::DataLabel {
-                    integrity: crate::ifc::Integrity::Untrusted,
-                    confidentiality: result_label.confidentiality,
-                }
-            } else {
-                result_label
-            }
-        } else {
-            result_label
-        };
+        let result_label = self.result_label_for(&params.name, &arguments, &ctx);
 
         // Post-call safety filtering (hooks, or the legacy direct
         // pipeline path), collecting declassification recommendations.
@@ -1291,12 +1365,117 @@ impl McpServer {
                     return CallToolResult::error_msg(format!(
                         "Output blocked by policy: {}",
                         reason
-                    ));
+                    ))
+                    .into();
                 }
             }
         }
 
-        result
+        CallToolResponse::Complete(result)
+    }
+
+    /// IFC: compute the label of a tool's output (or, on MRTR rounds,
+    /// of its `input_required` request text). External-read tool
+    /// outputs are Untrusted unless the path is trusted.
+    fn result_label_for(
+        &self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        ctx: &CallContext,
+    ) -> crate::ifc::DataLabel {
+        if crate::ifc::is_external_read_tool(tool_name) {
+            let path_arg = arguments.get("path").and_then(|v| v.as_str());
+            let is_trusted = path_arg.is_some_and(|p| {
+                self.trusted_paths
+                    .get(&ctx.agent.permissions)
+                    .is_some_and(|patterns| crate::ifc::is_trusted_path(p, patterns))
+            });
+            if !is_trusted {
+                self.metrics
+                    .ifc
+                    .taint_elevations
+                    .fetch_add(1, Ordering::Relaxed);
+                crate::ifc::DataLabel {
+                    integrity: crate::ifc::Integrity::Untrusted,
+                    confidentiality: crate::ifc::DataLabel::TRUSTED_PUBLIC.confidentiality,
+                }
+            } else {
+                crate::ifc::DataLabel::TRUSTED_PUBLIC
+            }
+        } else {
+            crate::ifc::DataLabel::TRUSTED_PUBLIC
+        }
+    }
+
+    /// Filter the upstream-controlled text inside an MRTR
+    /// `input_required` result through the same post-call safety
+    /// pipeline applied to result content (hooks when configured, the
+    /// permission set's legacy filter pipeline otherwise). The texts
+    /// are extracted into a synthetic result, filtered, and written
+    /// back positionally; a pipeline block fails the whole round
+    /// closed. Returns the filtered result, or a tool-level error to
+    /// surface instead of the input request.
+    async fn filter_input_required(
+        &self,
+        mut ir: InputRequiredResult,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+        ctx: &CallContext,
+        declass_recs: &mut Vec<crate::safety::Declassification>,
+    ) -> Result<InputRequiredResult, CallToolResult> {
+        let originals = input_request_texts(&ir);
+        if originals.is_empty() {
+            // ListRoots-only input requests carry no upstream text.
+            return Ok(ir);
+        }
+
+        let synthetic = CallToolResult::success(
+            originals
+                .iter()
+                .map(|t| Content::text(t.clone()))
+                .collect::<Vec<_>>(),
+        );
+        let filtered = if self.hooks.has_hooks() {
+            self.hooks
+                .run_post(tool_name, arguments, synthetic, ctx)
+                .await
+        } else if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
+            && pipeline.has_filters()
+        {
+            let (result, recs) = self
+                .apply_safety_filter(pipeline, synthetic, ctx, tool_name)
+                .await;
+            declass_recs.extend(recs);
+            result
+        } else {
+            synthetic
+        };
+        if let Some(ref ledger) = self.declassification_ledger {
+            declass_recs.extend(ledger.drain());
+        }
+        if filtered.is_err() {
+            // Fail closed: the safety pipeline blocked the input
+            // request text, so the round must not reach the client.
+            tracing::warn!(
+                tool = %tool_name,
+                "MRTR input request blocked by safety pipeline"
+            );
+            return Err(CallToolResult::error_msg(
+                "upstream input request blocked by safety pipeline",
+            ));
+        }
+
+        // Write the filtered texts back positionally. Extra blocks the
+        // hooks appended (budget notices) and non-text replacements
+        // leave the original text in place.
+        let filtered_texts: Vec<Option<String>> = filtered
+            .content
+            .iter()
+            .take(originals.len())
+            .map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect();
+        write_back_input_request_texts(&mut ir, filtered_texts);
+        Ok(ir)
     }
 
     async fn apply_safety_filter(
@@ -2359,3 +2538,182 @@ proof fn pipeline_total(
 {}
 
 } // verus!
+
+// ========================================================================
+// MRTR (SEP-2322) input_required helpers
+// ========================================================================
+//
+// MRTR input requests may be sampling requests; SEP-2577 deprecates
+// protocol-level sampling, but the wire shape still exists and navra
+// must filter the upstream-controlled text it carries.
+
+/// Iterate the blocks of a sampling message's content regardless of
+/// the single/multiple wire shape.
+#[allow(deprecated)]
+fn sampling_blocks(
+    content: &crate::protocol::rmcp::model::SamplingContent<
+        crate::protocol::rmcp::model::SamplingMessageContentBlock,
+    >,
+) -> impl Iterator<Item = &crate::protocol::rmcp::model::SamplingMessageContentBlock> {
+    match content {
+        crate::protocol::rmcp::model::SamplingContent::Single(block) => {
+            Box::new(std::iter::once(block)) as Box<dyn Iterator<Item = _>>
+        }
+        crate::protocol::rmcp::model::SamplingContent::Multiple(blocks) => Box::new(blocks.iter()),
+    }
+}
+
+/// Mutable counterpart of [`sampling_blocks`].
+#[allow(deprecated)]
+fn sampling_blocks_mut(
+    content: &mut crate::protocol::rmcp::model::SamplingContent<
+        crate::protocol::rmcp::model::SamplingMessageContentBlock,
+    >,
+) -> impl Iterator<Item = &mut crate::protocol::rmcp::model::SamplingMessageContentBlock> {
+    match content {
+        crate::protocol::rmcp::model::SamplingContent::Single(block) => {
+            Box::new(std::iter::once(&mut *block)) as Box<dyn Iterator<Item = _>>
+        }
+        crate::protocol::rmcp::model::SamplingContent::Multiple(blocks) => {
+            Box::new(blocks.iter_mut())
+        }
+    }
+}
+
+/// Collect the upstream-controlled text fields of an MRTR
+/// `input_required` result in deterministic traversal order
+/// (elicitation messages, sampling system prompts, and sampling
+/// message texts). [`write_back_input_request_texts`] writes back
+/// positionally against the same traversal.
+#[allow(deprecated)]
+fn input_request_texts(ir: &InputRequiredResult) -> Vec<String> {
+    let mut texts = Vec::new();
+    let Some(requests) = ir.input_requests.as_ref() else {
+        return texts;
+    };
+    for request in requests.values() {
+        match request {
+            InputRequest::Elicitation(req) => match &req.params {
+                crate::protocol::rmcp::model::ElicitRequestParams::FormElicitationParams {
+                    message,
+                    ..
+                }
+                | crate::protocol::rmcp::model::ElicitRequestParams::UrlElicitationParams {
+                    message,
+                    ..
+                } => texts.push(message.clone()),
+                // ElicitRequestParams is #[non_exhaustive] upstream.
+                _ => {}
+            },
+            InputRequest::CreateMessage(req) => {
+                if let Some(system) = req.params.system_prompt.as_ref() {
+                    texts.push(system.clone());
+                }
+                for msg in &req.params.messages {
+                    for block in sampling_blocks(&msg.content) {
+                        if let crate::protocol::rmcp::model::SamplingMessageContentBlock::Text(t) =
+                            block
+                        {
+                            texts.push(t.text.clone());
+                        }
+                    }
+                }
+            }
+            // ListRoots requests carry no upstream text.
+            InputRequest::ListRoots(_) => {}
+            // InputRequest is #[non_exhaustive] upstream: unknown
+            // request kinds contribute no filterable text.
+            _ => {}
+        }
+    }
+    texts
+}
+
+/// Write filtered texts back into an MRTR `input_required` result,
+/// positionally against the traversal used by
+/// [`input_request_texts`]. `None` entries (or a short `texts` vec)
+/// leave the original text in place.
+#[allow(deprecated)]
+fn write_back_input_request_texts(ir: &mut InputRequiredResult, texts: Vec<Option<String>>) {
+    let Some(requests) = ir.input_requests.as_mut() else {
+        return;
+    };
+    let mut idx = 0usize;
+    for request in requests.values_mut() {
+        match request {
+            InputRequest::Elicitation(req) => match &mut req.params {
+                crate::protocol::rmcp::model::ElicitRequestParams::FormElicitationParams {
+                    message,
+                    ..
+                }
+                | crate::protocol::rmcp::model::ElicitRequestParams::UrlElicitationParams {
+                    message,
+                    ..
+                } => {
+                    if let Some(Some(replacement)) = texts.get(idx) {
+                        *message = replacement.clone();
+                    }
+                    idx += 1;
+                }
+                _ => {}
+            },
+            InputRequest::CreateMessage(req) => {
+                if let Some(system) = req.params.system_prompt.as_mut() {
+                    if let Some(Some(replacement)) = texts.get(idx) {
+                        *system = replacement.clone();
+                    }
+                    idx += 1;
+                }
+                for msg in &mut req.params.messages {
+                    for block in sampling_blocks_mut(&mut msg.content) {
+                        if let crate::protocol::rmcp::model::SamplingMessageContentBlock::Text(t) =
+                            block
+                            && let Some(Some(replacement)) = texts.get(idx)
+                        {
+                            t.text = replacement.clone();
+                        }
+                        // Non-text sampling blocks are not collected by
+                        // input_request_texts; skip their index slot.
+                    }
+                }
+            }
+            InputRequest::ListRoots(_) => {}
+            _ => {}
+        }
+    }
+}
+
+/// The confidentiality level implied by a set of declassification
+/// recommendations from the safety pipeline: any findings elevate to
+/// [`Confidentiality::Pii`], mirroring the final-result aggregation.
+fn elevated_confidentiality(
+    recs: &[crate::safety::Declassification],
+) -> crate::ifc::Confidentiality {
+    if recs.iter().any(|rec| rec.findings_count > 0) {
+        crate::ifc::Confidentiality::Pii
+    } else {
+        crate::ifc::Confidentiality::Public
+    }
+}
+
+/// Flatten a [`CallToolResponse`] for dispatch surfaces that cannot
+/// carry MRTR intermediate results (ACP, A2A, flows, plan execution):
+/// an `input_required` response becomes a tool-level error explaining
+/// what the caller must do instead, and a tasks-extension result fails
+/// closed.
+pub fn flatten_tool_response(response: CallToolResponse) -> CallToolResult {
+    match response {
+        CallToolResponse::Complete(result) => result,
+        CallToolResponse::InputRequired(_) => CallToolResult::error_msg(
+            "tool requested interactive input (MCP input_required), which this \
+             surface cannot provide; retry with an MCP client that supports \
+             multi-round tool calls",
+        ),
+        CallToolResponse::Task(_) => CallToolResult::error_msg(
+            "tool returned a task result (SEP-2663 tasks extension), which \
+             navra does not forward",
+        ),
+        // CallToolResponse is #[non_exhaustive] upstream.
+        _ => CallToolResult::error_msg("tool returned an unsupported response kind"),
+    }
+}

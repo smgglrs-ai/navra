@@ -237,17 +237,17 @@ impl Module for GrpcModule {
                                         .first()
                                         .map(|c| c.text.clone())
                                         .unwrap_or_default();
-                                    CallToolResult::error_msg(msg)
+                                    CallToolResult::error_msg(msg).into()
                                 } else {
                                     let content: Vec<Content> = inner
                                         .content
                                         .iter()
                                         .map(|c| Content::text(c.text.clone()))
                                         .collect();
-                                    CallToolResult::success(content)
+                                    CallToolResult::success(content).into()
                                 }
                             }
-                            Err(e) => CallToolResult::error_msg(format!("grpc: {e}")),
+                            Err(e) => CallToolResult::error_msg(format!("grpc: {e}")).into(),
                         }
                     })
                 });

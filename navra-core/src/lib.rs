@@ -40,7 +40,7 @@ pub use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOpe
 pub use navra_protocol::RetryConfig;
 pub use server::{
     CedarActionVersion, McpServer, McpServerBuilder, NavraHandler, ToolFilter, ToolUsageTracker,
-    UsagePruningFilter,
+    UsagePruningFilter, flatten_tool_response,
 };
 pub use session::Session;
 pub use upstream_module::{

@@ -20,7 +20,7 @@ use std::sync::{Arc, RwLock};
 pub use builder::McpServerBuilder;
 #[cfg(test)]
 pub use handlers::IFCToolFilter;
-pub use handlers::{ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use handlers::{ToolFilter, ToolUsageTracker, UsagePruningFilter, flatten_tool_response};
 pub use navra_handler::NavraHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};

@@ -168,6 +168,7 @@ async fn handle_exec_run(
 
 #[cfg(test)]
 mod tests {
+    use navra_protocol::compat::CallToolResponseExt;
     use super::*;
     use navra_core::auth::AgentIdentity;
 
@@ -200,7 +201,9 @@ mod tests {
             "working_dir": "/etc/passwd"
         });
 
-        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        let result = handler(args, test_ctx(Some("did:test:agent")))
+            .await
+            .expect_complete();
 
         assert!(result.is_err());
         let text = result.content[0]
@@ -222,7 +225,9 @@ mod tests {
             "working_dir": "/workspacefoo"
         });
 
-        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        let result = handler(args, test_ctx(Some("did:test:agent")))
+            .await
+            .expect_complete();
         assert!(result.is_err());
         let text = result.content[0]
             .as_text()
@@ -243,7 +248,9 @@ mod tests {
             "working_dir": "/workspace/../etc"
         });
 
-        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        let result = handler(args, test_ctx(Some("did:test:agent")))
+            .await
+            .expect_complete();
         assert!(result.is_err());
         let text = result.content[0]
             .as_text()
@@ -260,7 +267,7 @@ mod tests {
         let (_, handler) = handle_exec_run_handler(state);
 
         let args = serde_json::json!({"command": ["ls"]});
-        let result = handler(args, test_ctx(None)).await;
+        let result = handler(args, test_ctx(None)).await.expect_complete();
 
         assert!(result.is_err());
         let text = result.content[0]
@@ -278,7 +285,9 @@ mod tests {
         let (_, handler) = handle_exec_run_handler(state);
 
         let args = serde_json::json!({"command": ["ls"]});
-        let result = handler(args, test_ctx(Some("did:test:unknown"))).await;
+        let result = handler(args, test_ctx(Some("did:test:unknown")))
+            .await
+            .expect_complete();
 
         assert!(result.is_err());
         let text = result.content[0]
@@ -296,7 +305,9 @@ mod tests {
         let (_, handler) = handle_exec_run_handler(state);
 
         let args = serde_json::json!({"command": []});
-        let result = handler(args, test_ctx(Some("did:test:agent"))).await;
+        let result = handler(args, test_ctx(Some("did:test:agent")))
+            .await
+            .expect_complete();
 
         assert!(result.is_err());
         let text = result.content[0]
