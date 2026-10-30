@@ -70,6 +70,28 @@ pub fn content_as_text(content: &Content) -> Option<&str> {
     content.as_text().map(|tc| tc.text.as_str())
 }
 
+/// Extension trait for unwrapping a [`CallToolResponse`](crate::CallToolResponse)
+/// in tests and helpers that only deal with final results. Panics on
+/// `input_required` and other non-final kinds.
+pub trait CallToolResponseExt {
+    fn expect_complete(self) -> CallToolResult;
+}
+
+impl CallToolResponseExt for CallToolResult {
+    fn expect_complete(self) -> CallToolResult {
+        self
+    }
+}
+
+impl CallToolResponseExt for crate::CallToolResponse {
+    fn expect_complete(self) -> CallToolResult {
+        match self {
+            crate::CallToolResponse::Complete(result) => result,
+            other => panic!("expected a final tool result, got: {other:?}"),
+        }
+    }
+}
+
 /// Compress tool output to fit within a token budget.
 ///
 /// Truncates text content at sentence boundaries and appends a

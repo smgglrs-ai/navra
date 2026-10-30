@@ -5,6 +5,7 @@ use crate::protocol::CallToolResult;
 use crate::quota::QuotaEngine;
 use crate::safety::FilterPipeline;
 use crate::session::SessionStore;
+use navra_mcp::ToolHandler;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
@@ -16,6 +17,27 @@ use super::McpServer;
 use super::types::{
     RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool,
 };
+
+/// Widen a `CallToolResult`-producing handler closure into the
+/// `CallToolResponse`-producing [`ToolHandler`] shape that
+/// `RegisteredTool` stores. Inline builder tools always produce final
+/// results; the response union exists for upstream MRTR forwarding.
+fn widen<F>(handler: F) -> ToolHandler
+where
+    F: Fn(
+            serde_json::Value,
+            crate::auth::CallContext,
+        ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
+        + Send
+        + Sync
+        + 'static,
+{
+    let handler = Arc::new(handler);
+    Arc::new(move |args, ctx| {
+        let handler = Arc::clone(&handler);
+        Box::pin(async move { handler(args, ctx).await.into() })
+    })
+}
 
 /// Builder for constructing an McpServer.
 pub struct McpServerBuilder {
@@ -56,6 +78,8 @@ pub struct McpServerBuilder {
     upstream_watchers: Vec<crate::UpstreamWatcher>,
     /// Tool names registered per module (for upstream registry swaps).
     module_tool_index: HashMap<String, Vec<String>>,
+    module_prompt_index: HashMap<String, Vec<String>>,
+    module_resource_index: HashMap<String, Vec<String>>,
     dynamic_filters: Vec<Box<dyn super::ToolFilter>>,
     path_acls: HashMap<String, navra_auth::permissions::PathAcl>,
     mcp_version: String,
@@ -106,6 +130,8 @@ impl McpServerBuilder {
             declassification_ledger: None,
             upstream_watchers: Vec::new(),
             module_tool_index: HashMap::new(),
+            module_prompt_index: HashMap::new(),
+            module_resource_index: HashMap::new(),
             dynamic_filters: Vec::new(),
             path_acls: HashMap::new(),
             mcp_version: navra_protocol::PROTOCOL_VERSION_2026.to_string(),
@@ -168,23 +194,32 @@ impl McpServerBuilder {
     }
 
     /// Register an individual tool with its handler.
-    pub fn tool(
-        mut self,
-        definition: crate::protocol::ToolDefinition,
-        handler: impl Fn(
-            serde_json::Value,
-            crate::auth::CallContext,
-        ) -> Pin<Box<dyn Future<Output = CallToolResult> + Send>>
-        + Send
-        + Sync
-        + 'static,
-    ) -> Self {
+    ///
+    /// The handler may return a final `CallToolResult` (widened into
+    /// the response union) or a full `CallToolResponse` for modules
+    /// that surface MRTR `input_required` results.
+    pub fn tool<T, F>(mut self, definition: crate::protocol::ToolDefinition, handler: F) -> Self
+    where
+        T: Into<crate::protocol::CallToolResponse> + Send + 'static,
+        F: Fn(
+                serde_json::Value,
+                crate::auth::CallContext,
+            ) -> Pin<Box<dyn Future<Output = T> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    {
         let name = definition.name.to_string();
+        let handler = Arc::new(handler);
+        let adapted: ToolHandler = Arc::new(move |args, ctx| {
+            let handler = Arc::clone(&handler);
+            Box::pin(async move { handler(args, ctx).await.into() })
+        });
         self.tools.insert(
             name,
             RegisteredTool {
                 definition,
-                handler: Arc::new(handler),
+                handler: adapted,
             },
         );
         self
@@ -249,6 +284,7 @@ impl McpServerBuilder {
             );
         }
         self.module_tool_index.insert(mod_name.clone(), mod_tools);
+        let mut mod_prompts = Vec::new();
         for (definition, handler) in module.prompts() {
             let prompt_name = definition.name.clone();
             if self.prompts.contains_key(&prompt_name) {
@@ -262,6 +298,7 @@ impl McpServerBuilder {
                 prompt = %prompt_name,
                 "Registered prompt"
             );
+            mod_prompts.push(prompt_name.clone());
             self.prompts.insert(
                 prompt_name,
                 RegisteredPrompt {
@@ -270,6 +307,9 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_prompt_index
+            .insert(mod_name.clone(), mod_prompts);
+        let mut mod_resources = Vec::new();
         for (definition, handler) in module.resources() {
             let resource_uri = definition.uri.clone();
             if self.resources.contains_key(&resource_uri) {
@@ -283,6 +323,7 @@ impl McpServerBuilder {
                 resource = %resource_uri,
                 "Registered resource"
             );
+            mod_resources.push(resource_uri.clone());
             self.resources.insert(
                 resource_uri,
                 RegisteredResource {
@@ -291,6 +332,8 @@ impl McpServerBuilder {
                 },
             );
         }
+        self.module_resource_index
+            .insert(mod_name.clone(), mod_resources);
         self
     }
 
@@ -602,7 +645,7 @@ impl McpServerBuilder {
                         "List all IFC-tracked variables in the current session",
                         navra_protocol::compat::empty_input_schema(),
                     ),
-                    handler: Arc::new(move |_args, ctx| {
+                    handler: widen(move |_args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
                             let store = vs.get_or_create(&ctx.session_id);
@@ -643,7 +686,7 @@ impl McpServerBuilder {
                             Some(vec!["id".to_string()]),
                         ),
                     ),
-                    handler: Arc::new(move |args, ctx| {
+                    handler: widen(move |args, ctx| {
                         let vs = vs.clone();
                         let sess = sess.clone();
                         Box::pin(async move {
@@ -684,7 +727,7 @@ impl McpServerBuilder {
                             Some(vec!["id".to_string()]),
                         ),
                     ),
-                    handler: Arc::new(move |args, ctx| {
+                    handler: widen(move |args, ctx| {
                         let vs = vs.clone();
                         Box::pin(async move {
                             let var_id = match args.get("id").and_then(|v| v.as_str()) {
@@ -983,8 +1026,8 @@ impl McpServerBuilder {
         McpServer {
             name: self.name,
             version: self.version,
-            prompts: self.prompts,
-            resources,
+            prompts: RwLock::new(self.prompts),
+            resources: RwLock::new(resources),
             resource_templates,
             sessions,
             authenticator,
@@ -1025,6 +1068,8 @@ impl McpServerBuilder {
             tool_operations: RwLock::new(self.tool_operations),
             tool_classifications: RwLock::new(self.tool_classifications),
             upstream_tool_index: RwLock::new(self.module_tool_index),
+            upstream_prompt_index: RwLock::new(self.module_prompt_index),
+            upstream_resource_index: RwLock::new(self.module_resource_index),
             upstream_watchers: RwLock::new(self.upstream_watchers),
             dynamic_filters: self.dynamic_filters,
             resource_subscriptions: std::sync::Arc::new(std::sync::RwLock::new(

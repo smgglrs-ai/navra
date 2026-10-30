@@ -266,7 +266,7 @@ async fn handle_run_flow(
         uuid::Uuid::new_v4().to_string(),
     );
 
-    let result = server.handle_call_tool(params, ctx).await;
+    let result = navra_core::flatten_tool_response(server.handle_call_tool(params, ctx).await);
     let text: String = result
         .content
         .iter()

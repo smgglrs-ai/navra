@@ -339,7 +339,9 @@ async fn handle_resume_run(
             if let Some(obj) = pending_args.as_object() {
                 call_params = call_params.with_arguments(obj.clone());
             }
-            let result = state.server.handle_call_tool(call_params, ctx).await;
+            let result = crate::server::flatten_tool_response(
+                state.server.handle_call_tool(call_params, ctx).await,
+            );
             let result_text: String = result
                 .content
                 .iter()

@@ -20,7 +20,7 @@ use std::sync::{Arc, RwLock};
 pub use builder::McpServerBuilder;
 #[cfg(test)]
 pub use handlers::IFCToolFilter;
-pub use handlers::{ToolFilter, ToolUsageTracker, UsagePruningFilter};
+pub use handlers::{ToolFilter, ToolUsageTracker, UsagePruningFilter, flatten_tool_response};
 pub use navra_handler::NavraHandler;
 
 use types::{RegisteredPrompt, RegisteredResource, RegisteredResourceTemplate, RegisteredTool};
@@ -32,8 +32,8 @@ pub struct McpServer {
     /// Registered tools. Interior-mutable: upstream modules that
     /// advertise `list_changed` swap their tool sets at runtime.
     tools: RwLock<HashMap<String, RegisteredTool>>,
-    prompts: HashMap<String, RegisteredPrompt>,
-    resources: HashMap<String, RegisteredResource>,
+    prompts: RwLock<HashMap<String, RegisteredPrompt>>,
+    resources: RwLock<HashMap<String, RegisteredResource>>,
     resource_templates: Vec<RegisteredResourceTemplate>,
     pub(crate) sessions: SessionStore,
     pub(crate) authenticator: Arc<dyn Authenticator>,
@@ -51,6 +51,8 @@ pub struct McpServer {
     tool_classifications: RwLock<HashMap<String, navra_auth::permissions::ResourceClass>>,
     /// Tool names registered per module (for upstream registry swaps).
     upstream_tool_index: RwLock<HashMap<String, Vec<String>>>,
+    upstream_prompt_index: RwLock<HashMap<String, Vec<String>>>,
+    upstream_resource_index: RwLock<HashMap<String, Vec<String>>>,
     /// Refresh watchers for upstream modules that advertise list_changed.
     /// Drained by the embedding server after build() to spawn the loops.
     upstream_watchers: RwLock<Vec<crate::UpstreamWatcher>>,

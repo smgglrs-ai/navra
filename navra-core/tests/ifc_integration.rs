@@ -12,6 +12,7 @@ use navra_core::ifc::{DataLabel, TaintedWritePolicy};
 use navra_core::protocol::{
     CallToolParams, CallToolResult, ClientInfo, InitializeParams, ToolDefinition,
 };
+use navra_protocol::compat::CallToolResponseExt;
 use navra_protocol::compat::CallToolResultExt;
 use navra_protocol::compat::empty_input_schema;
 
@@ -136,7 +137,8 @@ async fn exfiltration_blocked_via_var_ref() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(read_result.is_error != Some(true));
     let var_id = extract_var_id(&read_result).expect("Result should contain var ID");
@@ -159,7 +161,8 @@ async fn exfiltration_blocked_via_var_ref() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Write MUST be blocked
     assert!(
@@ -191,7 +194,8 @@ async fn exfiltration_blocked_via_context_label() {
             },
             session_ctx(&sid),
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(read_result.is_error != Some(true));
 
     // Step 2: Write with literal content (no var:// ref)
@@ -217,7 +221,8 @@ async fn exfiltration_blocked_via_context_label() {
             },
             write_ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(
         is_ifc_error(&write_result),
@@ -248,13 +253,15 @@ async fn clean_write_allowed_after_tainted_read() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Use navra_var_list (gateway tool, excluded from is_external_read_tool
     // → result is TRUSTED_PUBLIC)
     let list_result = server
         .handle_call_tool(CallToolParams::new("navra_var_list"), ctx.clone())
-        .await;
+        .await
+        .expect_complete();
     assert!(list_result.is_error != Some(true));
     let clean_var_id = extract_var_id(&list_result).expect("var_list should produce a var ID");
 
@@ -277,7 +284,8 @@ async fn clean_write_allowed_after_tainted_read() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(
         write_result.is_error != Some(true),
@@ -308,7 +316,8 @@ async fn var_inspect_taints_context() {
             },
             session_ctx(&sid),
         )
-        .await;
+        .await
+        .expect_complete();
     let var_id = extract_var_id(&read_result).unwrap();
 
     // Inspect the variable — this taints the context_label
@@ -326,7 +335,8 @@ async fn var_inspect_taints_context() {
             },
             session_ctx(&sid),
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(inspect_result.is_error != Some(true));
 
     // Write with literal content (no var:// ref) — should be blocked
@@ -351,7 +361,8 @@ async fn var_inspect_taints_context() {
             },
             write_ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(
         is_ifc_error(&write_result),
@@ -379,7 +390,8 @@ async fn auto_store_produces_var_id() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     let var_id = extract_var_id(&result);
     assert!(
@@ -413,7 +425,8 @@ async fn var_list_shows_stored_variables() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     server
         .handle_call_tool(
             {
@@ -428,12 +441,14 @@ async fn var_list_shows_stored_variables() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // List variables
     let list_result = server
         .handle_call_tool(CallToolParams::new("navra_var_list"), ctx)
-        .await;
+        .await
+        .expect_complete();
     assert!(list_result.is_error != Some(true));
 
     // Parse the JSON list — should have at least 2 user variables
@@ -480,7 +495,8 @@ async fn context_label_persists_across_calls() {
             },
             session_ctx(&sid),
         )
-        .await;
+        .await
+        .expect_complete();
 
     // Context label should now be tainted
     let label_after = server.sessions().context_label(&sid);
@@ -512,7 +528,8 @@ async fn multiple_reads_mixed_labels_per_value() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     let tainted_var = extract_var_id(&poisoned).unwrap();
 
     // Read clean file (still auto-labeled UNTRUSTED by is_external_read_tool)
@@ -530,7 +547,8 @@ async fn multiple_reads_mixed_labels_per_value() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     let clean_var = extract_var_id(&clean).unwrap();
 
     // Write referencing tainted var → BLOCKED
@@ -551,7 +569,8 @@ async fn multiple_reads_mixed_labels_per_value() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(
         is_ifc_error(&write_tainted),
         "Writing tainted var should be blocked"
@@ -576,7 +595,8 @@ async fn multiple_reads_mixed_labels_per_value() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(
         is_ifc_error(&write_clean),
         "file_read output is auto-labeled untrusted, so this should also be blocked"
@@ -746,7 +766,8 @@ async fn llm_exfiltration_attempt_blocked() {
             },
             ctx.clone(),
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(read_result.is_error != Some(true));
     let var_id = extract_var_id(&read_result).unwrap();
 
@@ -948,7 +969,8 @@ async fn llm_exfiltration_attempt_blocked() {
                         },
                         ctx.clone(),
                     )
-                    .await;
+                    .await
+                    .expect_complete();
 
                 let ifc_blocked = is_ifc_error(&write_result);
                 let error_msg = write_result.content[0]

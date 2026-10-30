@@ -1,6 +1,6 @@
 id: NAVRA-188
 title: "Forward upstream MRTR input_required responses through the gateway"
-status: open
+status: done
 priority: medium
 effort: 2-4d
 description: |
@@ -38,17 +38,62 @@ description: |
     clear error.
 
   Alternative to pass-through, if the security review lands against
-  it: keep single-round semantics but replace the generic ServiceError
-  with a navra-shaped CallToolResult::error explaining that the
-  upstream requires interactive input navra does not forward.
+    it: keep single-round semantics but replace the generic ServiceError
+    with a navra-shaped CallToolResult::error explaining that the
+    upstream requires interactive input navra does not forward.
 notes: |
-  - Discovered during the NAVRA-187 migration; deliberately deferred
-    (see NAVRA-187 notes) to keep the upgrade behavior-compatible
-    with rmcp 1.8 forwarding semantics.
-  - Upstreams that use MRTR are rare today; single-round behavior
-    matches what navra did on rmcp 1.8, where the union did not
-    exist. Nothing regressed — this is a capability gap, not a
-    defect.
-  - Tests to extend: navra-core/tests/upstream_integration.rs needs a
-    python test-server mode answering tools/call with
-    resultType "input_required".
+  - Implemented on branch mrtr-forwarding (worktree), based on main
+    after the NAVRA-187 merge. Scope: tools/call only — prompts/get
+    and resources/read forwarding remain single-round (upstream
+    prompt/resource MRTR is unobserved in the wild; note for a future
+    item if it matters).
+  - Security answers, as implemented:
+    (1) input_requests text IS filtered — elicitation messages,
+    sampling system prompts, and sampling message texts are extracted
+    into a synthetic result, run through the same post-call pipeline
+    (hooks, or the permission set's legacy filter), and written back
+    positionally; a pipeline block fails the round closed with a
+    tool-level error (navra-core/src/server/handlers.rs
+    filter_input_required). The intermediate round also carries the
+    external-read IFC label into the session taint and is recorded in
+    the blackbox with outcome "input_required".
+    (2) per-round re-entry is structural: a follow-up round is a new
+    tools/call whose input_responses/request_state are carried on
+    CallContext (navra-auth CallContext.mrtr_*) and forwarded
+    verbatim; all gates re-run because the round enters
+    handle_call_tool like any call.
+    (3) Task results fail closed inside the forwarding closure with
+    an error naming SEP-2663.
+  - Compatibility: SEP-2322 input_required only exists on the wire
+    from 2026-07-28. NavraHandler::call_tool gates on the negotiated
+    version (peer_info for initialize/HTTP-stateless peers, per-
+    request _meta for discover-based duplex peers) and downgrades to
+    a tool-level error for legacy peers, so navra's own agent stack
+    (which serves () as ClientHandler and single-round Peer::call_tool)
+    keeps receiving error results instead of protocol errors.
+  - Type ripple: navra-mcp ToolHandler now returns CallToolResponse
+    (From<CallToolResult> widens local tools; the #[tool] macro wraps
+    into Complete; builder inline tools go through a widen()
+    combinator); McpServerBuilder::tool is generic over
+    T: Into<CallToolResponse>. Flattening dispatchers (ACP, A2A,
+    flows, plan execution) use navra_core::flatten_tool_response —
+    input_required becomes a tool-level error naming the requirement.
+    navra-protocol compat adds CallToolResponseExt::expect_complete
+    for tests/helpers.
+  - Tests: navra-core/tests/upstream_integration.rs gains
+    upstream_input_required_forwards_with_redacted_request_text,
+    upstream_input_required_round_trip_completes,
+    upstream_task_result_fails_closed,
+    navra_handler_downgrades_input_required_for_legacy_peers, and
+    navra_handler_forwards_input_required_to_2026_peers (discover-
+    lifecycle client over duplex). test_upstream.py gains
+    NAVRA_TEST_INPUT_REQUIRED and NAVRA_TEST_TASK_RESULT modes.
+    Wire-shape notes for future test-server work: elicitation params
+    use the flat legacy form (message + requestedSchema at the params
+    top level — the tagged "mode" form also works but the nested
+    {"form": {...}} shape does NOT), and task statuses are
+    working/input_required/completed/failed/cancelled.
+  - Verified: 2921 workspace tests, navra-server e2e 12/12, unit
+    356/356, clippy -D warnings clean. The 3 adversarial_eval
+    failures are the pre-existing podman-image environmental ones.
+    Docs updated in docs/content/docs/learn/upstream-and-proxy.md.

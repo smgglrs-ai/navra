@@ -207,7 +207,9 @@ pub async fn execute_run(
                 );
                 trajectory.push(trajectory_input);
 
-                let result = server.handle_call_tool(call_params, ctx).await;
+                let result = crate::server::flatten_tool_response(
+                    server.handle_call_tool(call_params, ctx).await,
+                );
 
                 let result_text: String = result
                     .content
@@ -351,7 +353,9 @@ pub fn execute_run_stream(
                         })
                         .await;
 
-                    let result = server.handle_call_tool(call_params, ctx).await;
+                    let result = crate::server::flatten_tool_response(
+                        server.handle_call_tool(call_params, ctx).await,
+                    );
                     let result_text: String = result
                         .content
                         .iter()

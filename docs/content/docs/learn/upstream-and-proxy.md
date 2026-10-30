@@ -73,6 +73,21 @@ This is the critical point: when an agent calls `github.search_code`, the reques
 
 The upstream server has no idea that navra exists. It receives a standard MCP request and returns a standard MCP response. navra is transparent in both directions.
 
+## Multi-round tool calls (MRTR)
+
+An upstream may defer a tool call to the client with an `input_required` result (SEP-2322): the upstream needs interactive input -- an elicitation question, a sampling request, or a roots listing -- before it can finish. navra forwards that result to the client, and the client's answers flow back on the next `tools/call` round, re-entering the full security pipeline from scratch. Every round is authorized, rate-limited, and audited independently.
+
+Two properties hold on the forwarding path:
+
+- **The upstream's input request text is filtered like result content.** The elicitation message or sampling prompt an upstream sends is upstream-controlled text the client will render, so it passes through the same secret-redaction pipeline as tool results -- a poisoned input request is redacted or blocked, never forwarded verbatim.
+- **Clients that cannot handle `input_required` never see one.** The result shape only exists from protocol version 2026-07-28; clients that connected through the legacy `initialize` handshake (which negotiates at most 2025-11-25) receive a tool-level error explaining the requirement instead, so agent loops keep running rather than hitting a protocol error.
+
+The SEP-2663 tasks extension is not forwarded: an upstream answering with a task result fails closed with a clear error, because navra does not declare the tasks capability and cannot forward `tasks/get` polling.
+
+## Upstream notification forwarding
+
+navra forwards the notifications an upstream sends about itself. `resources/updated` reaches the sessions subscribed to that URI immediately. `tools/list_changed`, `prompts/list_changed`, and `resources/list_changed` each trigger a re-verification of the corresponding registry — scanner, manifest, and bounds included — followed by an atomic swap; connected clients are told the list changed only when the swap actually differs. A failed re-listing keeps the existing registry (fail closed), and an over-long URI in an update notification is dropped rather than forwarded.
+
 ## Authentication isolation
 
 navra handles authentication to upstream servers independently of agent authentication. The agent authenticates to navra with its own token. navra authenticates to the upstream server with the upstream's configured credentials. The agent never sees the upstream API key.

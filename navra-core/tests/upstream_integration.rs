@@ -5,6 +5,7 @@
 use navra_core::UpstreamModule;
 use navra_core::permissions::{Domain, DomainRules, Operation, ResourceClass};
 use navra_core::protocol::{CallToolParams, GetPromptParams};
+use navra_protocol::compat::CallToolResponseExt;
 use std::path::PathBuf;
 
 fn test_server_path() -> PathBuf {
@@ -279,7 +280,9 @@ async fn upstream_call_tool_through_module() {
         "test",
     );
 
-    let result = handler(serde_json::json!({"message": "hello"}), ctx).await;
+    let result = handler(serde_json::json!({"message": "hello"}), ctx)
+        .await
+        .expect_complete();
     assert!(result.is_error != Some(true));
     match &result.content[0] {
         c if c.as_text().is_some() => assert_eq!(c.as_text().unwrap().text, "echo: hello"),
@@ -388,7 +391,8 @@ async fn domain_rules_block_write_tool() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(
         result.is_error == Some(true),
@@ -437,7 +441,8 @@ async fn domain_rules_allow_read_tool() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
 
     assert!(
         result.is_error != Some(true),
@@ -503,7 +508,8 @@ async fn no_domain_rules_allows_everything() {
             },
             ctx,
         )
-        .await;
+        .await
+        .expect_complete();
     assert!(
         result.is_error != Some(true),
         "no domain_rules = no enforcement"
@@ -878,7 +884,9 @@ async fn upstream_tool_call_times_out_with_clear_error() {
         navra_core::auth::AgentIdentity::new("tester", "dev"),
         "test",
     );
-    let result = handler(serde_json::json!({"message": "hi"}), ctx).await;
+    let result = handler(serde_json::json!({"message": "hi"}), ctx)
+        .await
+        .expect_complete();
     assert!(result.is_error == Some(true), "stalled call must error");
     let text = &result.content[0].as_text().expect("text").text;
     assert!(
@@ -914,4 +922,457 @@ async fn upstream_undecodable_response_fails_closed_within_timeout() {
         err.contains("timed out"),
         "error should name the timeout, got: {err}"
     );
+}
+
+// --- MRTR (SEP-2322) input_required forwarding ---
+
+async fn mrtr_test_server(
+    env: &[(&str, &str)],
+) -> (
+    std::sync::Arc<navra_core::McpServer>,
+    rmcp::service::RunningService<rmcp::RoleClient, ()>,
+) {
+    let (peer, client) = spawn_rmcp_peer_with_env(env).await;
+    let module = UpstreamModule::discover("mrtr", peer, None, &Default::default()).await;
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .module(module)
+            // "dev" for direct handle_call_tool tests; "default" is
+            // the anonymous-fallback permission set the NavraHandler
+            // assigns to unauthenticated peers.
+            .safety_profile("dev", navra_core::safety::build_pipeline("standard"))
+            .safety_profile("default", navra_core::safety::build_pipeline("standard"))
+            .build(),
+    );
+    (server, client)
+}
+
+fn elicitation_message(ir: &navra_protocol::InputRequiredResult) -> String {
+    let requests = ir.input_requests.as_ref().expect("input requests");
+    match requests.get("confirm").expect("confirm request") {
+        navra_protocol::InputRequest::Elicitation(req) => match &req.params {
+            navra_protocol::rmcp::model::ElicitRequestParams::FormElicitationParams {
+                message,
+                ..
+            }
+            | navra_protocol::rmcp::model::ElicitRequestParams::UrlElicitationParams {
+                message,
+                ..
+            } => message.clone(),
+            _ => panic!("unexpected elicitation params shape"),
+        },
+        other => panic!("expected an elicitation request, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn upstream_input_required_forwards_with_redacted_request_text() {
+    let (server, _client) = mrtr_test_server(&[("NAVRA_TEST_INPUT_REQUIRED", "1")]).await;
+    let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
+    let ctx = navra_core::auth::CallContext::new(agent, "test");
+
+    let response = server
+        .handle_call_tool(navra_protocol::CallToolParams::new("echo"), ctx)
+        .await;
+
+    match response {
+        navra_protocol::CallToolResponse::InputRequired(ir) => {
+            // The opaque request state is preserved for the retry.
+            assert_eq!(ir.request_state.as_deref(), Some("mrtr-state-1"));
+            // The upstream-controlled elicitation message went through
+            // the same redaction pipeline as tool result content.
+            let message = elicitation_message(&ir);
+            assert!(
+                message.contains("[REDACTED:aws-key]"),
+                "input request text must be redacted, got: {message}"
+            );
+            assert!(
+                !message.contains("AKIAIOSFODNN7EXAMPLE"),
+                "the secret must not survive redaction, got: {message}"
+            );
+        }
+        other => panic!("expected InputRequired, got: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn upstream_input_required_round_trip_completes() {
+    let (server, _client) = mrtr_test_server(&[("NAVRA_TEST_INPUT_REQUIRED", "1")]).await;
+    let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
+    let ctx = navra_core::auth::CallContext::new(agent, "test");
+
+    // Follow-up round: the client answers the elicitation and echoes
+    // the request state, exactly as an MRTR-capable client would.
+    let mut params = navra_protocol::CallToolParams::new("echo");
+    params = params.with_arguments(serde_json::Map::from_iter([(
+        "message".to_string(),
+        serde_json::json!("hi"),
+    )]));
+    params = params.with_input_responses(std::collections::BTreeMap::from([(
+        "confirm".to_string(),
+        serde_json::json!({"action": "accept"}),
+    )]));
+    params = params.with_request_state("mrtr-state-1");
+
+    let result = server.handle_call_tool(params, ctx).await.expect_complete();
+    assert!(result.is_error != Some(true), "retry must complete");
+    let text = result.content[0].as_text().expect("text").text.clone();
+    assert!(
+        text.contains("confirmed:accept"),
+        "the input responses must reach the upstream, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn upstream_task_result_fails_closed() {
+    let (server, _client) = mrtr_test_server(&[("NAVRA_TEST_TASK_RESULT", "1")]).await;
+    let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
+    let ctx = navra_core::auth::CallContext::new(agent, "test");
+
+    let result = server
+        .handle_call_tool(navra_protocol::CallToolParams::new("echo"), ctx)
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error == Some(true),
+        "task result must fail closed"
+    );
+    let text = result.content[0].as_text().expect("text").text.clone();
+    assert!(
+        text.contains("SEP-2663"),
+        "error should name the tasks extension, got: {text}"
+    );
+}
+
+// --- NavraHandler version gate (SEP-2322 / SEP-2567) ---
+
+#[tokio::test]
+async fn navra_handler_downgrades_input_required_for_legacy_peers() {
+    // A legacy initialize-handshake peer (every current navra client)
+    // negotiates ≤ 2025-11-25, which cannot carry input_required on
+    // the wire. The gateway must downgrade to a tool-level error so
+    // agent loops keep running instead of hitting a protocol error.
+    let (server, _upstream) = mrtr_test_server(&[("NAVRA_TEST_INPUT_REQUIRED", "1")]).await;
+    let handler = navra_core::NavraHandler::new(server);
+
+    let (server_io, client_io) = tokio::io::duplex(65536);
+    tokio::spawn(async move {
+        if let Ok(service) =
+            rmcp::service::ServiceExt::<rmcp::RoleServer>::serve(handler, server_io).await
+        {
+            let _ = service.waiting().await;
+        }
+    });
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), client_io)
+        .await
+        .expect("rmcp init");
+
+    let result = client
+        .peer()
+        .call_tool(navra_protocol::CallToolParams::new("echo"))
+        .await
+        .expect("legacy peer must get a result, not a protocol error");
+    assert!(result.is_error == Some(true), "downgraded round must error");
+    let text = result.content[0].as_text().expect("text").text.clone();
+    assert!(
+        text.contains("input_required") && text.contains("2026-07-28"),
+        "error should explain the requirement, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn navra_handler_forwards_input_required_to_2026_peers() {
+    // A discover-based (SEP-2567) peer negotiates 2026-07-28 and
+    // receives the forwarded input_required result, redacted.
+    let (server, _upstream) = mrtr_test_server(&[("NAVRA_TEST_INPUT_REQUIRED", "1")]).await;
+    let handler = navra_core::NavraHandler::new(server);
+
+    let (server_io, client_io) = tokio::io::duplex(65536);
+    tokio::spawn(async move {
+        if let Ok(service) =
+            rmcp::service::ServiceExt::<rmcp::RoleServer>::serve(handler, server_io).await
+        {
+            let _ = service.waiting().await;
+        }
+    });
+    let client = rmcp::service::ClientServiceExt::serve_with_lifecycle(
+        (),
+        client_io,
+        rmcp::service::ClientLifecycleMode::Discover {
+            preferred_versions: vec![rmcp::model::ProtocolVersion::V_2026_07_28],
+        },
+    )
+    .await
+    .expect("discover init");
+
+    let response = client
+        .peer()
+        .call_tool_once(navra_protocol::CallToolParams::new("echo"))
+        .await
+        .expect("call must succeed");
+    match response {
+        navra_protocol::CallToolResponse::InputRequired(ir) => {
+            assert_eq!(ir.request_state.as_deref(), Some("mrtr-state-1"));
+            let message = elicitation_message(&ir);
+            assert!(
+                message.contains("[REDACTED:aws-key]"),
+                "input request text must be redacted end-to-end, got: {message}"
+            );
+        }
+        other => panic!("expected InputRequired over the 2026-07-28 peer, got {other:?}"),
+    }
+}
+
+// --- Upstream resources/updated forwarding ---
+
+#[tokio::test]
+async fn upstream_resource_updated_reaches_subscribed_sessions() {
+    // The upstream connection must be served with the notification
+    // handler for on_resource_updated to fire.
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string());
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module = UpstreamModule::discover("resupd", peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster.clone())
+            .module(module)
+            .build(),
+    );
+
+    // Register a legacy-style subscription for the resource, then tap
+    // the same session's broadcast channel.
+    server
+        .handle_resource_subscribe("test://status", "client-session")
+        .expect("resource is registered");
+    let mut rx = broadcaster.subscribe("client-session");
+
+    // Trigger peer (the watcher takes ownership of `peer`).
+    let trigger = peer.clone();
+
+    // The watcher forwards upstream notifications into the server.
+    let watcher = navra_core::UpstreamWatcher::new(
+        "resupd",
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+
+    // Trigger the upstream notification.
+    trigger
+        .call_tool(navra_protocol::CallToolParams::new("emit_update"))
+        .await
+        .expect("trigger call");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match rx.try_recv() {
+            Ok(event) => {
+                let value: serde_json::Value = serde_json::from_str(&event.data).unwrap();
+                if value["method"] == "notifications/resources/updated" {
+                    assert_eq!(value["params"]["uri"], "test://status");
+                    return;
+                }
+            }
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
+            _ => panic!("broadcast channel closed"),
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "resources/updated never reached the subscribed session"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn upstream_resource_updated_over_bound_uri_is_dropped() {
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string());
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module =
+        UpstreamModule::discover("resupd-long", peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster.clone())
+            .module(module)
+            .build(),
+    );
+    // A session subscribed to the (short) URI must NOT see the
+    // over-bound variant.
+    server
+        .handle_resource_subscribe("test://status", "client-session")
+        .expect("resource is registered");
+    let mut rx = broadcaster.subscribe("client-session");
+
+    let trigger = peer.clone();
+    let watcher = navra_core::UpstreamWatcher::new(
+        "resupd-long",
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+
+    let mut params = navra_protocol::CallToolParams::new("emit_update");
+    params = params.with_arguments(serde_json::Map::from_iter([(
+        "long".to_string(),
+        serde_json::json!("1"),
+    )]));
+    trigger.call_tool(params).await.expect("trigger call");
+
+    // Give the forwarding path time to (wrongly) deliver, then assert
+    // nothing arrived.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ),
+        "an over-bound resources/updated URI must be dropped, not forwarded"
+    );
+}
+
+// --- Upstream resources/prompts list_changed refresh ---
+
+async fn spawn_watched_mutating_upstream(
+    module_name: &str,
+) -> (
+    std::sync::Arc<navra_core::McpServer>,
+    rmcp::Peer<rmcp::RoleClient>,
+) {
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string())
+        .env("NAVRA_TEST_MUTATE_RESOURCES", "1");
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module =
+        UpstreamModule::discover(module_name, peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster)
+            .module(module)
+            .build(),
+    );
+    let trigger = peer.clone();
+    let watcher = navra_core::UpstreamWatcher::new(
+        module_name,
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+    (server, trigger)
+}
+
+#[tokio::test]
+async fn upstream_resources_list_changed_swaps_registry_and_notifies() {
+    let (server, trigger) = spawn_watched_mutating_upstream("resmut").await;
+    let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
+
+    // First discovery saw only test://status from the upstream (the
+    // builder's own navra:// resources are always present).
+    let uris = || {
+        server
+            .handle_list_resources(&agent, &Default::default())
+            .resources
+            .iter()
+            .map(|r| r.uri.clone())
+            .filter(|uri| uri.starts_with("test://"))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(uris(), vec!["test://status".to_string()]);
+
+    // Trigger the upstream announcements on the watched connection.
+    trigger
+        .call_tool(navra_protocol::CallToolParams::new("emit_list_changed"))
+        .await
+        .expect("trigger");
+
+    // The watcher refreshes the resource and prompt registries.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let current = uris();
+        if current.contains(&"test://extra".to_string()) {
+            assert_eq!(
+                current.len(),
+                2,
+                "the mutated listing must replace, not append"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "resources/list_changed never refreshed the registry, got {current:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    // The prompt registry swapped too.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    loop {
+        let names: Vec<_> = server
+            .handle_list_prompts(&agent, &Default::default())
+            .prompts
+            .iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        if names.contains(&"farewell".to_string()) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "prompts/list_changed never refreshed the registry, got {names:?}"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
 }
