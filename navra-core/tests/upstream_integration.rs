@@ -1123,3 +1123,145 @@ async fn navra_handler_forwards_input_required_to_2026_peers() {
         other => panic!("expected InputRequired over the 2026-07-28 peer, got {other:?}"),
     }
 }
+
+// --- Upstream resources/updated forwarding ---
+
+#[tokio::test]
+async fn upstream_resource_updated_reaches_subscribed_sessions() {
+    // The upstream connection must be served with the notification
+    // handler for on_resource_updated to fire.
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string());
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module = UpstreamModule::discover("resupd", peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster.clone())
+            .module(module)
+            .build(),
+    );
+
+    // Register a legacy-style subscription for the resource, then tap
+    // the same session's broadcast channel.
+    server
+        .handle_resource_subscribe("test://status", "client-session")
+        .expect("resource is registered");
+    let mut rx = broadcaster.subscribe("client-session");
+
+    // Trigger peer (the watcher takes ownership of `peer`).
+    let trigger = peer.clone();
+
+    // The watcher forwards upstream notifications into the server.
+    let watcher = navra_core::UpstreamWatcher::new(
+        "resupd",
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+
+    // Trigger the upstream notification.
+    trigger
+        .call_tool(navra_protocol::CallToolParams::new("emit_update"))
+        .await
+        .expect("trigger call");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match rx.try_recv() {
+            Ok(event) => {
+                let value: serde_json::Value = serde_json::from_str(&event.data).unwrap();
+                if value["method"] == "notifications/resources/updated" {
+                    assert_eq!(value["params"]["uri"], "test://status");
+                    return;
+                }
+            }
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
+            _ => panic!("broadcast channel closed"),
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "resources/updated never reached the subscribed session"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn upstream_resource_updated_over_bound_uri_is_dropped() {
+    let mut cmd = tokio::process::Command::new("python3");
+    cmd.arg(test_server_path().to_string_lossy().to_string());
+    let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
+    let (handler, events) = navra_core::UpstreamNotificationHandler::new();
+    let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
+        .await
+        .expect("rmcp init");
+    let peer = client.peer().clone();
+    tokio::spawn(async move {
+        let _ = client.waiting().await;
+    });
+
+    let module = UpstreamModule::discover("resupd-long", peer.clone(), None, &Default::default()).await;
+    let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
+    let server = std::sync::Arc::new(
+        navra_core::McpServer::builder()
+            .allow_anonymous()
+            .broadcaster(broadcaster.clone())
+            .module(module)
+            .build(),
+    );
+    // A session subscribed to the (short) URI must NOT see the
+    // over-bound variant.
+    server
+        .handle_resource_subscribe("test://status", "client-session")
+        .expect("resource is registered");
+    let mut rx = broadcaster.subscribe("client-session");
+
+    let trigger = peer.clone();
+    let watcher = navra_core::UpstreamWatcher::new(
+        "resupd-long",
+        peer,
+        events,
+        None,
+        None,
+        navra_core::DiscoveryBounds::default(),
+        Default::default(),
+        std::time::Duration::from_millis(50),
+        navra_core::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    );
+    tokio::spawn(watcher.run(std::sync::Arc::clone(&server)));
+
+    let mut params = navra_protocol::CallToolParams::new("emit_update");
+    params = params.with_arguments(serde_json::Map::from_iter([(
+        "long".to_string(),
+        serde_json::json!("1"),
+    )]));
+    trigger.call_tool(params).await.expect("trigger call");
+
+    // Give the forwarding path time to (wrongly) deliver, then assert
+    // nothing arrived.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    assert!(
+        matches!(
+            rx.try_recv(),
+            Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+        ),
+        "an over-bound resources/updated URI must be dropped, not forwarded"
+    );
+}

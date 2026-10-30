@@ -144,6 +144,22 @@ def handle(request):
             time.sleep(30)
         name = request["params"]["name"]
         args = request["params"].get("arguments", {})
+        if name == "emit_update":
+            # Emit a resources/updated notification before the result so
+            # tests can verify the gateway forwards it to subscribed
+            # sessions. "emit_update_long" sends an over-bound URI.
+            uri = "test://status"
+            if args.get("long") == "1":
+                uri = "test://" + "x" * 10000
+            sys.stdout.write(json.dumps({
+                "jsonrpc": "2.0",
+                "method": "notifications/resources/updated",
+                "params": {"uri": uri},
+            }) + "\n")
+            sys.stdout.flush()
+            return {"jsonrpc": "2.0", "id": rid, "result": {
+                "content": [{"type": "text", "text": "emitted"}],
+            }}
         if name == "echo":
             msg = args.get("message", "")
             input_responses = request["params"].get("inputResponses")
