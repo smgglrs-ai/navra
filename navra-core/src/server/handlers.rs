@@ -1955,6 +1955,13 @@ impl McpServer {
         Ok(())
     }
 
+    /// Does a resource with this URI exist? Used by the
+    /// subscriptions/listen filter to narrow requested resource URIs
+    /// to the ones navra can actually serve.
+    pub fn resource_exists(&self, uri: &str) -> bool {
+        self.resources.contains_key(uri)
+    }
+
     /// Handle resources/unsubscribe: remove a session's subscription to a resource URI.
     pub fn handle_resource_unsubscribe(&self, uri: &str, session_id: &str) -> Result<(), String> {
         let mut subs = self.resource_subscriptions.write().unwrap_or_else(|e| {
