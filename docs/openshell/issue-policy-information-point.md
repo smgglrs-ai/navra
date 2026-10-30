@@ -10,75 +10,96 @@ from this issue if they decide one is needed.
 ## User Story
 
 I operate navra, an open-source MCP security gateway
-(https://github.com/smgglrs-ai/navra), deployed inside OpenShell
-sandboxes as the governance layer for agent tool traffic — the
-"entire agent sandboxed, gateway alongside" mode. navra tracks
-per-session information-flow-control taint labels on tool results:
-when an agent reads a patient record or a credential through a
-governed tool call, navra labels that data and restricts further
-tool calls accordingly.
+(https://github.com/smgglrs-ai/navra), deployed alongside OpenShell as
+external infrastructure: agents run inside OpenShell sandboxes and
+reach navra through the sandbox's egress proxy — the sandbox policy
+allows exactly the navra gateway, the model endpoint, and the
+OpenShell gateway, and denies everything else. All MCP tool traffic
+flows agent → proxy → navra → upstream servers, so navra sees every
+tool call and result.
+
+navra tracks per-session information-flow-control taint labels on
+tool results: when an agent reads a patient record or a credential
+through a governed tool call, navra labels that data and restricts
+further tool calls accordingly.
 
 I directly encountered this: navra can detect that a session has
-absorbed sensitive data, but it cannot tell OpenShell's egress
-proxy. The agent can still POST that data to any destination on the
-sandbox's baseline allowlist — model APIs, collaboration tools,
-telemetry endpoints — through channels navra does not mediate. This
-defeats the reason I run both layers: semantic detection at the
-application layer with no way to act on it at the network layer.
+absorbed sensitive data, but it cannot tell OpenShell's egress proxy.
+The agent can still POST that data to any other destination on the
+sandbox's allowlist — the model API, collaboration tools, telemetry
+endpoints — directly from the sandbox, on a path that never touches
+navra. Detection at the gateway cannot restrict egress at the
+sandbox.
 
 ## Problem Statement
 
 OpenShell's egress proxy evaluates OPA policy on network-level
 attributes: destination, port, calling binary, L7 request shape.
-Application-layer governance software running inside the sandbox —
-navra, DefenseClaw, NemoClaw's privacy router, AgentGuard — makes
-runtime security decisions (data classification, trust state, scan
-verdicts, anomaly scores) that the proxy cannot see. There is no
-mechanism for the supervisor to obtain structured security context
-from inside the sandbox for use in network policy.
+Application-layer security context is invisible to it, and it lives
+in two places:
 
-The consequence: a sandbox whose governance layer has detected a
-compromise or a sensitive-data exposure keeps its full baseline
-allowlist. Detection at the application layer cannot restrict
-egress at the network layer.
+1. Governance frameworks running **inside** the sandbox — DefenseClaw
+   scan verdicts, NemoClaw's privacy classification, AgentGuard
+   governance hooks.
+2. Governance infrastructure deployed **outside** the sandbox by the
+   operator — like navra — through which the agent's tool traffic
+   flows, and which therefore knows things the sandbox itself does
+   not (what data the session has absorbed).
+
+There is no mechanism for the supervisor to obtain structured
+security context from either place for use in network policy. A
+sandbox whose governance layer — internal or external — has detected
+a compromise or a sensitive-data exposure keeps its full baseline
+allowlist.
 
 ## Impact / Why This Matters
 
 Without this capability:
 
-- A compromised skill that reads credentials through a governed
-  tool call can exfiltrate them to any allowlisted destination.
-  The governance framework blocks further tool calls, but the
-  proxy still allows the connection. The ClawHavoc campaign
-  exfiltrated credentials exactly this way — allowlists blocked
-  unknown destinations but could not restrict allowed ones based
-  on runtime data sensitivity.
+- A compromised skill that reads credentials through a governed tool
+  call can exfiltrate them to any allowlisted destination. The
+  governance layer blocks further tool calls, but the proxy still
+  allows the direct connection. The ClawHavoc campaign exfiltrated
+  credentials exactly this way — allowlists blocked unknown
+  destinations but could not restrict allowed ones based on runtime
+  data sensitivity.
 - The Hugging Face agent intrusion post-mortem reached the same
-  conclusion at fleet scale: network reachability was far too
-  broad relative to the workload's actual runtime behavior, and
-  static provisioning-time policy could not adapt.
-- Every governance framework on top of OpenShell must choose
-  between running its own incomplete network enforcement or
-  accepting that its verdicts stop at the application layer.
+  conclusion at fleet scale: network reachability was far too broad
+  relative to the workload's actual runtime behavior, and static
+  provisioning-time policy could not adapt.
+- Governance frameworks must choose between running their own
+  incomplete network enforcement or accepting that their verdicts
+  stop at the application layer.
 
-The composition of OS-level enforcement (OpenShell) and
-application-level governance is only as strong as the connection
-between the two layers. Today that connection does not exist, and
-every Layer 1 framework hits the same wall.
+OS-level enforcement (OpenShell) and application-level governance
+are only as strong as the connection between the two layers. Today
+that connection does not exist, from either side of the sandbox
+boundary.
 
 ## Proposed Design
 
 A Policy Information Point (PIP) interface, following the NIST SP
 800-207 naming: the supervisor — as the trusted policy enforcement
-point — queries in-sandbox applications for structured security
-context and exposes it to policy as `input.pip`.
+point — queries governance software for structured security context
+and exposes it to policy as `input.pip`. One streaming contract
+(`StreamContext`, carrying the sandbox id and a property map), two
+publisher sources:
 
-User-visible workflow: an application inside the sandbox that
-tracks security state serves a small gRPC service on a Unix domain
-socket at `/run/openshell/pip/<name>.sock`. The supervisor
-discovers the socket, verifies the serving binary's identity, and
-holds the latest published context. Policy authors write deny
-rules that reference it:
+- **In-sandbox publishers** (frameworks the operator did not
+  deploy): serve a small gRPC service on a Unix domain socket at
+  `/run/openshell/pip/<name>.sock` inside the sandbox. The
+  supervisor discovers the socket, verifies the serving binary's
+  identity, and initiates the stream. Zero configuration.
+- **Operator-side publishers** (operator-deployed infrastructure,
+  such as an external MCP gateway): publish from outside the sandbox
+  via a supervisor-visible endpoint — a Unix socket in a
+  supervisor-side directory for same-host deployments, or an
+  operator-configured authenticated gRPC endpoint where the
+  supervisor and publisher are on different nodes (Kubernetes),
+  mirroring how supervisor middleware services are registered and
+  authenticated today.
+
+Policy authors write deny rules that reference the context:
 
 ```rego
 deny_network if {
@@ -87,13 +108,13 @@ deny_network if {
 }
 ```
 
-Essential constraints (trust-model requirements, not
-implementation preferences):
+Essential constraints (trust-model requirements, not implementation
+preferences):
 
-- The supervisor initiates every connection; the sandbox never
-  pushes security-relevant input to the supervisor.
-- PIP context may only add deny constraints; it can never expand
-  the allowlist. A PIP that disconnects or publishes nothing is
+- The supervisor initiates every connection; publishers never push
+  security-relevant input to the supervisor.
+- PIP context may only add deny constraints; it can never expand the
+  allowlist. A PIP that disconnects or publishes nothing is
   equivalent to no PIP — baseline policy applies unchanged.
 - Properties are opaque string key-value pairs with a publisher
   prefix convention (`navra.data_classification`,
@@ -104,47 +125,49 @@ implementation preferences):
 - [ ] A governance application inside a sandbox can publish
       security-context properties that become visible to network
       policy as `input.pip`
+- [ ] Operator-configured infrastructure outside the sandbox can
+      publish per-sandbox security context through the same contract
 - [ ] Policy can deny an otherwise-allowed connection based on
-      published context (e.g. `trust_state = "suspended"` denies
-      all non-gateway egress)
+      published context (e.g. `trust_state = "suspended"` denies all
+      non-gateway egress)
 - [ ] Published context can never cause an allow decision that
       baseline policy would deny
-- [ ] A disconnected or absent publisher leaves `input.pip` null
-      and policy behavior identical to pre-PIP
-- [ ] The supervisor verifies the publisher's binary identity
+- [ ] A disconnected or absent publisher leaves `input.pip` null and
+      policy behavior identical to pre-PIP
+- [ ] The supervisor verifies in-sandbox publishers' binary identity
       before consuming context; a mismatch refuses the connection
-      and emits a detection finding
+      and emits a detection finding. Operator-side publishers are
+      authorized at configuration time.
 - [ ] OCSF events identify when a denial was influenced by
-      in-sandbox context and tag its origin
+      publisher context and tag its origin
 
 ## Alternatives Considered
 
 - **Supervisor middleware (RFC 0009)** — the closest existing
-  extension point, and the right one for content inspection.
-  Middleware is content-driven: the supervisor calls
-  operator-registered host-side services with request/response
-  bodies. It cannot query in-sandbox state (the outer fence
-  prevents host services from reaching into the sandbox), and
-  composing it for this use (middleware keyed on sandbox_id
-  side-querying the framework via `service expose`) has wrong
-  failure semantics: middleware `fail_closed` makes the governance
-  framework a hard dependency on all egress, `fail_open` lets
-  tainted traffic through exactly when the framework is down. The
-  PIP degrades to the baseline allowlist on disconnect. Middleware
-  and the PIP are complementary: middleware sees traffic content,
-  the PIP sees application state.
+  extension point, and viable for reaching an external gateway (both
+  are operator-side). But it is the content-inspection path, wrong
+  for this use in three ways: it would require a per-request
+  blocking side-query in the traffic hot path instead of
+  supervisor-held streamed state; its failure semantics are wrong
+  (middleware `fail_closed` makes the governance infrastructure a
+  hard dependency on all egress through the endpoint, `fail_open`
+  releases tainted traffic exactly when the infrastructure is down,
+  while the PIP degrades to the baseline allowlist on disconnect);
+  and middleware chains attach per-endpoint via policy, while
+  security context needs to apply to all of a sandbox's evaluations.
+  Middleware also receives request bodies it does not need for this.
+  Complementary, not sufficient.
 - **Sandbox service exposure (`service expose`, RFC 0017 draft)** —
   inbound ingress through the gateway relay; wrong direction, and
   RFC 0017 lists replacing egress policy as a non-goal.
-- **OPA external data bundles** — require network connectivity
-  from inside the sandbox, which the architecture deliberately
-  fences.
+- **OPA external data bundles** — require network connectivity from
+  inside the sandbox, which the architecture deliberately fences.
 - **Dynamic policy updates (`openshell policy update`)** —
   control-plane revisions with operator approval; not a runtime
   per-connection signal, and the wrong latency for "this session
   just became tainted."
-- **Gateway interceptors (RFC 0010)** — intercept control-plane
-  RPCs at the gateway, not per-connection egress in the supervisor.
+- **Gateway interceptors (RFC 0010)** — intercept control-plane RPCs
+  at the gateway, not per-connection egress in the supervisor.
 
 ## Agent Investigation
 
@@ -155,18 +178,30 @@ per-request from network/L7 context, no application-state injection
 path), the middleware contract (`proto/supervisor_middleware.proto`
 — RequestContext carries request correlation, not session security
 state), the isolation backend's LoopbackConnect, and the RFC
-0009/0010/0017 designs. Two findings worth noting: the supervisor's
-only existing dial-into-sandbox connection is the SSH relay socket
-(peer-PID-verified), which establishes precedent for
-supervisor-initiated connections into the sandbox; and the
-LoopbackConnect transport already exists, so only the policy-time
-query semantics are missing.
+0009/0010/0017 designs. Findings relevant to feasibility:
 
-We have a complete RFC draft and a working supervisor-side
-prototype (socket discovery, SO_PEERCRED + TOFU SHA256
-verification, streaming, `input.pip` injection at every OPA
-evaluation point, deny-only enforcement in the baked policy, an
-OCSF detection finding on identity mismatch, and tests) ready to
+- The supervisor's only existing dial-into-sandbox connection is the
+  SSH relay socket (peer-PID-verified), establishing precedent for
+  supervisor-initiated connections into the sandbox.
+- The supervisor's `/proc` view spans the sandbox's processes (this
+  is how per-connection binary identity already works), so the same
+  `SO_PEERCRED` → `/proc/<pid>/exe` → SHA256 verification chain
+  extends unchanged to same-host operator-side publishers.
+- The LoopbackConnect transport exists, so only the policy-time
+  query semantics are missing.
+
+One design consideration we would bring to the discussion: for
+operator-side publishers serving many sandboxes, `StreamContext`
+carries the sandbox id and the publisher must map it to its own
+session state (for navra, most naturally by binding agent
+credentials to sandboxes at provisioning time). A publisher that
+cannot correlate should publish empty context rather than guess.
+
+We have a complete RFC draft and a working supervisor-side prototype
+covering the in-sandbox publisher class (socket discovery, SO_PEERCRED
++ TOFU SHA256 verification, streaming, `input.pip` injection at every
+OPA evaluation point, deny-only enforcement in the baked policy, an
+OCSF detection finding on identity mismatch, and tests), ready to
 contribute as an RFC and implementation against this issue if
 maintainers want to proceed.
 

@@ -4,7 +4,9 @@
 
 This RFC proposes adding a Policy Information Point (PIP) interface to the sandbox supervisor. The supervisor queries application-layer software running inside the sandbox for structured security context and injects it into the OPA proxy's input document. This lets network-layer policy reference runtime state -- data classification, trust level, anomaly scores -- without the proxy parsing any application protocol.
 
-The supervisor initiates the connection and verifies the responding binary's identity. The PIP can only add deny rules to OPA evaluation, never allow rules. Sandboxes that do not run a PIP-capable application work exactly as they do today.
+The supervisor initiates every connection. PIP context can only add deny rules to OPA evaluation, never allow rules. Sandboxes without a PIP work exactly as they do today.
+
+Publishers come from two places: governance frameworks running inside the sandbox (discovered on a well-known socket directory, verified trust-on-first-use) and operator-deployed infrastructure outside it, such as an MCP security gateway the sandboxed agents connect through (configured endpoints, authorized at configuration time). Both share one streaming contract and one injection path.
 
 ## Motivation
 
@@ -21,6 +23,8 @@ These are not configuration mistakes. The sandboxes were provisioned correctly f
 The pattern already exists in OpenShell. Credentials flow into the sandbox: the supervisor receives credential bundles from the gateway and injects them into the sandbox environment. The PIP extends this by having the supervisor query security context from inside the sandbox. The supervisor remains the active party in both directions.
 
 Multiple governance frameworks already run on top of OpenShell and would benefit from this interface. DefenseClaw makes runtime scan verdicts that the proxy cannot see. NemoClaw's privacy router classifies data but can only enforce classification at the application layer. AgentGuard provides governance hooks with no mechanism to influence the proxy. Each framework makes security decisions that the proxy should be able to act on.
+
+The same gap exists outside the sandbox boundary. A common deployment runs agents inside OpenShell sandboxes with an external governance gateway — the sandbox policy allows exactly the gateway, the model endpoint, and the OpenShell gateway — so all tool traffic flows through the gateway, which tracks per-session data sensitivity. The gateway knows what the session has absorbed; the proxy does not, and the agent can exfiltrate to any other allowlisted destination on a path that never touches the gateway. The PIP serves both places with one contract.
 
 ## Non-goals
 
@@ -39,9 +43,22 @@ The governance framework exposes a gRPC service on a Unix domain socket at a wel
 
 If the binary hash does not match the TOFU cache, the supervisor logs a warning and does not connect. If the stream disconnects, the cached context reverts to null. Both behaviors are fail-closed.
 
+### Publisher classes
+
+**In-sandbox publishers.** A governance framework running inside the sandbox serves the PIP gRPC service on a Unix domain socket at `/run/openshell/pip/<name>.sock`, inside the sandbox's mount namespace. The supervisor discovers the socket through the sandbox's root, verifies the serving binary's identity as above, and initiates the stream. This class serves frameworks the operator did not deploy: discovery is zero-configuration, and the sandbox fence guarantees nothing outside the sandbox can plant a socket there.
+
+**Operator-side publishers.** Governance infrastructure deployed by the operator alongside OpenShell — for example the external MCP gateway described in the motivation — publishes from outside the sandbox and cannot create sockets in the sandbox's mount namespace. The supervisor connects to a supervisor-visible endpoint instead:
+
+- Same-host deployments: a Unix domain socket in a supervisor-side PIP directory (alongside the existing supervisor socket paths). The `SO_PEERCRED` binary verification described above applies unchanged where the supervisor's process view includes the publisher — which it does whenever it includes the sandbox's processes, since per-connection binary identity already depends on that view.
+- Network deployments (for example Kubernetes, where the supervisor and the publisher run on different nodes): an operator-configured gRPC endpoint, registered and authenticated the way supervisor middleware services are today.
+
+Operator-side publishers are authorized at configuration time; binary verification is retained as defense-in-depth where the transport permits. Both classes share the same `StreamContext` contract, the same cache, and the same deny-only injection into `input.pip`; when publishers of both classes are present their properties merge under the same rules.
+
+Operator-side publishers serving many sandboxes must map the `sandbox_id` from `StreamContextRequest` to their own session state — for a gateway, most naturally by binding agent credentials to sandboxes at provisioning time. A publisher that cannot correlate returns empty context (equivalent to no PIP for that sandbox) rather than guessing.
+
 ### Interface
 
-The governance framework creates a socket at `/run/openshell/pip/<name>.sock`, where `<name>` is its identifier (for example `defenseclaw` or `nemoclaw`). The supervisor watches the directory and connects to each socket it discovers.
+An in-sandbox publisher creates a socket at `/run/openshell/pip/<name>.sock`, where `<name>` is its identifier (for example `defenseclaw` or `nemoclaw`). The supervisor watches the directory and connects to each socket it discovers. Operator-side publishers are reached through the endpoints described under Publisher classes.
 
 ```protobuf
 syntax = "proto3";
@@ -106,6 +123,7 @@ The supervisor creates `/run/openshell/pip/` with mode 0750 before launching the
 - **Performance.** The PIP context is cached in memory. The proxy reads the cache on every OPA evaluation -- one `RwLock::read()` per connection, no I/O in the hot path. The streaming RPC runs in a separate task.
 - **Audit trail trust.** PIP-sourced properties appear in OCSF events. Events should tag PIP-sourced context with its origin so analysts know it came from inside the sandbox and weight it accordingly.
 - **Schema divergence.** Without conventions, different governance frameworks could use conflicting property names. The reserved prefix convention and recommended well-known keys mitigate this. We do not mandate a fixed schema because the set of useful properties will evolve with the ecosystem.
+- **Publisher-to-sandbox correlation.** In-sandbox publishers trivially know which sandbox they run in; an operator-side publisher serving many sandboxes must map the requested `sandbox_id` to its own session state. Mis-correlation publishes the wrong context. Mitigations: the correlation binding is operator provisioning (credential-to-sandbox), and a publisher that cannot correlate returns empty context rather than guessing — which is the no-PIP baseline, not an allowlist expansion.
 
 ## Alternatives
 
