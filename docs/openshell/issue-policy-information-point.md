@@ -198,12 +198,18 @@ credentials to sandboxes at provisioning time). A publisher that
 cannot correlate should publish empty context rather than guess.
 
 We have a complete RFC draft and a working supervisor-side prototype
-covering the in-sandbox publisher class (socket discovery, SO_PEERCRED
-+ TOFU SHA256 verification, streaming, `input.pip` injection at every
-OPA evaluation point, deny-only enforcement in the baked policy, an
-OCSF detection finding on identity mismatch, and tests), ready to
-contribute as an RFC and implementation against this issue if
-maintainers want to proceed.
+covering both publisher classes: in-sandbox socket discovery with
+SO_PEERCRED + TOFU SHA256 verification; operator-side same-host
+publishers under a supervisor-side directory with the same
+verification; remote publishers registered in `gateway.toml` with
+audience-scoped extension credentials (fail-closed when a credential
+is missing); streaming into `input.pip` at every OPA evaluation
+point including per-request L7 evaluations on established tunnels;
+authored `pip_deny_rules` on network policies with a validator that
+rejects operator-supplied Rego referencing `input.pip` (deny-only is
+structural); and OCSF denial events tagged with publisher origins —
+all tested. Ready to contribute as an RFC and implementation against
+this issue if maintainers want to proceed.
 
 ## Checklist
 
