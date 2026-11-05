@@ -18,6 +18,7 @@ no_card_list = true
 - [Configuration](@/docs/configuration/_index.md) — full config.toml reference
 - [CLI Reference](@/docs/cli/_index.md) — all commands and flags
 - [Agent SDK](@/docs/sdk/_index.md) — build agents in Rust with navra-agent
+- [Comparisons](@/docs/comparisons/_index.md) — navra vs other gateways and agent platforms
 
 ## Understand navra
 

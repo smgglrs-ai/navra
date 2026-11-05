@@ -1,6 +1,7 @@
 # navra
 
-Secure MCP gateway daemon for Linux desktops. Rust workspace.
+Secure agentic AI framework and MCP gateway. Rust workspace. Runs
+standalone on Linux desktops or in containers at any scale.
 
 ## Build
 
