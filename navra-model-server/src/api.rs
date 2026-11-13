@@ -10,10 +10,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::registry::ModelRegistry;
+use crate::router::SessionRouter;
 
 #[derive(Clone)]
 pub struct ServerState {
     pub registry: Arc<RwLock<ModelRegistry>>,
+    /// Within-session cost router (see `crate::router`).
+    pub router: Arc<SessionRouter>,
 }
 
 pub fn router(state: ServerState) -> Router {
@@ -80,20 +83,62 @@ async fn chat_completions(
     Json(req): Json<ChatRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
     let registry = state.registry.read().await;
+
+    // Within-session cost routing: decide which model actually serves
+    // this request. The client keeps requesting the frontier name; the
+    // response `model` field is rewritten back so the client context
+    // stays consistent, and the actual backend is exposed via the
+    // `x-navra-routed-model` header for auditability.
+    let messages: Vec<serde_json::Value> = req
+        .rest
+        .get("input")
+        .or_else(|| req.rest.get("messages"))
+        .and_then(|m| m.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let tools_present = req
+        .rest
+        .get("tools")
+        .and_then(|t| t.as_array())
+        .is_some_and(|a| !a.is_empty());
+    let available = registry.list();
+    let decision = state
+        .router
+        .decide(&req.model, &messages, tools_present, &available);
+
+    if decision.routed {
+        tracing::info!(
+            from = %req.model,
+            to = %decision.model,
+            reason = decision.reason,
+            "Within-session model routing"
+        );
+    }
+
     let backend = registry
-        .get(&req.model)
+        .get(&decision.model)
         .ok_or_else(|| model_not_found(&req.model))?;
 
-    let request: navra_model::CreateResponseRequest = serde_json::from_value(req.rest)
+    // The flattened `rest` no longer carries `model` (captured above),
+    // so re-inject the routed model name before deserializing.
+    let mut request_value = req.rest;
+    request_value["model"] = serde_json::json!(decision.model);
+    let request: navra_model::CreateResponseRequest = serde_json::from_value(request_value)
         .map_err(|e| bad_request(&format!("invalid request: {e}")))?;
 
-    let response = backend
+    let mut response = backend
         .respond(&request)
         .await
         .map_err(|e| internal(&format!("inference error: {e}")))?;
 
-    // ModelResponse (navra_responses::Response) derives Serialize
-    Ok(Json(response))
+    // Transparency: the client sees the model it requested; the
+    // header carries what actually served the request.
+    response.model = Some(req.model.clone());
+    let headers = [(
+        axum::http::HeaderName::from_static("x-navra-routed-model"),
+        decision.model,
+    )];
+    Ok((headers, Json(response)))
 }
 
 // --- /v1/embeddings ---
@@ -225,6 +270,9 @@ fn internal(msg: &str) -> (StatusCode, Json<ApiError>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use navra_model::{CreateResponseRequest, ModelBackend, ModelError, ModelResponse};
+    use std::future::Future;
+    use std::pin::Pin;
 
     async fn test_state() -> ServerState {
         ServerState {
@@ -233,7 +281,78 @@ mod tests {
                     .await
                     .unwrap(),
             )),
+            router: Arc::new(SessionRouter::new(crate::router::RoutingConfig::default())),
         }
+    }
+
+    /// A backend that reports the model name it was registered under.
+    struct EchoBackend(String);
+
+    impl ModelBackend for EchoBackend {
+        fn respond(
+            &self,
+            _request: &CreateResponseRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>> {
+            Box::pin(async {
+                Ok(ModelResponse {
+                    id: "resp_test".into(),
+                    object: "response".into(),
+                    created_at: None,
+                    completed_at: None,
+                    status: navra_model::ResponseStatus::Completed,
+                    model: Some(self.0.clone()),
+                    output: vec![],
+                    usage: None,
+                    error: None,
+                    previous_response_id: None,
+                    instructions: None,
+                    tools: vec![],
+                    tool_choice: None,
+                    text: None,
+                    reasoning: None,
+                    truncation: None,
+                    temperature: None,
+                    max_output_tokens: None,
+                    metadata: std::collections::HashMap::new(),
+                    incomplete_details: None,
+                    extra: std::collections::HashMap::new(),
+                })
+            })
+        }
+    }
+
+    async fn routed_state(config: crate::router::RoutingConfig) -> ServerState {
+        let mut registry = ModelRegistry::from_config(&std::collections::HashMap::new())
+            .await
+            .unwrap();
+        registry.insert("frontier", Arc::new(EchoBackend("frontier".into())));
+        registry.insert("cheap", Arc::new(EchoBackend("cheap".into())));
+        ServerState {
+            registry: Arc::new(RwLock::new(registry)),
+            router: Arc::new(SessionRouter::new(config)),
+        }
+    }
+
+    fn routing_config() -> crate::router::RoutingConfig {
+        crate::router::RoutingConfig {
+            enabled: true,
+            rules: vec![crate::router::RoutingRule {
+                from: "frontier".to_string(),
+                to: "cheap".to_string(),
+                switch_only_at_compaction: false,
+            }],
+            min_messages: 2,
+        }
+    }
+
+    async fn post_chat(app: axum::Router, body: serde_json::Value) -> axum::response::Response {
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        tower::ServiceExt::oneshot(app, req).await.unwrap()
     }
 
     #[tokio::test]
@@ -263,7 +382,7 @@ mod tests {
         let app = router(test_state().await);
         let body = serde_json::json!({
             "model": "nonexistent",
-            "messages": [{"role": "user", "content": "hello"}]
+            "messages": [{"type": "message", "role": "user", "content": "hello"}]
         });
         let req = axum::http::Request::builder()
             .method("POST")
@@ -273,6 +392,106 @@ mod tests {
             .unwrap();
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn chat_completions_routes_simple_session_to_cheap_model() {
+        let app = router(routed_state(routing_config()).await);
+        let resp = post_chat(
+            app,
+            serde_json::json!({
+                "model": "frontier",
+                "input": [
+                    {"type": "message", "role": "user", "content": "hello"},
+                    {"type": "message", "role": "user", "content": "thanks"}
+                ]
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("cheap")
+        );
+        let bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        // Transparency: the client sees the model it requested.
+        assert_eq!(body["model"], "frontier");
+    }
+
+    #[tokio::test]
+    async fn chat_completions_keeps_frontier_for_complex_turns() {
+        let app = router(routed_state(routing_config()).await);
+        let resp = post_chat(
+            app,
+            serde_json::json!({
+                "model": "frontier",
+                "input": [
+                    {"type": "message", "role": "user", "content": "hello"},
+                    {"type": "message", "role": "user", "content": "review this architecture"}
+                ]
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("frontier")
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_completions_passthrough_without_rules() {
+        let app = router(routed_state(crate::router::RoutingConfig::default()).await);
+        let resp = post_chat(
+            app,
+            serde_json::json!({
+                "model": "frontier",
+                "input": [
+                    {"type": "message", "role": "user", "content": "hello"},
+                    {"type": "message", "role": "user", "content": "thanks"}
+                ]
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("frontier")
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_completions_tools_keep_frontier_model() {
+        let app = router(routed_state(routing_config()).await);
+        let resp = post_chat(
+            app,
+            serde_json::json!({
+                "model": "frontier",
+                "tools": [{"type": "function", "name": "f", "parameters": {"type": "object"}}],
+                "input": [
+                    {"type": "message", "role": "user", "content": "hello"},
+                    {"type": "message", "role": "user", "content": "run the tool"}
+                ]
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("frontier")
+        );
     }
 
     #[tokio::test]

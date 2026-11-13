@@ -113,6 +113,11 @@ pub struct Config {
     /// Cost-aware model routing configuration.
     #[serde(default)]
     pub routing: navra_core::hooks::RoutingConfig,
+    /// Within-session model routing for the inference gateway
+    /// (`/v1/chat/completions`): downgrade simple turns to a cheaper
+    /// model, upgrade on complexity. See navra-model-server's router.
+    #[serde(default)]
+    pub model_routing: Option<navra_model_server::RoutingConfig>,
     /// Event-driven triggers that start flows automatically.
     #[serde(default)]
     pub triggers: Vec<crate::triggers::TriggerConfig>,
@@ -455,6 +460,7 @@ impl Default for Config {
             statistical: StatisticalGuardrailServerConfig::default(),
             temporal_contracts: TemporalContractServerConfig::default(),
             routing: navra_core::hooks::RoutingConfig::default(),
+            model_routing: None,
             triggers: Vec::new(),
             enterprise_auth: None,
             libraries: LibraryConfig::default(),

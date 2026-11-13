@@ -1003,6 +1003,7 @@ async fn model_serve(
         bind: bind.clone(),
         vram_budget,
         desktop_reservation: 2 * 1024 * 1024 * 1024,
+        routing: cfg.model_routing.clone().unwrap_or_default(),
     };
 
     let server = navra_model_server::ModelServer::new(server_config).await?;

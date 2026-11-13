@@ -949,6 +949,58 @@ Each tier specifies:
 | `max_tokens` | usize | Maximum output tokens for this tier |
 | `patterns` | string[] | Tool name glob patterns that route here |
 
+## Within-Session Model Routing
+
+Downgrades simple conversation turns to a cheaper model at the
+inference gateway (`/v1/chat/completions`), transparently: the client
+keeps requesting the frontier model name, the response `model` field
+always echoes it back, and the model that actually served the request
+is exposed via the `x-navra-routed-model` response header.
+
+Decisions use two signals:
+
+- **Complexity** — reasoning keywords in recent messages or tool use
+  in the request keep the session on the frontier model; simple turns
+  downgrade once the conversation has `min_messages` of history.
+- **Compaction boundaries** — the router tracks conversation size per
+  session; a significant shrink means the caller compacted its
+  context. Rules with `switch_only_at_compaction = true` defer
+  downgrades to that boundary, so server-side prompt caches of remote
+  providers are not forfeited (the cache is invalidated at compaction
+  anyway). Rules targeting local models can switch freely — there is
+  no cache cost.
+
+```toml
+[model_routing]
+enabled = true
+min_messages = 2
+
+[[model_routing.rules]]
+from = "claude-opus"          # frontier model, as requested by clients
+to = "granite-code:8b"        # cheap model, must be loaded in [models]
+switch_only_at_compaction = true
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch (rules are also required) |
+| `min_messages` | usize | `2` | History length before downgrades are considered |
+| `rules` | array | `[]` | Routing rules, matched by requested model name |
+
+Each rule specifies:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `from` | string | Frontier model name, as clients request it |
+| `to` | string | Cheap model name, must exist in the registry |
+| `switch_only_at_compaction` | bool | Defer downgrades to compaction boundaries (recommended for remote targets) |
+
+Routing applies to the model server's OpenAI-compatible API
+(`navra model serve`). The gateway's `/v1` model proxy
+(`navra serve`) forwards to configured upstreams directly and does
+not apply these rules. The related `[routing]` section above routes
+*tool calls* to tiers and is a separate feature.
+
 ## Credentials
 
 Credential label to backend source mappings. Only credentials listed

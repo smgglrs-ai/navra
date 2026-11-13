@@ -21,6 +21,9 @@ pub struct ModelServerConfig {
     /// VRAM reserved for desktop/display (bytes, default: 2GB).
     #[serde(default = "default_desktop_reservation")]
     pub desktop_reservation: u64,
+    /// Within-session cost routing (see `router` module).
+    #[serde(default)]
+    pub routing: crate::router::RoutingConfig,
 }
 
 impl Default for ModelServerConfig {
@@ -30,6 +33,7 @@ impl Default for ModelServerConfig {
             bind: default_bind(),
             vram_budget: 0,
             desktop_reservation: default_desktop_reservation(),
+            routing: crate::router::RoutingConfig::default(),
         }
     }
 }

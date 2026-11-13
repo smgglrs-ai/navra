@@ -1,0 +1,59 @@
+id: NAVRA-190
+title: "Within-session cost routing in the model-server inference gateway"
+status: done
+priority: medium
+effort: 1-2d
+description: |
+  The model server's OpenAI-compatible /v1/chat/completions endpoint
+  served whatever model the client named — no within-session cost
+  routing. navra already had the surrounding pieces (team_spawn model
+  selection at spawn time via ModelCard scoring, a RoutingHook that
+  classifies tool calls by tier), but nothing re-routed a single
+  agent session mid-conversation, and the RoutingHook's injected
+  `_routing_model` metadata has no consumer.
+
+  Implemented (navra-model-server):
+  - New `router` module: SessionRouter with per-session state (keyed
+    by hash of requested model + first message content, stable across
+    OpenAI-style stateless requests that resend full history).
+  - Complexity signal: reasoning keywords in the trailing message
+    window or tools present in the request keep the frontier model;
+    simple turns downgrade after `min_messages` of history (early
+    turns rarely reveal task difficulty).
+  - Compaction signal: tracked conversation size drop of ≥25% marks a
+    compaction boundary; rules with `switch_only_at_compaction`
+    defer downgrades there (mirrors remote-provider prompt-cache
+    economics — the cache busts at compaction anyway). Upgrades on
+    complexity are never deferred.
+  - api.rs wiring: routing decision before registry lookup; response
+    `model` field rewritten to the requested name (client
+    transparency); actual backend exposed via `x-navra-routed-model`
+    response header and tracing.
+  - Config: `[model_routing]` in navra-server config (plumbed to
+    ModelServerConfig.routing, used by `navra model serve`), full
+    schema regen.
+  - Drive-by fix: chat_completions previously deserialized
+    CreateResponseRequest from `rest` without the `model` field
+    (captured by the named struct field, so always missing) — every
+    request 400'd. Now re-injects the routed model name.
+  - ModelRegistry::insert for registering pre-built backends
+    (embedded mode, tests).
+notes: |
+  - Scope: routing applies to `navra model serve` only. The gateway's
+    /v1 proxy (navra-server ui.rs) forwards directly to configured
+    upstreams and bypasses the model-server registry — extending the
+    router there (where teammates' sandboxed traffic already flows
+    through safety/IFC/audit) is a natural follow-up.
+  - The RoutingHook (`[routing]`, tool-tier classification) remains
+    consumer-less; either retire it or wire `_routing_model` into
+    this router as an explicit hint (the router already supports
+    passthrough semantics that would fit).
+  - IFC-driven mid-session downgrade (force local model when taint
+    appears in the conversation) is a second follow-up the proxy
+    position enables; requires the IFC check to see request bodies.
+  - Tests: 12 router unit tests (complexity, compaction, stickiness,
+    session isolation, min_messages, config parsing) + 4 handler
+    tests (route-to-cheap with header + response model transparency,
+    complex/tools keep frontier, passthrough without rules) via an
+    EchoBackend mock. All 43 crate tests pass; clippy -D warnings
+    clean.

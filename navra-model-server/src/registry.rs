@@ -266,7 +266,14 @@ impl ModelRegistry {
         Ok(backend)
     }
 
-    /// Look up a model by name.
+    /// Register a pre-built backend under a name (embedded mode, tests).
+    ///
+    /// Bypasses config resolution — the caller supplies a loaded backend.
+    pub fn insert(&mut self, name: &str, backend: Arc<dyn ModelBackend>) {
+        self.models.insert(name.to_string(), backend);
+    }
+
+    /// Look up a loaded backend by name.
     pub fn get(&self, name: &str) -> Option<&Arc<dyn ModelBackend>> {
         self.models.get(name)
     }
