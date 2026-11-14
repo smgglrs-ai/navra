@@ -635,6 +635,9 @@ pub(crate) fn attach_ui_routes(
     let proxy_server = Arc::clone(server);
     let proxy_forge = ui_forge.clone();
     let proxy_model_entries = cfg.models.clone();
+    let proxy_session_router = Arc::new(navra_model_server::SessionRouter::new(
+        cfg.model_routing.clone().unwrap_or_default(),
+    ));
     let proxy_models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
         models.clone();
     let proxy_gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
@@ -650,6 +653,7 @@ pub(crate) fn attach_ui_routes(
                     let forge = proxy_forge.clone();
                     let srv = proxy_server.clone();
                     let gcp = proxy_gcp_tokens.clone();
+                    let session_router = proxy_session_router.clone();
                     async move {
                         let start = std::time::Instant::now();
                         let Some(_backend) = backend else {
@@ -731,15 +735,61 @@ pub(crate) fn attach_ui_routes(
                                 }));
                             }
 
+                        // Within-session cost routing (NAVRA-190):
+                        // transparently serve simple turns from a
+                        // cheaper configured model. The response
+                        // `model` field keeps the requested name; the
+                        // actual backend is exposed via the
+                        // `x-navra-routed-model` response header.
+                        let requested_model = model_name.to_string();
+                        let tools_present =
+                            body["tools"].as_array().is_some_and(|a| !a.is_empty());
+                        let available: Vec<String> =
+                            model_entries.keys().cloned().collect();
+                        let decision = session_router.decide(
+                            &requested_model,
+                            &messages,
+                            tools_present,
+                            &available,
+                        );
+                        let model_name = decision.model.as_str();
+                        if decision.routed {
+                            tracing::info!(
+                                from = %requested_model,
+                                to = %model_name,
+                                reason = decision.reason,
+                                "Gateway model routing"
+                            );
+                        }
+
+                        // Resolve model entry: the routed model when
+                        // routing applied, otherwise the agent's
+                        // configured model, falling back to an entry
+                        // matching the requested model name (callers
+                        // without a configured model still reach the
+                        // model they asked for when it is configured).
+                        let model_entry = if decision.routed {
+                            model_entries.get(model_name)
+                        } else {
+                            agent
+                                .as_ref()
+                                .and_then(|a| a.model.as_ref())
+                                .and_then(|name| model_entries.get(name))
+                                .or_else(|| model_entries.get(model_name))
+                        };
+
                         let mut proxy_body = body.0.clone();
                         proxy_body["messages"] = serde_json::Value::Array(messages);
                         let is_streaming = proxy_body["stream"].as_bool().unwrap_or(false);
 
-                        // Resolve model entry from agent config
-                        let model_entry = agent
-                            .as_ref()
-                            .and_then(|a| a.model.as_ref())
-                            .and_then(|name| model_entries.get(name));
+                        // Upstreams must receive the actual model name
+                        // when routing rewrote it.
+                        if decision.routed {
+                            let upstream_model = model_entry
+                                .and_then(|e| e.model_name.clone())
+                                .unwrap_or_else(|| model_name.to_string());
+                            proxy_body["model"] = serde_json::json!(upstream_model);
+                        }
 
                         let is_vertex = model_entry
                             .and_then(|e| e.base_url.as_deref())
@@ -919,7 +969,14 @@ pub(crate) fn attach_ui_routes(
                         if is_streaming {
                             let stream = resp.bytes_stream();
                             srv.metrics().model.proxy_requests.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                            return axum::body::Body::from_stream(stream).into_response();
+                            let mut stream_resp =
+                                axum::body::Body::from_stream(stream).into_response();
+                            stream_resp.headers_mut().insert(
+                                axum::http::HeaderName::from_static("x-navra-routed-model"),
+                                axum::http::HeaderValue::from_str(model_name)
+                                    .unwrap_or(axum::http::HeaderValue::from_static("unknown")),
+                            );
+                            return stream_resp;
                         }
 
                         let resp_bytes = resp.bytes().await.unwrap_or_default();
@@ -1028,6 +1085,11 @@ pub(crate) fn attach_ui_routes(
 
                         // Blackbox audit
                         let duration_us = start.elapsed().as_micros() as u64;
+                        let model_detail = if decision.routed {
+                            format!("model={requested_model} routed={model_name}")
+                        } else {
+                            format!("model={model_name}")
+                        };
                         if let Some(bb) = srv.blackbox() {
                             let output_summary = resp_json["choices"]
                                 .as_array()
@@ -1038,7 +1100,7 @@ pub(crate) fn attach_ui_routes(
                             bb.record(
                                 agent_name, permissions, "",
                                 "model_proxy",
-                                &format!("model={model_name}"),
+                                &model_detail,
                                 &output_summary,
                                 "ok", duration_us, "Trusted", "",
                             );
@@ -1055,7 +1117,16 @@ pub(crate) fn attach_ui_routes(
                             srv.metrics().record_tokens(uncached, completion, cached);
                         }
 
-                        axum::Json(resp_json).into_response()
+                        // Transparency: echo the requested model name;
+                        // the header carries the actual backend.
+                        resp_json["model"] = serde_json::json!(requested_model);
+                        let mut json_resp = axum::Json(resp_json).into_response();
+                        json_resp.headers_mut().insert(
+                            axum::http::HeaderName::from_static("x-navra-routed-model"),
+                            axum::http::HeaderValue::from_str(model_name)
+                                .unwrap_or(axum::http::HeaderValue::from_static("unknown")),
+                        );
+                        json_resp
                     }
                 },
             ),
@@ -1689,7 +1760,7 @@ mod tests {
             &router,
             "/v1/chat/completions",
             serde_json::json!({
-                "model": "qwen3:8b",
+                "model": "qwen2.5:0.5b",
                 "messages": [{"role": "user", "content": "say hello in one word"}],
                 "max_tokens": 5
             }),
@@ -1702,6 +1773,212 @@ mod tests {
         assert!(json["choices"].is_array());
         assert_eq!(json["choices"][0]["message"]["role"], "assistant");
         assert!(json["usage"].is_object());
+    }
+
+    /// Spawn a mock OpenAI-compatible upstream on an ephemeral port.
+    /// Echoes the served model name into the message content so tests
+    /// can verify which model the proxy actually selected.
+    async fn spawn_mock_upstream() -> String {
+        let app = axum::Router::new().route(
+            "/v1/chat/completions",
+            axum::routing::post(
+                |axum::Json(body): axum::Json<serde_json::Value>| async move {
+                    let served = body["model"].as_str().unwrap_or("unknown").to_string();
+                    axum::Json(serde_json::json!({
+                        "id": "chatcmpl_mock",
+                        "object": "chat.completion",
+                        "model": served,
+                        "choices": [{
+                            "index": 0,
+                            "message": {"role": "assistant", "content": format!("served:{served}")},
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+                    }))
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+        format!("http://{addr}")
+    }
+
+    fn routed_test_config(mock_url: &str) -> config::Config {
+        let mut cfg = config::Config::default();
+        for (name, served) in [("front", "front-served"), ("cheap", "cheap-served")] {
+            cfg.models.insert(
+                name.into(),
+                config::ModelConfig {
+                    model_path: None,
+                    source: None,
+                    tokenizer_path: None,
+                    task: "chat".into(),
+                    device: None,
+                    dimensions: None,
+                    labels: Vec::new(),
+                    threshold: None,
+                    format: None,
+                    runtime: None,
+                    context_size: None,
+                    parallel: None,
+                    model_name: Some(served.into()),
+                    cache_type: None,
+                    kv_cache: None,
+                    speculative: None,
+                    base_url: Some(mock_url.to_string()),
+                    api_key: None,
+                    locality: None,
+                    agentic: None,
+                    execution_mode: None,
+                    port: None,
+                },
+            );
+        }
+        cfg.model_routing = Some(navra_model_server::RoutingConfig {
+            enabled: true,
+            rules: vec![navra_model_server::RoutingRule {
+                from: "front".into(),
+                to: "cheap".into(),
+                switch_only_at_compaction: false,
+            }],
+            min_messages: 2,
+        });
+        cfg
+    }
+
+    fn build_router_with_config(cfg: &config::Config) -> axum::Router {
+        let server = test_server();
+        let models = test_models();
+        let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
+        attach_ui_routes(
+            axum::Router::new(),
+            cfg,
+            &server,
+            &models,
+            Some("stub"),
+            None,
+            None,
+            None,
+            config_state,
+            std::path::PathBuf::from("/tmp/navra-test-config.json"),
+        )
+    }
+
+    async fn post_json_with_headers(
+        router: &axum::Router,
+        path: &str,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+        let req = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        (status, json, headers)
+    }
+
+    #[tokio::test]
+    async fn v1_chat_completions_routes_simple_session_to_cheap_model() {
+        let mock_url = spawn_mock_upstream().await;
+        let router = build_router_with_config(&routed_test_config(&mock_url));
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "thanks"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        // Actual backend served the cheap model...
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("cheap")
+        );
+        // ...with its configured upstream model name...
+        assert_eq!(
+            json["choices"][0]["message"]["content"],
+            "served:cheap-served"
+        );
+        // ...while the client sees the model it requested.
+        assert_eq!(json["model"], "front");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_completions_keeps_frontier_for_complex_turns() {
+        let mock_url = spawn_mock_upstream().await;
+        let router = build_router_with_config(&routed_test_config(&mock_url));
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "review this architecture"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("front")
+        );
+        // Passthrough: the client's model name reaches the upstream
+        // verbatim (only routed requests are rewritten).
+        assert_eq!(json["choices"][0]["message"]["content"], "served:front");
+        assert_eq!(json["model"], "front");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_completions_no_routing_without_config() {
+        let mock_url = spawn_mock_upstream().await;
+        let mut cfg = routed_test_config(&mock_url);
+        cfg.model_routing = None;
+        let router = build_router_with_config(&cfg);
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "thanks"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("front")
+        );
+        assert_eq!(json["model"], "front");
     }
 
     #[tokio::test]

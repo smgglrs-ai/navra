@@ -996,10 +996,14 @@ Each rule specifies:
 | `switch_only_at_compaction` | bool | Defer downgrades to compaction boundaries (recommended for remote targets) |
 
 Routing applies to the model server's OpenAI-compatible API
-(`navra model serve`). The gateway's `/v1` model proxy
-(`navra serve`) forwards to configured upstreams directly and does
-not apply these rules. The related `[routing]` section above routes
-*tool calls* to tiers and is a separate feature.
+(`navra model serve`) and to the gateway's `/v1` model proxy
+(`navra serve`) — the same `[model_routing]` rules govern both. In
+the gateway, routed requests resolve the cheap model's `[models.*]`
+entry for the upstream URL and credentials, the blackbox audit trail
+records `model=<requested> routed=<actual>`, and non-routed requests
+pass the client's model name through verbatim. The related
+`[routing]` section above routes *tool calls* to tiers and is a
+separate feature.
 
 ## Credentials
 

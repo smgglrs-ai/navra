@@ -39,21 +39,29 @@ description: |
   - ModelRegistry::insert for registering pre-built backends
     (embedded mode, tests).
 notes: |
-  - Scope: routing applies to `navra model serve` only. The gateway's
-    /v1 proxy (navra-server ui.rs) forwards directly to configured
-    upstreams and bypasses the model-server registry — extending the
-    router there (where teammates' sandboxed traffic already flows
-    through safety/IFC/audit) is a natural follow-up.
+  - Follow-up (second commit): the gateway's /v1 model proxy
+    (navra-server ui.rs) now applies the same SessionRouter — this is
+    the path teammates' sandboxed traffic takes (agent_spawn points
+    them at the gateway /v1 for safety/IFC/audit). Routed requests
+    resolve the cheap model's [models.*] entry for upstream
+    URL/credentials and rewrite the upstream body's model name;
+    response model field and x-navra-routed-model header mirror the
+    model-server behavior; blackbox audit records
+    model=<requested> routed=<actual>. Non-routed entry resolution
+    now falls back to the requested model's entry when the caller
+    has no configured model (previously always the Ollama default).
+    Streaming responses carry the header; SSE chunk contents still
+    name the actual model (known limitation).
   - The RoutingHook (`[routing]`, tool-tier classification) remains
     consumer-less; either retire it or wire `_routing_model` into
     this router as an explicit hint (the router already supports
     passthrough semantics that would fit).
   - IFC-driven mid-session downgrade (force local model when taint
-    appears in the conversation) is a second follow-up the proxy
+    appears in the conversation) is a further follow-up the proxy
     position enables; requires the IFC check to see request bodies.
-  - Tests: 12 router unit tests (complexity, compaction, stickiness,
-    session isolation, min_messages, config parsing) + 4 handler
-    tests (route-to-cheap with header + response model transparency,
-    complex/tools keep frontier, passthrough without rules) via an
-    EchoBackend mock. All 43 crate tests pass; clippy -D warnings
-    clean.
+  - Tests: 12 router unit tests + 4 model-server handler tests
+    (first commit); 3 gateway proxy handler tests against an
+    in-process mock upstream + the pre-existing Ollama format test
+    switched from qwen3:8b (5.5 GiB, OOM-fragile) to the documented
+    qwen2.5:0.5b test prerequisite. All pass single-threaded
+    (--test-threads=1, per justfile convention).
