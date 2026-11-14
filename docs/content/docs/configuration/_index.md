@@ -998,11 +998,20 @@ pointing at a remote entry without `ifc_clearance` is rejected
 (fail-closed), so an uncleared destination never receives sensitive
 data through operator misconfiguration.
 
-Detection strength is bounded by the caller's safety pipeline: with
-no pipeline configured for the caller's permission set, no
-sensitivity is detected and requests route normally. Requests already
-served by a cleared model (or by an entry-less localhost default)
-pass through unchanged.
+Two independent signals mark a conversation sensitive:
+
+1. **Content findings** — the safety pipeline's PII/secret scan of
+   the request's user/system messages. Strength is bounded by the
+   caller's pipeline: with none configured, this signal is absent.
+2. **Kernel session taint** — the lattice-joined context label of
+   the calling agent's live MCP sessions, elevated whenever a tool
+   result the agent pulled into its context was labeled sensitive.
+   This catches sensitive data quoted in assistant messages (which
+   the content scan cannot see) and works with no safety pipeline
+   configured.
+
+Requests already served by a cleared model (or by an entry-less
+localhost default) pass through unchanged.
 
 ## Credentials
 

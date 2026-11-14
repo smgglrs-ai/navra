@@ -1,0 +1,44 @@
+id: NAVRA-192
+title: "Kernel session taint as an IFC model-routing signal"
+status: done
+priority: medium
+effort: 0.5d
+description: |
+  The IFC model override (NAVRA-190, [model_ifc]) detected sensitivity
+  only via safety-pipeline findings on the request's user/system
+  messages. Two gaps: assistant messages quoting tainted tool output
+  were never scanned, and detection vanished entirely without a
+  safety pipeline configured for the caller.
+
+  The kernel already tracks exactly this: every MCP session carries a
+  persisted context_label (lattice-joined on every tool result
+  returned to the agent, declassifiable only through the audited
+  declassification path). The HTTP proxy just couldn't reach it.
+
+  Implemented:
+  - SessionBackend::agent_context_label (default impl over
+    list_all, overridable by queryable backends) +
+    SessionStore::agent_context_label — the lattice join of an
+    agent's live sessions.
+  - Gateway /v1 proxy: after authenticating the caller, join the
+    agent's session taint; confidentiality >= Sensitive marks the
+    conversation sensitive, OR-ed with the findings signal. This
+    catches sensitive tool output quoted anywhere in the conversation
+    and works with no safety pipeline configured.
+notes: |
+  - Taint is monotonic and persists across HTTP requests, so the
+    override is naturally sticky — an agent that once pulled
+    sensitive data stays on the cleared model until an audited
+    declassification steps the session label down.
+  - Anonymous callers key on the NoAuthenticator identity name
+    ("anonymous"), so all anonymous sessions join into one label —
+    correct for the fail-closed direction (any anonymous session's
+    sensitive data marks the shared identity).
+  - Tests: navra-core session join (across sessions, isolation
+    between agents, unknown agent public); gateway handler test —
+    tainted session forces local routing on a clean conversation
+    with NO safety pipeline (taint is the only signal), with an
+    untainted control. All ui (12) and session (15) tests pass
+    single-threaded; clippy -D warnings clean.
+  - Docs: configuration reference ([model_ifc] two-signal detection)
+    and the IFC learn guide updated in the same commit.

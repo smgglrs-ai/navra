@@ -162,18 +162,20 @@ When no policy is configured, navra defaults to `Deny`. This is fail-closed desi
 ### IFC-aware model routing
 
 The same principle extends to model inference. The gateway's `/v1`
-model proxy scans every conversation turn through the caller's safety
-pipeline; when findings indicate sensitive content (PII, secrets),
-the request is forced onto an IFC-cleared model regardless of what
-the client requested or what cost routing decided. Local models are
-cleared implicitly — the data never leaves the device — while remote
-endpoints require an explicit operator vouch (`ifc_clearance =
-"sensitive"` on the model entry), such as an in-tenant VPC inference
-cluster under a data processing agreement. Uncleared destinations are
-rejected fail-closed. Because OpenAI-compatible clients resend their
-full history each turn, one sensitive turn keeps the session on the
-cleared model for its remainder. See `[model_ifc]` in the
-configuration reference.
+model proxy marks a conversation sensitive from two signals: safety
+pipeline findings in the request (PII, secrets), and the kernel's
+persisted session taint for the calling agent — the lattice-joined
+label of every tool result the agent has already pulled into its
+context. Either signal forces the request onto an IFC-cleared model
+regardless of what the client requested or what cost routing
+decided. Local models are cleared implicitly — the data never leaves
+the device — while remote endpoints require an explicit operator
+vouch (`ifc_clearance = "sensitive"` on the model entry), such as an
+in-tenant VPC inference cluster under a data processing agreement.
+Uncleared destinations are rejected fail-closed. Taint is monotonic
+and persists across HTTP requests, so once an agent's context is
+sensitive, its model calls stay on the cleared model. See
+`[model_ifc]` in the configuration reference.
 
 
 ## Auto-labeling: where labels come from

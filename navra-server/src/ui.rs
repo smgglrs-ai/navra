@@ -689,10 +689,26 @@ pub(crate) fn attach_ui_routes(
                         let mut messages = body["messages"].as_array().cloned().unwrap_or_default();
                         let model_name = body["model"].as_str().unwrap_or("default");
 
+                        // IFC sensitivity has two sources:
+                        // 1. Content findings from the safety pipeline
+                        //    scan below (PII/secrets in user/system
+                        //    messages of THIS request).
+                        // 2. The kernel's persisted session taint for
+                        //    the calling agent — tool results the
+                        //    agent has already pulled into its context
+                        //    (lattice-joined across the agent's live
+                        //    sessions). This catches sensitive data
+                        //    quoted in assistant messages that the
+                        //    content scan cannot see, and works even
+                        //    with no safety pipeline configured.
+                        let agent_taint = srv.sessions().agent_context_label(agent_name);
+                        let taint_sensitive =
+                            agent_taint.confidentiality >= navra_core::ifc::Confidentiality::Sensitive;
+                        let mut ifc_sensitive = taint_sensitive;
+
                         // Safety filter: scan inbound user/system messages.
                         // Findings also feed IFC-aware model routing
                         // (sensitive conversations stay on-device).
-                        let mut ifc_sensitive = false;
                         if let Some(pipeline) = srv.safety_pipeline(permissions) {
                             let filter_ctx = navra_core::safety::FilterContext {
                                 agent_name,
@@ -2263,6 +2279,83 @@ mod tests {
 
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["error"]["type"], "safety_error");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_ifc_kernel_taint_routes_without_findings() {
+        let mock_url = spawn_mock_upstream().await;
+
+        // Plain server, NO safety pipeline: the kernel's persisted
+        // session taint is the only sensitivity signal.
+        let tainted_server = test_server();
+        tainted_server
+            .sessions()
+            .create(navra_core::session::Session {
+                id: "tainted".into(),
+                agent: navra_core::auth::AgentIdentity::new("anonymous", "readonly"),
+                client_info: navra_core::protocol::ClientInfo::new("test", ""),
+                initialized: true,
+                context_label: navra_core::ifc::DataLabel::UNTRUSTED_SENSITIVE,
+                created_at: 0,
+                last_accessed: 0,
+            });
+
+        // Clean conversation, no PII anywhere — but the agent's
+        // session has already absorbed sensitive tool output, so the
+        // request is forced onto the local model.
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("cheap"), false),
+            tainted_server,
+        );
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "summarize what you found"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("cheap")
+        );
+        assert_eq!(json["model"], "front");
+
+        // Control: untainted agent, same clean conversation, no
+        // pipeline findings — stays on the requested (remote) model.
+        let clean_router = build_router_with(
+            &ifc_test_config(&mock_url, Some("cheap"), false),
+            test_server(),
+        );
+        let (status, json, headers) = post_json_with_headers(
+            &clean_router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "summarize what you found"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("front")
+        );
+        assert_eq!(json["model"], "front");
     }
 
     #[tokio::test]

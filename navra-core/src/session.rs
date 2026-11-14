@@ -43,6 +43,22 @@ pub trait SessionBackend: Send + Sync {
     fn expire(&self, max_age_secs: u64);
     /// List all sessions (for introspection resources).
     fn list_all(&self) -> Vec<Session>;
+    /// Joined context label across all of an agent's sessions.
+    ///
+    /// The lattice join of every live session the agent owns — used
+    /// by consumers outside the MCP request path (e.g. the model
+    /// proxy) to apply IFC policy to an agent's accumulated taint.
+    /// Backends with a queryable store may override this with a
+    /// direct query; the default scans [`SessionBackend::list_all`].
+    fn agent_context_label(&self, agent_name: &str) -> DataLabel {
+        let mut label = DataLabel::TRUSTED_PUBLIC;
+        for session in self.list_all() {
+            if session.agent.name == agent_name {
+                label = label.join(session.context_label);
+            }
+        }
+        label
+    }
 }
 
 /// Thread-safe session store wrapping a pluggable backend.
@@ -130,6 +146,11 @@ impl SessionStore {
 
     pub fn list_all(&self) -> Vec<Session> {
         self.backend.list_all()
+    }
+
+    /// Joined context label across all of an agent's live sessions.
+    pub fn agent_context_label(&self, agent_name: &str) -> DataLabel {
+        self.backend.agent_context_label(agent_name)
     }
 }
 
@@ -308,6 +329,36 @@ mod tests {
         let s = store.get("s1").unwrap();
         assert_eq!(s.id, "s1");
         assert!(s.initialized);
+    }
+
+    #[test]
+    fn agent_context_label_joins_across_sessions() {
+        let store = SessionStore::new();
+
+        // Two sessions for "agent": one public, one sensitive.
+        let mut a = test_session("s1");
+        a.agent = AgentIdentity::new("agent", "dev");
+        a.context_label = DataLabel::UNTRUSTED_SENSITIVE;
+        let mut b = test_session("s2");
+        b.agent = AgentIdentity::new("agent", "dev");
+        b.context_label = DataLabel::UNTRUSTED_PUBLIC;
+        // One session for someone else: secret, must not leak into
+        // "agent"'s label.
+        let mut other = test_session("s3");
+        other.agent = AgentIdentity::new("other", "dev");
+        other.context_label = DataLabel::TRUSTED_SECRET;
+        store.create(a);
+        store.create(b);
+        store.create(other);
+
+        let label = store.agent_context_label("agent");
+        assert_eq!(label, DataLabel::UNTRUSTED_SENSITIVE);
+
+        // Unknown agent: fully public.
+        assert_eq!(
+            store.agent_context_label("nobody"),
+            DataLabel::TRUSTED_PUBLIC
+        );
     }
 
     #[test]

@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 178 completed items
+# 179 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1180,5 +1180,11 @@ IFC benchmark, ASSERT, and ADR-Bench docs.
     title: "Retire the inert tool-tier RoutingHook"
     status: done
     priority: low
+    effort: 0.5d
+
+  - id: "NAVRA-192"
+    title: "Kernel session taint as an IFC model-routing signal"
+    status: done
+    priority: medium
     effort: 0.5d
 
