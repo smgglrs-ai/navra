@@ -42,7 +42,25 @@ acceptance:
   - navra agent install works for each, signature verified
   - CI republishes on release tag
 notes:
-  - "Technical risk to verify early in step 6: fetch.rs resolves
+  - "Progress 2026-11-14 (pre-publish hardening, commit 1):
+    (a) reference bundles verified against the manifest schema and
+    given a permanent drift test
+    (agent_bundle::manifest::tests::reference_bundles_parse_and_hold_invariants)
+    asserting schema_version, self-contained personas, read-only
+    operations, file_write denied, and label-lattice IFC vocabulary;
+    (b) the three bundles' IFC declarations moved off non-vocabulary
+    values (external/internal) to real lattice terms — researcher
+    and security-auditor now reads=untrusted, which triggers
+    tainted_write_policy=approve at install; code-reviewer
+    reads=trusted; (c) cosign verification gained signer pinning —
+    VerifyOptions{identity, issuer} → --certificate-identity-regexp
+    / --certificate-oidc-issuer, config fields
+    agent_signature_identity + agent_signature_issuer on [server],
+    documented in the agent-bundles guide with a full-pin example;
+    (d) docs and examples de-quayed (ghcr.io refs, owner-qualified).
+    Remaining: oras packaging, CI job, end-to-end install round-trip
+    (the Referrers API risk below), docs site bundle page."
+  - "Technical risk to verify early: fetch.rs resolves
     bundles via the OCI Referrers API
     (/v2/{repo}/referrers/{digest}?artifactType=...). ghcr.io
     implements OCI 1.1 referrers, but the artifactType tagging and
@@ -51,8 +69,8 @@ notes:
   - "cosign keyless signatures are stored as OCI referrer artifacts
     — same API surface fetch.rs already speaks."
   - "Image naming: container.yml uses ghcr.io/<github.repository_owner>/<image>;
-    bundles should follow the same convention for consistency."
-  - "Keyless verification pinning: agent_bundle/cosign.rs runs
-    `cosign verify` without identity constraints — worth extending
-    with --certificate-identity regexp for the repo's workflow
-    identity so users don't trust arbitrary signers of the artifact."
+    bundles should follow the same convention for consistency
+    (examples/agent-bundles/README.md now uses
+    ghcr.io/smgglrs-ai/<bundle>)."
+  - "Keyless verification pinning: DONE 2026-11-14 — see
+    agent_signature_identity above."

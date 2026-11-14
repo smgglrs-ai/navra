@@ -14,6 +14,7 @@ pub(crate) async fn agent_install(
         return agent_install_local(path);
     }
 
+    // Gate 1: signature verification
     let policy = if allow_unsigned {
         cosign::SignaturePolicy::Skip
     } else {
@@ -21,9 +22,12 @@ pub(crate) async fn agent_install(
             .agent_signature_policy
             .parse::<cosign::SignaturePolicy>()?
     };
-
-    // Gate 1: signature verification
-    let signed = cosign::verify_signature(oci_ref, policy).await?;
+    let verify_opts = cosign::VerifyOptions {
+        policy,
+        identity: cfg.server.agent_signature_identity.clone(),
+        issuer: cfg.server.agent_signature_issuer.clone(),
+    };
+    let signed = cosign::verify_signature(oci_ref, &verify_opts).await?;
 
     // Fetch manifest
     let client = reqwest::Client::new();

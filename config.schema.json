@@ -2078,6 +2078,22 @@
           "type": "string",
           "default": "localhost/navra-agent:latest"
         },
+        "agent_signature_identity": {
+          "description": "Pin signature verification to a signer identity (certificate\nSAN regexp) — e.g. `^https://github.com/smgglrs-ai/navra/`\nrestricts `navra agent install` to bundles signed by this\nrepository's CI. Empty (default) accepts any signer.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "agent_signature_issuer": {
+          "description": "Expected OIDC issuer of the signer (e.g.\n`https://token.actions.githubusercontent.com`). Set together\nwith `agent_signature_identity` to fully pin a keyless signer.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "agent_signature_policy": {
           "description": "Agent bundle signature policy: \"enforce\", \"warn\", or \"skip\".\nControls whether `navra agent install` requires cosign signature\nverification. Default: \"warn\".",
           "type": "string",

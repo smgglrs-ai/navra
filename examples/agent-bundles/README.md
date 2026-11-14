@@ -13,7 +13,7 @@ beyond what the manifest requests.
 ## Installing a bundle
 
 ```bash
-navra agent install oci://quay.io/navra/researcher:latest
+navra agent install oci://ghcr.io/smgglrs-ai/researcher:latest
 ```
 
 This pulls the OCI artifact, extracts the manifest, generates a token, and
@@ -22,7 +22,7 @@ prints a TOML config snippet to append to your `config.toml`.
 ## Inspecting a bundle
 
 ```bash
-navra agent inspect oci://quay.io/navra/researcher:latest
+navra agent inspect oci://ghcr.io/smgglrs-ai/researcher:latest
 ```
 
 This prints the manifest contents without installing, so you can review the
@@ -54,7 +54,7 @@ requested permissions and upstreams before granting access.
 3. Push as an OCI artifact:
 
    ```bash
-   navra agent push my-agent.json oci://quay.io/myorg/my-agent:1.0.0
+   navra agent push my-agent.json oci://ghcr.io/myorg/my-agent:1.0.0
    ```
 
 ## Manifest reference

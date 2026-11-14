@@ -70,6 +70,17 @@ pub struct ServerConfig {
     /// verification. Default: "warn".
     #[serde(default = "default_agent_signature_policy")]
     pub agent_signature_policy: String,
+    /// Pin signature verification to a signer identity (certificate
+    /// SAN regexp) — e.g. `^https://github.com/smgglrs-ai/navra/`
+    /// restricts `navra agent install` to bundles signed by this
+    /// repository's CI. Empty (default) accepts any signer.
+    #[serde(default)]
+    pub agent_signature_identity: Option<String>,
+    /// Expected OIDC issuer of the signer (e.g.
+    /// `https://token.actions.githubusercontent.com`). Set together
+    /// with `agent_signature_identity` to fully pin a keyless signer.
+    #[serde(default)]
+    pub agent_signature_issuer: Option<String>,
     /// WebSocket ping interval in seconds (default: 30).
     /// Server sends ping frames at this interval; closes after 3 missed pongs.
     #[serde(default = "default_ws_ping_interval")]

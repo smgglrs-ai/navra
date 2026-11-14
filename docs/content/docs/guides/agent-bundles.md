@@ -164,7 +164,7 @@ exists, navra shows a permission diff before replacing it.
 ### Install from an OCI registry
 
 ```bash
-navra agent install oci://quay.io/acme/admin-assistant:1.0
+navra agent install oci://ghcr.io/acme/admin-assistant:1.0
 ```
 
 For OCI installs, navra:
@@ -213,7 +213,7 @@ navra agent upgrade admin-assistant
 ### Inspect without installing
 
 ```bash
-navra agent inspect oci://quay.io/acme/admin-assistant:1.0
+navra agent inspect oci://ghcr.io/acme/admin-assistant:1.0
 ```
 
 Prints the agent manifest as JSON.
@@ -240,8 +240,28 @@ OCI bundle signatures. The behavior is controlled by
 Override per-install with `--allow-unsigned`:
 
 ```bash
-navra agent install oci://quay.io/acme/agent:dev --allow-unsigned
+navra agent install oci://ghcr.io/acme/agent:dev --allow-unsigned
 ```
+
+### Pinning the signer
+
+By default, a valid signature from *any* signer passes verification.
+For keyless signatures (the common CI setup), pin verification to a
+specific signer identity so a bundle signed by someone else's
+workflow is rejected even though its signature is technically valid:
+
+```toml
+[server]
+agent_signature_policy = "enforce"
+agent_signature_identity = "^https://github.com/your-org/your-repo/"
+agent_signature_issuer = "https://token.actions.githubusercontent.com"
+```
+
+`agent_signature_identity` is a regexp over the certificate's SAN —
+the OIDC subject of the workflow that signed (for GitHub Actions,
+`https://github.com/<org>/<repo>/...`). `agent_signature_issuer`
+pins the OIDC issuer that minted the certificate. Set both for a
+complete pin.
 
 ## Permission checks
 
@@ -250,7 +270,7 @@ install, navra compares the requested permissions against the
 operator's policy:
 
 ```bash
-navra agent install oci://quay.io/acme/agent:1.0 --max-permissions developer
+navra agent install oci://ghcr.io/acme/agent:1.0 --max-permissions developer
 ```
 
 The `--max-permissions` flag names a permission set from `config.toml`.

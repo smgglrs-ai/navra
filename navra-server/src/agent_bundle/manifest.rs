@@ -181,4 +181,99 @@ mod tests {
         let parsed: AgentManifest = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.meta.name, "test");
     }
+
+    /// The reference bundles published as OCI artifacts (NAVRA-157)
+    /// must never drift from this schema: parse each one and check
+    /// the invariants install relies on.
+    #[test]
+    fn reference_bundles_parse_and_hold_invariants() {
+        let examples_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/agent-bundles");
+
+        let bundles = ["researcher", "code-reviewer", "security-auditor"];
+        assert!(
+            bundles
+                .iter()
+                .all(|b| examples_dir.join(format!("{b}.json")).exists()),
+            "reference bundles missing from {}",
+            examples_dir.display()
+        );
+
+        for name in bundles {
+            let raw = std::fs::read_to_string(examples_dir.join(format!("{name}.json")))
+                .unwrap_or_else(|e| panic!("read {name}.json: {e}"));
+            let manifest: AgentManifest = serde_json::from_str(&raw).unwrap_or_else(|e| {
+                panic!("{name}.json does not parse against the current schema: {e}")
+            });
+
+            assert_eq!(manifest.schema_version, 1, "{name}: schema_version");
+            assert_eq!(manifest.meta.name, name, "{name}: meta.name mismatch");
+            assert_eq!(
+                manifest.meta.publisher.as_deref(),
+                Some("navra"),
+                "{name}: publisher"
+            );
+            let parts: Vec<_> = manifest.meta.version.split('.').collect();
+            assert!(
+                parts.len() == 3
+                    && parts
+                        .iter()
+                        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())),
+                "{name}: version {:?} is not major.minor.patch",
+                manifest.meta.version
+            );
+
+            // Persona is self-contained (embedded prompt, no forge
+            // reference to resolve).
+            let persona = manifest
+                .persona
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: no persona"));
+            assert!(
+                persona
+                    .system_prompt
+                    .as_deref()
+                    .is_some_and(|p| p.len() > 100),
+                "{name}: persona system_prompt missing or trivial"
+            );
+
+            // Permission posture: read-only operations, destructive
+            // tools explicitly denied.
+            let perms = &manifest.permissions;
+            assert!(
+                perms
+                    .operations
+                    .iter()
+                    .all(|o| o == "read" || o.starts_with("git.")),
+                "{name}: unexpected operations {:?}",
+                perms.operations
+            );
+            assert!(
+                perms
+                    .tool_rules
+                    .iter()
+                    .any(|r| r.tool == "file_write" && r.policy == "deny"),
+                "{name}: file_write not denied"
+            );
+
+            // IFC declaration uses label-lattice vocabulary (the
+            // install path special-cases reads == "untrusted").
+            if let Some(ifc) = &perms.ifc {
+                for (field, value) in [("reads", &ifc.reads), ("writes", &ifc.writes)] {
+                    assert!(
+                        [
+                            "trusted",
+                            "untrusted",
+                            "public",
+                            "sensitive",
+                            "pii",
+                            "secret"
+                        ]
+                        .contains(&value.as_str()),
+                        "{name}: ifc.{field} = {value:?} is not label-lattice vocabulary"
+                    );
+                }
+            }
+        }
+    }
 }
