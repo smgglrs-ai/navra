@@ -1,17 +1,44 @@
 id: NAVRA-150
-title: "Contribute rate limiting middleware to rmcp (issue #388)"
+title: "Contribute rate limiting to rmcp (issue #388)"
 status: planned
 priority: medium
-effort: M
+effort: S
 tags: [upstream, rmcp, community]
 depends_on: [NAVRA-149]
 acceptance:
-  - RateLimitLayer implemented as rmcp ServerHandler middleware
-  - PR opened on modelcontextprotocol/rust-sdk
-  - Tested with navra as a real-world consumer
+  - Design review comment posted on issue #388 with navra's
+    production requirements (per-principal keying, inbound MUST)
+  - IgorKasianenko's rate-limit branch tested against navra's
+    transport stack; findings posted to the issue
 notes:
-  - "rmcp issue #388 is marked help-wanted, P2 priority."
-  - "DaleSeo is primary maintainer — responsive, merges external PRs."
-  - "Start with rate limiting, then server card (#527), then middleware
-    composability pattern (no issue yet, needs discussion first)."
-  - "navra running on rmcp gives us credibility and concrete feedback."
+  - "Re-scoped 2026-11-14: the original plan (implement a
+    RateLimitLayer and open a PR) is overtaken — IgorKasianenko
+    claimed the work on 2026-08-10 with a working prototype
+    (main...IgorKasianenko:rust-sdk:rate-limit-388, +489 lines,
+    3 tests, clippy clean) and is settling the shape in-issue
+    before opening a PR. Nothing has landed: rmcp main has no
+    rate_limit module in crates/rmcp/src/transport/ as of
+    2026-11-14."
+  - "The thread's remaining bottleneck is maintainer design
+    agreement, not implementation capacity. Stepping in with a
+    competing PR would be wasted effort and poor etiquette."
+  - "navra's leverage is as the real-world consumer the thread
+    lacks: (a) darth-raijin asked for per-IP/per-principal keying —
+    navra already does per-agent concurrency limiting
+    (McpServer::acquire_concurrency_permit), concrete evidence for
+    the RateLimitKeyExtractor design; (b) Igor's open question #1
+    (inbound receive() limiting, where the completion MUST actually
+    lives) is exactly the DoS surface navra's gateway faces;
+    (c) navra on rmcp 3.8 can test the prototype branch against its
+    own transport suite."
+  - "Spec drift noted in-thread (vs 2026-07-28): only Completion
+    rate limiting is a MUST; Sampling/Logging deprecated
+    (SEP-2577); Elicitation rule removed. Any navra-side adoption
+    should prioritize the Completion path."
+  - "Also flagged in-thread: the repo's stale-bot workflow exempts
+    a `keep` label that doesn't exist — worth a drive-by fix PR if
+    we engage."
+  - "DaleSeo is primary maintainer — responsive, merges external
+    PRs. Start with rate limiting, then server card (#527), then
+    middleware composability pattern (no issue yet, needs
+    discussion first)."
