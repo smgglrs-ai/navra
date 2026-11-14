@@ -906,49 +906,6 @@ applies_to = ["*"]
 | `max_history_per_session` | usize | `200` | Action history entries per session |
 | `contracts` | array | `[]` | List of contract definitions |
 
-## Cost-Aware Routing
-
-Route tool calls to different model tiers based on complexity.
-
-```toml
-[routing]
-enabled = true
-default_tier = "medium"
-
-[[routing.tiers]]
-name = "small"
-model = "granite-2b"
-max_tokens = 2048
-patterns = ["file_read", "file_tree", "file_grep"]
-
-[[routing.tiers]]
-name = "medium"
-model = "granite-8b"
-max_tokens = 4096
-patterns = ["*"]
-
-[[routing.tiers]]
-name = "large"
-model = "granite-34b"
-max_tokens = 8192
-patterns = ["code_review_*", "planning_*"]
-```
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `enabled` | bool | `false` | Enable cost-aware routing |
-| `default_tier` | string | `"medium"` | Default tier for unmatched tools |
-| `tiers` | array | `[]` | Ordered tier definitions |
-
-Each tier specifies:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Tier name for logging |
-| `model` | string | Model identifier from `[models.*]` |
-| `max_tokens` | usize | Maximum output tokens for this tier |
-| `patterns` | string[] | Tool name glob patterns that route here |
-
 ## Within-Session Model Routing
 
 Downgrades simple conversation turns to a cheaper model at the
@@ -1001,9 +958,7 @@ Routing applies to the model server's OpenAI-compatible API
 the gateway, routed requests resolve the cheap model's `[models.*]`
 entry for the upstream URL and credentials, the blackbox audit trail
 records `model=<requested> routed=<actual>`, and non-routed requests
-pass the client's model name through verbatim. The related
-`[routing]` section above routes *tool calls* to tiers and is a
-separate feature.
+pass the client's model name through verbatim.
 
 ## IFC Model Routing
 

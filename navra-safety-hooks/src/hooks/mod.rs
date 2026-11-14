@@ -17,7 +17,6 @@ pub mod monitoring;
 mod pipeline;
 mod policy_yaml;
 pub mod provenance_hook;
-mod routing;
 mod safety_hook;
 mod sandbox_hook;
 pub mod skill_hook;
@@ -44,7 +43,6 @@ pub use monitoring::{
 pub use pipeline::HookPipeline;
 pub use policy_yaml::PolicyYamlHook;
 pub use provenance_hook::{CausalSink, ProvenanceHook};
-pub use routing::{ModelTier, ModelTierConfig, RoutingConfig, RoutingHook};
 pub use safety_hook::SafetyHook;
 pub use sandbox_hook::SandboxHook;
 pub use skill_hook::{Intervention, SkillHook, SkillRule};

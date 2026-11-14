@@ -124,7 +124,7 @@
       "description": "Within-session model routing for the inference gateway\n(`/v1/chat/completions`): downgrade simple turns to a cheaper\nmodel, upgrade on complexity. See navra-model-server's router.",
       "anyOf": [
         {
-          "$ref": "#/$defs/RoutingConfig2"
+          "$ref": "#/$defs/RoutingConfig"
         },
         {
           "type": "null"
@@ -191,15 +191,6 @@
       "default": [],
       "items": {
         "$ref": "#/$defs/RegistryEntry"
-      }
-    },
-    "routing": {
-      "description": "Cost-aware model routing configuration.",
-      "$ref": "#/$defs/RoutingConfig",
-      "default": {
-        "default_tier": "medium",
-        "enabled": false,
-        "tiers": []
       }
     },
     "server": {
@@ -1276,39 +1267,6 @@
         }
       }
     },
-    "ModelTierConfig": {
-      "description": "A single tier in the routing configuration.",
-      "type": "object",
-      "properties": {
-        "max_tokens": {
-          "description": "Maximum output tokens for requests routed to this tier.",
-          "type": "integer",
-          "format": "uint",
-          "minimum": 0
-        },
-        "model": {
-          "description": "Model identifier to use for this tier.",
-          "type": "string"
-        },
-        "name": {
-          "description": "Tier name (e.g., \"small\", \"medium\", \"large\").",
-          "type": "string"
-        },
-        "patterns": {
-          "description": "Tool name glob patterns that route to this tier.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        }
-      },
-      "required": [
-        "name",
-        "model",
-        "max_tokens"
-      ]
-    },
     "ModulesConfig": {
       "description": "Per-module enablement and configuration.",
       "type": "object",
@@ -2046,30 +2004,6 @@
       }
     },
     "RoutingConfig": {
-      "description": "Configuration for the routing hook, deserializable from TOML.",
-      "type": "object",
-      "properties": {
-        "default_tier": {
-          "description": "Default tier when no rule matches.",
-          "type": "string",
-          "default": "medium"
-        },
-        "enabled": {
-          "description": "Whether routing is enabled.",
-          "type": "boolean",
-          "default": false
-        },
-        "tiers": {
-          "description": "Model tiers, ordered from smallest to largest.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/ModelTierConfig"
-          }
-        }
-      }
-    },
-    "RoutingConfig2": {
       "description": "Configuration for within-session cost routing.",
       "type": "object",
       "properties": {

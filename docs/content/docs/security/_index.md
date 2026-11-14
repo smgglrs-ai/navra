@@ -193,7 +193,6 @@ short-circuits the pipeline — later hooks do not run.
 | **ApprovalGate** | Pre | Suspends high-risk calls pending human approval (OWASP ASI09) |
 | **EgressFilter** | Pre | Blocks tool arguments targeting external endpoints not on an allowlist |
 | **ToolGuard** | Pre | Validates arguments and catches small-model mistakes before execution |
-| **RoutingHook** | Pre | Classifies tool calls by complexity and routes to model tiers |
 | **SkillHook** | Pre | Applies HASP-style program functions as executable guardrails |
 | **SandboxHook** | Pre/Post | Enforces per-agent sandbox profiles (simulate, redact, rate limit, path rewrite) |
 | **SafetyHook** | Pre/Post | Applies regex + ML content filters to arguments and results |

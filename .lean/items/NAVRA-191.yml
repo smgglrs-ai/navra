@@ -1,0 +1,47 @@
+id: NAVRA-191
+title: "Retire the inert tool-tier RoutingHook"
+status: done
+priority: low
+effort: 0.5d
+description: |
+  The `[routing]` config section (navra_core::hooks::RoutingConfig)
+  wired a RoutingHook that classified tool calls into model tiers
+  (tool name globs + input size) and injected `_routing_tier` /
+  `_routing_model` into the tool call arguments, "so the model
+  backend can read it". Nothing ever consumed the metadata:
+
+  - No backend or proxy read `_routing_model` (grep: only the hook
+    itself and its tests mention it).
+  - The design was unreachable: the hook modifies tool *execution*
+    args, which the model backend never sees — the client's
+    conversation history carries its own pre-injection copy of the
+    tool call, so no wiring through the model proxy is possible.
+  - When enabled, the hook actively polluted tool arguments with the
+    inert keys (visible in audit logs, potentially rejected by
+    strict-args tools).
+
+  Superseded by NAVRA-191's predecessor work (NAVRA-190): the
+  SessionRouter provides within-session cost routing with complexity
+  and compaction signals, and `[model_ifc]` provides the security
+  override — both at the point where the model is actually selected.
+
+  Removed:
+  - navra-safety-hooks/src/hooks/routing.rs (hook, config, tests)
+  - registration in navra-server setup/safety.rs
+  - `routing` field on navra-server Config
+  - config tests (parse_routing_config, routing assertions; also
+    removed routing assertions that had leaked into
+    triggers_default_empty)
+  - docs: Cost-Aware Routing section in the configuration reference,
+    RoutingHook row in the security hook table, and the
+    [model_routing] cross-reference to it
+  - config.schema.json regenerated (tier RoutingConfig definition
+    gone; model-server RoutingConfig for [model_routing] remains)
+notes: |
+  - Backward compatibility: Config does not deny unknown fields, so
+    stale `[routing]` sections in operator configs are silently
+    ignored after the removal. No runtime behavior changes for
+    anyone (the hook's only observable effect was arg pollution).
+  - Tests: navra-safety-hooks (9), navra-server config (74), ui
+    (11), setup (17) all pass single-threaded; clippy -D warnings
+    clean; fmt clean.

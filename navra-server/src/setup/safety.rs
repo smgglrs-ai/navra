@@ -329,16 +329,5 @@ pub(crate) fn wire_safety_profiles(
         }
     }
 
-    // Cost-aware model routing hook
-    if cfg.routing.enabled {
-        let hook = navra_core::hooks::RoutingHook::from_config(&cfg.routing);
-        tracing::info!(
-            tiers = cfg.routing.tiers.len(),
-            default = %cfg.routing.default_tier,
-            "Routing hook enabled"
-        );
-        builder = builder.hook(hook);
-    }
-
     builder
 }

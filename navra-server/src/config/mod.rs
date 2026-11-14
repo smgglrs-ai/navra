@@ -110,9 +110,6 @@ pub struct Config {
     /// Temporal behavioral contracts for trajectory-level policy enforcement.
     #[serde(default)]
     pub temporal_contracts: TemporalContractServerConfig,
-    /// Cost-aware model routing configuration.
-    #[serde(default)]
-    pub routing: navra_core::hooks::RoutingConfig,
     /// Within-session model routing for the inference gateway
     /// (`/v1/chat/completions`): downgrade simple turns to a cheaper
     /// model, upgrade on complexity. See navra-model-server's router.
@@ -491,7 +488,6 @@ impl Default for Config {
             monitoring: MonitoringServerConfig::default(),
             statistical: StatisticalGuardrailServerConfig::default(),
             temporal_contracts: TemporalContractServerConfig::default(),
-            routing: navra_core::hooks::RoutingConfig::default(),
             model_routing: None,
             model_ifc: ModelIfcConfig::default(),
             triggers: Vec::new(),

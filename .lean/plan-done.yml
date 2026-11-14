@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 177 completed items
+# 178 completed items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -1175,4 +1175,10 @@ IFC benchmark, ASSERT, and ADR-Bench docs.
     status: done
     priority: medium
     effort: 1-2d
+
+  - id: "NAVRA-191"
+    title: "Retire the inert tool-tier RoutingHook"
+    status: done
+    priority: low
+    effort: 0.5d
 
