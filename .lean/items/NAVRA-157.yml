@@ -1,25 +1,58 @@
 id: NAVRA-157
-title: "Publish reference agent bundles to quay.io"
+title: "Publish reference agent bundles to ghcr.io"
 status: planned
 priority: medium
-effort: 3-5d
+effort: 2-4d
 tags: [bundles, distribution, agents]
 depends_on: [NAVRA-151]
 description: |
   Publish the existing reference agent bundles (researcher,
   code-reviewer, security-auditor) as signed OCI artifacts to
-  quay.io/navra/. Demonstrates the bundle pattern works
-  end-to-end and gives users installable agents out of the box.
+  ghcr.io. Demonstrates the bundle pattern works end-to-end and
+  gives users installable agents out of the box.
+
+  Registry re-decided 2026-11-14: ghcr.io, not quay.io. The repo
+  already publishes there — .github/workflows/container.yml pushes
+  navra-agent / navra-agent-full / navra-mcp-filesystem images to
+  ghcr.io/<owner>/<image> with GITHUB_TOKEN auth, buildx, and
+  semver/sha/latest tagging. No new account, no new CI secrets;
+  bundle publishing extends the existing workflow (or a sibling
+  job) rather than standing up new infrastructure. fetch.rs is
+  registry-agnostic (any OCI Distribution v2 host), so
+  `navra agent install oci://ghcr.io/<owner>/researcher:latest`
+  parses today.
 
   Steps:
-  1. Build container images for each reference agent
-  2. Sign with cosign (keyless or key-based)
-  3. Push to quay.io/navra/<agent-name>:latest
-  4. Add CI job to rebuild on tag
-  5. Verify `navra agent install oci://quay.io/navra/researcher:latest`
-  6. Document in docs site
+  1. Verify the three example bundles against the current
+     manifest schema (schema_version 1) and that their
+     personas/tools resolve
+  2. Package each bundle as an OCI artifact (oras push — these are
+     manifests, not container images)
+  3. Sign with cosign keyless (GitHub OIDC identity; verify via
+     cosign verify, which agent_bundle/cosign.rs already shells
+     out to — pin --certificate-identity to the repo's workflow)
+  4. Push to ghcr.io/<owner>/{researcher,code-reviewer,security-auditor}
+  5. CI job to repackage on tag (extends container.yml)
+  6. Verify `navra agent install oci://ghcr.io/<owner>/researcher:latest`
+     end-to-end, including signature verification
+  7. Document in docs site
 acceptance:
-  - 3 reference agents published to quay.io
-  - Signed with cosign
-  - navra agent install works for each
-  - CI rebuilds on release tag
+  - 3 reference agents published to ghcr.io
+  - Signed with cosign (keyless, GitHub OIDC)
+  - navra agent install works for each, signature verified
+  - CI republishes on release tag
+notes:
+  - "Technical risk to verify early in step 6: fetch.rs resolves
+    bundles via the OCI Referrers API
+    (/v2/{repo}/referrers/{digest}?artifactType=...). ghcr.io
+    implements OCI 1.1 referrers, but the artifactType tagging and
+    referrer discovery must be exercised end-to-end before docs
+    promise it."
+  - "cosign keyless signatures are stored as OCI referrer artifacts
+    — same API surface fetch.rs already speaks."
+  - "Image naming: container.yml uses ghcr.io/<github.repository_owner>/<image>;
+    bundles should follow the same convention for consistency."
+  - "Keyless verification pinning: agent_bundle/cosign.rs runs
+    `cosign verify` without identity constraints — worth extending
+    with --certificate-identity regexp for the repo's workflow
+    identity so users don't trust arbitrary signers of the artifact."

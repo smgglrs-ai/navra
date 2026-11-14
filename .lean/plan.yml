@@ -19,10 +19,10 @@ items:
     effort: 3-5d
 
   - id: "NAVRA-157"
-    title: "Publish reference agent bundles to quay.io"
+    title: "Publish reference agent bundles to ghcr.io"
     status: planned
     priority: medium
-    effort: 3-5d
+    effort: 2-4d
     depends_on: ['NAVRA-151']
 
   - id: "NAVRA-022"
