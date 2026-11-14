@@ -526,6 +526,19 @@ impl FilterPipeline {
         self.run_pipeline_with_findings(content, ctx, true).await
     }
 
+    /// Filter inbound content and return findings alongside the result.
+    ///
+    /// Same as [`process_inbound`], but exposes the detected findings
+    /// so callers can drive label-elevated behavior (e.g. IFC-aware
+    /// model routing) without re-scanning the content.
+    pub async fn process_inbound_with_findings(
+        &self,
+        content: &str,
+        ctx: &FilterContext<'_>,
+    ) -> (Result<String, String>, Vec<Finding>) {
+        self.run_pipeline_with_findings(content, ctx, true).await
+    }
+
     /// Filter content and return a declassification recommendation.
     pub async fn process_with_declassification(
         &self,
@@ -1080,6 +1093,18 @@ mod tests {
         pipeline.add_filter(PiiFilter::new());
         let (result, findings) = pipeline
             .process_outbound_with_findings("SSN: 123-45-6789", &ctx())
+            .await;
+        assert!(result.unwrap().contains("[REDACTED:ssn]"));
+        assert!(!findings.is_empty());
+        assert!(findings.iter().any(|f| is_pii_category(&f.category)));
+    }
+
+    #[tokio::test]
+    async fn process_inbound_with_findings_returns_pii() {
+        let mut pipeline = FilterPipeline::new(FilterAction::Redact);
+        pipeline.add_filter(PiiFilter::new());
+        let (result, findings) = pipeline
+            .process_inbound_with_findings("SSN: 123-45-6789", &ctx())
             .await;
         assert!(result.unwrap().contains("[REDACTED:ssn]"));
         assert!(!findings.is_empty());

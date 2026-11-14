@@ -638,6 +638,7 @@ pub(crate) fn attach_ui_routes(
     let proxy_session_router = Arc::new(navra_model_server::SessionRouter::new(
         cfg.model_routing.clone().unwrap_or_default(),
     ));
+    let proxy_ifc = cfg.model_ifc.clone();
     let proxy_models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
         models.clone();
     let proxy_gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
@@ -654,6 +655,7 @@ pub(crate) fn attach_ui_routes(
                     let srv = proxy_server.clone();
                     let gcp = proxy_gcp_tokens.clone();
                     let session_router = proxy_session_router.clone();
+                    let ifc_config = proxy_ifc.clone();
                     async move {
                         let start = std::time::Instant::now();
                         let Some(_backend) = backend else {
@@ -687,7 +689,10 @@ pub(crate) fn attach_ui_routes(
                         let mut messages = body["messages"].as_array().cloned().unwrap_or_default();
                         let model_name = body["model"].as_str().unwrap_or("default");
 
-                        // Safety filter: scan inbound user/system messages
+                        // Safety filter: scan inbound user/system messages.
+                        // Findings also feed IFC-aware model routing
+                        // (sensitive conversations stay on-device).
+                        let mut ifc_sensitive = false;
                         if let Some(pipeline) = srv.safety_pipeline(permissions) {
                             let filter_ctx = navra_core::safety::FilterContext {
                                 agent_name,
@@ -698,9 +703,15 @@ pub(crate) fn attach_ui_routes(
                                 let role = msg["role"].as_str().unwrap_or("");
                                 if (role == "user" || role == "system")
                                     && let Some(text) = msg["content"].as_str() {
-                                        match pipeline.process_inbound(text, &filter_ctx).await {
-                                            Ok(filtered) => {
-                                                msg["content"] = serde_json::Value::String(filtered);
+                                        let (filtered, findings) = pipeline
+                                            .process_inbound_with_findings(text, &filter_ctx)
+                                            .await;
+                                        if !findings.is_empty() {
+                                            ifc_sensitive = true;
+                                        }
+                                        match filtered {
+                                            Ok(f) => {
+                                                msg["content"] = serde_json::Value::String(f);
                                             }
                                             Err(reason) => {
                                                 return axum::Json(serde_json::json!({
@@ -746,12 +757,58 @@ pub(crate) fn attach_ui_routes(
                             body["tools"].as_array().is_some_and(|a| !a.is_empty());
                         let available: Vec<String> =
                             model_entries.keys().cloned().collect();
-                        let decision = session_router.decide(
+                        let mut decision = session_router.decide(
                             &requested_model,
                             &messages,
                             tools_present,
                             &available,
                         );
+
+                        // IFC override (security beats cost): sensitive
+                        // conversations are forced onto the configured
+                        // local model so the data never leaves the
+                        // device. Overrides cost routing and compaction
+                        // deferral unconditionally.
+                        if ifc_config.enabled && ifc_sensitive {
+                            let decided_is_local = match model_entries.get(decision.model.as_str())
+                            {
+                                Some(e) => e.locality.as_deref() != Some("remote"),
+                                // No entry → default Ollama on localhost.
+                                None => true,
+                            };
+                            if !decided_is_local {
+                                let local_available = ifc_config
+                                    .local_model
+                                    .as_deref()
+                                    .filter(|m| model_entries.contains_key(*m));
+                                match local_available {
+                                    Some(local) => {
+                                        tracing::warn!(
+                                            from = %decision.model,
+                                            to = %local,
+                                            "IFC override: sensitive conversation routed to local model"
+                                        );
+                                        decision = navra_model_server::RoutingDecision {
+                                            model: local.to_string(),
+                                            routed: true,
+                                            reason: "ifc-local-only",
+                                        };
+                                    }
+                                    None => {
+                                        if ifc_config.deny_without_local {
+                                            return axum::Json(serde_json::json!({
+                                                "error": {"message": "Sensitive content detected and no local model is configured (model_ifc.deny_without_local)", "type": "safety_error"}
+                                            })).into_response();
+                                        }
+                                        tracing::warn!(
+                                            model = %decision.model,
+                                            "Sensitive content detected but no local model configured; proceeding on remote model"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
                         let model_name = decision.model.as_str();
                         if decision.routed {
                             tracing::info!(
@@ -1850,7 +1907,10 @@ mod tests {
     }
 
     fn build_router_with_config(cfg: &config::Config) -> axum::Router {
-        let server = test_server();
+        build_router_with(cfg, test_server())
+    }
+
+    fn build_router_with(cfg: &config::Config, server: Arc<navra_core::McpServer>) -> axum::Router {
         let models = test_models();
         let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
         attach_ui_routes(
@@ -1979,6 +2039,151 @@ mod tests {
             Some("front")
         );
         assert_eq!(json["model"], "front");
+    }
+
+    /// Server with a PII-detecting safety pipeline on the anonymous
+    /// ("dev") permission set, for IFC model-routing tests.
+    fn ifc_test_server() -> Arc<navra_core::McpServer> {
+        let mut pipeline =
+            navra_core::safety::FilterPipeline::new(navra_core::safety::FilterAction::Redact);
+        pipeline.add_filter(navra_core::safety::PiiFilter::new());
+        Arc::new(
+            navra_core::McpServer::builder()
+                .allow_anonymous()
+                .safety_profile("readonly", pipeline)
+                .build(),
+        )
+    }
+
+    fn ifc_test_config(mock_url: &str, local_model: Option<&str>, deny: bool) -> config::Config {
+        let mut cfg = config::Config::default();
+        for (name, served, locality) in [
+            ("front", "front-served", "remote"),
+            ("cheap", "cheap-served", "local"),
+        ] {
+            cfg.models.insert(
+                name.into(),
+                config::ModelConfig {
+                    model_path: None,
+                    source: None,
+                    tokenizer_path: None,
+                    task: "chat".into(),
+                    device: None,
+                    dimensions: None,
+                    labels: Vec::new(),
+                    threshold: None,
+                    format: None,
+                    runtime: None,
+                    context_size: None,
+                    parallel: None,
+                    model_name: Some(served.into()),
+                    cache_type: None,
+                    kv_cache: None,
+                    speculative: None,
+                    base_url: Some(mock_url.to_string()),
+                    api_key: None,
+                    locality: Some(locality.into()),
+                    agentic: None,
+                    execution_mode: None,
+                    port: None,
+                },
+            );
+        }
+        cfg.model_ifc = config::ModelIfcConfig {
+            enabled: true,
+            local_model: local_model.map(String::from),
+            deny_without_local: deny,
+        };
+        cfg
+    }
+
+    #[tokio::test]
+    async fn v1_chat_ifc_routes_sensitive_conversation_to_local_model() {
+        let mock_url = spawn_mock_upstream().await;
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("cheap"), false),
+            ifc_test_server(),
+        );
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "analyze my ssn 123-45-6789 please"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        // Sensitive content: forced onto the local model even though
+        // the client requested (and cost routing would keep) the
+        // remote frontier model.
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("cheap")
+        );
+        assert_eq!(json["model"], "front");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_ifc_clean_conversation_stays_on_requested_model() {
+        let mock_url = spawn_mock_upstream().await;
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("cheap"), false),
+            ifc_test_server(),
+        );
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "thanks"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("front")
+        );
+        assert_eq!(json["model"], "front");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_ifc_denies_without_local_model() {
+        let mock_url = spawn_mock_upstream().await;
+        // Local model configured but not present in [models]: with
+        // deny_without_local, sensitive conversations fail closed.
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("missing-local"), true),
+            ifc_test_server(),
+        );
+        let (status, json, _headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "my ssn is 123-45-6789"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["error"]["type"], "safety_error");
     }
 
     #[tokio::test]

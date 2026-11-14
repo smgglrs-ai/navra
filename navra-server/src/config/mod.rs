@@ -118,6 +118,11 @@ pub struct Config {
     /// model, upgrade on complexity. See navra-model-server's router.
     #[serde(default)]
     pub model_routing: Option<navra_model_server::RoutingConfig>,
+    /// IFC-driven model routing: conversations the safety pipeline
+    /// flags as sensitive (PII, secrets) are forced onto a local
+    /// model so the data never leaves the device.
+    #[serde(default)]
+    pub model_ifc: ModelIfcConfig,
     /// Event-driven triggers that start flows automatically.
     #[serde(default)]
     pub triggers: Vec<crate::triggers::TriggerConfig>,
@@ -129,6 +134,30 @@ pub struct Config {
     /// Operator library directories for conf.d-style config composition.
     #[serde(default)]
     pub libraries: LibraryConfig,
+}
+
+/// IFC-driven model routing configuration.
+///
+/// When the safety pipeline flags conversation content as sensitive
+/// (PII, secrets), the gateway's `/v1` model proxy forces the request
+/// onto the configured local model so the data never leaves the
+/// device. This override beats cost routing and compaction deferral.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ModelIfcConfig {
+    /// Enable the IFC model override.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Local model (a `[models.*]` key with `locality = "local"`)
+    /// that serves sensitive conversations.
+    #[serde(default)]
+    pub local_model: Option<String>,
+    /// Deny the request when sensitive content is detected and the
+    /// local model is not available (fail-closed). When false
+    /// (default), the request proceeds on the remote model with a
+    /// warning — detection strength is bounded by the caller's
+    /// safety pipeline.
+    #[serde(default)]
+    pub deny_without_local: bool,
 }
 
 impl Config {
@@ -461,6 +490,7 @@ impl Default for Config {
             temporal_contracts: TemporalContractServerConfig::default(),
             routing: navra_core::hooks::RoutingConfig::default(),
             model_routing: None,
+            model_ifc: ModelIfcConfig::default(),
             triggers: Vec::new(),
             enterprise_auth: None,
             libraries: LibraryConfig::default(),

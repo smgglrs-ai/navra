@@ -56,12 +56,27 @@ notes: |
     consumer-less; either retire it or wire `_routing_model` into
     this router as an explicit hint (the router already supports
     passthrough semantics that would fit).
-  - IFC-driven mid-session downgrade (force local model when taint
-    appears in the conversation) is a further follow-up the proxy
-    position enables; requires the IFC check to see request bodies.
+  - IFC-driven mid-session downgrade (third commit): implemented as
+    [model_ifc] in the gateway /v1 proxy. The inbound safety scan now
+    uses process_inbound_with_findings (new navra-safety API); any
+    finding marks the conversation sensitive, forcing the request
+    onto the configured local model (locality != "remote") —
+    overriding cost routing and compaction deferral. History resend
+    makes the override naturally sticky per session.
+    deny_without_local = true fails closed (safety_error) when no
+    local model is available; default logs and proceeds. Detection
+    scans user/system messages only — assistant messages quoting
+    tainted tool output are not scanned (session-taint state is not
+    reachable from the proxy; the content-based scan is the practical
+    approximation). Detection strength is bounded by the caller's
+    safety pipeline.
   - Tests: 12 router unit tests + 4 model-server handler tests
     (first commit); 3 gateway proxy handler tests against an
     in-process mock upstream + the pre-existing Ollama format test
     switched from qwen3:8b (5.5 GiB, OOM-fragile) to the documented
-    qwen2.5:0.5b test prerequisite. All pass single-threaded
-    (--test-threads=1, per justfile convention).
+    qwen2.5:0.5b test prerequisite (second commit); 3 IFC handler
+    tests — sensitive conversation forced to local model, clean
+    conversation passthrough, deny-without-local fail-closed — plus a
+    navra-safety test for process_inbound_with_findings (third
+    commit). All pass single-threaded (--test-threads=1, per justfile
+    convention).

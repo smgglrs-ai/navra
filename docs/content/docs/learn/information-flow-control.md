@@ -159,6 +159,18 @@ The policy is configurable per permission set:
 
 When no policy is configured, navra defaults to `Deny`. This is fail-closed design: missing configuration means maximum restriction, not no restriction.
 
+### IFC-aware model routing
+
+The same principle extends to model inference. The gateway's `/v1`
+model proxy scans every conversation turn through the caller's safety
+pipeline; when findings indicate sensitive content (PII, secrets),
+the request is forced onto a locally-hosted model regardless of what
+the client requested or what cost routing decided — the data never
+leaves the device. Because OpenAI-compatible clients resend their
+full history each turn, one sensitive turn keeps the session on the
+local model for its remainder. See `[model_ifc]` in the configuration
+reference.
+
 
 ## Auto-labeling: where labels come from
 

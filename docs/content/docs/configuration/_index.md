@@ -1005,6 +1005,34 @@ pass the client's model name through verbatim. The related
 `[routing]` section above routes *tool calls* to tiers and is a
 separate feature.
 
+## IFC Model Routing
+
+Forces conversations that the safety pipeline flags as sensitive
+(PII, secrets) onto a local model at the gateway's `/v1` model proxy,
+so the data never leaves the device. This is a security override: it
+beats cost routing and compaction deferral unconditionally, and
+because clients resend full history each turn, detection persists for
+the rest of the session once any turn contains sensitive content.
+
+```toml
+[model_ifc]
+enabled = true
+local_model = "granite-code:8b"   # a [models.*] key with locality = "local"
+deny_without_local = false
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable the IFC model override |
+| `local_model` | string | — | Local `[models.*]` key that serves sensitive conversations |
+| `deny_without_local` | bool | `false` | Deny sensitive requests when no local model is available (fail-closed) instead of proceeding on the remote model with a warning |
+
+Detection strength is bounded by the caller's safety pipeline: with
+no pipeline configured for the caller's permission set, no
+sensitivity is detected and requests route normally. Requests already
+served by a local model (or by an entry-less localhost default) pass
+through unchanged.
+
 ## Credentials
 
 Credential label to backend source mappings. Only credentials listed

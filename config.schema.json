@@ -111,6 +111,15 @@
         ]
       }
     },
+    "model_ifc": {
+      "description": "IFC-driven model routing: conversations the safety pipeline\nflags as sensitive (PII, secrets) are forced onto a local\nmodel so the data never leaves the device.",
+      "$ref": "#/$defs/ModelIfcConfig",
+      "default": {
+        "deny_without_local": false,
+        "enabled": false,
+        "local_model": null
+      }
+    },
     "model_routing": {
       "description": "Within-session model routing for the inference gateway\n(`/v1/chat/completions`): downgrade simple turns to a cheaper\nmodel, upgrade on complexity. See navra-model-server's router.",
       "anyOf": [
@@ -1227,6 +1236,30 @@
         },
         "tokenizer_path": {
           "description": "Path to the HuggingFace tokenizer.json file.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      }
+    },
+    "ModelIfcConfig": {
+      "description": "IFC-driven model routing configuration.\n\nWhen the safety pipeline flags conversation content as sensitive\n(PII, secrets), the gateway's `/v1` model proxy forces the request\nonto the configured local model so the data never leaves the\ndevice. This override beats cost routing and compaction deferral.",
+      "type": "object",
+      "properties": {
+        "deny_without_local": {
+          "description": "Deny the request when sensitive content is detected and the\nlocal model is not available (fail-closed). When false\n(default), the request proceeds on the remote model with a\nwarning — detection strength is bounded by the caller's\nsafety pipeline.",
+          "type": "boolean",
+          "default": false
+        },
+        "enabled": {
+          "description": "Enable the IFC model override.",
+          "type": "boolean",
+          "default": false
+        },
+        "local_model": {
+          "description": "Local model (a `[models.*]` key with `locality = \"local\"`)\nthat serves sensitive conversations.",
           "type": [
             "string",
             "null"
