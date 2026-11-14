@@ -56,6 +56,16 @@ notes: |
     consumer-less; either retire it or wire `_routing_model` into
     this router as an explicit hint (the router already supports
     passthrough semantics that would fit).
+  - Operator-cleared remote models (fourth commit): [model_ifc]
+    local_model → sensitive_model (serde alias keeps local_model
+    parsing), deny_without_local → deny_without_sensitive_model
+    (alias likewise). New ifc_clearance field on [models.*] entries:
+    local models are implicitly IFC-cleared; remote entries need
+    ifc_clearance = "sensitive" as an explicit per-entry operator
+    vouch (ModelConfig::ifc_cleared). The override target must itself
+    be cleared — a sensitive_model pointing at an uncleared remote
+    entry is rejected fail-closed, so misconfiguration can never leak
+    sensitive data to an unvouched endpoint.
   - IFC-driven mid-session downgrade (third commit): implemented as
     [model_ifc] in the gateway /v1 proxy. The inbound safety scan now
     uses process_inbound_with_findings (new navra-safety API); any

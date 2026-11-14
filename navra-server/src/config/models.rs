@@ -82,9 +82,30 @@ pub struct ModelConfig {
     /// Remote models require content filtering before sending.
     #[serde(default)]
     pub locality: Option<String>,
+    /// Operator vouch that this model may serve conversations the
+    /// safety pipeline flags as sensitive. Local models are cleared
+    /// implicitly (data stays on-device); remote entries need
+    /// `ifc_clearance = "sensitive"` as a deliberate, per-entry
+    /// operator decision (e.g., an in-tenant VPC endpoint under a
+    /// data processing agreement).
+    #[serde(default)]
+    pub ifc_clearance: Option<String>,
     /// Operator-defined agentic capabilities for model selection.
     #[serde(default)]
     pub agentic: Option<AgenticConfig>,
+}
+
+impl ModelConfig {
+    /// May this model serve conversations the safety pipeline flags
+    /// as sensitive?
+    ///
+    /// Local models are implicitly cleared (data never leaves the
+    /// device). Remote models require an explicit operator vouch via
+    /// `ifc_clearance = "sensitive"`.
+    pub fn ifc_cleared(&self) -> bool {
+        let is_local = self.locality.as_deref() != Some("remote");
+        is_local || self.ifc_clearance.as_deref() == Some("sensitive")
+    }
 }
 
 /// Speculative decoding configuration for runtime-served models.

@@ -115,9 +115,9 @@
       "description": "IFC-driven model routing: conversations the safety pipeline\nflags as sensitive (PII, secrets) are forced onto a local\nmodel so the data never leaves the device.",
       "$ref": "#/$defs/ModelIfcConfig",
       "default": {
-        "deny_without_local": false,
+        "deny_without_sensitive_model": false,
         "enabled": false,
-        "local_model": null
+        "sensitive_model": null
       }
     },
     "model_routing": {
@@ -1127,6 +1127,14 @@
           ],
           "default": null
         },
+        "ifc_clearance": {
+          "description": "Operator vouch that this model may serve conversations the\nsafety pipeline flags as sensitive. Local models are cleared\nimplicitly (data stays on-device); remote entries need\n`ifc_clearance = \"sensitive\"` as a deliberate, per-entry\noperator decision (e.g., an in-tenant VPC endpoint under a\ndata processing agreement).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "kv_cache": {
           "description": "KV cache with independent key/value types (e.g. `kv_cache = { keys = \"q8_0\", values = \"turbo3\" }`).\nTakes precedence over `cache_type` when both are set.",
           "anyOf": [
@@ -1245,11 +1253,11 @@
       }
     },
     "ModelIfcConfig": {
-      "description": "IFC-driven model routing configuration.\n\nWhen the safety pipeline flags conversation content as sensitive\n(PII, secrets), the gateway's `/v1` model proxy forces the request\nonto the configured local model so the data never leaves the\ndevice. This override beats cost routing and compaction deferral.",
+      "description": "IFC-driven model routing configuration.\n\nWhen the safety pipeline flags conversation content as sensitive\n(PII, secrets), the gateway's `/v1` model proxy forces the request\nonto the configured sensitive model so the data only flows where\nthe operator has vouched it may. This override beats cost routing\nand compaction deferral.",
       "type": "object",
       "properties": {
-        "deny_without_local": {
-          "description": "Deny the request when sensitive content is detected and the\nlocal model is not available (fail-closed). When false\n(default), the request proceeds on the remote model with a\nwarning — detection strength is bounded by the caller's\nsafety pipeline.",
+        "deny_without_sensitive_model": {
+          "description": "Deny the request when sensitive content is detected and no\ncleared sensitive model is available (fail-closed). When false\n(default), the request proceeds on the uncleared model with a\nwarning — detection strength is bounded by the caller's\nsafety pipeline.",
           "type": "boolean",
           "default": false
         },
@@ -1258,8 +1266,8 @@
           "type": "boolean",
           "default": false
         },
-        "local_model": {
-          "description": "Local model (a `[models.*]` key with `locality = \"local\"`)\nthat serves sensitive conversations.",
+        "sensitive_model": {
+          "description": "Model (a `[models.*]` key) that serves sensitive\nconversations. Must itself be IFC-cleared: local models are\ncleared implicitly; remote entries need\n`ifc_clearance = \"sensitive\"` on the model entry.",
           "type": [
             "string",
             "null"

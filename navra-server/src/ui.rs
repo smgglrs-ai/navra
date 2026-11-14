@@ -766,43 +766,51 @@ pub(crate) fn attach_ui_routes(
 
                         // IFC override (security beats cost): sensitive
                         // conversations are forced onto the configured
-                        // local model so the data never leaves the
-                        // device. Overrides cost routing and compaction
-                        // deferral unconditionally.
+                        // sensitive model — local by default, or a
+                        // remote entry the operator explicitly cleared
+                        // via ifc_clearance = "sensitive". Overrides
+                        // cost routing and compaction deferral
+                        // unconditionally.
                         if ifc_config.enabled && ifc_sensitive {
-                            let decided_is_local = match model_entries.get(decision.model.as_str())
+                            let decided_cleared = match model_entries.get(decision.model.as_str())
                             {
-                                Some(e) => e.locality.as_deref() != Some("remote"),
+                                Some(e) => e.ifc_cleared(),
                                 // No entry → default Ollama on localhost.
                                 None => true,
                             };
-                            if !decided_is_local {
-                                let local_available = ifc_config
-                                    .local_model
+                            if !decided_cleared {
+                                // The override target must itself be
+                                // IFC-cleared — a sensitive_model
+                                // pointing at an uncleared entry is
+                                // rejected (fail-closed), not honored.
+                                let cleared_target = ifc_config
+                                    .sensitive_model
                                     .as_deref()
-                                    .filter(|m| model_entries.contains_key(*m));
-                                match local_available {
-                                    Some(local) => {
+                                    .and_then(|m| model_entries.get(m))
+                                    .filter(|e| e.ifc_cleared())
+                                    .map(|_| ifc_config.sensitive_model.clone().unwrap());
+                                match cleared_target {
+                                    Some(target) => {
                                         tracing::warn!(
                                             from = %decision.model,
-                                            to = %local,
-                                            "IFC override: sensitive conversation routed to local model"
+                                            to = %target,
+                                            "IFC override: sensitive conversation routed to cleared model"
                                         );
                                         decision = navra_model_server::RoutingDecision {
-                                            model: local.to_string(),
+                                            model: target,
                                             routed: true,
-                                            reason: "ifc-local-only",
+                                            reason: "ifc-sensitive-model",
                                         };
                                     }
                                     None => {
-                                        if ifc_config.deny_without_local {
+                                        if ifc_config.deny_without_sensitive_model {
                                             return axum::Json(serde_json::json!({
-                                                "error": {"message": "Sensitive content detected and no local model is configured (model_ifc.deny_without_local)", "type": "safety_error"}
+                                                "error": {"message": "Sensitive content detected and no IFC-cleared sensitive model is configured (model_ifc.deny_without_sensitive_model)", "type": "safety_error"}
                                             })).into_response();
                                         }
                                         tracing::warn!(
                                             model = %decision.model,
-                                            "Sensitive content detected but no local model configured; proceeding on remote model"
+                                            "Sensitive content detected but no IFC-cleared sensitive model configured; proceeding on uncleared model"
                                         );
                                     }
                                 }
@@ -1735,6 +1743,7 @@ mod tests {
                 api_key: None,
                 locality: None,
                 agentic: None,
+                ifc_clearance: None,
                 execution_mode: None,
                 port: None,
             },
@@ -1889,6 +1898,7 @@ mod tests {
                     api_key: None,
                     locality: None,
                     agentic: None,
+                    ifc_clearance: None,
                     execution_mode: None,
                     port: None,
                 },
@@ -2055,11 +2065,18 @@ mod tests {
         )
     }
 
-    fn ifc_test_config(mock_url: &str, local_model: Option<&str>, deny: bool) -> config::Config {
+    fn ifc_test_config(
+        mock_url: &str,
+        sensitive_model: Option<&str>,
+        deny: bool,
+    ) -> config::Config {
         let mut cfg = config::Config::default();
-        for (name, served, locality) in [
-            ("front", "front-served", "remote"),
-            ("cheap", "cheap-served", "local"),
+        // front: remote, NOT cleared. cheap: local (implicitly
+        // cleared). corp: remote, explicitly operator-cleared.
+        for (name, served, locality, clearance) in [
+            ("front", "front-served", "remote", None),
+            ("cheap", "cheap-served", "local", None),
+            ("corp", "corp-served", "remote", Some("sensitive")),
         ] {
             cfg.models.insert(
                 name.into(),
@@ -2084,6 +2101,7 @@ mod tests {
                     api_key: None,
                     locality: Some(locality.into()),
                     agentic: None,
+                    ifc_clearance: clearance.map(String::from),
                     execution_mode: None,
                     port: None,
                 },
@@ -2091,8 +2109,8 @@ mod tests {
         }
         cfg.model_ifc = config::ModelIfcConfig {
             enabled: true,
-            local_model: local_model.map(String::from),
-            deny_without_local: deny,
+            sensitive_model: sensitive_model.map(String::from),
+            deny_without_sensitive_model: deny,
         };
         cfg
     }
@@ -2131,6 +2149,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn v1_chat_ifc_allows_operator_cleared_remote_model() {
+        let mock_url = spawn_mock_upstream().await;
+        // The operator vouches for a specific remote endpoint via
+        // ifc_clearance = "sensitive" on its [models.*] entry.
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("corp"), false),
+            ifc_test_server(),
+        );
+        let (status, json, headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "analyze my ssn 123-45-6789 please"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            headers
+                .get("x-navra-routed-model")
+                .and_then(|v| v.to_str().ok()),
+            Some("corp")
+        );
+        assert_eq!(json["model"], "front");
+    }
+
+    #[tokio::test]
     async fn v1_chat_ifc_clean_conversation_stays_on_requested_model() {
         let mock_url = spawn_mock_upstream().await;
         let router = build_router_with(
@@ -2161,12 +2211,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn v1_chat_ifc_denies_without_local_model() {
+    async fn v1_chat_ifc_denies_without_cleared_model() {
         let mock_url = spawn_mock_upstream().await;
-        // Local model configured but not present in [models]: with
-        // deny_without_local, sensitive conversations fail closed.
+        // Sensitive model configured but not present in [models]:
+        // with deny_without_sensitive_model, sensitive conversations
+        // fail closed.
         let router = build_router_with(
             &ifc_test_config(&mock_url, Some("missing-local"), true),
+            ifc_test_server(),
+        );
+        let (status, json, _headers) = post_json_with_headers(
+            &router,
+            "/v1/chat/completions",
+            serde_json::json!({
+                "model": "front",
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "user", "content": "my ssn is 123-45-6789"}
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["error"]["type"], "safety_error");
+    }
+
+    #[tokio::test]
+    async fn v1_chat_ifc_rejects_uncleared_remote_target() {
+        let mock_url = spawn_mock_upstream().await;
+        // sensitive_model points at a remote entry WITHOUT
+        // ifc_clearance: the target is rejected (fail-closed), not
+        // honored — an uncleared destination never receives
+        // sensitive data by operator misconfiguration.
+        let router = build_router_with(
+            &ifc_test_config(&mock_url, Some("front"), true),
             ifc_test_server(),
         );
         let (status, json, _headers) = post_json_with_headers(

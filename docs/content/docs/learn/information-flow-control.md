@@ -164,12 +164,16 @@ When no policy is configured, navra defaults to `Deny`. This is fail-closed desi
 The same principle extends to model inference. The gateway's `/v1`
 model proxy scans every conversation turn through the caller's safety
 pipeline; when findings indicate sensitive content (PII, secrets),
-the request is forced onto a locally-hosted model regardless of what
-the client requested or what cost routing decided — the data never
-leaves the device. Because OpenAI-compatible clients resend their
+the request is forced onto an IFC-cleared model regardless of what
+the client requested or what cost routing decided. Local models are
+cleared implicitly — the data never leaves the device — while remote
+endpoints require an explicit operator vouch (`ifc_clearance =
+"sensitive"` on the model entry), such as an in-tenant VPC inference
+cluster under a data processing agreement. Uncleared destinations are
+rejected fail-closed. Because OpenAI-compatible clients resend their
 full history each turn, one sensitive turn keeps the session on the
-local model for its remainder. See `[model_ifc]` in the configuration
-reference.
+cleared model for its remainder. See `[model_ifc]` in the
+configuration reference.
 
 
 ## Auto-labeling: where labels come from

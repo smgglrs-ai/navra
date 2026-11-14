@@ -140,24 +140,27 @@ pub struct Config {
 ///
 /// When the safety pipeline flags conversation content as sensitive
 /// (PII, secrets), the gateway's `/v1` model proxy forces the request
-/// onto the configured local model so the data never leaves the
-/// device. This override beats cost routing and compaction deferral.
+/// onto the configured sensitive model so the data only flows where
+/// the operator has vouched it may. This override beats cost routing
+/// and compaction deferral.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ModelIfcConfig {
     /// Enable the IFC model override.
     #[serde(default)]
     pub enabled: bool,
-    /// Local model (a `[models.*]` key with `locality = "local"`)
-    /// that serves sensitive conversations.
-    #[serde(default)]
-    pub local_model: Option<String>,
-    /// Deny the request when sensitive content is detected and the
-    /// local model is not available (fail-closed). When false
-    /// (default), the request proceeds on the remote model with a
+    /// Model (a `[models.*]` key) that serves sensitive
+    /// conversations. Must itself be IFC-cleared: local models are
+    /// cleared implicitly; remote entries need
+    /// `ifc_clearance = "sensitive"` on the model entry.
+    #[serde(default, alias = "local_model")]
+    pub sensitive_model: Option<String>,
+    /// Deny the request when sensitive content is detected and no
+    /// cleared sensitive model is available (fail-closed). When false
+    /// (default), the request proceeds on the uncleared model with a
     /// warning — detection strength is bounded by the caller's
     /// safety pipeline.
-    #[serde(default)]
-    pub deny_without_local: bool,
+    #[serde(default, alias = "deny_without_local")]
+    pub deny_without_sensitive_model: bool,
 }
 
 impl Config {

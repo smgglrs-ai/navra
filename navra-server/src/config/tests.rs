@@ -11,6 +11,52 @@ tcp = "127.0.0.1:9315"
 }
 
 #[test]
+fn parse_model_ifc_legacy_field_names() {
+    // Pre-rename field names (local_model / deny_without_local) still
+    // parse via serde aliases.
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[model_ifc]
+enabled = true
+local_model = "granite"
+deny_without_local = true
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    assert!(config.model_ifc.enabled);
+    assert_eq!(config.model_ifc.sensitive_model.as_deref(), Some("granite"));
+    assert!(config.model_ifc.deny_without_sensitive_model);
+}
+
+#[test]
+fn parse_model_ifc_clearance_on_model_entry() {
+    let toml = r#"
+[server]
+tcp = "127.0.0.1:9315"
+
+[models.corp-eu]
+task = "chat"
+base_url = "https://inference.internal.corp/v1"
+locality = "remote"
+ifc_clearance = "sensitive"
+"#;
+    let config: Config = toml::from_str(toml).unwrap();
+    let entry = config.models.get("corp-eu").unwrap();
+    // Remote + explicit clearance → cleared for sensitive data.
+    assert!(entry.ifc_cleared());
+
+    // Remote without clearance → not cleared.
+    let mut uncleared = entry.clone();
+    uncleared.ifc_clearance = None;
+    assert!(!uncleared.ifc_cleared());
+
+    // Local without clearance → implicitly cleared.
+    uncleared.locality = Some("local".into());
+    assert!(uncleared.ifc_cleared());
+}
+
+#[test]
 fn parse_modular_config() {
     let toml = r#"
 [server]

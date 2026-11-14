@@ -1008,30 +1008,46 @@ separate feature.
 ## IFC Model Routing
 
 Forces conversations that the safety pipeline flags as sensitive
-(PII, secrets) onto a local model at the gateway's `/v1` model proxy,
-so the data never leaves the device. This is a security override: it
-beats cost routing and compaction deferral unconditionally, and
-because clients resend full history each turn, detection persists for
-the rest of the session once any turn contains sensitive content.
+(PII, secrets) onto an IFC-cleared model at the gateway's `/v1` model
+proxy, so the data only flows where the operator has vouched it may.
+This is a security override: it beats cost routing and compaction
+deferral unconditionally, and because clients resend full history
+each turn, detection persists for the rest of the session once any
+turn contains sensitive content.
+
+A model is IFC-cleared when it is local (implicit — data stays
+on-device) or when the operator explicitly vouches for a remote entry
+with `ifc_clearance = "sensitive"` (e.g., an in-tenant VPC endpoint
+under a data processing agreement):
 
 ```toml
 [model_ifc]
 enabled = true
-local_model = "granite-code:8b"   # a [models.*] key with locality = "local"
-deny_without_local = false
+sensitive_model = "corp-eu-inference"   # must itself be IFC-cleared
+deny_without_sensitive_model = false
+
+[models.corp-eu-inference]
+base_url = "https://inference.internal.corp/v1"
+locality = "remote"
+ifc_clearance = "sensitive"             # the operator vouch
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `false` | Enable the IFC model override |
-| `local_model` | string | — | Local `[models.*]` key that serves sensitive conversations |
-| `deny_without_local` | bool | `false` | Deny sensitive requests when no local model is available (fail-closed) instead of proceeding on the remote model with a warning |
+| `sensitive_model` | string | — | IFC-cleared `[models.*]` key that serves sensitive conversations (`local_model` is accepted as a legacy alias) |
+| `deny_without_sensitive_model` | bool | `false` | Deny sensitive requests when no cleared model is available (fail-closed) instead of proceeding on the uncleared model with a warning (`deny_without_local` is accepted as a legacy alias) |
+
+The `sensitive_model` target must itself be IFC-cleared — a target
+pointing at a remote entry without `ifc_clearance` is rejected
+(fail-closed), so an uncleared destination never receives sensitive
+data through operator misconfiguration.
 
 Detection strength is bounded by the caller's safety pipeline: with
 no pipeline configured for the caller's permission set, no
 sensitivity is detected and requests route normally. Requests already
-served by a local model (or by an entry-less localhost default) pass
-through unchanged.
+served by a cleared model (or by an entry-less localhost default)
+pass through unchanged.
 
 ## Credentials
 
