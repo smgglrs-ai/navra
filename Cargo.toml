@@ -87,3 +87,8 @@ strip = true
 [profile.container]
 inherits = "release"
 panic = "abort"
+# Thin LTO: the fat-LTO + codegen-units=1 link of navra-server
+# exceeds CI runner memory (16GB). Thin keeps most of the size and
+# perf benefit at a fraction of peak link memory.
+lto = "thin"
+codegen-units = 16
