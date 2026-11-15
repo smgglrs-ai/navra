@@ -18,12 +18,11 @@ items:
     priority: medium
     effort: 3-5d
 
-  - id: "NAVRA-157"
-    title: "Publish reference agent bundles to ghcr.io"
+  - id: "NAVRA-195"
+    title: "SandboxWarmPool of pre-warmed teammate agents"
     status: planned
     priority: medium
-    effort: 2-4d
-    depends_on: ['NAVRA-151']
+    effort: 3-5d
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"

@@ -1,0 +1,53 @@
+id: NAVRA-194
+title: "Multi-replica navra gateway"
+status: planned
+priority: high
+effort: 2-3w
+tags: [kubernetes, scaling, state]
+description: |
+  The gateway deployment (deploy/k8s/) is single-replica by design:
+  TeamRegistry is in-memory and sessions/audit/knowledge are SQLite
+  on the StatefulSet's PVC (NAVRA-193). Scale-out requires
+  externalizing the state that currently pins the gateway to one
+  pod:
+
+  1. **TeamRegistry** (teams, teammates, blackboard, task handles)
+     — in-memory behind Mutex. Needs a shared store (Redis or a
+     SQLite-over-shared-FS with leader election) or a
+     shard-by-team routing layer (a Service per gateway replica is
+     not viable for team affinity; consider a control/data split:
+     one coordinator replica owns teams, workers serve MCP/model
+     proxy statelessly).
+  2. **Sessions** (navra-memory SessionStore, SQLite) — session
+     taint labels feed IFC model routing (NAVRA-192); multi-replica
+     means label joins must see all sessions. Externalize to the
+     shared store, or accept per-replica taint scoping with
+     sticky sessions.
+  3. **Audit blackbox / knowledge store** (SQLite, append-heavy) —
+     move to the shared store or partition per replica with a
+     merge view.
+  4. **Capability tokens** — delegated tokens verify against the
+     root signer's public key; already replica-safe (stateless
+     verification) apart from the nonce cache (replay protection),
+     which must be shared or relaxed to per-replica.
+
+  Also: kubectl-based Sandbox spawning from every replica needs
+  RBAC per replica SA (fine, namespaced) and result collection
+  must reach the replica that spawned the teammate (the in-memory
+  JoinHandle is per-replica — route results via the shared
+  blackboard instead of task handles).
+
+  Acceptance:
+  - Two gateway replicas behind one Service, both serving MCP and
+    /v1 with delegated-token auth
+  - A team created on replica A gets its teammate result collected
+    on replica B (blackboard-routed)
+  - Session taint / IFC model routing behaves correctly with
+    sticky-off clients (or documented sticky requirement)
+notes:
+  - Prerequisite design decision: shared store (Redis) vs
+    coordinator/worker split. The split avoids new infrastructure
+    but serializes team operations; Redis is the general answer.
+    Prototype the split first — teams are low-churn.
+  - The e2e driver (examples/kubernetes/e2e-driver.py) is the
+    validation harness; extend it for the two-replica scenario.

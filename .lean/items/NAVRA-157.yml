@@ -1,6 +1,6 @@
 id: NAVRA-157
 title: "Publish reference agent bundles to ghcr.io"
-status: planned
+status: done
 priority: medium
 effort: 2-4d
 tags: [bundles, distribution, agents]
@@ -77,8 +77,14 @@ notes:
     source JSON. NOTE: first push creates the ghcr packages as
     PRIVATE (registry default) — flip them public in GitHub package
     settings once."
-  - "Remaining after CI lands: flip the three ghcr packages public;
-    run one real `navra agent install oci://ghcr.io/smgglrs-ai/
-    researcher:latest` against the published artifact (the true
-    end-to-end acceptance, closes the item); docs site bundle page
-    if the guide section needs a pointer."
+  - CLOSED 2026-11-15: packages flipped public by the operator;
+    the real round-trip passed — 'navra agent install
+    oci://ghcr.io/smgglrs-ai/researcher:latest --max-permissions
+    open' fetches anonymously via the rewritten OCI discovery,
+    fail-closes under the default permission policy, installs with
+    an explicit operator policy, and records in 'navra agent list'.
+    Notes from the closing run: the anonymous-manifest check needs
+    proper Accept headers (index+manifest) — without them even
+    public packages read as 404; dirs::config_dir honors
+    $XDG_CONFIG_HOME, so config discovery in nested environments
+    differs from ~/.config.

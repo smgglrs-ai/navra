@@ -1,0 +1,48 @@
+id: NAVRA-195
+title: "SandboxWarmPool of pre-warmed teammate agents"
+status: planned
+priority: medium
+effort: 3-5d
+tags: [kubernetes, agent-sandbox, performance]
+description: |
+  Teammate spawn latency on Kubernetes is dominated by cold-start:
+  image pull + container start + agent connect-back + first model
+  round-trip, observed ~30s end-to-end on the lab SNO
+  (NAVRA-193 e2e). The agent-sandbox operator's SandboxWarmPool
+  extension maintains pre-warmed Sandboxes that are adopted on
+  claim, cutting handoff to ~1s.
+
+  Work:
+  1. Install the extensions (sandbox-with-extensions.yaml — we run
+     core-only today) on the target cluster.
+  2. Manifests: a SandboxWarmPool with replicas = expected
+     concurrent teammates, using a SandboxTemplate of the
+     navra-agent image with the pool's idle configuration (no
+     NAVRA_TASK yet — env is per-claim).
+  3. navra spawn path: instead of cold-creating a Sandbox, create
+     a SandboxClaim referencing the template (or adopt from the
+     pool), then deliver the task-specific env. Key design issue:
+     teammate env (NAVRA_TOKEN, NAVRA_ENDPOINT, NAVRA_TASK,
+     NAVRA_MODEL_*) is per-spawn — warm pods must receive it AFTER
+     adoption. Options: (a) the agent binary polls a task endpoint
+     on the gateway with its adoption identity, env stays static;
+     (b) kubectl exec/set env post-adoption (fragile); prefer (a).
+  4. Config: kubernetes_warm_pool = "navra-agents" (name), with
+     fallback to cold-create when the pool is empty.
+
+  Acceptance:
+  - Warm adoption completes teammate handoff in < 2s (vs ~30s cold)
+  - Cold-create fallback works when the pool is drained
+  - Delegated tokens still scoped per teammate (adoption must mint
+    a fresh token, not reuse a pool-wide one)
+notes:
+  - The v1.0.11 release notes cover the claim/warm-pool mechanics
+    (adoption, Replica accounting, Retain/Recreate shutdown
+    policies) — the pool behaves like a Deployment of idle
+    sandboxes; claims adopt the next warm member.
+  - Design issue (a) — task delivery via a gateway endpoint — is
+    the bulk of the work and is independently useful (it also
+    enables task redelivery on pod restart, which the current
+    env-baked model cannot do).
+  - Alternatively file the task-endpoint work first as its own
+    item if warm pools slip; it unblocks both.
