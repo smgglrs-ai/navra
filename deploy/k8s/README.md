@@ -42,6 +42,27 @@ The agent Pods run with `automountServiceAccountToken: false` and
 and their only interface to the outside world is MCP through the
 gateway's permission/IFC/safety pipeline.
 
+## Verify teammate spawning end-to-end
+
+With the gateway deployed and a model reachable (the `[models.*]`
+entry), drive the full loop — port-forward, then run the example
+driver with an agent token:
+
+```bash
+kubectl -n navra port-forward svc/navra-gateway 9315:9315 &
+python3 examples/kubernetes/e2e-driver.py \
+  --endpoint http://localhost:9315/mcp \
+  --token <agent-token> \
+  --model qwen2.5:0.5b
+```
+
+The driver runs `team_create` → `team_add` → `team_message` →
+`team_result`: the teammate spawns as a Sandbox, connects back to
+the gateway with its delegated capability token, runs its ReAct
+loop with model calls through the gateway's `/v1` proxy, and the
+driver prints the teammate's output. Watch the Sandbox lifecycle
+alongside it with `kubectl -n navra get sandboxes -w`.
+
 ## Notes and limits
 
 - **Single replica by design**: the TeamRegistry is in-memory and
