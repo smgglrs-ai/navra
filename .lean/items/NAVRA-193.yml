@@ -47,10 +47,30 @@ notes: |
     restartPolicy/automount defaults, inline env), custom config,
     memory normalization (podman→k8s mapping + passthrough), plus
     the pre-existing name-sanitization and kubectl-base tests.
-  - Follow-ups: Dockerfile.server + deploy/ manifests (RBAC for
-    Sandbox CRUD, StatefulSet, Service) and the in-cluster e2e
-    teammate spawn through the gateway — the remaining steps of the
-    gateway-in-k8s plan.
+  - E2E COMPLETE (2026-11-15, lab SNO): the full in-cluster
+    loop passes — team_message through the gateway → v1beta1
+    Sandbox spawn (imagePullPolicy Always for the mutable agent
+    tag) → Ready wait → distroless navra-agent Pod connects back to
+    navra-gateway.navra.svc:9315 with its delegated capability
+    token → model calls through the gateway /v1 proxy → in-cluster
+    ollama StatefulSet (qwen2.5:0.5b) → Finished condition → logs,
+    metrics (iterations/tokens), sandbox cleanup → result via
+    team_result. Two more production bugs found and fixed on the
+    way (commit 3392607b): the registry refused base_url-only model
+    entries while the /v1 proxy resolves by base_url ('no model
+    configured'), and the CapabilityAuthenticator was gated on
+    has_cap_agents so token-hash-only deployments 401'd every
+    teammate call. The teammate agent also now authenticates its
+    model calls with NAVRA_TOKEN (commit d00fabb8) — previously it
+    sent no credentials, fine for llama.cpp but fatal against the
+    gateway's /v1.
+  - Deployment notes for the record: images pushed to the SNO
+    internal registry (default route; SNI routing means podman
+    pushes must run ON lab — ClusterIPs are not node-routable
+    under OVN-K); ollama runs as a StatefulSet in the navra
+    namespace (HOME/.ollama on the PVC, self-pull at startup — the
+    image has no curl); 192.0.2.10 is the API VIP (HAProxy,
+    only cluster service ports), not a general node address.
   - Gateway image build (2026-11-15): three musl-build failures
     found and fixed locally that CI would have hit only after push —
     protoc (gRPC modules), cpal/alsa-sys (made optional: 'voice'
