@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 11 active items
+# 13 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,6 +11,19 @@ items:
     priority: high
     effort: 1-2d (navra side) + OpenShell RFC
     feeds: ['NAVRA-179']
+
+  - id: "NAVRA-194"
+    title: "Multi-replica navra gateway"
+    status: planned
+    priority: high
+    effort: 2-3w
+
+  - id: "NAVRA-150"
+    title: "Contribute rate limiting to rmcp (issue #388)"
+    status: planned
+    priority: medium
+    effort: S
+    depends_on: ['NAVRA-149']
 
   - id: "NAVRA-154"
     title: "macOS HITL notifications"

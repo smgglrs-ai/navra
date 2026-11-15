@@ -6,10 +6,10 @@ effort: S
 tags: [upstream, rmcp, community]
 depends_on: [NAVRA-149]
 acceptance:
-  - Design review comment posted on issue #388 with navra's
-    production requirements (per-principal keying, inbound MUST)
-  - IgorKasianenko's rate-limit branch tested against navra's
-    transport stack; findings posted to the issue
+  - "Design review comment posted on issue #388 with navra's
+    production requirements (per-principal keying, inbound MUST)"
+  - "IgorKasianenko's rate-limit branch tested against navra's
+    transport stack; findings posted to the issue"
 notes:
   - "Re-scoped 2026-11-14: the original plan (implement a
     RateLimitLayer and open a PR) is overtaken — IgorKasianenko

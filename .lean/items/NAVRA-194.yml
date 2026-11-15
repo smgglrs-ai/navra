@@ -45,9 +45,9 @@ description: |
   - Session taint / IFC model routing behaves correctly with
     sticky-off clients (or documented sticky requirement)
 notes:
-  - Prerequisite design decision: shared store (Redis) vs
+  - "Prerequisite design decision: shared store (Redis) vs
     coordinator/worker split. The split avoids new infrastructure
     but serializes team operations; Redis is the general answer.
-    Prototype the split first — teams are low-churn.
+    Prototype the split first — teams are low-churn."
   - The e2e driver (examples/kubernetes/e2e-driver.py) is the
     validation harness; extend it for the two-replica scenario.

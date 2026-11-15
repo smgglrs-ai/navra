@@ -18,7 +18,9 @@ When referencing files, use exact paths relative to the project root.
 ### Session start
 
 1. Read `CLAUDE.md` for architecture, conventions, and build commands
-2. Read `roadmap.json` to understand what's in progress
+2. Read `.lean/plan.yml` to understand what's in progress (generated
+   from `.lean/items/*.yml`, the source of truth — regenerate with
+   `bash ~/.claude/lean/scripts/generate-plan.sh`)
 3. Run `git log --oneline -10` for recent context
 4. If assigned a crate, read its `lib.rs` top-level doc comment
 

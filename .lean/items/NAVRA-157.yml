@@ -77,7 +77,7 @@ notes:
     source JSON. NOTE: first push creates the ghcr packages as
     PRIVATE (registry default) — flip them public in GitHub package
     settings once."
-  - CLOSED 2026-11-15: packages flipped public by the operator;
+  - "CLOSED 2026-11-15: packages flipped public by the operator;
     the real round-trip passed — 'navra agent install
     oci://ghcr.io/smgglrs-ai/researcher:latest --max-permissions
     open' fetches anonymously via the rewritten OCI discovery,
@@ -87,4 +87,4 @@ notes:
     proper Accept headers (index+manifest) — without them even
     public packages read as 404; dirs::config_dir honors
     $XDG_CONFIG_HOME, so config discovery in nested environments
-    differs from ~/.config.
+    differs from ~/.config."

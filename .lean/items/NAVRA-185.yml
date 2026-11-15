@@ -28,4 +28,4 @@ acceptance:
   - Agent definitions can be modified from the web UI
   - Changes persist across restarts via config.json
   - Existing TOML configs work with deprecation warning
-  - `navra config export` converts TOML to JSON
+  - "navra config export converts TOML to JSON"
