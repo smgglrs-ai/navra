@@ -9,8 +9,11 @@ fn main() {
     if !ui_dist.exists() || !ui_dist.is_dir() {
         std::fs::write(
             &out_path,
-            "pub const UI_DIST_AVAILABLE: bool = false;\n\
+            "#[rustfmt::skip]\n\
+             pub const UI_DIST_AVAILABLE: bool = false;\n\
+             #[rustfmt::skip]\n\
              pub fn get_asset(_path: &str) -> Option<(&'static [u8], &'static str)> { None }\n\
+             #[rustfmt::skip]\n\
              pub fn index_html() -> &'static [u8] { b\"\" }\n",
         )
         .unwrap();
@@ -22,18 +25,20 @@ fn main() {
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut code = String::new();
-    code.push_str("pub const UI_DIST_AVAILABLE: bool = true;\n\n");
+    // Per-item skip: keeps rustfmt from fighting the generator
+    // (file-level inner attributes are unstable).
+    code.push_str("#[rustfmt::skip]\npub const UI_DIST_AVAILABLE: bool = true;\n\n");
 
     for (rel_path, abs_path, mime) in &entries {
         let const_name = path_to_const(rel_path);
         code.push_str(&format!(
-            "const {const_name}: &[u8] = include_bytes!(\"../{abs_path}\");\n"
+            "#[rustfmt::skip]\nconst {const_name}: &[u8] = include_bytes!(\"../{abs_path}\");\n"
         ));
         let _ = (mime,);
     }
     code.push('\n');
 
-    code.push_str("pub fn get_asset(path: &str) -> Option<(&'static [u8], &'static str)> {\n");
+    code.push_str("#[rustfmt::skip]\npub fn get_asset(path: &str) -> Option<(&'static [u8], &'static str)> {\n");
     code.push_str("    match path {\n");
     for (rel_path, _, mime) in &entries {
         let const_name = path_to_const(rel_path);
@@ -51,7 +56,7 @@ fn main() {
         .map(|(_, _, _)| path_to_const("index.html"))
         .unwrap_or_else(|| "b\"\"".to_string());
     code.push_str(&format!(
-        "pub fn index_html() -> &'static [u8] {{ {index_const} }}\n"
+        "#[rustfmt::skip]\npub fn index_html() -> &'static [u8] {{ {index_const} }}\n"
     ));
 
     std::fs::write(&out_path, code).unwrap();
