@@ -51,3 +51,12 @@ notes: |
     Sandbox CRUD, StatefulSet, Service) and the in-cluster e2e
     teammate spawn through the gateway — the remaining steps of the
     gateway-in-k8s plan.
+  - Gateway image build (2026-11-15): three musl-build failures
+    found and fixed locally that CI would have hit only after push —
+    protoc (gRPC modules), cpal/alsa-sys (made optional: 'voice'
+    feature, default on for desktop, off in the container), and
+    sqlite-vec (BSD u_intN_t typedefs missing on musl — worked
+    around with CFLAGS -Du_intN_t=uintN_t; typedef redeclaration to
+    the same type is valid C11). The sqlite-vec musl bug is
+    upstream (present in 0.1.9); worth filing an issue on
+    asg017/sqlite-vec.

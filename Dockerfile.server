@@ -49,6 +49,12 @@ ARG CARGO_JOBS=
 ENV CARGO_BUILD_JOBS=${CARGO_JOBS}
 
 # Gateway-only build: no ONNX runtime — model serving is external.
+#
+# sqlite-vec's C source typedefs from BSD u_intN_t types, which musl
+# does not provide (glibc-only assumption upstream). Map them to the
+# stdint equivalents — typedef redeclaration to the same type is
+# valid C11.
+ENV CFLAGS_x86_64_unknown_linux_musl="-Du_int8_t=uint8_t -Du_int16_t=uint16_t -Du_int32_t=uint32_t -Du_int64_t=uint64_t"
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 RUN rustup target add x86_64-unknown-linux-musl && \
     cargo build \
