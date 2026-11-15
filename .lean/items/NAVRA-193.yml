@@ -64,6 +64,19 @@ notes: |
     model calls with NAVRA_TOKEN (commit d00fabb8) — previously it
     sent no credentials, fine for llama.cpp but fatal against the
     gateway's /v1.
+  - navra-server CI image — root cause found after a misdiagnosis
+    chain (2026-11-15): the image built and pushed successfully on
+    EVERY 'failed' run; the failing step was always the Trivy CVE
+    gate (annotations report only 'exit code 1', and the first
+    failure's truncated message pointed at the cargo step). The
+    CARGO_JOBS / thin-LTO / runner-disk mitigations were built on
+    that misread — unnecessary but harmless hardening that stays.
+    Actual failures: (1) kubectl v1.35.6 CRITICAL Go-stdlib CVEs →
+    bumped to v1.35.10; (2) three remaining HIGH DoS-class CVEs in
+    x/net/x/text bundled by every kubectl release through v1.37.2
+    (checked go.mod per tag) → scoped .trivyignore with documented
+    removal conditions. Lesson recorded: read the actual logs
+    before theorizing about runner resources.
   - Deployment notes for the record: images pushed to the SNO
     internal registry (default route; SNI routing means podman
     pushes must run ON lab — ClusterIPs are not node-routable
