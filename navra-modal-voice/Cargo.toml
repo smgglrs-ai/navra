@@ -17,11 +17,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-cpal = "0.15"
+cpal = { version = "0.15", optional = true }
 
 [features]
-default = ["onnx"]
+default = ["onnx", "audio"]
 onnx = ["navra-core/onnx", "navra-mcp/onnx"]
+## Microphone/speaker device I/O via cpal (ALSA on Linux). Off in
+## headless/container builds; pure-DSP helpers always compile.
+audio = ["dep:cpal"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }

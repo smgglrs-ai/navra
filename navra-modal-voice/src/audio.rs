@@ -3,8 +3,12 @@
 //! Provides microphone capture and speaker playback using the system's
 //! default audio devices. On Linux with PipeWire, cpal uses the ALSA
 //! backend which routes through PipeWire transparently.
+//!
+//! Device I/O requires the `audio` feature (default). Without it —
+//! e.g. in the gateway container image — only the pure-DSP helpers
+//! compile, and the device functions return errors.
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+#[cfg(feature = "audio")]
 use std::sync::{Arc, Mutex};
 
 /// Audio device information.
@@ -17,7 +21,15 @@ pub struct DeviceInfo {
     pub host: String,
 }
 
+#[cfg(feature = "audio")]
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+/// Error message for the device-function stubs (no-audio builds).
+#[cfg(not(feature = "audio"))]
+const NO_AUDIO: &str = "voice audio support not compiled in (enable the 'audio' feature)";
+
 /// Get information about available audio devices.
+#[cfg(feature = "audio")]
 pub fn device_info() -> DeviceInfo {
     let host = cpal::default_host();
     let host_name = format!("{:?}", host.id());
@@ -46,6 +58,19 @@ pub fn device_info() -> DeviceInfo {
     }
 }
 
+/// Get information about available audio devices (stub without the
+/// `audio` feature).
+#[cfg(not(feature = "audio"))]
+pub fn device_info() -> DeviceInfo {
+    DeviceInfo {
+        input_device: None,
+        output_device: None,
+        input_sample_rate: None,
+        output_sample_rate: None,
+        host: "unavailable".to_string(),
+    }
+}
+
 /// Record audio from the default input device.
 ///
 /// Records until either:
@@ -53,6 +78,7 @@ pub fn device_info() -> DeviceInfo {
 /// - Voice activity stops (silence detected after speech)
 ///
 /// Returns 16kHz mono f32 PCM samples.
+#[cfg(feature = "audio")]
 pub async fn record(
     max_duration: std::time::Duration,
     vad_threshold: f32,
@@ -80,6 +106,7 @@ pub async fn record(
     }
 }
 
+#[cfg(feature = "audio")]
 fn record_blocking(
     max_duration: std::time::Duration,
     vad_threshold: f32,
@@ -191,12 +218,14 @@ fn record_blocking(
 /// Play audio samples on the default output device.
 ///
 /// Takes f32 PCM samples at the given sample rate.
+#[cfg(feature = "audio")]
 pub async fn play(samples: Vec<f32>, sample_rate: u32) -> Result<(), String> {
     tokio::task::spawn_blocking(move || play_blocking(&samples, sample_rate))
         .await
         .map_err(|e| format!("Playback task panicked: {e}"))?
 }
 
+#[cfg(feature = "audio")]
 fn play_blocking(samples: &[f32], sample_rate: u32) -> Result<(), String> {
     let host = cpal::default_host();
     let device = host
@@ -303,6 +332,24 @@ pub(crate) fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32
     }
 
     output
+}
+
+/// Record audio from the default input device (stub without the
+/// `audio` feature).
+#[cfg(not(feature = "audio"))]
+pub async fn record(
+    _max_duration: std::time::Duration,
+    _vad_threshold: f32,
+    _silence_timeout: std::time::Duration,
+) -> Result<Vec<f32>, String> {
+    Err(NO_AUDIO.to_string())
+}
+
+/// Play audio on the default output device (stub without the
+/// `audio` feature).
+#[cfg(not(feature = "audio"))]
+pub async fn play(_samples: Vec<f32>, _sample_rate: u32) -> Result<(), String> {
+    Err(NO_AUDIO.to_string())
 }
 
 #[cfg(test)]

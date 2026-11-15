@@ -90,13 +90,16 @@ opentelemetry-otlp = { version = "0.29", features = ["grpc-tonic", "trace"], opt
 tracing-opentelemetry = { version = "0.30", optional = true }
 
 [features]
-default = ["onnx"]
+default = ["onnx", "voice"]
 onnx = [
     "navra-core/onnx", "navra-rag/onnx", "navra-model/onnx", "navra-model-server/onnx",
     "navra-safety-hooks/onnx",
     "navra-agent/onnx", "navra-flow/onnx", "navra-memory/onnx", "navra-mcp/onnx",
     "navra-modal-vision/onnx", "navra-modal-voice/onnx", "navra-openapi/onnx",
 ]
+## Voice module device I/O (cpal/ALSA). Desktop default; the
+## gateway container image builds without it.
+voice = ["navra-modal-voice/audio"]
 cedar = ["navra-core/cedar"]
 embedded = ["navra-model-runtime/embedded", "navra-model-server/embedded"]
 embedded-cuda = ["navra-model-runtime/embedded-cuda", "navra-model-server/embedded"]
