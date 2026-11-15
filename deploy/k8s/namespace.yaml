@@ -1,0 +1,9 @@
+# navra gateway namespace. Teammate Sandboxes are spawned here too
+# ([server] kubernetes_namespace), so the gateway's RBAC stays
+# namespaced.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: navra
+  labels:
+    app.kubernetes.io/part-of: navra

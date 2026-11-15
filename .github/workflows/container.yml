@@ -39,13 +39,25 @@ jobs:
         include:
           - image: navra-agent
             dockerfile: Dockerfile.agent
+            binary: navra-agent
+            size_limit_mb: 20
             verify: true
           - image: navra-agent-full
             dockerfile: Dockerfile.agent-full
+            binary: navra-agent
+            size_limit_mb: 20
             verify: false
           - image: navra-mcp-filesystem
             dockerfile: Dockerfile.mcp-filesystem
+            binary: mcp-filesystem
+            size_limit_mb: 20
             verify: false
+          - image: navra-server
+            dockerfile: Dockerfile.server
+            binary: navra
+            # kubectl (~50MB) + the gateway binary.
+            size_limit_mb: 200
+            verify: true
 
     steps:
       - name: Checkout
@@ -103,8 +115,10 @@ jobs:
           SIZE=$(docker image inspect "${VERIFY_TAG}" --format '{{ .Size }}')
           SIZE_MB=$((SIZE / 1024 / 1024))
           echo "Image size: ${SIZE_MB}MB"
-          if [ "$SIZE" -gt 20971520 ]; then
-            echo "::error::Image exceeds 20MB limit (${SIZE_MB}MB)"
+          LIMIT_MB=${{ matrix.size_limit_mb }}
+          LIMIT=$((LIMIT_MB * 1024 * 1024))
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "::error::Image exceeds ${LIMIT_MB}MB limit (${SIZE_MB}MB)"
             exit 1
           fi
 
@@ -121,10 +135,10 @@ jobs:
         if: matrix.verify
         run: |
           docker create --name verify "${VERIFY_TAG}"
-          docker cp verify:/usr/local/bin/navra-agent /tmp/navra-agent
+          docker cp "verify:/usr/local/bin/${{ matrix.binary }}" "/tmp/${{ matrix.binary }}"
           docker rm verify
-          file /tmp/navra-agent
-          FILE_OUT=$(file /tmp/navra-agent)
+          file "/tmp/${{ matrix.binary }}"
+          FILE_OUT=$(file "/tmp/${{ matrix.binary }}")
           if echo "$FILE_OUT" | grep -qE "static|statically linked"; then
             echo "Binary is statically linked"
           else
@@ -133,7 +147,7 @@ jobs:
           fi
 
       - name: Smoke test
-        if: matrix.verify
+        if: matrix.verify && matrix.image == 'navra-agent'
         run: |
           OUTPUT=$(docker run --rm "${VERIFY_TAG}" 2>&1 || true)
           if echo "$OUTPUT" | grep -q "NAVRA_ENDPOINT"; then

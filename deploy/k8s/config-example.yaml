@@ -1,0 +1,30 @@
+# Example gateway configuration for the in-cluster deployment.
+#
+# Replace with your real config (agents, models, personas) — this is
+# the minimum that exercises Kubernetes teammate spawning. Model
+# inference is external: point NAVRA model entries at a remote API or
+# an in-cluster llama.cpp deployment.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: navra-gateway-config
+  namespace: navra
+data:
+  config.toml: |
+    [server]
+    tcp = "0.0.0.0:9315"
+
+    # Kubernetes teammate spawning: Sandboxes run in this namespace
+    # and resolve the gateway via the navra-gateway Service.
+    kubernetes_namespace = "navra"
+    kubernetes_gateway_service = "navra-gateway"
+
+    # Teammate image: the distroless navra-agent container.
+    agent_image = "ghcr.io/smgglrs-ai/navra-agent:latest"
+
+    # Example agent identity for MCP clients. Generate a token with
+    # `navra token` and store the full config in a Secret instead of
+    # a ConfigMap when it contains real credentials.
+    [[agents]]
+    name = "lead"
+    permissions = "dev"

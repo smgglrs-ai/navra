@@ -1,0 +1,50 @@
+# RBAC for the navra gateway's Kubernetes teammate spawning.
+#
+# The gateway applies agents.x-k8s.io/v1beta1 Sandbox resources,
+# waits on their Ready/Finished conditions, and collects logs from
+# the backing Pods (named after the Sandbox). Everything is scoped
+# to the navra namespace — the gateway cannot touch workloads
+# anywhere else.
+#
+# Requires the kubernetes-sigs/agent-sandbox controller (v1.0+):
+#   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: navra-gateway
+  namespace: navra
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: navra-gateway
+  namespace: navra
+rules:
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  # Backing Pods of teammate Sandboxes: status polling and logs.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Improves kubectl's error messages on failed spawns.
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: navra-gateway
+  namespace: navra
+subjects:
+  - kind: ServiceAccount
+    name: navra-gateway
+    namespace: navra
+roleRef:
+  kind: Role
+  name: navra-gateway
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,73 @@
+# navra-server gateway container image
+#
+# The navra gateway: MCP server, OpenAI-compatible model proxy (/v1),
+# team orchestration, auth/IFC/safety pipeline, and the web UI. Runs
+# headless (--no-tray); configure via a mounted config.toml.
+#
+# Two modes, selected purely by config:
+# - Gateway role (default): serves MCP + model proxy + UI. Model
+#   inference is external (remote API or a llama.cpp deployment).
+# - Kubernetes teammate spawning: set [server] kubernetes_namespace
+#   and the gateway spawns teammates as agents.x-k8s.io/v1beta1
+#   Sandbox CRs via the bundled kubectl (in-cluster ServiceAccount,
+#   see deploy/k8s/rbac.yaml). Requires the kubernetes-sigs/
+#   agent-sandbox controller (v1.0+).
+#
+# No local model runtime (ONNX) in this image — use a llama.cpp
+# deployment or a remote model API. Teammate sandboxes run the
+# separate navra-agent image.
+#
+# Build:   podman build -f Dockerfile.server -t navra-server:latest .
+# Run:     podman run --rm -p 9315:9315 \
+#            -v ./config.toml:/config/config.toml:ro \
+#            -v navra-data:/data \
+#            navra-server:latest
+
+FROM rust:1.96-bookworm AS builder
+
+RUN apt-get update && \
+    apt-get install -y musl-tools && \
+    rm -rf /var/lib/apt/lists/*
+
+# kubectl for in-cluster teammate spawning. Match the minor version
+# of the target cluster's API server.
+ARG KUBECTL_VERSION=v1.35.6
+ARG TARGETARCH
+RUN if [ "${TARGETARCH:-amd64}" != "amd64" ] && [ "${TARGETARCH:-amd64}" != "arm64" ]; then \
+        echo "unsupported arch: ${TARGETARCH}"; exit 1; \
+    fi && \
+    curl -fsSLo /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH:-amd64}/kubectl" && \
+    chmod +x /usr/local/bin/kubectl
+
+WORKDIR /src
+COPY . .
+
+# Gateway-only build: no ONNX runtime — model serving is external.
+ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
+RUN rustup target add x86_64-unknown-linux-musl && \
+    cargo build \
+        --profile container \
+        --bin navra \
+        --target x86_64-unknown-linux-musl \
+        --no-default-features
+
+FROM scratch
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+COPY --from=builder \
+    /src/target/x86_64-unknown-linux-musl/container/navra \
+    /usr/local/bin/navra
+COPY --from=builder /usr/local/bin/kubectl /usr/local/bin/kubectl
+
+# Session, audit, and knowledge SQLite stores live under
+# dirs::data_dir(); point it at the persistent volume.
+ENV XDG_DATA_HOME=/data
+VOLUME /data
+
+EXPOSE 9315
+
+USER 65534
+ENTRYPOINT ["/usr/local/bin/navra", "serve", "--no-tray"]
+CMD ["--config", "/config/config.toml"]

@@ -1,0 +1,102 @@
+# navra gateway: single-replica StatefulSet + Service.
+#
+# Single replica by design: the TeamRegistry is in-memory and
+# sessions/audit are SQLite on the /data volume. Scaling out requires
+# externalizing that state first.
+#
+# The Service name MUST match [server] kubernetes_gateway_service in
+# the config (default "navra-gateway") — teammate Sandboxes resolve
+# the gateway via this Service's cluster DNS.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: navra-gateway
+  namespace: navra
+  labels:
+    app.kubernetes.io/name: navra-gateway
+    app.kubernetes.io/part-of: navra
+spec:
+  serviceName: navra-gateway
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: navra-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: navra-gateway
+        app.kubernetes.io/part-of: navra
+    spec:
+      serviceAccountName: navra-gateway
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: ghcr.io/smgglrs-ai/navra-server:latest
+          args: ["--config", "/config/config.toml"]
+          ports:
+            - name: mcp
+              containerPort: 9315
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: mcp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: mcp
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 1Gi
+              cpu: "2"
+      volumes:
+        - name: config
+          configMap:
+            name: navra-gateway-config
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: navra-gateway
+  namespace: navra
+  labels:
+    app.kubernetes.io/name: navra-gateway
+spec:
+  selector:
+    app.kubernetes.io/name: navra-gateway
+  ports:
+    - name: mcp
+      port: 9315
+      targetPort: mcp
