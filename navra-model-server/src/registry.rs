@@ -45,9 +45,16 @@ impl ModelRegistry {
         entry: &ModelEntry,
         hub: &Option<navra_model_hub::ModelHub>,
     ) -> anyhow::Result<()> {
-        let resolved_path = resolve_model_path(name, entry, hub).await?;
+        // Remote-served entries (base_url, no local file) need no
+        // path — the /v1 proxy already treats base_url entries as
+        // remote OpenAI-compatible models, so the registry must too.
+        let resolved_path = match resolve_model_path(name, entry, hub).await {
+            Ok(p) => p,
+            Err(_) if entry.base_url.is_some() => PathBuf::new(),
+            Err(e) => return Err(e),
+        };
 
-        if !resolved_path.exists() {
+        if !resolved_path.as_os_str().is_empty() && !resolved_path.exists() {
             anyhow::bail!("model file not found: {}", resolved_path.display());
         }
 
@@ -137,6 +144,38 @@ impl ModelRegistry {
     ) -> anyhow::Result<Arc<dyn ModelBackend>> {
         let runtime_kind = entry.runtime.as_deref().unwrap_or("auto");
 
+        // Any entry with a base_url is a remote OpenAI-compatible
+        // endpoint (the "ogx" runtime name is legacy).
+        if entry.base_url.is_some() || runtime_kind == "ogx" {
+            let model_id = entry.model_name.clone().unwrap_or_else(|| name.to_string());
+            let base_url = entry
+                .base_url
+                .as_deref()
+                .unwrap_or(navra_model::DEFAULT_OGX_URL);
+            let locality = if entry.locality.as_deref() == Some("remote") {
+                navra_model::Locality::Remote
+            } else {
+                navra_model::Locality::Local
+            };
+            let backend: Arc<dyn ModelBackend> = if entry.task == "classification" {
+                Arc::new(navra_model::OgxBackend::new(
+                    base_url,
+                    &model_id,
+                    entry.api_key.clone(),
+                    locality,
+                ))
+            } else {
+                Arc::new(navra_model::OpenAiBackend::new(
+                    base_url,
+                    &model_id,
+                    entry.api_key.clone(),
+                    locality,
+                ))
+            };
+            tracing::info!(model = %name, model_id = %model_id, base_url = %base_url, "Model served via remote endpoint");
+            return Ok(backend);
+        }
+
         match runtime_kind {
             "ollama" => {
                 let model_id = entry
@@ -156,35 +195,6 @@ impl ModelRegistry {
                     navra_model::Locality::Local,
                 ));
                 tracing::info!(model = %name, model_id = %model_id, "Model served via Ollama");
-                return Ok(backend);
-            }
-            "ogx" => {
-                let model_id = entry.model_name.clone().unwrap_or_else(|| name.to_string());
-                let base_url = entry
-                    .base_url
-                    .as_deref()
-                    .unwrap_or(navra_model::DEFAULT_OGX_URL);
-                let locality = if entry.locality.as_deref() == Some("remote") {
-                    navra_model::Locality::Remote
-                } else {
-                    navra_model::Locality::Local
-                };
-                let backend: Arc<dyn ModelBackend> = if entry.task == "classification" {
-                    Arc::new(navra_model::OgxBackend::new(
-                        base_url,
-                        &model_id,
-                        entry.api_key.clone(),
-                        locality,
-                    ))
-                } else {
-                    Arc::new(navra_model::OpenAiBackend::new(
-                        base_url,
-                        &model_id,
-                        entry.api_key.clone(),
-                        locality,
-                    ))
-                };
-                tracing::info!(model = %name, model_id = %model_id, "Model served via OGX");
                 return Ok(backend);
             }
             "none" => {

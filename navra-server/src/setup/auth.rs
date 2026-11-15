@@ -67,33 +67,37 @@ pub(crate) fn wire_auth(
 
         let nonce_cache_ttl = nonce_ttl(cfg);
 
-        if has_cap_agents {
-            let cap_auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
-                Box::new(Arc::clone(root_signer)),
-                nonce_cache_ttl,
-            );
-            let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
+        // The capability authenticator is always in the chain: the
+        // gateway mints delegated capability tokens for teammates
+        // (teams/flows) regardless of how the configured human agents
+        // authenticate. Gating it on has_cap_agents left teammates
+        // unauthenticated whenever no agent used capability auth.
+        let cap_auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
+            Box::new(Arc::clone(root_signer)),
+            nonce_cache_ttl,
+        );
+        let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
-            if let Some(wimse_config) = cfg.server.wimse_auth.clone()
-                && wimse_config.enabled
-            {
-                let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
-                chain = chain.add(wimse_auth);
-                tracing::info!("WIMSE/SPIFFE identity federation enabled");
-            }
-
-            if let Some(os_config) = cfg.server.openshell_auth.clone() {
-                let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);
-                chain = chain.add(os_auth);
-                tracing::info!("OpenShell identity federation enabled");
-            }
-
-            chain = chain.add(blake3_auth);
-            builder = builder.authenticator(chain);
-            tracing::info!("Authenticator chain: capability tokens + BLAKE3");
-        } else {
-            builder = builder.authenticator(blake3_auth);
+        if let Some(wimse_config) = cfg.server.wimse_auth.clone()
+            && wimse_config.enabled
+        {
+            let wimse_auth = navra_core::auth::wimse::WimseAuthenticator::new(wimse_config);
+            chain = chain.add(wimse_auth);
+            tracing::info!("WIMSE/SPIFFE identity federation enabled");
         }
+
+        if let Some(os_config) = cfg.server.openshell_auth.clone() {
+            let os_auth = navra_core::auth::openshell::OpenShellAuthenticator::new(os_config);
+            chain = chain.add(os_auth);
+            tracing::info!("OpenShell identity federation enabled");
+        }
+
+        chain = chain.add(blake3_auth);
+        builder = builder.authenticator(chain);
+        tracing::info!(
+            cap_agents = has_cap_agents,
+            "Authenticator chain: capability tokens + BLAKE3"
+        );
     } else {
         // No agents configured — capability tokens only (for flow/team tokens)
         let nonce_cache_ttl = nonce_ttl(cfg);

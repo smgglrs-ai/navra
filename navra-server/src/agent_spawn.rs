@@ -980,6 +980,10 @@ fn build_agent_sandbox_manifest(
                     "containers": [{
                         "name": "agent",
                         "image": agent_image,
+                        // The agent_image tag is mutable (CI re-pushes
+                        // it) — always pull so teammates run the
+                        // image the operator last published.
+                        "imagePullPolicy": "Always",
                         "env": env_array,
                         "resources": {
                             "limits": {
@@ -1977,8 +1981,12 @@ mod tests {
             "navra-agent:latest"
         );
         assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["imagePullPolicy"],
+            "Always"
+        );
+        assert_eq!(
             manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["memory"],
-            "2g"
+            "2Gi"
         );
         assert_eq!(
             manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["cpu"],
@@ -2023,7 +2031,7 @@ mod tests {
         assert_eq!(manifest["metadata"]["namespace"], "prod");
         assert_eq!(
             manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["memory"],
-            "4g"
+            "4Gi"
         );
         assert_eq!(
             manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["cpu"],
