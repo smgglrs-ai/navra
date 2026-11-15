@@ -97,14 +97,18 @@ jobs:
 
       - name: Push bundle as OCI artifact
         id: push
+        working-directory: examples/agent-bundles
         run: |
           DIGEST=""
           IFS=',' read -ra TAGLIST <<< "${{ steps.tags.outputs.tags }}"
           for tag in "${TAGLIST[@]}"; do
             echo "Pushing ${tag}"
+            # Push from inside the bundle directory so the layer
+            # title is the bare filename — oras pull restores files
+            # under their title.
             OUT=$(oras push "${tag}" \
               --artifact-type "${{ env.BUNDLE_ARTIFACT_TYPE }}" \
-              "examples/agent-bundles/${{ matrix.bundle }}.json:application/json")
+              "${{ matrix.bundle }}.json:application/json")
             echo "${OUT}"
             D=$(echo "${OUT}" | grep -oE 'sha256:[a-f0-9]{64}' | head -1)
             if [ -n "${D}" ] && [ -z "${DIGEST}" ]; then DIGEST="${D}"; fi
