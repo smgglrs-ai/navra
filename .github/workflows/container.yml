@@ -11,6 +11,7 @@ on:
       - 'Dockerfile.*'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.trivyignore'
       - '.github/workflows/container.yml'
   pull_request:
     branches: [main]
@@ -20,7 +21,9 @@ on:
       - 'Dockerfile.*'
       - 'Cargo.toml'
       - 'Cargo.lock'
+      - '.trivyignore'
       - '.github/workflows/container.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
