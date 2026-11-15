@@ -465,7 +465,6 @@ impl Default for Config {
                 config_watch: false,
                 config_watch_debounce_ms: 50,
                 kubernetes_namespace: None,
-                kubernetes_agent_template: None,
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
                 cedar_action_version: 1,

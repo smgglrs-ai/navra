@@ -2187,14 +2187,6 @@
           ],
           "default": null
         },
-        "kubernetes_agent_template": {
-          "description": "SandboxTemplate name for agent sandboxes (default: \"agent-default\").",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
         "kubernetes_context": {
           "description": "kubectl context override for agent sandboxes.",
           "type": [
@@ -2209,7 +2201,7 @@
           "default": "navra-gateway"
         },
         "kubernetes_namespace": {
-          "description": "Kubernetes namespace for agent sandboxes.\nWhen set, enables spawning agents as Sandbox CRs on the cluster.",
+          "description": "Kubernetes namespace for agent sandboxes.\nWhen set, enables spawning agents as Sandbox CRs on the cluster\n(requires the kubernetes-sigs/agent-sandbox controller, v1.0+).",
           "type": [
             "string",
             "null"

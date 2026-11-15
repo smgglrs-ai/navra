@@ -105,12 +105,10 @@ pub struct ServerConfig {
     #[serde(default = "default_config_watch_debounce_ms")]
     pub config_watch_debounce_ms: u64,
     /// Kubernetes namespace for agent sandboxes.
-    /// When set, enables spawning agents as Sandbox CRs on the cluster.
+    /// When set, enables spawning agents as Sandbox CRs on the cluster
+    /// (requires the kubernetes-sigs/agent-sandbox controller, v1.0+).
     #[serde(default)]
     pub kubernetes_namespace: Option<String>,
-    /// SandboxTemplate name for agent sandboxes (default: "agent-default").
-    #[serde(default)]
-    pub kubernetes_agent_template: Option<String>,
     /// kubectl context override for agent sandboxes.
     #[serde(default)]
     pub kubernetes_context: Option<String>,

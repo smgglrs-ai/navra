@@ -5,7 +5,6 @@ use navra_core::identity::CapSigner;
 #[derive(Debug, Clone)]
 pub struct KubernetesAgentConfig {
     pub namespace: String,
-    pub template: String,
     pub context: Option<String>,
     pub gateway_service: String,
 }
@@ -907,6 +906,33 @@ fn kubectl_base(k8s: &KubernetesAgentConfig) -> tokio::process::Command {
     cmd
 }
 
+/// Normalize a memory quantity for the Kubernetes API.
+///
+/// navra's `container_memory` uses Podman-style suffixes (`2g`,
+/// `512m`), which Kubernetes rejects — its quantities require
+/// `2Gi`/`512Mi` (or decimal `2G`/`512M`, which mean different
+/// values). Podman's lowercase binary suffixes map directly:
+/// `g` → `Gi`, `m` → `Mi`, etc. Values already in Kubernetes form
+/// pass through unchanged.
+fn normalize_k8s_memory(quantity: &str) -> String {
+    const LOWER_BINARY: [(&str, &str); 5] = [
+        ("g", "Gi"),
+        ("m", "Mi"),
+        ("k", "Ki"),
+        ("t", "Ti"),
+        ("p", "Pi"),
+    ];
+    for (from, to) in LOWER_BINARY {
+        if let Some(prefix) = quantity.strip_suffix(from)
+            && !prefix.is_empty()
+            && prefix.chars().all(|c| c.is_ascii_digit() || c == '.')
+        {
+            return format!("{prefix}{to}");
+        }
+    }
+    quantity.to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_agent_sandbox_manifest(
     k8s: &KubernetesAgentConfig,
@@ -923,8 +949,13 @@ fn build_agent_sandbox_manifest(
         .map(|(k, v)| serde_json::json!({"name": k, "value": v}))
         .collect();
 
+    // agents.x-k8s.io/v1beta1 Sandbox: the workload is a full inline
+    // PodSpec (no templateRef on direct Sandboxes — the
+    // SandboxTemplate indirection lives in the extensions group and
+    // is not needed here). The controller creates a backing Pod
+    // named after the Sandbox.
     serde_json::json!({
-        "apiVersion": "agents.x-k8s.io/v1alpha1",
+        "apiVersion": "agents.x-k8s.io/v1beta1",
         "kind": "Sandbox",
         "metadata": {
             "name": name,
@@ -937,29 +968,41 @@ fn build_agent_sandbox_manifest(
             }
         },
         "spec": {
-            "templateRef": {
-                "name": k8s.template
-            },
-            "image": agent_image,
-            "resources": {
-                "limits": {
-                    "memory": container_memory,
-                    "cpu": container_cpus
+            "podTemplate": {
+                "spec": {
+                    // Teammates run to completion and report via the
+                    // gateway; never restart a finished agent.
+                    "restartPolicy": "Never",
+                    // The agent authenticates with a delegated navra
+                    // capability token — it must not see the
+                    // namespace's ServiceAccount.
+                    "automountServiceAccountToken": false,
+                    "containers": [{
+                        "name": "agent",
+                        "image": agent_image,
+                        "env": env_array,
+                        "resources": {
+                            "limits": {
+                                "memory": normalize_k8s_memory(container_memory),
+                                "cpu": container_cpus
+                            }
+                        }
+                    }]
                 }
-            },
-            "env": env_array
+            }
         }
     })
 }
 
 /// Spawn a teammate agent as a Kubernetes Sandbox CR.
 ///
-/// Creates an `agents.x-k8s.io/v1alpha1` Sandbox resource that runs the
-/// `navra-agent` binary. The agent communicates with the navra gateway
-/// via in-cluster Service DNS and receives a scoped capability token.
+/// Creates an `agents.x-k8s.io/v1beta1` Sandbox resource that runs the
+/// `navra-agent` binary with a full inline PodSpec. The agent
+/// communicates with the navra gateway via in-cluster Service DNS and
+/// receives a scoped capability token.
 ///
-/// The SandboxTemplate referenced by `kubernetes_agent_template` determines
-/// the compute driver (OpenShell microVM, kata-containers, or plain pod).
+/// Requires the kubernetes-sigs/agent-sandbox controller (v1.0+,
+/// which serves v1beta1 — v1alpha1 was removed upstream).
 fn spawn_kubernetes_agent(
     ctx: &TeammateSpawnContext,
     team_id: &str,
@@ -1224,7 +1267,10 @@ fn spawn_kubernetes_agent(
                 return;
             }
 
-            // Poll sandbox phase until Completed or Failed
+            // Poll the Finished condition until the backing Pod
+            // reaches a terminal phase. v1beta1 has no status.phase;
+            // completion is the Finished condition (reason
+            // PodSucceeded/PodFailed).
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
@@ -1233,16 +1279,13 @@ fn spawn_kubernetes_agent(
                     "get",
                     &format!("sandbox/{sandbox_name}"),
                     "-o",
-                    "jsonpath={.status.phase}",
+                    "jsonpath={.status.conditions[?(@.type=='Finished')].status}",
                 ]);
                 match status_cmd.output().await {
                     Ok(output) => {
-                        let phase = String::from_utf8_lossy(&output.stdout);
-                        let phase = phase.trim();
-                        if phase.eq_ignore_ascii_case("Completed")
-                            || phase.eq_ignore_ascii_case("Succeeded")
-                            || phase.eq_ignore_ascii_case("Failed")
-                        {
+                        let finished = String::from_utf8_lossy(&output.stdout);
+                        let finished = finished.trim();
+                        if finished.eq_ignore_ascii_case("True") {
                             break;
                         }
                     }
@@ -1250,9 +1293,10 @@ fn spawn_kubernetes_agent(
                 }
             }
 
-            // Collect output via kubectl logs
+            // Collect output via kubectl logs. The v1beta1 controller
+            // names the backing Pod after the Sandbox.
             let mut logs_cmd = kubectl_base(&k8s);
-            logs_cmd.args(["logs", &format!("sandbox/{sandbox_name}")]);
+            logs_cmd.args(["logs", &format!("pod/{sandbox_name}"), "-c", "agent"]);
             let logs_output = logs_cmd.output().await;
 
             match logs_output {
@@ -1847,7 +1891,6 @@ mod tests {
     fn test_k8s_config() -> KubernetesAgentConfig {
         KubernetesAgentConfig {
             namespace: "navra".into(),
-            template: "agent-default".into(),
             context: None,
             gateway_service: "navra-gateway".into(),
         }
@@ -1913,7 +1956,7 @@ mod tests {
             "rev",
         );
 
-        assert_eq!(manifest["apiVersion"], "agents.x-k8s.io/v1alpha1");
+        assert_eq!(manifest["apiVersion"], "agents.x-k8s.io/v1beta1");
         assert_eq!(manifest["kind"], "Sandbox");
         assert_eq!(manifest["metadata"]["name"], "navra-agent-t1-rev");
         assert_eq!(manifest["metadata"]["namespace"], "navra");
@@ -1927,12 +1970,32 @@ mod tests {
         );
         assert_eq!(manifest["metadata"]["labels"]["navra.io/team"], "t1");
         assert_eq!(manifest["metadata"]["labels"]["navra.io/agent"], "rev");
-        assert_eq!(manifest["spec"]["templateRef"]["name"], "agent-default");
-        assert_eq!(manifest["spec"]["image"], "navra-agent:latest");
-        assert_eq!(manifest["spec"]["resources"]["limits"]["memory"], "2g");
-        assert_eq!(manifest["spec"]["resources"]["limits"]["cpu"], "2");
+        // v1beta1: inline podTemplate, no templateRef.
+        assert!(manifest["spec"]["templateRef"].is_null());
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["image"],
+            "navra-agent:latest"
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["memory"],
+            "2g"
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["cpu"],
+            "2"
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["restartPolicy"],
+            "Never"
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["automountServiceAccountToken"],
+            false
+        );
 
-        let env_array = manifest["spec"]["env"].as_array().unwrap();
+        let env_array = manifest["spec"]["podTemplate"]["spec"]["containers"][0]["env"]
+            .as_array()
+            .unwrap();
         assert!(env_array.iter().any(|e| e["name"] == "NAVRA_ENDPOINT"));
         assert!(env_array.iter().any(|e| e["name"] == "NAVRA_TOKEN"));
         assert!(env_array.iter().any(|e| e["name"] == "NAVRA_TASK"));
@@ -1942,7 +2005,6 @@ mod tests {
     fn kubernetes_manifest_with_custom_config() {
         let k8s = KubernetesAgentConfig {
             namespace: "prod".into(),
-            template: "secure-agent".into(),
             context: Some("prod-cluster".into()),
             gateway_service: "navra-gw".into(),
         };
@@ -1959,9 +2021,14 @@ mod tests {
         );
 
         assert_eq!(manifest["metadata"]["namespace"], "prod");
-        assert_eq!(manifest["spec"]["templateRef"]["name"], "secure-agent");
-        assert_eq!(manifest["spec"]["resources"]["limits"]["memory"], "4g");
-        assert_eq!(manifest["spec"]["resources"]["limits"]["cpu"], "4");
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["memory"],
+            "4g"
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["cpu"],
+            "4"
+        );
     }
 
     #[test]
@@ -1981,7 +2048,6 @@ mod tests {
     fn kubectl_base_includes_context_when_set() {
         let k8s = KubernetesAgentConfig {
             namespace: "navra".into(),
-            template: "agent-default".into(),
             context: Some("my-ctx".into()),
             gateway_service: "navra-gateway".into(),
         };
@@ -1993,5 +2059,25 @@ mod tests {
             .collect();
         assert!(args.contains(&"--context".to_string()));
         assert!(args.contains(&"my-ctx".to_string()));
+    }
+
+    #[test]
+    fn normalize_memory_podman_to_kubernetes() {
+        assert_eq!(normalize_k8s_memory("2g"), "2Gi");
+        assert_eq!(normalize_k8s_memory("512m"), "512Mi");
+        assert_eq!(normalize_k8s_memory("1.5g"), "1.5Gi");
+        assert_eq!(normalize_k8s_memory("8t"), "8Ti");
+    }
+
+    #[test]
+    fn normalize_memory_passthrough_kubernetes_forms() {
+        // Already-valid Kubernetes quantities pass through unchanged.
+        assert_eq!(normalize_k8s_memory("2Gi"), "2Gi");
+        assert_eq!(normalize_k8s_memory("512Mi"), "512Mi");
+        assert_eq!(normalize_k8s_memory("2G"), "2G");
+        assert_eq!(normalize_k8s_memory("2048"), "2048");
+        // Not a numeric+suffix form — leave it to the API server to
+        // reject (surfaces the real error rather than mangling it).
+        assert_eq!(normalize_k8s_memory("generous"), "generous");
     }
 }

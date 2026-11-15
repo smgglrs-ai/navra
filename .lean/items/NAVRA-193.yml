@@ -1,0 +1,53 @@
+id: NAVRA-193
+title: "Migrate Kubernetes agent spawning to AgentSandbox v1beta1"
+status: done
+priority: high
+effort: 1d
+tags: [kubernetes, agent-sandbox, upstream]
+description: |
+  navra's Kubernetes spawn path targeted agents.x-k8s.io/v1alpha1 —
+  an API version that no longer exists. The kubernetes-sigs/
+  agent-sandbox controller removed v1alpha1 in v1.0.0 (no
+  conversion webhooks); current releases serve v1beta1 only. The
+  old spec shape (spec.templateRef / spec.image / spec.env /
+  spec.resources) does not exist in v1beta1.
+
+  Migrated (navra-server/src/agent_spawn.rs):
+  - manifest: agents.x-k8s.io/v1beta1 Sandbox with a full inline
+    PodSpec (spec.podTemplate.spec.containers[0]) — the
+    SandboxTemplate indirection is an extensions-group concept a
+    direct Sandbox does not need, so KubernetesAgentConfig.template
+    and the kubernetes_agent_template config field are removed
+  - secure defaults: restartPolicy Never (teammates run to
+    completion), automountServiceAccountToken false (the agent
+    authenticates with a delegated navra capability token, not the
+    namespace ServiceAccount)
+  - completion detection: .status.phase (nonexistent in v1beta1) →
+    the Finished condition
+  - log collection: logs pod/<sandbox-name> -c agent (the v1beta1
+    controller names the backing Pod after the Sandbox)
+  - memory quantities: navra's Podman-style container_memory values
+    (2g, 512m) are invalid Kubernetes quantities — normalized at the
+    manifest boundary (g→Gi, m→Mi, ...), config value unchanged for
+    the Podman path
+notes: |
+  - Validated empirically against the lab SNO (OpenShift 4.22,
+    K8s 1.35.6) with agent-sandbox v1.0.11 installed (core-only
+    sandbox.yaml, agent-sandbox-system namespace): server-side
+    dry-run of the new manifest passes; a live busybox Sandbox
+    confirmed Ready wait, Pod-named-after-Sandbox logs, and the
+    Finished condition. The dry-run is what caught the memory
+    quantity bug.
+  - The operator install on lab: kubectl apply of the pinned
+    v1.0.11 sandbox.yaml. CRD serves v1beta1 only.
+  - The v1alpha1 path was never usable against a real cluster with
+    current operator releases, so removing kubernetes_agent_template
+    breaks no working deployment.
+  - Tests: manifest structure (v1beta1 shape, no templateRef,
+    restartPolicy/automount defaults, inline env), custom config,
+    memory normalization (podman→k8s mapping + passthrough), plus
+    the pre-existing name-sanitization and kubectl-base tests.
+  - Follow-ups: Dockerfile.server + deploy/ manifests (RBAC for
+    Sandbox CRUD, StatefulSet, Service) and the in-cluster e2e
+    teammate spawn through the gateway — the remaining steps of the
+    gateway-in-k8s plan.

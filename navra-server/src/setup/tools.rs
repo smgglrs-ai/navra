@@ -548,11 +548,6 @@ pub(crate) async fn wire_team_tools(
         kubernetes: cfg.server.kubernetes_namespace.as_ref().map(|ns| {
             crate::agent_spawn::KubernetesAgentConfig {
                 namespace: ns.clone(),
-                template: cfg
-                    .server
-                    .kubernetes_agent_template
-                    .clone()
-                    .unwrap_or_else(|| "agent-default".to_string()),
                 context: cfg.server.kubernetes_context.clone(),
                 gateway_service: cfg.server.kubernetes_gateway_service.clone(),
             }
@@ -724,11 +719,6 @@ pub(crate) async fn wire_team_tools(
         kubernetes: cfg.server.kubernetes_namespace.as_ref().map(|ns| {
             crate::agent_spawn::KubernetesAgentConfig {
                 namespace: ns.clone(),
-                template: cfg
-                    .server
-                    .kubernetes_agent_template
-                    .clone()
-                    .unwrap_or_else(|| "agent-default".to_string()),
                 context: cfg.server.kubernetes_context.clone(),
                 gateway_service: cfg.server.kubernetes_gateway_service.clone(),
             }
