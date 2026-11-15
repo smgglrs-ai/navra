@@ -71,6 +71,18 @@ notes: |
     namespace (HOME/.ollama on the PVC, self-pull at startup — the
     image has no curl); 192.0.2.10 is the API VIP (HAProxy,
     only cluster service ports), not a general node address.
+  - CI first-run fixes (2026-11-15, commits 4f238b91..6fd00bd4):
+    setup-oras v5 does not exist (current major: v2); oras layer
+    titles come from the path given at push, so the round-trip
+    diff needs the bare filename (push from inside the bundle
+    directory); the navra-server musl build OOMs the CI runner at
+    full-core parallelism (CARGO_JOBS=2 now passed via
+    build-args). After the fixes, agent-bundles is green: the three
+    bundles are published as signed OCI artifacts with verified
+    round-trips. Packages are created PRIVATE by the registry
+    default — flip to public in GitHub package settings (one-time,
+    per package): ghcr.io/smgglrs-ai/{researcher,code-reviewer,
+    security-auditor} plus navra-server when its build lands.
   - Gateway image build (2026-11-15): three musl-build failures
     found and fixed locally that CI would have hit only after push —
     protoc (gRPC modules), cpal/alsa-sys (made optional: 'voice'
