@@ -169,8 +169,11 @@ navra agent install oci://ghcr.io/acme/admin-assistant:1.0
 
 For OCI installs, navra:
 
-1. Verifies the cosign signature (per `agent_signature_policy`)
-2. Fetches the agent manifest via the OCI Referrers API
+1. Verifies the cosign signature (per `agent_signature_policy`,
+   optionally pinned to a signer identity)
+2. Resolves the bundle: either the tag itself is a navra bundle
+   artifact (direct artifact, the form CI publishes), or a bundle
+   artifact attached to the tag via the OCI Referrers API
 3. Compares requested permissions against operator policy
 4. Generates a config snippet with token, permissions, and upstream entries
 5. Records the installed agent in `~/.local/share/navra/agents/`

@@ -1,0 +1,138 @@
+# Publish reference agent bundles to ghcr.io as signed OCI artifacts
+# (NAVRA-157).
+#
+# Each bundle JSON is pushed with oras as an OCI artifact whose
+# artifactType is application/vnd.navra.agent-bundle.v1+json — the
+# direct-artifact path `navra agent install` resolves (see
+# navra-server/src/agent_bundle/fetch.rs). The artifact is then
+# signed keyless with cosign: the certificate identity is this
+# repository's workflow, which users can pin via
+# agent_signature_identity / agent_signature_issuer in [server].
+#
+# NOTE: the first push creates the ghcr.io packages as private (the
+# registry default). Make them public once in the GitHub package
+# settings — anonymous pulls then work without a token dance beyond
+# the standard one navra performs automatically.
+
+name: agent-bundles
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "examples/agent-bundles/**"
+      - ".github/workflows/bundles.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  # cosign keyless signing via GitHub OIDC.
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  BUNDLE_ARTIFACT_TYPE: application/vnd.navra.agent-bundle.v1+json
+
+jobs:
+  publish:
+    name: ${{ matrix.bundle }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        bundle: [researcher, code-reviewer, security-auditor]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate bundle JSON
+        run: |
+          python3 - <<'EOF'
+          import json
+          name = "${{ matrix.bundle }}"
+          with open(f"examples/agent-bundles/{name}.json") as f:
+              bundle = json.load(f)
+          assert bundle["schema_version"] == 1, "schema_version must be 1"
+          assert bundle["meta"]["name"] == name, "meta.name must match the file name"
+          assert bundle["meta"]["publisher"] == "navra", "publisher must be navra"
+          assert bundle["persona"]["system_prompt"], "persona.system_prompt required"
+          # Read-only posture: destructive tools denied.
+          rules = {r["tool"]: r["policy"] for r in bundle["permissions"]["tool_rules"]}
+          assert rules.get("file_write") == "deny", "file_write must be denied"
+          # IFC vocabulary must be label-lattice terms.
+          ifc = bundle["permissions"].get("ifc")
+          if ifc:
+              vocab = {"trusted", "untrusted", "public", "sensitive", "pii", "secret"}
+              for field in ("reads", "writes"):
+                  assert ifc[field] in vocab, f"ifc.{field} not lattice vocabulary"
+          print(f"{name} v{bundle['meta']['version']}: OK")
+          EOF
+
+      - name: Install oras
+        uses: oras-project/setup-oras@v5
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: tags
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.bundle }}"
+          TAGS="${IMAGE}:latest"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Release tags pin the release version alongside latest.
+            TAGS="${TAGS},${IMAGE}:${GITHUB_REF#refs/tags/v}"
+          fi
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Push bundle as OCI artifact
+        id: push
+        run: |
+          DIGEST=""
+          IFS=',' read -ra TAGLIST <<< "${{ steps.tags.outputs.tags }}"
+          for tag in "${TAGLIST[@]}"; do
+            echo "Pushing ${tag}"
+            OUT=$(oras push "${tag}" \
+              --artifact-type "${{ env.BUNDLE_ARTIFACT_TYPE }}" \
+              "examples/agent-bundles/${{ matrix.bundle }}.json:application/json")
+            echo "${OUT}"
+            D=$(echo "${OUT}" | grep -oE 'sha256:[a-f0-9]{64}' | head -1)
+            if [ -n "${D}" ] && [ -z "${DIGEST}" ]; then DIGEST="${D}"; fi
+          done
+          if [ -z "${DIGEST}" ]; then
+            echo "::error::no digest in oras push output"
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Sign bundle (cosign keyless)
+        run: |
+          cosign sign --yes \
+            "${{ steps.tags.outputs.image }}@${{ steps.push.outputs.digest }}"
+
+      - name: Verify signature with pinned identity
+        run: |
+          cosign verify \
+            "${{ steps.tags.outputs.image }}@${{ steps.push.outputs.digest }}" \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+      - name: Verify artifact round-trip
+        run: |
+          REF="${{ steps.tags.outputs.image }}:latest"
+          rm -rf /tmp/pulled && mkdir -p /tmp/pulled
+          oras pull "${REF}" -o /tmp/pulled
+          diff -u \
+            "examples/agent-bundles/${{ matrix.bundle }}.json" \
+            "/tmp/pulled/${{ matrix.bundle }}.json"
+          echo "Round-trip OK: registry content matches source bundle"

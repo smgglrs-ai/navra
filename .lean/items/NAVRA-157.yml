@@ -57,20 +57,28 @@ notes:
     / --certificate-oidc-issuer, config fields
     agent_signature_identity + agent_signature_issuer on [server],
     documented in the agent-bundles guide with a full-pin example;
-    (d) docs and examples de-quayed (ghcr.io refs, owner-qualified).
-    Remaining: oras packaging, CI job, end-to-end install round-trip
-    (the Referrers API risk below), docs site bundle page."
-  - "Technical risk to verify early: fetch.rs resolves
-    bundles via the OCI Referrers API
-    (/v2/{repo}/referrers/{digest}?artifactType=...). ghcr.io
-    implements OCI 1.1 referrers, but the artifactType tagging and
-    referrer discovery must be exercised end-to-end before docs
-    promise it."
-  - "cosign keyless signatures are stored as OCI referrer artifacts
-    — same API surface fetch.rs already speaks."
-  - "Image naming: container.yml uses ghcr.io/<github.repository_owner>/<image>;
-    bundles should follow the same convention for consistency
-    (examples/agent-bundles/README.md now uses
-    ghcr.io/smgglrs-ai/<bundle>)."
-  - "Keyless verification pinning: DONE 2026-11-14 — see
-    agent_signature_identity above."
+    (d) docs and examples de-quayed (ghcr.io refs, owner-qualified)."
+  - "Progress 2026-11-15 (fetch rewrite + CI, commit 2): fetch.rs
+    could not talk to ANY real registry — the manifest URL embedded
+    the full registry/repo as the host
+    (https://{name}/v2/{name}/...), referrer descriptors were
+    fetched as raw JSON via /blobs/<manifest-digest> (the Referrers
+    API returns manifest descriptors whose layers hold the payload),
+    and ghcr.io's anonymous Bearer token requirement was not
+    implemented. Rewritten to spec: registry/repo split, direct-
+    artifact path (tag manifest with the bundle artifactType — what
+    CI publishes) plus the referrers fallback, layer resolution
+    through the artifact manifest, and the anonymous token dance on
+    401 challenges. URL/parse helpers extracted and unit-tested (14
+    tests). Also: .github/workflows/bundles.yml — matrix over the
+    three bundles, inline invariant validation (self-gating),
+    oras push as direct artifact, cosign keyless sign + pinned-
+    identity verify, and an oras-pull round-trip diff against the
+    source JSON. NOTE: first push creates the ghcr packages as
+    PRIVATE (registry default) — flip them public in GitHub package
+    settings once."
+  - "Remaining after CI lands: flip the three ghcr packages public;
+    run one real `navra agent install oci://ghcr.io/smgglrs-ai/
+    researcher:latest` against the published artifact (the true
+    end-to-end acceptance, closes the item); docs site bundle page
+    if the guide section needs a pointer."
