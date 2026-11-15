@@ -26,7 +26,7 @@
 FROM rust:1.96-bookworm AS builder
 
 RUN apt-get update && \
-    apt-get install -y musl-tools && \
+    apt-get install -y musl-tools protobuf-compiler && \
     rm -rf /var/lib/apt/lists/*
 
 # kubectl for in-cluster teammate spawning. Match the minor version
@@ -42,6 +42,11 @@ RUN if [ "${TARGETARCH:-amd64}" != "amd64" ] && [ "${TARGETARCH:-amd64}" != "arm
 
 WORKDIR /src
 COPY . .
+
+# Bound cargo parallelism in memory-constrained environments
+# (release LTO linking is memory-hungry). Empty = cargo default.
+ARG CARGO_JOBS=
+ENV CARGO_BUILD_JOBS=${CARGO_JOBS}
 
 # Gateway-only build: no ONNX runtime — model serving is external.
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
