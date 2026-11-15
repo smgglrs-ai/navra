@@ -63,6 +63,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The navra-server build (24-crate workspace, musl target) plus
+      # buildkit layers exceed the runner's ~14GB free disk. Remove
+      # the preinstalled toolchains we don't use (~25GB).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
+          df -h /
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
