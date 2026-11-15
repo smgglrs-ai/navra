@@ -64,6 +64,18 @@ notes: |
     model calls with NAVRA_TOKEN (commit d00fabb8) — previously it
     sent no credentials, fine for llama.cpp but fatal against the
     gateway's /v1.
+  - FINAL STATE (2026-11-15): all workflows green — CI (full test
+    suite), Container (all four images: navra-agent, navra-agent-full,
+    navra-mcp-filesystem, navra-server, each passing the no-shell,
+    static-binary, size, and Trivy gates), and agent-bundles (three
+    keyless-signed OCI artifacts with round-trip verification). One
+    more workflow fix on the way: the Container path filters did not
+    include .trivyignore, so the CVE-gate fix commit triggered
+    nothing (df3e43fe adds it plus workflow_dispatch). All seven
+    ghcr packages exist but are private (registry default on first
+    push). Remaining user action: flip them public, then close
+    NAVRA-157 with the real 'navra agent install
+    oci://ghcr.io/smgglrs-ai/researcher:latest' round-trip.
   - navra-server CI image — root cause found after a misdiagnosis
     chain (2026-11-15): the image built and pushed successfully on
     EVERY 'failed' run; the failing step was always the Trivy CVE
