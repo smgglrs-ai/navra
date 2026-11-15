@@ -30,8 +30,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # kubectl for in-cluster teammate spawning. Match the minor version
-# of the target cluster's API server.
-ARG KUBECTL_VERSION=v1.35.6
+# of the target cluster's API server; keep the patch current — the
+# Trivy image scan gates on HIGH/CRITICAL CVEs, and older kubectl
+# builds carry vulnerable Go stdlib versions.
+ARG KUBECTL_VERSION=v1.35.10
 ARG TARGETARCH
 RUN if [ "${TARGETARCH:-amd64}" != "amd64" ] && [ "${TARGETARCH:-amd64}" != "arm64" ]; then \
         echo "unsupported arch: ${TARGETARCH}"; exit 1; \
