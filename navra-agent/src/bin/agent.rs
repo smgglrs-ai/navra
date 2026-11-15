@@ -67,8 +67,19 @@ async fn run() -> Result<(), String> {
         .ok()
         .and_then(|v| v.parse().ok());
 
-    // Build model backend
-    let backend = OpenAiBackend::new(&model_endpoint, &model_name, None, Locality::Remote);
+    // Build model backend. The NAVRA_TOKEN (a delegated capability
+    // token when spawned by the gateway) authenticates model calls
+    // when the model endpoint is the gateway's /v1 proxy — so
+    // teammate model traffic flows through the same
+    // safety/IFC/audit pipeline as its tool calls. Unauthenticated
+    // endpoints (llama.cpp, Ollama direct) ignore the header.
+    let model_api_key = env::var("NAVRA_TOKEN").ok();
+    let backend = OpenAiBackend::new(
+        &model_endpoint,
+        &model_name,
+        model_api_key,
+        Locality::Remote,
+    );
     let backend_context_window = backend.context_window();
 
     // Start building the agent

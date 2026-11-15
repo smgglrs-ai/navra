@@ -72,13 +72,18 @@ COPY --from=builder \
     /usr/local/bin/navra
 COPY --from=builder /usr/local/bin/kubectl /usr/local/bin/kubectl
 
-# Session, audit, and knowledge SQLite stores live under
-# dirs::data_dir(); point it at the persistent volume.
+# Session, audit, knowledge SQLite stores (dirs::data_dir) and the
+# Ed25519 signing identity fallback (dirs::config_dir) both resolve
+# under HOME/XDG — point them at the persistent volume. A stable
+# identity across restarts matters: delegated teammate capability
+# tokens chain from it.
+ENV HOME=/data
 ENV XDG_DATA_HOME=/data
+ENV XDG_CONFIG_HOME=/data
 VOLUME /data
 
 EXPOSE 9315
 
 USER 65534
-ENTRYPOINT ["/usr/local/bin/navra", "serve", "--no-tray"]
+ENTRYPOINT ["/usr/local/bin/navra", "mcp", "serve", "--no-tray"]
 CMD ["--config", "/config/config.toml"]

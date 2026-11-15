@@ -19,12 +19,14 @@ data:
     kubernetes_namespace = "navra"
     kubernetes_gateway_service = "navra-gateway"
 
-    # Teammate image: the distroless navra-agent container.
-    agent_image = "ghcr.io/smgglrs-ai/navra-agent:latest"
+    # Teammate image: the distroless navra-agent container, pushed to
+    # this cluster's internal registry.
+    agent_image = "image-registry.openshift-image-registry.svc:5000/navra/navra-agent:latest"
 
-    # Example agent identity for MCP clients. Generate a token with
-    # `navra token` and store the full config in a Secret instead of
-    # a ConfigMap when it contains real credentials.
+    # Agent identity for MCP clients. Generate the token_hash with:
+    #   navra token generate --name lead --permissions dev
+    # Store real configs in a Secret, not a ConfigMap.
     [[agents]]
     name = "lead"
+    token_hash = "REPLACE_WITH_navra_token_generate_OUTPUT"
     permissions = "dev"

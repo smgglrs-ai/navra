@@ -1583,6 +1583,10 @@ pub(crate) fn attach_ui_routes(
 
     let mut r = router.nest("/v1", v1_router).nest("/api", api_router);
 
+    // Unauthenticated health probe for container orchestrators
+    // (readiness/liveness). Must stay outside the auth middleware.
+    r = r.route("/healthz", axum::routing::get(|| async { "ok" }));
+
     if let Some(agent_router) = agent_api_router {
         r = r.nest("/api", agent_router);
     }
@@ -2375,5 +2379,15 @@ mod tests {
         let req = Request::builder().uri("/").body(Body::empty()).unwrap();
         let resp = router.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn healthz_is_unauthenticated() {
+        // Container orchestrators probe /healthz without credentials.
+        let router = build_test_router();
+        let (status, json) = get_json(&router, "/healthz").await;
+        assert_eq!(status, StatusCode::OK);
+        // Plain-text body — get_json wraps it as {"raw": ...}.
+        assert_eq!(json["raw"], "ok");
     }
 }

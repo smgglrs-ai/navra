@@ -35,19 +35,21 @@ spec:
       containers:
         - name: gateway
           image: ghcr.io/smgglrs-ai/navra-server:latest
+          # The tag is mutable (CI re-pushes it) — always pull.
+          imagePullPolicy: Always
           args: ["--config", "/config/config.toml"]
           ports:
             - name: mcp
               containerPort: 9315
           readinessProbe:
             httpGet:
-              path: /api/status
+              path: /healthz
               port: mcp
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
-              path: /api/status
+              path: /healthz
               port: mcp
             initialDelaySeconds: 20
             periodSeconds: 30
