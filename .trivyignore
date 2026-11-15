@@ -1,0 +1,20 @@
+# Trivy ignores — reviewed 2026-11-15, revisit on each kubectl bump.
+#
+# All three are HIGH, DoS-class, in Go modules bundled inside the
+# kubectl binary of Dockerfile.server. kubectl in the gateway image
+# is an API-server CLIENT performing trusted, operator-initiated
+# operations (sandbox spawn/wait/logs); the CVEs affect servers and
+# decoders of attacker-controlled HTTP/2 or text input, which is
+# not kubectl's role here. No kubectl release carries the fixed
+# modules yet — v1.35.10 through v1.37.2 all bundle
+# golang.org/x/net < 0.62.0 and x/text < 0.41.0. Remove these
+# entries once a kubectl release bundles the fixed versions.
+
+# golang.org/x/net/html: denial of service (fixed in x/net 0.62.0)
+CVE-2026-78661
+
+# x/net/http2: DoS via excessive SETTINGS frames (fixed in x/net 0.62.0)
+CVE-2026-78669
+
+# x/text: DoS via out-of-bounds slice in Nickname profile (fixed in x/text 0.41.0)
+CVE-2026-56851
