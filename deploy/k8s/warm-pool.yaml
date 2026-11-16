@@ -32,7 +32,10 @@ spec:
       containers:
         - name: agent
           image: localhost/navra-agent:latest
-          imagePullPolicy: IfNotPresent
+          # Always: the :test tag is re-pushed on rebuilds; the node
+          # must not reuse a stale local copy (the cold-create path
+          # uses Always for the same reason).
+          imagePullPolicy: Always
           env:
             # Per-deployment constants — everything per-spawn comes
             # from the task endpoint.
