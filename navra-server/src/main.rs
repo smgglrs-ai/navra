@@ -12,6 +12,7 @@ mod agent_spawn;
 mod agent_task_api;
 mod build_tools;
 mod cli;
+mod cluster;
 mod cmd_agent;
 mod cmd_eval;
 mod cmd_flow;
@@ -1045,6 +1046,18 @@ async fn serve_inner(
         "Root identity"
     );
 
+    // Resolve the multi-replica cluster role (NAVRA-194). Workers
+    // forward coordinator-owned state over HTTP; the coordinator
+    // (and standalone gateways) keep everything local.
+    let cluster_role = cluster::resolve_cluster_role(&cfg);
+    tracing::info!(role = ?cluster_role, "Cluster role resolved");
+    if let cluster::ClusterRole::Worker { coordinator_url } = &cluster_role {
+        tracing::info!(
+            coordinator = coordinator_url,
+            "Worker replica: team/flow tools and the agent task API forward to the coordinator"
+        );
+    }
+
     // Build credential store from config mappings
     let credential_store = Arc::new(navra_core::credentials::MappedCredentialStore::new(
         cfg.credentials.clone(),
@@ -1410,14 +1423,17 @@ async fn serve_inner(
         &resolved_flow_dirs,
         &reasoning_pii_filter,
         &mut running_endpoints,
+        cluster_role.is_worker(),
     )
     .await;
 
     // Ensure the warm-pool bootstrap token Secret exists at startup,
     // so the pool's SandboxTemplate can start pods before the first
     // claim (claims re-apply it to keep it current). Failure is
-    // non-fatal: cold-create still works.
-    if let Some(ns) = cfg.server.kubernetes_namespace.as_ref()
+    // non-fatal: cold-create still works. Workers skip it — the
+    // coordinator owns spawning.
+    if !cluster_role.is_worker()
+        && let Some(ns) = cfg.server.kubernetes_namespace.as_ref()
         && let Some(pool) = cfg.server.kubernetes_warm_pool.clone()
     {
         let k8s = agent_spawn::KubernetesAgentConfig {
@@ -1584,6 +1600,7 @@ async fn serve_inner(
                     approvals,
                     flow_registry,
                     agent_task_api,
+                    cluster_role,
                     resolved_flow_dirs,
                     models,
                     trigger_webhook_router: trigger_webhook_router.take(),

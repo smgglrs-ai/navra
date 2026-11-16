@@ -367,6 +367,7 @@ pub(crate) async fn wire_team_tools(
         Box<dyn navra_model_runtime::ModelRuntime>,
         navra_model_runtime::Endpoint,
     )>,
+    is_worker: bool,
 ) -> (
     navra_core::McpServerBuilder,
     Arc<team_tools::TeamRegistry>,
@@ -754,9 +755,12 @@ pub(crate) async fn wire_team_tools(
     tracing::info!("Registered flow tools (flow_escalate, flow_resume)");
 
     // --- Event-driven triggers ---
+    // Workers skip trigger infrastructure: triggers fire on the
+    // coordinator's registries, and running them on every replica
+    // would double-process events.
     let mut _trigger_registry = None;
     let mut trigger_webhook_router = None;
-    if !cfg.triggers.is_empty() {
+    if !cfg.triggers.is_empty() && !is_worker {
         let (registry, webhook_router) =
             triggers::TriggerRegistry::start(&cfg.triggers, Arc::clone(&flow_ctx));
         tracing::info!(count = cfg.triggers.len(), "Trigger infrastructure started");

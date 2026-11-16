@@ -1,8 +1,27 @@
-# navra gateway: single-replica StatefulSet + Service.
+# navra gateway: two-replica StatefulSet (coordinator + worker) with
+# a headless Service for stable pod DNS (NAVRA-194).
 #
-# Single replica by design: the TeamRegistry is in-memory and
-# sessions/audit are SQLite on the /data volume. Scaling out requires
-# externalizing that state first.
+# Multi-replica topology (control/data split):
+# - navra-gateway-0 is the coordinator: owns the TeamRegistry, flow
+#   registries, teammate spawning (kubectl tasks), and the
+#   authoritative session store for IFC model routing.
+# - navra-gateway-1+ are workers: serve MCP and the /v1 model proxy
+#   statelessly, forwarding coordinator-owned tool calls (team_*,
+#   flow_*, agent_signal) and the agent task API to the coordinator
+#   over the headless Service, passing caller credentials through.
+#
+# Delegated capability tokens verify on any replica: all replicas
+# share the root signer seed via the navra-identity Secret (mounted
+# at /identity). Generate it once (32 random bytes):
+#   head -c 32 /dev/urandom | kubectl -n navra create secret generic \
+#     navra-identity --from-file=identity.key=/dev/stdin
+#
+# The config needs:
+#   [server]
+#   cluster_role = "auto"
+#   cluster_statefulset = "navra-gateway"
+#   [server.identity]
+#   key_path = "/identity/identity.key"
 #
 # The Service name MUST match [server] kubernetes_gateway_service in
 # the config (default "navra-gateway") — teammate Sandboxes resolve
@@ -16,8 +35,8 @@ metadata:
     app.kubernetes.io/name: navra-gateway
     app.kubernetes.io/part-of: navra
 spec:
-  serviceName: navra-gateway
-  replicas: 1
+  serviceName: navra-gateway-headless
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: navra-gateway
@@ -38,6 +57,11 @@ spec:
           # The tag is mutable (CI re-pushes it) — always pull.
           imagePullPolicy: Always
           args: ["--config", "/config/config.toml"]
+          env:
+            # Uniform on all pods; in cluster_role = "auto" the
+            # coordinator (ordinal 0) ignores it.
+            - name: NAVRA_COORDINATOR_URL
+              value: http://navra-gateway-0.navra-gateway-headless.navra.svc.cluster.local:9315
           ports:
             - name: mcp
               containerPort: 9315
@@ -62,6 +86,9 @@ spec:
             - name: config
               mountPath: /config
               readOnly: true
+            - name: identity
+              mountPath: /identity
+              readOnly: true
             - name: data
               mountPath: /data
             - name: tmp
@@ -77,6 +104,9 @@ spec:
         - name: config
           configMap:
             name: navra-gateway-config
+        - name: identity
+          secret:
+            secretName: navra-identity
         - name: tmp
           emptyDir: {}
   volumeClaimTemplates:
@@ -88,6 +118,8 @@ spec:
           requests:
             storage: 5Gi
 ---
+# Client-facing Service: load-balances across all replicas. MCP
+# clients and teammate Sandboxes resolve the gateway here.
 apiVersion: v1
 kind: Service
 metadata:
@@ -98,6 +130,25 @@ metadata:
 spec:
   selector:
     app.kubernetes.io/name: navra-gateway
+  ports:
+    - name: mcp
+      port: 9315
+      targetPort: mcp
+---
+# Headless Service: stable per-pod DNS for the coordinator URL
+# (navra-gateway-0.navra-gateway-headless.navra.svc).
+apiVersion: v1
+kind: Service
+metadata:
+  name: navra-gateway-headless
+  namespace: navra
+  labels:
+    app.kubernetes.io/name: navra-gateway
+spec:
+  clusterIP: None
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: navra-gateway
   ports:
     - name: mcp
       port: 9315

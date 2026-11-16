@@ -107,9 +107,30 @@ alongside it with `kubectl -n navra get sandboxes -w`.
 
 ## Notes and limits
 
-- **Single replica by design**: the TeamRegistry is in-memory and
-  sessions/audit live in SQLite on the `/data` volume. Scaling out
-  requires externalizing that state first.
+- **Multi-replica (NAVRA-194, coordinator/worker split)**: scale to
+  2+ replicas with the included manifests. Replica 0 is the
+  coordinator (team/flow state, spawning, authoritative session
+  taint); higher ordinals are workers forwarding coordinator-owned
+  tool calls and the agent task API over the headless Service.
+  Requirements:
+  - A shared root identity: `head -c 32 /dev/urandom | kubectl -n
+    navra create secret generic navra-identity
+    --from-file=identity.key=/dev/stdin`, config
+    `[server.identity] key_path = "/identity/identity.key"` —
+    delegated tokens then verify on any replica.
+  - Config `[server] cluster_role = "auto"` and
+    `cluster_statefulset = "navra-gateway"`.
+  - Per-replica state (worker sessions, memory, audit) is local
+    scratch on each replica's PVC; the authoritative IFC taint join
+    for model routing is queried from the coordinator
+    (`/api/internal/agent-label`). Full state externalization
+    (Redis or equivalent) is future work.
+  - Verify with the two-replica e2e scenario: create the team on
+    replica 0, message/collect on replica 1:
+    `python3 examples/kubernetes/e2e-driver.py --endpoint
+    http://localhost:19315/mcp --second-endpoint
+    http://localhost:19316/mcp --token <token>`
+    (port-forward `pod/navra-gateway-0` and `pod/navra-gateway-1`).
 - **No local model runtime**: the image is the gateway only. Point
   `[models.*]` at a remote API or deploy llama.cpp separately.
 - **Model routing applies**: `[model_routing]` and `[model_ifc]`

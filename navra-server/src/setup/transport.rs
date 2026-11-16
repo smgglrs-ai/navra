@@ -15,6 +15,7 @@ pub(crate) struct TransportState {
     pub(crate) approvals: Arc<navra_core::permissions::ApprovalStore>,
     pub(crate) flow_registry: Arc<flow_tools::FlowRegistry>,
     pub(crate) agent_task_api: Arc<crate::agent_task_api::AgentTaskApi>,
+    pub(crate) cluster_role: crate::cluster::ClusterRole,
     pub(crate) resolved_flow_dirs: Vec<String>,
     pub(crate) models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     pub(crate) trigger_webhook_router: Option<axum::Router>,
@@ -262,6 +263,7 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
         &state.cfg,
         &server,
         Arc::clone(&state.agent_task_api),
+        state.cluster_role.coordinator_url().map(String::from),
         &state.models,
         ollama_fallback.as_deref(),
         Some(ui_broadcaster),
@@ -270,6 +272,23 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
         Arc::clone(&config_state),
         config_path,
     );
+
+    // Worker replicas: intercept coordinator-owned traffic and
+    // proxy it verbatim (team/flow tool calls on /mcp, and the
+    // agent task API). Everything else is served from local state.
+    let router = if let crate::cluster::ClusterRole::Worker { coordinator_url } =
+        &state.cluster_role
+    {
+        let coordinator_url = coordinator_url.clone();
+        router.layer(axum::middleware::from_fn(move |req, next| {
+            let coordinator_url = coordinator_url.clone();
+            async move {
+                crate::cluster::coordinator_forwarding_middleware(coordinator_url, req, next).await
+            }
+        }))
+    } else {
+        router
+    };
 
     tracing::info!(
         "Web UI at http://localhost:{}",

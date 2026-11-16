@@ -122,6 +122,21 @@ pub struct ServerConfig {
     /// Falls back to cold-create when the pool is drained.
     #[serde(default)]
     pub kubernetes_warm_pool: Option<String>,
+    /// Cluster role for multi-replica deployments (NAVRA-194):
+    /// "standalone" (default), "coordinator", "worker", or "auto"
+    /// (StatefulSet ordinal-based: pod {cluster_statefulset}-0 is
+    /// the coordinator, higher ordinals are workers using
+    /// NAVRA_COORDINATOR_URL).
+    #[serde(default)]
+    pub cluster_role: Option<String>,
+    /// StatefulSet name for cluster_role = "auto" role detection.
+    #[serde(default)]
+    pub cluster_statefulset: Option<String>,
+    /// Coordinator base URL for cluster_role = "worker" (the
+    /// NAVRA_COORDINATOR_URL environment variable is an alternative
+    /// source; workers in "auto" mode require it).
+    #[serde(default)]
+    pub coordinator_url: Option<String>,
     /// Cedar action dispatch version. 1 (default) dispatches bare
     /// tool names as Cedar actions (compatibility). 2 namespaces
     /// upstream tool calls under the modeled

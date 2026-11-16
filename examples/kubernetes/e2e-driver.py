@@ -81,12 +81,26 @@ def tool_text(result):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--endpoint", required=True, help="MCP endpoint URL")
+    ap.add_argument(
+        "--second-endpoint",
+        help=(
+            "second replica's MCP endpoint for the multi-replica scenario: "
+            "the team is created on --endpoint (coordinator) and messaged/"
+            "polled/collected on --second-endpoint (worker), proving "
+            "coordinator-owned state forwards across replicas (NAVRA-194)"
+        ),
+    )
     ap.add_argument("--token", required=True, help="navra agent token")
     ap.add_argument("--model", default="qwen2.5:0.5b", help="teammate model")
     ap.add_argument("--task", default="Say hello and report the single word: ready")
     ap.add_argument("--poll-secs", type=int, default=5, help="status poll interval")
     ap.add_argument("--timeout-secs", type=int, default=300, help="overall timeout")
     args = ap.parse_args()
+
+    # In the two-replica scenario the coordinator endpoint owns team
+    # creation; the worker endpoint drives the rest.
+    create_endpoint = args.endpoint
+    work_endpoint = args.second_endpoint or args.endpoint
 
     init = post(
         args.endpoint,
@@ -105,8 +119,26 @@ def main():
     server = init.get("result", {}).get("serverInfo", {})
     print(f"initialize: {server.get('name')} v{server.get('version')}")
     post(args.endpoint, args.token, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+    if args.second_endpoint:
+        post(
+            args.second_endpoint,
+            args.token,
+            {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2026-07-28",
+                    "capabilities": {},
+                    "clientInfo": {"name": "e2e-driver", "version": "0"},
+                },
+            },
+        )
+        post(args.second_endpoint, args.token,
+             {"jsonrpc": "2.0", "method": "notifications/initialized"})
+        print(f"two-replica mode: create on {args.endpoint}, work on {args.second_endpoint}")
 
-    r = call(args.endpoint, args.token, "team_create", {"name": "e2e"})
+    r = call(create_endpoint, args.token, "team_create", {"name": "e2e"})
     m = re.search(r"team_id:\s*(\S+)", tool_text(r))
     if not m:
         print(f"team_create failed: {tool_text(r)}", file=sys.stderr)
@@ -114,21 +146,21 @@ def main():
     team_id = m.group(1)
     print(f"team_id: {team_id}")
 
-    r = call(args.endpoint, args.token, "team_add",
+    r = call(create_endpoint, args.token, "team_add",
              {"team_id": team_id, "name": "worker", "model": args.model, "locality": "local"})
     if '"isError": true' in json.dumps(r):
         print(f"team_add failed: {tool_text(r)}", file=sys.stderr)
         sys.exit(1)
     print("team_add: worker added")
 
-    r = call(args.endpoint, args.token, "team_message",
+    r = call(work_endpoint, args.token, "team_message",
              {"team_id": team_id, "to": "worker", "message": args.task}, timeout=60)
     print(f"team_message: {tool_text(r).splitlines()[0]}")
 
     deadline = time.time() + args.timeout_secs
     while time.time() < deadline:
         time.sleep(args.poll_secs)
-        r = call(args.endpoint, args.token, "team_status", {"team_id": team_id})
+        r = call(work_endpoint, args.token, "team_status", {"team_id": team_id})
         raw = tool_text(r)
         try:
             mates = json.loads(raw).get("teammates", [])
@@ -139,7 +171,7 @@ def main():
         except (json.JSONDecodeError, KeyError, IndexError):
             pass
 
-    r = call(args.endpoint, args.token, "team_result",
+    r = call(work_endpoint, args.token, "team_result",
              {"team_id": team_id, "teammate": "worker"})
     raw = tool_text(r)
     try:

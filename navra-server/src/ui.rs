@@ -115,6 +115,7 @@ pub(crate) fn attach_ui_routes(
     cfg: &config::Config,
     server: &Arc<navra_core::McpServer>,
     agent_api: std::sync::Arc<crate::agent_task_api::AgentTaskApi>,
+    coordinator_url: Option<String>,
     models: &std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     ollama_fallback_model: Option<&str>,
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
@@ -343,6 +344,46 @@ pub(crate) fn attach_ui_routes(
                             )
                                 .into_response(),
                         }
+                    }
+                },
+            )
+        })
+
+        // --- API: internal — IFC agent label (NAVRA-194) ---
+        // Worker replicas query the coordinator's session store for
+        // an agent's lattice-joined context taint (feeds IFC model
+        // routing at the worker's /v1 proxy). Authenticated with
+        // the original caller's token, passed through by the worker.
+        .route("/internal/agent-label", {
+            let server = Arc::clone(server);
+            axum::routing::get(
+                move |headers: axum::http::HeaderMap,
+                      axum::extract::Query(params): axum::extract::Query<
+                        std::collections::HashMap<String, String>,
+                      >| {
+                    let server = server.clone();
+                    async move {
+                        if server.authenticator().authenticate(&headers).is_err() {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                axum::Json(serde_json::json!({"error": "unauthorized"})),
+                            )
+                                .into_response();
+                        }
+                        let agent = match params.get("agent") {
+                            Some(a) if !a.is_empty() => a,
+                            _ => {
+                                return (
+                                    axum::http::StatusCode::BAD_REQUEST,
+                                    axum::Json(serde_json::json!({
+                                        "error": "missing agent parameter"
+                                    })),
+                                )
+                                    .into_response();
+                            }
+                        };
+                        let label = server.sessions().agent_context_label(agent);
+                        axum::Json(label).into_response()
                     }
                 },
             )
@@ -760,6 +801,7 @@ pub(crate) fn attach_ui_routes(
     let proxy_models: std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>> =
         models.clone();
     let proxy_gcp_tokens: Option<Arc<GcpTokenCache>> = GcpTokenCache::from_adc();
+    let proxy_coordinator_url = coordinator_url.clone();
     let v1_router = axum::Router::new()
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .route(
@@ -774,6 +816,7 @@ pub(crate) fn attach_ui_routes(
                     let gcp = proxy_gcp_tokens.clone();
                     let session_router = proxy_session_router.clone();
                     let ifc_config = proxy_ifc.clone();
+                    let coordinator_url = proxy_coordinator_url.clone();
                     async move {
                         let start = std::time::Instant::now();
                         let Some(_backend) = backend else {
@@ -819,7 +862,20 @@ pub(crate) fn attach_ui_routes(
                         //    quoted in assistant messages that the
                         //    content scan cannot see, and works even
                         //    with no safety pipeline configured.
-                        let agent_taint = srv.sessions().agent_context_label(agent_name);
+                        //    Worker replicas query the coordinator so
+                        //    the join sees sessions from all replicas
+                        //    (NAVRA-194); on failure they fall back
+                        //    to their local (partial) view.
+                        let agent_taint = match coordinator_url.as_deref() {
+                            Some(url) => {
+                                crate::cluster::remote_agent_label(url, &headers, agent_name)
+                                    .await
+                                    .unwrap_or_else(|| {
+                                        srv.sessions().agent_context_label(agent_name)
+                                    })
+                            }
+                            None => srv.sessions().agent_context_label(agent_name),
+                        };
                         let taint_sensitive =
                             agent_taint.confidentiality >= navra_core::ifc::Confidentiality::Sensitive;
                         let mut ifc_sensitive = taint_sensitive;
@@ -1913,6 +1969,7 @@ mod tests {
             &cfg,
             &server,
             test_agent_api(),
+            None,
             &models,
             Some("stub"),
             None,
@@ -2075,6 +2132,7 @@ mod tests {
             cfg,
             &server,
             test_agent_api(),
+            None,
             &models,
             Some("stub"),
             None,
@@ -2593,6 +2651,7 @@ mod tests {
             &cfg,
             &server,
             agent_api,
+            None,
             &test_models(),
             Some("stub"),
             None,
@@ -2731,6 +2790,79 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn internal_agent_label_serves_session_taint() {
+        // The /v1 proxy on a worker replica queries this endpoint to
+        // join IFC taint across replicas (NAVRA-194).
+        use navra_core::identity::CapSigner as _;
+        let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
+        let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
+            Box::new(Arc::clone(&signer)),
+            std::time::Duration::from_secs(3600),
+        );
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+
+        // Seed a session with a non-default label for agent "tester".
+        let label = navra_core::protocol::label::DataLabel {
+            integrity: navra_core::protocol::label::Integrity::Untrusted,
+            confidentiality: navra_core::protocol::label::Confidentiality::Sensitive,
+        };
+        server.sessions().create(navra_core::session::Session {
+            id: "s1".to_string(),
+            agent: navra_auth::auth::AgentIdentity::new("tester", "dev"),
+            client_info: Default::default(),
+            initialized: true,
+            context_label: label,
+            created_at: 0,
+            last_accessed: 0,
+        });
+
+        let cfg = test_config();
+        let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
+        let router = attach_ui_routes(
+            axum::Router::new(),
+            &cfg,
+            &server,
+            test_agent_api(),
+            None,
+            &test_models(),
+            Some("stub"),
+            None,
+            None,
+            None,
+            config_state,
+            std::path::PathBuf::from("/tmp/navra-test-config.json"),
+        );
+
+        // Mint a token so the internal endpoint authorizes the query.
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec!["read".to_string()],
+            tools: vec![],
+            credentials: vec![],
+        };
+        let payload = navra_core::auth::capability::build_payload(
+            signer.did(),
+            "did:root:human",
+            cap,
+            2,
+            3600,
+        );
+        let token = navra_core::auth::capability::encode_token(&payload, signer.as_ref()).unwrap();
+
+        let (status, json) = request_with_token(
+            &router,
+            "GET",
+            "/api/internal/agent-label?agent=tester",
+            Some(&token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["integrity"], "Untrusted");
+        assert_eq!(json["confidentiality"], "Sensitive");
     }
 
     #[tokio::test]
