@@ -1413,6 +1413,34 @@ async fn serve_inner(
     )
     .await;
 
+    // Ensure the warm-pool bootstrap token Secret exists at startup,
+    // so the pool's SandboxTemplate can start pods before the first
+    // claim (claims re-apply it to keep it current). Failure is
+    // non-fatal: cold-create still works.
+    if let Some(ns) = cfg.server.kubernetes_namespace.as_ref()
+        && let Some(ref pool) = cfg.server.kubernetes_warm_pool
+    {
+        let k8s = agent_spawn::KubernetesAgentConfig {
+            namespace: ns.clone(),
+            context: cfg.server.kubernetes_context.clone(),
+            gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+            warm_pool: Some(pool.clone()),
+        };
+        let signer = Arc::clone(&root_signer);
+        let root_payload = agent_task_api.root_payload.clone();
+        tokio::spawn(async move {
+            if let Err(e) =
+                agent_spawn::ensure_pool_bootstrap_secret(&k8s, pool, &signer, &root_payload).await
+            {
+                tracing::warn!(
+                    pool = %pool,
+                    error = %e,
+                    "Warm-pool bootstrap secret ensure failed at startup"
+                );
+            }
+        });
+    }
+
     // --- Knowledge memory tools ---
     let pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>> =
         Some(Arc::new(navra_core::safety::PiiMetrics::new()));

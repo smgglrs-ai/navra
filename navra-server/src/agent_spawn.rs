@@ -950,24 +950,19 @@ async fn kubectl_apply_manifest(
     Ok(())
 }
 
-/// Claim a pre-warmed Sandbox from the warm pool for a teammate.
+/// Ensure the pool bootstrap-token Secret exists. Long-lived (90d)
+/// low-privilege identity: no operations, no tools — it only
+/// authenticates the task poll; the fresh per-teammate token is
+/// minted at adoption.
 ///
-/// Ensures the pool bootstrap-token Secret exists (so the pool's
-/// template can authenticate adopted pods), applies a SandboxClaim,
-/// waits briefly for it to be fulfilled, and returns the adopted
-/// Sandbox name. On failure the claim is deleted and the error is
-/// returned — the caller falls back to cold-create.
-async fn claim_warm_sandbox(
+/// Called at gateway startup (so the pool's SandboxTemplate can
+/// start pods before any claim) and re-applied on every claim.
+pub(crate) async fn ensure_pool_bootstrap_secret(
     k8s: &KubernetesAgentConfig,
     pool: &str,
-    claim_name: &str,
     signer: &std::sync::Arc<navra_core::identity::Ed25519Signer>,
     root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
-) -> Result<String, String> {
-    // 1. Ensure the pool bootstrap token secret. Long-lived (90d)
-    //    low-privilege identity: no operations, no tools — it only
-    //    authenticates the task poll; the fresh per-teammate token
-    //    is minted at adoption.
+) -> Result<(), String> {
     let pool_did = format!("did:pool:{pool}");
     let bootstrap_token = mint_teammate_token(
         root_payload.as_ref(),
@@ -982,7 +977,23 @@ async fn claim_warm_sandbox(
         k8s,
         &build_pool_token_secret_manifest(&secret_name, &bootstrap_token),
     )
-    .await?;
+    .await
+}
+
+/// Claim a pre-warmed Sandbox from the warm pool for a teammate.
+///
+/// Applies a SandboxClaim, waits briefly for it to be fulfilled, and
+/// returns the adopted Sandbox name. On failure the claim is deleted
+/// and the error is returned — the caller falls back to cold-create.
+async fn claim_warm_sandbox(
+    k8s: &KubernetesAgentConfig,
+    pool: &str,
+    claim_name: &str,
+    signer: &std::sync::Arc<navra_core::identity::Ed25519Signer>,
+    root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
+) -> Result<String, String> {
+    // 1. Keep the pool bootstrap token secret current.
+    ensure_pool_bootstrap_secret(k8s, pool, signer, root_payload).await?;
 
     // 2. Apply the claim.
     kubectl_apply_manifest(k8s, &build_sandbox_claim_manifest(claim_name, pool)).await?;
