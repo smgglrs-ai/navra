@@ -25,7 +25,10 @@
 //! per-spawn env, and how tasks are redelivered after a pod
 //! restart. In poll mode the task, model name, persona, and
 //! iteration cap come from the task spec; env values (if set) take
-//! precedence.
+//! precedence. When `NAVRA_SANDBOX_NAME` is set (downward API in
+//! the warm-pool SandboxTemplate), it is sent as `X-Navra-Sandbox`
+//! so the gateway can route warm-pool adoption to the right
+//! teammate and mint a fresh token.
 
 use std::env;
 use std::path::Path;
@@ -77,6 +80,11 @@ fn api_url(endpoint: &str, path: &str) -> String {
 /// null task means the teammate exists but has not been messaged
 /// yet — keep polling. 404 is also retried (the teammate may not be
 /// registered at the gateway yet). Auth failures are fatal.
+///
+/// When `NAVRA_SANDBOX_NAME` is set (downward API in the warm-pool
+/// SandboxTemplate), it is sent as the `X-Navra-Sandbox` header so
+/// the gateway can map this pod to the teammate registered for the
+/// adopted sandbox and mint a fresh token (warm-pool adoption).
 async fn fetch_task_spec(endpoint: &str, token: Option<&str>) -> Result<TaskSpec, String> {
     let url = api_url(endpoint, "/api/agent/task");
     let client = reqwest::Client::builder()
@@ -90,11 +98,15 @@ async fn fetch_task_spec(endpoint: &str, token: Option<&str>) -> Result<TaskSpec
             .unwrap_or(600),
     );
     let started = std::time::Instant::now();
+    let sandbox_name = env::var("NAVRA_SANDBOX_NAME").ok();
 
     loop {
         let mut req = client.get(&url);
         if let Some(t) = token {
             req = req.bearer_auth(t);
+        }
+        if let Some(ref s) = sandbox_name {
+            req = req.header("x-navra-sandbox", s);
         }
         let resp = req
             .send()
