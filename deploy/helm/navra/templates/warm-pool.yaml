@@ -1,0 +1,82 @@
+# Warm pool of pre-warmed navra-agent Sandboxes (NAVRA-195).
+#
+# The pool keeps warmPool.replicas idle agent pods ready; on
+# teammate spawn the gateway creates a SandboxClaim that adopts the
+# next warm Sandbox, and the adopted pod polls GET /api/agent/task
+# for its task, model assignment, and a fresh per-teammate token.
+# The {pool}-bootstrap-token Secret is created by the gateway
+# itself (at startup and on every claim) — do not create it
+# manually.
+#
+# networkPolicyManagement: Unmanaged — under OVN-Kubernetes the
+# controller's Managed policy breaks cluster DNS for sandbox pods
+# regardless of allow rules (see NAVRA-196); Unmanaged matches the
+# cold-create Sandbox posture.
+{{- if .Values.warmPool.enabled }}
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: {{ include "navra.warmPoolName" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  networkPolicyManagement: Unmanaged
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "navra.name" . }}-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure  # task redelivery on crash via the poll endpoint
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: {{ include "navra.agentImage" . }}
+          # The tag is mutable — always pull (stale cached images
+          # under IfNotPresent caused silent old-code runs).
+          imagePullPolicy: {{ .Values.warmPool.image.pullPolicy }}
+          env:
+            # Per-deployment constants — everything per-spawn comes
+            # from the task endpoint.
+            - name: NAVRA_ENDPOINT
+              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/mcp
+            - name: NAVRA_MODEL_ENDPOINT
+              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
+            # Pool bootstrap token (minted by the gateway)
+            - name: NAVRA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "navra.warmPoolName" . }}-bootstrap-token
+                  key: token
+            # Identity for warm-pool adoption: the gateway maps the
+            # adopted Sandbox to the teammate registered for it.
+            - name: NAVRA_SANDBOX_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Warm pods may wait a long time before being claimed.
+            - name: NAVRA_TASK_POLL_TIMEOUT_SECS
+              value: "3600"
+          resources:
+            {{- toYaml .Values.warmPool.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: {{ include "navra.warmPoolName" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.warmPool.replicas }}
+  sandboxTemplateRef:
+    name: {{ include "navra.warmPoolName" . }}
+{{- end }}

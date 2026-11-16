@@ -1,0 +1,99 @@
+# navra gateway Helm chart values.
+#
+# Multiple deployments: every resource is release-scoped (the
+# release name prefixes all names, the release namespace hosts
+# them), so `helm install staging ... -n navra-staging` and
+# `helm install prod ... -n navra-prod` coexist in one cluster.
+# Each deployment is an independent trust domain — its own root
+# identity (delegated tokens do not verify across deployments),
+# teams, sessions, and warm pool. Separate namespaces are the
+# cleanest tenant boundary; same-namespace releases also work but
+# each keeps its own pool of idle agent pods.
+#
+# Prerequisite (cluster-scoped, install once — NOT per release):
+# the kubernetes-sigs/agent-sandbox controller with extensions:
+#   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox-with-extensions.yaml
+
+# Replicas of the gateway StatefulSet. Pod 0 is the coordinator
+# (team/flow state, teammate spawning); pods 1+ are stateless
+# workers (NAVRA-194). 1 = single-instance.
+replicas: 2
+
+image:
+  registry: ""
+  repository: ghcr.io/smgglrs-ai/navra-server
+  tag: latest
+  # The tag is mutable (CI re-pushes it) — always pull.
+  pullPolicy: Always
+  pullSecrets: []
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: "2"
+
+storage:
+  # Per-replica PVC (volumeClaimTemplates). The coordinator's volume
+  # holds the authoritative stores; worker volumes hold local
+  # scratch (see deploy/k8s README, multi-replica notes).
+  size: 5Gi
+  # className: "" (cluster default)
+
+# Root identity for delegated capability tokens. All replicas of
+# THIS deployment share the seed (mounted at /identity). Each
+# deployment gets its own — tokens do not verify across
+# deployments.
+identity:
+  # Generate a random 32-byte seed in a Secret on first install.
+  # Set false + existingSecret to bring your own.
+  create: true
+  existingSecret: ""
+
+# Pre-warmed teammate agent pool (NAVRA-195). The gateway claims
+# from it on teammate spawn (kubernetes_warm_pool is wired
+# automatically); falls back to cold-create when drained.
+warmPool:
+  enabled: true
+  # Idle agent pods kept ready; size for expected concurrent
+  # teammates.
+  replicas: 2
+  image:
+    registry: ""
+    repository: ghcr.io/smgglrs-ai/navra-agent
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 2Gi
+      cpu: "2"
+
+# Gateway [server] settings managed by the chart. Only tcp is
+# exposed; the kubernetes wiring, cluster role, and identity path
+# are derived from the release automatically.
+server:
+  tcp: "0.0.0.0:9315"
+
+# The [server] section is chart-managed (tcp, kubernetes wiring,
+# cluster role, identity path). Application config — models,
+# permissions, agents — goes here as TOML, appended verbatim:#
+#   extraConfig: |
+#     [models."qwen2.5:0.5b"]
+#     task = "chat"
+#     base_url = "http://my-ollama:11434"
+#     model_name = "qwen2.5:0.5b"
+#     locality = "local"
+#
+#     [permissions.dev]
+#     operations = ["read", "search", "list"]
+#
+#     [[agents]]
+#     name = "lead"
+#     token_hash = "<blake3 of your token>"
+#     permissions = "dev"
+extraConfig: ""

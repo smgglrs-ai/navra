@@ -1,0 +1,34 @@
+navra gateway {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+{{- if gt (int .Values.replicas) 1 }}
+
+Multi-replica topology ({{ .Values.replicas }} pods):
+  - {{ include "navra.fullname" . }}-0 is the coordinator (team/flow state, spawning)
+  - {{ include "navra.fullname" . }}-1+ are workers (forward coordinator-owned calls)
+{{- end }}
+{{- if .Values.warmPool.enabled }}
+
+Warm pool: {{ include "navra.warmPoolName" . }} ({{ .Values.warmPool.replicas }} pre-warmed agent Sandboxes)
+{{- end }}
+
+Connect:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "navra.fullname" . }} 9315:9315
+  # MCP endpoint: http://localhost:9315/mcp
+  # Model proxy:   http://localhost:9315/v1/chat/completions
+
+Verify teammate spawning end-to-end:
+  python3 examples/kubernetes/e2e-driver.py \
+    --endpoint http://localhost:9315/mcp \
+    --token <agent-token-from-extraConfig>
+{{- if gt (int .Values.replicas) 1 }}
+  # Two-replica scenario (create on the coordinator, work on a worker):
+  kubectl -n {{ .Release.Namespace }} port-forward pod/{{ include "navra.fullname" . }}-0 19315:9315 &
+  kubectl -n {{ .Release.Namespace }} port-forward pod/{{ include "navra.fullname" . }}-1 19316:9315 &
+  python3 examples/kubernetes/e2e-driver.py \
+    --endpoint http://localhost:19315/mcp \
+    --second-endpoint http://localhost:19316/mcp \
+    --token <agent-token>
+{{- end }}
+
+Prerequisite check (cluster-scoped, once per cluster):
+  kubectl get crd sandboxclaims.extensions.agents.x-k8s.io

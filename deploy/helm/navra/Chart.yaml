@@ -1,0 +1,13 @@
+apiVersion: v2
+name: navra
+description: |
+  navra gateway: secure agentic AI framework and MCP gateway.
+  Deploys a multi-replica coordinator/worker StatefulSet (NAVRA-194)
+  with an optional SandboxWarmPool of pre-warmed teammate agent
+  Sandboxes (NAVRA-195).
+type: application
+version: 0.1.0
+appVersion: "0.5.0"
+home: https://github.com/smgglrs-ai/navra
+sources:
+  - https://github.com/smgglrs-ai/navra

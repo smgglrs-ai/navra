@@ -1,0 +1,132 @@
+# navra gateway: coordinator/worker StatefulSet (NAVRA-194) + Services.
+#
+# Pod 0 is the coordinator (TeamRegistry, flows, teammate spawning,
+# authoritative session taint); pods 1+ are workers forwarding
+# coordinator-owned tool calls and the agent task API over the
+# headless Service, preserving caller credentials. NAVRA_COORDINATOR_URL
+# is uniform on all pods; in cluster_role = "auto" the coordinator
+# (ordinal 0) ignores it.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "navra.fullname" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "navra.fullname" . }}-headless
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "navra.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "navra.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "navra.fullname" . }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gateway
+          image: {{ include "navra.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--config", "/config/config.toml"]
+          env:
+            - name: NAVRA_COORDINATOR_URL
+              value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:9315
+          ports:
+            - name: mcp
+              containerPort: 9315
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: identity
+              mountPath: /identity
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "navra.fullname" . }}
+        - name: identity
+          secret:
+            secretName: {{ if .Values.identity.create }}{{ include "navra.fullname" . }}-identity{{ else }}{{ .Values.identity.existingSecret }}{{ end }}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "navra.selectorLabels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.storage.className }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.storage.size }}
+---
+# Client-facing Service: load-balances across all replicas. MCP
+# clients and teammate Sandboxes resolve the gateway here. The name
+# is what kubernetes_gateway_service points at (rendered into the
+# ConfigMap automatically).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "navra.fullname" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "navra.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mcp
+      port: 9315
+      targetPort: mcp
+---
+# Headless Service: stable per-pod DNS for the coordinator URL
+# ({fullname}-0.{fullname}-headless.{namespace}.svc).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "navra.fullname" . }}-headless
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "navra.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mcp
+      port: 9315
+      targetPort: mcp

@@ -1,0 +1,30 @@
+# The gateway config.toml. The [server] section is chart-managed:
+# kubernetes wiring, cluster role (NAVRA-194 auto ordinal
+# detection), and the shared root identity path. Application config
+# (models, permissions, agents) is appended verbatim from
+# .Values.extraConfig.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "navra.fullname" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+data:
+  config.toml: |
+    [server]
+    tcp = "{{ .Values.server.tcp | default "0.0.0.0:9315" }}"
+    kubernetes_namespace = "{{ .Release.Namespace }}"
+    kubernetes_gateway_service = "{{ include "navra.fullname" . }}"
+    {{- if .Values.warmPool.enabled }}
+    kubernetes_warm_pool = "{{ include "navra.warmPoolName" . }}"
+    {{- end }}
+    cluster_role = "auto"
+    cluster_statefulset = "{{ include "navra.fullname" . }}"
+    agent_image = "{{ include "navra.agentImage" . }}"
+
+    [server.identity]
+    key_path = "/identity/identity.key"
+    {{- if .Values.extraConfig }}
+
+    {{- .Values.extraConfig | nindent 4 }}
+    {{- end }}

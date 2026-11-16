@@ -1,31 +1,19 @@
-# RBAC for the navra gateway's Kubernetes teammate spawning.
-#
-# The gateway applies agents.x-k8s.io/v1beta1 Sandbox resources,
-# waits on their Ready/Finished conditions, and collects logs from
-# the backing Pods (named after the Sandbox). Everything is scoped
-# to the navra namespace — the gateway cannot touch workloads
-# anywhere else.
-#
-# Requires the kubernetes-sigs/agent-sandbox controller (v1.0+):
-#   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: navra-gateway
-  namespace: navra
----
+# RBAC for the gateway's Kubernetes teammate spawning. Everything is
+# namespaced and release-scoped — the gateway can only touch
+# Sandboxes, SandboxClaims, Secrets, and Pod status/logs in its own
+# release namespace.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: navra-gateway
-  namespace: navra
+  name: {{ include "navra.fullname" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes"]
     verbs: ["create", "get", "list", "watch", "delete", "patch"]
   # Warm-pool teammate spawning (NAVRA-195): SandboxClaims adopt
-  # pre-warmed Sandboxes from a SandboxWarmPool. Requires the
-  # agent-sandbox extensions CRDs (sandbox-with-extensions.yaml).
+  # pre-warmed Sandboxes from a SandboxWarmPool.
   - apiGroups: ["extensions.agents.x-k8s.io"]
     resources: ["sandboxclaims"]
     verbs: ["create", "get", "list", "watch", "delete", "patch"]
@@ -49,13 +37,14 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: navra-gateway
-  namespace: navra
+  name: {{ include "navra.fullname" . }}
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
 subjects:
   - kind: ServiceAccount
-    name: navra-gateway
-    namespace: navra
+    name: {{ include "navra.fullname" . }}
+    namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role
-  name: navra-gateway
+  name: {{ include "navra.fullname" . }}
   apiGroup: rbac.authorization.k8s.io
