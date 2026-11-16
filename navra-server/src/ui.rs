@@ -72,6 +72,20 @@ impl GcpTokenCache {
     }
 }
 
+/// Parse a teammate identity from an authenticated did.
+///
+/// Teammate delegated tokens carry `did:teammate:{team}:{teammate}`
+/// as their subject (see the spawn paths in `agent_spawn.rs`).
+/// Returns `(team_id, teammate_id)`.
+fn teammate_from_did(did: Option<&str>) -> Option<(&str, &str)> {
+    let rest = did?.strip_prefix("did:teammate:")?;
+    let (team, mate) = rest.split_once(':')?;
+    if team.is_empty() || mate.is_empty() {
+        return None;
+    }
+    Some((team, mate))
+}
+
 /// Axum middleware that authenticates requests against the MCP server's
 /// authenticator. Applied as a route layer on all `/api/*` routes.
 async fn auth_middleware(
@@ -100,6 +114,7 @@ pub(crate) fn attach_ui_routes(
     router: axum::Router,
     cfg: &config::Config,
     server: &Arc<navra_core::McpServer>,
+    team_registry: std::sync::Arc<crate::team_tools::TeamRegistry>,
     models: &std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     ollama_fallback_model: Option<&str>,
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
@@ -230,6 +245,91 @@ pub(crate) fn attach_ui_routes(
 
     // Build the API router with auth middleware applied to all routes
     let api_router = axum::Router::new()
+        // --- API: Teammate task delivery (NAVRA-195) ---
+        // Warm-pool pods and restarted teammates fetch their task
+        // spec here instead of receiving it baked into env. The
+        // caller authenticates with its delegated capability token;
+        // the did identifies the teammate.
+        .route("/agent/task", {
+            let server = Arc::clone(server);
+            let reg = team_registry.clone();
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
+                let server = server.clone();
+                let reg = reg.clone();
+                async move {
+                    let agent = match server.authenticator().authenticate(&headers) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                axum::Json(serde_json::json!({"error": "unauthorized"})),
+                            )
+                                .into_response();
+                        }
+                    };
+                    match teammate_from_did(agent.did.as_deref()) {
+                        Some((team, mate)) => match reg.task_spec(team, mate) {
+                            Some(spec) => axum::Json(spec).into_response(),
+                            None => (
+                                axum::http::StatusCode::NOT_FOUND,
+                                axum::Json(serde_json::json!({
+                                    "error": "unknown team or teammate"
+                                })),
+                            )
+                                .into_response(),
+                        },
+                        None => (
+                            axum::http::StatusCode::FORBIDDEN,
+                            axum::Json(serde_json::json!({
+                                "error": "not a teammate identity"
+                            })),
+                        )
+                            .into_response(),
+                    }
+                }
+            })
+        })
+        // --- API: Teammate result publishing (NAVRA-194/195) ---
+        // Teammates POST their final result here instead of relying
+        // on the spawning replica collecting pod logs — this is what
+        // makes result collection work across replicas.
+        .route("/agent/result", {
+            let server = Arc::clone(server);
+            let reg = team_registry.clone();
+            axum::routing::post(
+                move |headers: axum::http::HeaderMap,
+                      axum::Json(body): axum::Json<serde_json::Value>| {
+                    let server = server.clone();
+                    let reg = reg.clone();
+                    async move {
+                        let agent = match server.authenticator().authenticate(&headers) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    axum::Json(serde_json::json!({"error": "unauthorized"})),
+                                )
+                                    .into_response();
+                            }
+                        };
+                        match teammate_from_did(agent.did.as_deref()) {
+                            Some((team, mate)) => {
+                                reg.submit_result(team, mate, &body);
+                                axum::Json(serde_json::json!({"status": "ok"})).into_response()
+                            }
+                            None => (
+                                axum::http::StatusCode::FORBIDDEN,
+                                axum::Json(serde_json::json!({
+                                    "error": "not a teammate identity"
+                                })),
+                            )
+                                .into_response(),
+                        }
+                    }
+                },
+            )
+        })
+
         // --- API: Server status ---
         .route("/status", {
             let models = ui_models.clone();
@@ -1794,6 +1894,7 @@ mod tests {
             base,
             &cfg,
             &server,
+            Arc::new(crate::team_tools::TeamRegistry::default()),
             &models,
             Some("stub"),
             None,
@@ -1947,6 +2048,7 @@ mod tests {
             axum::Router::new(),
             cfg,
             &server,
+            Arc::new(crate::team_tools::TeamRegistry::default()),
             &models,
             Some("stub"),
             None,
@@ -2389,5 +2491,227 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         // Plain-text body — get_json wraps it as {"raw": ...}.
         assert_eq!(json["raw"], "ok");
+    }
+
+    // --- Teammate task-delivery / result endpoints ---
+
+    fn registry_with_teammate() -> Arc<crate::team_tools::TeamRegistry> {
+        let reg = Arc::new(crate::team_tools::TeamRegistry::default());
+        let team = reg
+            .create_team(
+                "test",
+                None,
+                "lead",
+                0,
+                crate::team_tools::TeamBudget::default(),
+            )
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "researcher",
+            Some("analyst"),
+            "granite3.3:8b",
+            "local",
+            vec!["read".to_string()],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.send_message(&team, "researcher", "analyze the dataset")
+            .unwrap();
+        reg
+    }
+
+    /// Router with a real capability authenticator plus a teammate
+    /// token for `did:teammate:team-1:researcher`. Returns the router
+    /// and the minted token.
+    fn build_agent_api_router(
+        registry: Arc<crate::team_tools::TeamRegistry>,
+    ) -> (axum::Router, String, String) {
+        use navra_core::identity::CapSigner as _;
+        let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
+        let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
+            Box::new(Arc::clone(&signer)),
+            std::time::Duration::from_secs(3600),
+        );
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+
+        let mint = |did: &str| {
+            let cap = navra_core::auth::capability::CapabilitySet {
+                paths: vec!["**".to_string()],
+                operations: vec!["read".to_string()],
+                tools: vec![],
+                credentials: vec![],
+            };
+            let payload =
+                navra_core::auth::capability::build_payload(signer.did(), did, cap, 2, 3600);
+            navra_core::auth::capability::encode_token(&payload, signer.as_ref()).unwrap()
+        };
+        let teammate_token = mint("did:teammate:team-1:researcher");
+        let root_token = mint("did:root:human");
+
+        let cfg = test_config();
+        let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
+        let router = attach_ui_routes(
+            axum::Router::new(),
+            &cfg,
+            &server,
+            registry,
+            &test_models(),
+            Some("stub"),
+            None,
+            None,
+            None,
+            config_state,
+            std::path::PathBuf::from("/tmp/navra-test-config.json"),
+        );
+        (router, teammate_token, root_token)
+    }
+
+    async fn request_with_token(
+        router: &axum::Router,
+        method: &str,
+        path: &str,
+        token: Option<&str>,
+        body: Option<serde_json::Value>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut builder = Request::builder().method(method).uri(path);
+        if let Some(t) = token {
+            builder = builder.header("authorization", format!("Bearer {t}"));
+        }
+        let req = match body {
+            Some(b) => builder
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_string(&b).unwrap()))
+                .unwrap(),
+            None => builder.body(Body::empty()).unwrap(),
+        };
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        (status, json)
+    }
+
+    #[tokio::test]
+    async fn agent_task_returns_spec_for_teammate_token() {
+        let reg = registry_with_teammate();
+        let (router, token, _) = build_agent_api_router(reg);
+        let (status, json) =
+            request_with_token(&router, "GET", "/api/agent/task", Some(&token), None).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["task"], "analyze the dataset");
+        assert_eq!(json["model"], "granite3.3:8b");
+        assert_eq!(json["teammate"], "researcher");
+        assert_eq!(json["team_id"], "team-1");
+        assert!(json["max_iterations"].as_u64().is_some());
+    }
+
+    #[tokio::test]
+    async fn agent_task_requires_auth() {
+        let reg = registry_with_teammate();
+        let (router, _, _) = build_agent_api_router(reg);
+        let (status, _) = request_with_token(&router, "GET", "/api/agent/task", None, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn agent_task_rejects_non_teammate_identity() {
+        let reg = registry_with_teammate();
+        let (router, _, root_token) = build_agent_api_router(reg);
+        let (status, json) =
+            request_with_token(&router, "GET", "/api/agent/task", Some(&root_token), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(json["error"].as_str().unwrap().contains("teammate"));
+    }
+
+    #[tokio::test]
+    async fn agent_task_unknown_teammate_is_not_found() {
+        let reg = Arc::new(crate::team_tools::TeamRegistry::default());
+        let (router, token, _) = build_agent_api_router(reg);
+        let (status, _) =
+            request_with_token(&router, "GET", "/api/agent/task", Some(&token), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn agent_result_publishes_output() {
+        let reg = registry_with_teammate();
+        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (status, json) = request_with_token(
+            &router,
+            "POST",
+            "/api/agent/result",
+            Some(&token),
+            Some(serde_json::json!({
+                "output": "final answer",
+                "iterations": 3,
+                "tokens_in": 10,
+                "tokens_out": 5
+            })),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["status"], "ok");
+        assert_eq!(
+            reg.get_teammate_output("team-1", "researcher").as_deref(),
+            Some("final answer")
+        );
+        assert_eq!(
+            reg.get_teammate_status("team-1", "researcher").as_deref(),
+            Some("done")
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_result_prefers_blackboard_findings() {
+        let reg = registry_with_teammate();
+        reg.bb_publish(
+            "team-1",
+            "findings/researcher",
+            "blackboard findings",
+            "researcher",
+            navra_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
+        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (status, _) = request_with_token(
+            &router,
+            "POST",
+            "/api/agent/result",
+            Some(&token),
+            Some(serde_json::json!({"output": "stdout output"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // Blackboard findings win over the posted output, same as
+        // the k8s log-collector.
+        assert_eq!(
+            reg.get_teammate_output("team-1", "researcher").as_deref(),
+            Some("blackboard findings")
+        );
+    }
+
+    #[tokio::test]
+    async fn agent_result_error_marks_failed() {
+        let reg = registry_with_teammate();
+        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (status, _) = request_with_token(
+            &router,
+            "POST",
+            "/api/agent/result",
+            Some(&token),
+            Some(serde_json::json!({"error": "model endpoint unreachable"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            reg.get_teammate_status("team-1", "researcher").as_deref(),
+            Some("failed")
+        );
     }
 }

@@ -48,6 +48,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+reqwest = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
 rusqlite = { workspace = true }

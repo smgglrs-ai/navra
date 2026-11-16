@@ -1549,6 +1549,7 @@ async fn serve_inner(
                     root_signer: Arc::clone(&root_signer),
                     approvals,
                     flow_registry,
+                    team_registry: Arc::clone(&team_registry_ref),
                     resolved_flow_dirs,
                     models,
                     trigger_webhook_router: trigger_webhook_router.take(),

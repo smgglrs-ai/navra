@@ -606,6 +606,85 @@ impl TeamRegistry {
         }
     }
 
+    /// Task spec served to a teammate over the task-delivery endpoint
+    /// (`GET /api/agent/task`). Contains everything the spawn paths
+    /// would otherwise bake into the Sandbox env: the task itself,
+    /// the resolved model, persona, and iteration/temperature
+    /// settings. Endpoints are not included — they are deployment
+    /// constants the pod already knows (pool-baked env).
+    ///
+    /// Returns `None` when the team or teammate is unknown, and a
+    /// spec with `task: null` when no task has been delivered yet
+    /// (the agent should keep polling).
+    pub fn task_spec(&self, team_id: &str, teammate: &str) -> Option<serde_json::Value> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let team = teams.get(team_id)?;
+        let tm = team.teammates.get(teammate)?;
+        Some(serde_json::json!({
+            "team_id": team.team_id,
+            "teammate": tm.name,
+            "task": tm.task,
+            "model": tm.model,
+            "persona": tm.persona,
+            "max_iterations": team.budget.max_iterations,
+            "temperature": tm.temperature,
+            "max_tokens": tm.max_tokens,
+            "status": tm.status,
+        }))
+    }
+
+    /// Accept a teammate result published over HTTP
+    /// (`POST /api/agent/result`). Mirrors the transitions the k8s
+    /// log-collector performs: token accounting, agent metrics, and
+    /// output storage — preferring blackboard `findings/<teammate>`
+    /// over the posted output, exactly like the collector.
+    pub fn submit_result(&self, team_id: &str, teammate: &str, result: &serde_json::Value) {
+        let tokens_in = result
+            .get("tokens_in")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let tokens_out = result
+            .get("tokens_out")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let iterations = result
+            .get("iterations")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
+        let total_tokens = tokens_in.saturating_add(tokens_out);
+
+        self.add_tokens(team_id, total_tokens);
+        self.set_agent_metrics(team_id, teammate, iterations, total_tokens);
+
+        if result
+            .get("error")
+            .and_then(|e| e.as_str())
+            .is_some_and(|e| !e.is_empty())
+        {
+            let error = result["error"].as_str().unwrap_or_default().to_string();
+            self.set_failed(team_id, teammate, error);
+            return;
+        }
+
+        // Prefer blackboard findings over the posted output (same
+        // rule as the k8s collector).
+        let bb_key = format!("findings/{teammate}");
+        let final_output = self.bb_read(team_id, &bb_key).map(|e| e.value).or_else(|| {
+            result
+                .get("output")
+                .and_then(|o| o.as_str())
+                .map(String::from)
+        });
+        match final_output {
+            Some(output) => self.set_output(team_id, teammate, output),
+            None => self.set_failed(
+                team_id,
+                teammate,
+                "Result published without output and no blackboard findings".to_string(),
+            ),
+        }
+    }
+
     pub fn get_status(&self, team_id: &str) -> Option<serde_json::Value> {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         let team = teams.get(team_id)?;

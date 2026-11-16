@@ -210,6 +210,29 @@ containerized agents, the output is either parsed JSON from stdout or
 blackboard findings (the agent can publish results under
 `findings/<name>` as a preferred output channel).
 
+## Task delivery and result publishing
+
+Teammates running as pods do not need their task baked into
+environment variables. The gateway serves two authenticated HTTP
+endpoints that the `navra-agent` binary uses automatically when
+`NAVRA_TASK` is unset:
+
+- `GET /api/agent/task` — returns the teammate's task spec (task,
+  model, persona, iteration cap, temperature). The agent
+  authenticates with its delegated capability token; the gateway
+  resolves the teammate from the token's `did:teammate:{team}:{name}`
+  subject and keeps polling until a task is assigned. This is how
+  pre-warmed Sandboxes receive per-spawn tasks and how tasks are
+  redelivered after a pod restart.
+- `POST /api/agent/result` — publishes the final result (output,
+  iterations, token counts). The gateway applies the same
+  transitions as log-based collection, preferring blackboard
+  `findings/<name>` entries over the posted output.
+
+Endpoints are per-deployment constants the pod already knows
+(`NAVRA_ENDPOINT` and `NAVRA_MODEL_ENDPOINT`); only the task, model
+assignment, and credentials are per-spawn.
+
 ## Blackboard state sharing
 
 The blackboard is a key-value store shared across all teammates in a
