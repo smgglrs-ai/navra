@@ -24,7 +24,56 @@ pub(crate) fn wire_hooks(
     let declass_ledger = Arc::new(navra_core::safety::DeclassificationLedger::new());
     builder = builder.declassification_ledger(Arc::clone(&declass_ledger));
 
-    // --- BudgetHook + SafetyHook ---
+    // --- SafetyHook ---
+    // Registered unconditionally: the safety pipelines configured for
+    // each permission set must not depend on context-budget
+    // enforcement being enabled. Registering any hook at all (this
+    // one, memory extraction, provenance) also switches the gateway
+    // off its legacy direct-pipeline path, so gating safety on
+    // `[budget] max_tool_output_tokens > 0` silently disabled all
+    // post-call filtering for default configs.
+    {
+        let mut safety_hook = navra_core::hooks::SafetyHook::with_ledger(
+            std::collections::HashMap::new(),
+            Arc::clone(&declass_ledger),
+        );
+        for (name, pset) in &cfg.permissions {
+            let pipeline =
+                build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);
+            safety_hook.add_pipeline(name.clone(), pipeline);
+        }
+        builder = builder.hook(safety_hook);
+    }
+
+    // --- Egress endpoint filtering ---
+    {
+        let mut allowed = Vec::new();
+        let mut blocked = Vec::new();
+        let mut deny_all = false;
+        for pset in cfg.permissions.values() {
+            allowed.extend(pset.egress_allowed_domains.iter().cloned());
+            blocked.extend(pset.egress_blocked_domains.iter().cloned());
+            if pset.egress_deny_all_external {
+                deny_all = true;
+            }
+        }
+        if deny_all || !allowed.is_empty() || !blocked.is_empty() {
+            let egress_config = navra_core::hooks::EgressConfig {
+                enabled: true,
+                allowed_domains: allowed,
+                blocked_domains: blocked,
+                deny_all_external: deny_all,
+                block_tainted_egress: true,
+            };
+            builder = builder.hook(navra_core::hooks::EgressFilterHook::new(egress_config));
+            tracing::info!("Egress endpoint filtering enabled from permission config");
+        }
+    }
+
+    // --- Supply chain argument guard ---
+    builder = builder.hook(navra_core::hooks::SupplyChainGuardHook);
+
+    // --- BudgetHook ---
     if cfg.budget.max_tool_output_tokens > 0 {
         use navra_core::hooks::{BudgetHook, TruncationStrategy};
 
@@ -44,46 +93,6 @@ pub(crate) fn wire_hooks(
                 }
             }
         };
-
-        // Build SafetyHook using the shared pipeline builder
-        let mut safety_hook = navra_core::hooks::SafetyHook::with_ledger(
-            std::collections::HashMap::new(),
-            Arc::clone(&declass_ledger),
-        );
-        for (name, pset) in &cfg.permissions {
-            let pipeline =
-                build_safety_pipeline(pset, name, &cfg.models, safety_state, &cfg.canary_tokens);
-            safety_hook.add_pipeline(name.clone(), pipeline);
-        }
-        builder = builder.hook(safety_hook);
-
-        // Egress endpoint filtering
-        {
-            let mut allowed = Vec::new();
-            let mut blocked = Vec::new();
-            let mut deny_all = false;
-            for pset in cfg.permissions.values() {
-                allowed.extend(pset.egress_allowed_domains.iter().cloned());
-                blocked.extend(pset.egress_blocked_domains.iter().cloned());
-                if pset.egress_deny_all_external {
-                    deny_all = true;
-                }
-            }
-            if deny_all || !allowed.is_empty() || !blocked.is_empty() {
-                let egress_config = navra_core::hooks::EgressConfig {
-                    enabled: true,
-                    allowed_domains: allowed,
-                    blocked_domains: blocked,
-                    deny_all_external: deny_all,
-                    block_tainted_egress: true,
-                };
-                builder = builder.hook(navra_core::hooks::EgressFilterHook::new(egress_config));
-                tracing::info!("Egress endpoint filtering enabled from permission config");
-            }
-        }
-
-        // Supply chain argument guard
-        builder = builder.hook(navra_core::hooks::SupplyChainGuardHook);
 
         builder = builder.hook(BudgetHook::new(cfg.budget.max_tool_output_tokens, strategy));
         tracing::info!(
