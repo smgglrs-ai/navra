@@ -21,33 +21,16 @@ metadata:
   name: navra-agent-template
   namespace: navra
 spec:
-  # Without an explicit policy the controller isolates sandbox pods
-  # from all private address space — including the gateway and
-  # cluster DNS, which the agent needs. Allow exactly: egress to the
-  # navra-gateway (MCP + /v1 + task/result endpoints) and cluster
-  # DNS. No ingress — the agent only makes outbound connections.
-  networkPolicy:
-    egress:
-      - to:
-          - podSelector:
-              matchLabels:
-                app.kubernetes.io/name: navra-gateway
-        ports:
-          - port: 9315
-            protocol: TCP
-      - to:
-          # DNS under OVN-Kubernetes: egress policy is evaluated
-          # against the service ClusterIP (service network), which
-          # namespace/pod selectors never match. Allow the service
-          # network on port 53 — OpenShift's default service CIDR.
-          # (OpenShift's DNS pods run in openshift-dns.)
-          - ipBlock:
-              cidr: 172.30.0.0/16
-        ports:
-          - port: 53
-            protocol: UDP
-          - port: 53
-            protocol: TCP
+  # networkPolicyManagement: Unmanaged — the controller's default
+  # "Managed" policy isolates sandbox pods, but under
+  # OVN-Kubernetes the cluster-DNS path (host-punted service
+  # traffic) breaks under egress policy regardless of the allow
+  # rules (verified on OpenShift 4.22 / OVN-K: every combination of
+  # ipBlock/podSelector/namespaceSelector allows on port 53 still
+  # drops DNS). Unmanaged gives warm sandboxes the same network
+  # posture as cold-created Sandboxes (no policy). Revisit with an
+  # OVN-compatible policy (see NAVRA-195 notes).
+  networkPolicyManagement: Unmanaged
   podTemplate:
     metadata:
       labels:
