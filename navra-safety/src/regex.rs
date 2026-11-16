@@ -858,6 +858,18 @@ fn validate_phone_context(content: &str, start: usize, end: usize) -> bool {
     if overlaps_pattern(content, start, end, &UUID_RE) {
         return false;
     }
+    // Bare 10-digit numbers starting with '1' are Unix epoch
+    // timestamps (seconds since 1970 covers 2001–2033). NANP area
+    // codes never start with 1, so these are never valid US phone
+    // numbers — reject them instead of corrupting structured output
+    // like `"created_at": 1763318757`.
+    let matched = &content[start..end];
+    if matched.len() == 10
+        && matched.starts_with('1')
+        && matched.bytes().all(|b| b.is_ascii_digit())
+    {
+        return false;
+    }
     true
 }
 
@@ -1131,6 +1143,17 @@ mod tests {
         let filter = PiiFilter::new();
         let findings = filter.scan("Phone: +1-555-123-4567", &ctx());
         assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn no_phone_in_unix_epoch_timestamp() {
+        let filter = PiiFilter::new();
+        // Bare 10-digit epoch (NANP area codes cannot start with 1)
+        let findings = filter.scan("\"created_at\": 1763318757", &ctx());
+        assert!(
+            findings.iter().all(|f| f.category != "phone"),
+            "epoch timestamp flagged as phone: {findings:?}"
+        );
     }
 
     #[test]
