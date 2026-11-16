@@ -22,6 +22,13 @@ spec:
     metadata:
       labels:
         {{- include "navra.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Force a rollout when the rendered config or identity
+        # changes: the gateway reads config at startup (config_watch
+        # is off), so without this a helm upgrade would leave pods
+        # running the old config until manually restarted.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/identity: {{ include (print $.Template.BasePath "/identity-secret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "navra.fullname" . }}
       {{- with .Values.image.pullSecrets }}
