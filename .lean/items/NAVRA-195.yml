@@ -1,6 +1,6 @@
 id: NAVRA-195
 title: "SandboxWarmPool of pre-warmed teammate agents"
-status: planned
+status: completed
 priority: medium
 effort: 3-5d
 tags: [kubernetes, agent-sandbox, performance]
@@ -46,3 +46,28 @@ notes:
     env-baked model cannot do).
   - Alternatively file the task-endpoint work first as its own
     item if warm pools slip; it unblocks both.
+  - "COMPLETED (2026-11-16, lab SNO)": e2e green via the warm
+    path — team_message → SandboxClaim fulfilled in 0.7s (vs ~30s
+    cold), task delivered on the adopted pod's next 2s poll, fresh
+    per-teammate token minted at adoption and used for MCP + /v1,
+    result published via POST /api/agent/result. Cold-create
+    fallback verified live (claim timeout at 15s when the pool was
+    replenishing → cold spawn completed normally). Gotchas found
+    and fixed along the way, all worth knowing for NAVRA-194:
+    (1) the gateway only created the bootstrap-token Secret lazily
+    at first claim — warm pods need it at pod start, so the gateway
+    now ensures it at startup;
+    (2) imagePullPolicy must be Always (the SNO node caches stale
+    :test images under IfNotPresent);
+    (3) OVN-Kubernetes: the controller's Managed network policy
+    breaks cluster DNS for sandbox pods regardless of allow rules —
+    the host-punted DNS reply path never returns under egress
+    policy (verified with ipBlock/podSelector/namespaceSelector on
+    both service and pod CIDRs + allow-all ingress; TCP to a
+    normal Service passes with a matching rule). The template ships
+    networkPolicyManagement: Unmanaged, same posture as cold
+    Sandboxes. An OVN-compatible isolation policy is future work.
+    Deployment notes: extensions CRDs (sandbox-with-extensions.yaml
+    v1.0.11) applied over the core install without issues; images
+    pushed to the internal registry via the builder SA token
+    (kubectl create token builder -n navra).
