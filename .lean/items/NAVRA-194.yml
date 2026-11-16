@@ -1,6 +1,6 @@
 id: NAVRA-194
 title: "Multi-replica navra gateway"
-status: planned
+status: completed
 priority: high
 effort: 2-3w
 tags: [kubernetes, scaling, state]
@@ -51,3 +51,31 @@ notes:
     Prototype the split first — teams are low-churn."
   - The e2e driver (examples/kubernetes/e2e-driver.py) is the
     validation harness; extend it for the two-replica scenario.
+  - "COMPLETED (2026-11-16, lab SNO) via the coordinator/worker
+    split, no new infrastructure": cluster_role config with auto
+    StatefulSet-ordinal detection (pod 0 coordinates, higher
+    ordinals work). Workers forward coordinator-owned tool calls
+    (team_*/flow_*/agent_signal) and the /api/agent/task|result
+    endpoints to the coordinator VERBATIM — same method, path,
+    headers, body — so the coordinator applies its full
+    auth/ACL/IFC/safety pipeline to the caller's original identity
+    (verified: forwarded team_status/team_result executed on the
+    coordinator as agent=lead). Delegated tokens verify on any
+    replica via a shared root identity (Secret-mounted seed,
+    [server.identity] key_path). Worker /v1 proxies query the
+    coordinator's /api/internal/agent-label for the cross-replica
+    IFC taint join (falls back to the local view on failure).
+    Workers skip triggers and the warm-pool startup ensure.
+    Acceptance verified: two replicas behind one Service both
+    serving MCP and /v1 (worker /v1 exercised directly); team
+    created on replica A, teammate spawned from the warm pool,
+    result collected via replica B; sticky-session requirement
+    documented in deploy/k8s/README.md. e2e-driver --second-endpoint
+    drives the scenario. Known limits / future work: per-replica
+    worker state (sessions/memory/audit) is local scratch — the
+    authoritative taint join covers model routing, not full session
+    externalization (Redis when needed); token revocation lists do
+    not propagate (coordinator-owned revocation or shared store
+    later); worker PVCs hold scratch data (Deployment+emptyDir
+    refactor would avoid the storage cost); OVN-compatible sandbox
+    network isolation still open (see NAVRA-195 notes).

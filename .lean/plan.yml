@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 12 active items
+# 11 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -11,12 +11,6 @@ items:
     priority: high
     effort: 1-2d (navra side) + OpenShell RFC
     feeds: ['NAVRA-179']
-
-  - id: "NAVRA-194"
-    title: "Multi-replica navra gateway"
-    status: planned
-    priority: high
-    effort: 2-3w
 
   - id: "NAVRA-150"
     title: "Contribute rate limiting to rmcp (issue #388)"
