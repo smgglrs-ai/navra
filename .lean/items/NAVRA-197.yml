@@ -1,0 +1,80 @@
+id: NAVRA-197
+title: "Security regression record: safety filters silently disabled under default budget config"
+status: completed
+priority: high
+effort: 1d (fixes; this item is the record)
+tags: [security, safety, testing, incident]
+depends_on: []
+source: found 2026-11-16 while validating the mcp-filesystem container
+relates: |
+  Follows the NAVRA-193 pattern of recording root causes and
+  misdiagnoses. Fixes landed 2026-11-16 in c936a3d3, 085bc593,
+  eb060a30; container fix in 79bf5bbe.
+description: |
+  Incident record, not new work — the fixes are merged. Three
+  compounding failures made navra's safety pipeline a no-op for
+  default configs while the test suite stayed green:
+
+  1. ROOT CAUSE (code): the SafetyHook, EgressFilterHook, and
+     SupplyChainGuardHook were registered inside
+     `if budget.max_tool_output_tokens > 0` in
+     navra-server/src/setup/hooks.rs — and that field defaults to
+     0/disabled. With no [budget] section, no safety hook
+     registered. But memory-extraction and provenance hooks DO
+     register unconditionally, so hooks.has_hooks() was true and
+     the gateway's legacy direct-pipeline fallback
+     (navra-core/src/server/handlers.rs) never ran either. Result:
+     safety = "standard" filtered NOTHING for default configs.
+
+  2. TEST GAP (the reason nobody noticed): the adversarial_eval
+     D10-D15 redaction/detection tests require an upstream
+     filesystem MCP server in a container
+     (localhost/mcp-filesystem). The image was never built on this
+     machine, so read_file returned "Unknown tool" — and since
+     those tests assert the attack is *blocked*, an unknown-tool
+     error satisfied every assertion vacuously. The tests had
+     never been truly green.
+
+  3. LATENT UPSTREAM BUG (surfaced by fix 1): the PiiFilter
+     redacted bare Unix epoch timestamps as US phone numbers
+     ("created_at": 1763318757 → [REDACTED:phone]), corrupting
+     memory tool JSON output once filtering actually ran.
+
+  Fixes:
+  - c936a3d3: register SafetyHook, EgressFilterHook, and
+    SupplyChainGuardHook unconditionally; only BudgetHook stays
+    behind the budget gate.
+  - 79bf5bbe: mcp-filesystem container ships the bun runtime +
+    package layout instead of a bun build --compile single binary
+    (server-filesystem 2.x reads its package.json at runtime,
+    dist/version.js — a compiled binary crashes at startup).
+  - 085bc593: 10-digit numbers starting with '1' are never valid
+    NANP numbers — excluded from the phone pattern as epochs.
+  - eb060a30: the supply-chain guard no longer blocks read-only
+    tools on argument content — a denied read prevents the session
+    from being tainted, silently weakening the IFC write policy
+    (8 ifc_benchmark_e2e regressions surfaced this within minutes
+    of the SafetyHook fix, which is the layered testing working as
+    designed).
+
+notes:
+  - Lesson 1: a hook-registration gate on an unrelated config
+    knob (context budget) silently disabled security filtering.
+    Registration conditions for security-relevant hooks must be
+    reviewed as a unit; the fix keeps only the genuinely
+    budget-specific hook gated.
+  - Lesson 2 (testing): "expected blocked" assertions pass on ANY
+    error, including infrastructure failure. Tests that gate on
+    is_error must verify the error is the EXPECTED error (message
+    or category), or the suite goes green on a broken environment.
+    Worth auditing other *_eval suites for the same pattern —
+    d10-d15 fixed themselves, but no assertion-level hardening was
+    done.
+  - Lesson 3 (discovery method): the vacuous-pass pattern was only
+    visible because a DIFFERENT test suite (ifc_benchmark_e2e,
+    exercised for unrelated reasons) failed in a
+    payload-dependent way. Cross-suite correlation caught what
+    per-suite green did not.
+  - Follow-ups filed: none needed for the safety path itself —
+    full suite green post-fix (e2e 12, adversarial_eval 40,
+    ifc_benchmark_e2e 2, openshell 7, unit 412 as of eaec92ec).

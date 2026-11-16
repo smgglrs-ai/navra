@@ -1,0 +1,77 @@
+id: NAVRA-196
+title: "OVN-compatible network isolation for agent Sandboxes"
+status: planned
+priority: medium
+effort: 2-4d
+tags: [kubernetes, security, network-policy, ovn]
+depends_on: []
+source: NAVRA-195 e2e finding (2026-11-16, lab SNO)
+relates: |
+  agent-sandbox's SandboxTemplate networkPolicy feature
+  (networkPolicyManagement) is unusable under OVN-Kubernetes for
+  any pod that needs cluster DNS. Recorded in NAVRA-195's notes and
+  the deploy/k8s/warm-pool.yaml comment; this item is the
+  follow-through.
+description: |
+  Warm-pool Sandboxes currently ship
+  networkPolicyManagement: Unmanaged — the same open-network
+  posture as cold-created Sandboxes (no policy at all). The
+  controller's Managed policy isolates sandbox pods from all
+  private address space by default, which is the right security
+  posture, but under OVN-Kubernetes (OpenShift 4.22, verified
+  2026-11-16) cluster DNS breaks under it regardless of the allow
+  rules:
+
+  - Every combination of egress allow on port 53 fails:
+    ipBlock for the service CIDR (172.30.0.0/16), ipBlock for the
+    pod CIDR (10.128.0.0/16), and namespaceSelector for
+    openshift-dns (where OpenShift's dns-default pods actually
+    run — not kube-system, and without the upstream
+    k8s-app=kube-dns label).
+  - Allow-all ingress on top of those egress rules changes nothing.
+  - TCP to an ordinary Service (navra-gateway:9315) passes with a
+    matching rule, so the policy mechanism itself works — the
+    failure is specific to the DNS service's reply path.
+  - CoreDNS never logs the query from an isolated pod (packet
+    dropped before the backend), while a non-isolated pod in the
+    same namespace resolves fine.
+
+  Working hypothesis (unverified): OpenShift's DNS service reply
+  path involves the node-resolver/host-network punt mechanism, and
+  OVN's egress ACL evaluation of the punted/re-encapsulated reply
+  does not match the original allow rule — i.e. an OVN-K
+  network-policy limitation with host-networked service backends,
+  not a misconfiguration on our side.
+
+  Work:
+  1. Root-cause at the OVN level (ovn-nbctl ACL dump on the SNO
+     while reproducing; check whether the DNS reply arrives at the
+     pod's logical port and which ACL drops it). Confirm or refute
+     the punt hypothesis.
+  2. If it is an OVN-K limitation: file upstream (ovn-kubernetes)
+     with the minimal reproduction (busybox pod + policy selecting
+     it + the allow-rule matrix above); link from here.
+  3. Interim isolation without the controller's policy: a
+     hand-written NetworkPolicy in deploy/k8s that denies by
+     default and allows exactly gateway:9315 egress, applied
+     separately from the SandboxTemplate (cold Sandboxes need the
+     same policy via a shared label selector). If DNS still breaks
+     under a hand-written policy, the interim is Service-IP-baked
+     env (NAVRA_ENDPOINT by pod IP or a headless gateway Service
+     per replica) to avoid DNS entirely — document the tradeoff.
+  4. Re-enable isolation for both warm and cold Sandboxes; update
+     the warm-pool template comment and NAVRA-195's notes.
+
+acceptance:
+  - Sandbox pods (warm and cold) are isolated to gateway + DNS
+    egress, verified with the busybox A/B test from NAVRA-195
+    (labeled pod resolves and reaches only the gateway; everything
+    else dropped)
+  - Root cause documented here either as our misconfiguration or
+    with the upstream ovn-kubernetes issue link
+scope:
+  - deploy/k8s/ (warm-pool.yaml, gateway.yaml, new policy manifest)
+  - possibly navra-server/src/agent_spawn.rs (labels for cold-path
+    Sandboxes to fall under the policy)
+verification:
+  quick: cluster e2e via examples/kubernetes/e2e-driver.py
