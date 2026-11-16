@@ -46,6 +46,11 @@ struct TaskSpec {
     persona: Option<String>,
     max_iterations: Option<usize>,
     temperature: Option<f32>,
+    /// Fresh per-teammate capability token, present when the spec
+    /// was served via warm-pool adoption (the caller presented only
+    /// a pool bootstrap token). Replaces the bootstrap token for
+    /// all subsequent calls.
+    token: Option<String>,
 }
 
 impl TaskSpec {
@@ -56,6 +61,7 @@ impl TaskSpec {
             persona: json["persona"].as_str().map(String::from),
             max_iterations: json["max_iterations"].as_u64().map(|v| v as usize),
             temperature: json["temperature"].as_f64().map(|v| v as f32),
+            token: json["token"].as_str().map(String::from),
         }
     }
 }
@@ -186,6 +192,12 @@ async fn run() -> Result<(), String> {
         None
     };
 
+    // A fresh token from adoption replaces the (pool bootstrap)
+    // env token for all subsequent calls — MCP auth, model calls,
+    // and result publishing.
+    let token = poll_spec.as_ref().and_then(|s| s.token.clone()).or(token);
+    let token = token.filter(|t| !t.is_empty());
+
     let task = env::var("NAVRA_TASK")
         .ok()
         .or_else(|| poll_spec.as_ref().and_then(|s| s.task.clone()))
@@ -216,8 +228,10 @@ async fn run() -> Result<(), String> {
     // when the model endpoint is the gateway's /v1 proxy — so
     // teammate model traffic flows through the same
     // safety/IFC/audit pipeline as its tool calls. Unauthenticated
-    // endpoints (llama.cpp, Ollama direct) ignore the header.
-    let model_api_key = env::var("NAVRA_TOKEN").ok();
+    // endpoints (llama.cpp, Ollama direct) ignore the header. In
+    // poll mode this is the fresh adoption token when one was
+    // served.
+    let model_api_key = token.clone();
     let backend = OpenAiBackend::new(
         &model_endpoint,
         &model_name,
@@ -334,5 +348,15 @@ mod tests {
         }));
         assert!(spec.task.is_none());
         assert!(spec.model.is_some());
+    }
+
+    #[test]
+    fn task_spec_carries_adoption_token() {
+        let spec = TaskSpec::from_json(&serde_json::json!({
+            "task": "do the thing",
+            "model": "granite3.3:8b",
+            "token": "navra_cap_v1.abc.def"
+        }));
+        assert_eq!(spec.token.as_deref(), Some("navra_cap_v1.abc.def"));
     }
 }

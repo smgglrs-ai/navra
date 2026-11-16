@@ -370,6 +370,7 @@ pub(crate) async fn wire_team_tools(
 ) -> (
     navra_core::McpServerBuilder,
     Arc<team_tools::TeamRegistry>,
+    Arc<crate::agent_task_api::AgentTaskApi>,
     Option<triggers::TriggerRegistry>,
     Option<axum::Router>,
 ) {
@@ -550,6 +551,7 @@ pub(crate) async fn wire_team_tools(
                 namespace: ns.clone(),
                 context: cfg.server.kubernetes_context.clone(),
                 gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+                warm_pool: cfg.server.kubernetes_warm_pool.clone(),
             }
         }),
     });
@@ -721,6 +723,7 @@ pub(crate) async fn wire_team_tools(
                 namespace: ns.clone(),
                 context: cfg.server.kubernetes_context.clone(),
                 gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+                warm_pool: cfg.server.kubernetes_warm_pool.clone(),
             }
         }),
     });
@@ -761,9 +764,21 @@ pub(crate) async fn wire_team_tools(
         trigger_webhook_router = Some(webhook_router);
     }
 
+    // --- Agent task-delivery API state ---
+    // Shared by the /api/agent/* routes (task delivery, result
+    // publishing) — needs the registry, the root signer, and the
+    // root payload for delegated token minting at warm-pool
+    // adoption.
+    let agent_task_api = Arc::new(crate::agent_task_api::AgentTaskApi {
+        registry: Arc::clone(&team_registry),
+        signer: Arc::clone(root_signer),
+        root_payload: Some(root_payload.clone()),
+    });
+
     (
         builder,
         team_registry,
+        agent_task_api,
         _trigger_registry,
         trigger_webhook_router,
     )

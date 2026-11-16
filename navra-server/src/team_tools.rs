@@ -132,6 +132,11 @@ pub struct Teammate {
     pub container_id: Option<String>,
     /// OpenShell sandbox ID when running in OpenShell mode.
     pub sandbox_id: Option<String>,
+    /// Kubernetes Sandbox name when spawned via SandboxClaim adoption
+    /// (warm pool). The adopted pod keeps its pool-generated name,
+    /// which is how the task endpoint maps an adoption poll to this
+    /// teammate.
+    pub k8s_sandbox: Option<String>,
     /// Host path to the mounted workspace directory.
     pub workspace_path: Option<std::path::PathBuf>,
     /// Elapsed seconds at the time of the last `team_bb_notifications` call.
@@ -384,6 +389,7 @@ impl TeamRegistry {
                 created_at: Instant::now(),
                 container_id: None,
                 sandbox_id: None,
+                k8s_sandbox: None,
                 workspace_path: None,
                 last_bb_check: None,
                 iterations: None,
@@ -558,6 +564,63 @@ impl TeamRegistry {
         {
             tm.container_id = Some(container_id);
         }
+    }
+
+    /// Record the adopted Kubernetes Sandbox name for a teammate
+    /// spawned via warm-pool claim. Must be set before the adopted
+    /// pod's next task poll so the gateway can route its adoption
+    /// request to this teammate.
+    pub fn set_k8s_sandbox(&self, team_id: &str, teammate: &str, sandbox: String) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate)
+        {
+            tm.k8s_sandbox = Some(sandbox);
+        }
+    }
+
+    /// Resolve `(team_id, teammate_id)` for a teammate spawned in the
+    /// given Kubernetes Sandbox (warm-pool adoption lookup).
+    pub fn teammate_by_k8s_sandbox(&self, sandbox: &str) -> Option<(String, String)> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        for team in teams.values() {
+            for (mate_id, tm) in &team.teammates {
+                if tm.k8s_sandbox.as_deref() == Some(sandbox) {
+                    return Some((team.team_id.clone(), mate_id.clone()));
+                }
+            }
+        }
+        None
+    }
+
+    /// The adopted Kubernetes Sandbox name for a teammate, if it was
+    /// spawned via warm-pool claim.
+    pub fn k8s_sandbox_of(&self, team_id: &str, teammate: &str) -> Option<String> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        teams
+            .get(team_id)?
+            .teammates
+            .get(teammate)?
+            .k8s_sandbox
+            .clone()
+    }
+
+    /// Capabilities for minting a teammate's delegated token:
+    /// `(operations, tools, ttl_secs)` — the ttl is the team's
+    /// timeout budget, matching the spawn paths.
+    pub fn teammate_caps(
+        &self,
+        team_id: &str,
+        teammate: &str,
+    ) -> Option<(Vec<String>, Vec<String>, u64)> {
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let team = teams.get(team_id)?;
+        let tm = team.teammates.get(teammate)?;
+        Some((
+            tm.operations.clone(),
+            tm.tools.clone(),
+            team.budget.timeout_secs,
+        ))
     }
 
     pub fn set_output(&self, team_id: &str, teammate: &str, output: String) {

@@ -23,6 +23,17 @@ rules:
   - apiGroups: ["agents.x-k8s.io"]
     resources: ["sandboxes"]
     verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  # Warm-pool teammate spawning (NAVRA-195): SandboxClaims adopt
+  # pre-warmed Sandboxes from a SandboxWarmPool. Requires the
+  # agent-sandbox extensions CRDs (sandbox-with-extensions.yaml).
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxclaims"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch"]
+  # The gateway maintains the {pool}-bootstrap-token Secret that the
+  # pool's SandboxTemplate pulls the warm-pod bootstrap token from.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "get", "patch"]
   # Backing Pods of teammate Sandboxes: status polling and logs.
   - apiGroups: [""]
     resources: ["pods"]

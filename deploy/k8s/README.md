@@ -13,6 +13,14 @@ web UI) in-cluster, with teammate agents spawned as
   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox.yaml
   ```
 
+  For the warm pool (below), install the extensions build instead —
+  it adds the `extensions.agents.x-k8s.io` CRDs (SandboxTemplate,
+  SandboxClaim, SandboxWarmPool):
+
+  ```bash
+  kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox-with-extensions.yaml
+  ```
+
 - The `navra-server` and `navra-agent` images reachable by the
   cluster (`ghcr.io/smgglrs-ai/navra-server`, `.../navra-agent`). If
   the packages are private, create an image pull secret and add
@@ -41,6 +49,40 @@ The agent Pods run with `automountServiceAccountToken: false` and
 `restartPolicy: Never`: their only credential is the navra token,
 and their only interface to the outside world is MCP through the
 gateway's permission/IFC/safety pipeline.
+
+## Warm pool (fast teammate spawn)
+
+Cold teammate spawns cost image pull + pod start + connect-back
+(~30s observed). A `SandboxWarmPool` of pre-warmed `navra-agent`
+pods cuts the handoff to ~1s: the gateway creates a `SandboxClaim`
+that adopts the next warm Sandbox, and the adopted pod — already
+running and polling — receives its task, model assignment, and a
+fresh per-teammate capability token from the gateway's
+`GET /api/agent/task` endpoint.
+
+```bash
+kubectl apply -f deploy/k8s/warm-pool.yaml
+```
+
+Then enable it in the gateway config:
+
+```toml
+[server]
+kubernetes_namespace = "navra"
+kubernetes_warm_pool = "navra-agents"   # SandboxWarmPool name
+```
+
+Notes:
+
+- The `{pool}-bootstrap-token` Secret (referenced by the
+  SandboxTemplate) is created and kept current by the gateway —
+  it only authenticates warm pods' task polls; a scoped per-
+  teammate token is minted at adoption.
+- `restartPolicy: OnFailure` in the template means a crashed
+  teammate restarts and re-fetches its task (redelivery) instead
+  of losing the run.
+- When the pool is drained (or the extensions are not installed),
+  the gateway falls back to cold-create transparently.
 
 ## Verify teammate spawning end-to-end
 

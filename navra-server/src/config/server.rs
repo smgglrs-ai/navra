@@ -115,6 +115,13 @@ pub struct ServerConfig {
     /// Kubernetes Service name for the navra gateway (in-cluster DNS).
     #[serde(default = "default_kubernetes_gateway_service")]
     pub kubernetes_gateway_service: String,
+    /// Name of a SandboxWarmPool of pre-warmed navra-agent Sandboxes
+    /// (extensions.agents.x-k8s.io). When set, teammate spawns claim
+    /// from this pool instead of cold-creating Sandboxes; the pool
+    /// must reference a SandboxTemplate of the navra-agent image.
+    /// Falls back to cold-create when the pool is drained.
+    #[serde(default)]
+    pub kubernetes_warm_pool: Option<String>,
     /// Cedar action dispatch version. 1 (default) dispatches bare
     /// tool names as Cedar actions (compatibility). 2 namespaces
     /// upstream tool calls under the modeled

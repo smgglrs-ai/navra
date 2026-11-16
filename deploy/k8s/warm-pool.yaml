@@ -1,0 +1,81 @@
+# Warm pool of pre-warmed navra-agent Sandboxes (NAVRA-195).
+#
+# Requires the agent-sandbox extensions CRDs
+# (extensions.agents.x-k8s.io/v1beta1: SandboxTemplate,
+# SandboxClaim, SandboxWarmPool) — install sandbox-with-extensions.yaml
+# from kubernetes-sigs/agent-sandbox v1.0.11+ instead of the core-only
+# sandbox.yaml. See README.md.
+#
+# The pool keeps `replicas` idle navra-agent pods ready. When the
+# gateway spawns a teammate with kubernetes_warm_pool = "navra-agents",
+# it creates a SandboxClaim that adopts the next warm Sandbox; the
+# adopted pod polls GET /api/agent/task and receives its task, model
+# assignment, and a fresh per-teammate capability token (the pool
+# bootstrap token in the Secret only authenticates the poll).
+#
+# The bootstrap-token Secret ({pool}-bootstrap-token) is created and
+# kept current by the gateway itself — do not create it manually.
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxTemplate
+metadata:
+  name: navra-agent-template
+  namespace: navra
+spec:
+  podTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/name: navra-agent
+        app.kubernetes.io/managed-by: navra
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure  # task redelivery on crash via the poll endpoint
+      containers:
+        - name: agent
+          image: localhost/navra-agent:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # Per-deployment constants — everything per-spawn comes
+            # from the task endpoint.
+            - name: NAVRA_ENDPOINT
+              value: http://navra-gateway.navra.svc.cluster.local:9315/mcp
+            - name: NAVRA_MODEL_ENDPOINT
+              value: http://navra-gateway.navra.svc.cluster.local:9315/v1
+            # Pool bootstrap token (minted by the gateway)
+            - name: NAVRA_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: navra-agents-bootstrap-token
+                  key: token
+            # Identity for warm-pool adoption: the gateway maps the
+            # adopted Sandbox to the teammate registered for it.
+            - name: NAVRA_SANDBOX_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Warm pods may wait a long time before being claimed.
+            - name: NAVRA_TASK_POLL_TIMEOUT_SECS
+              value: "3600"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: extensions.agents.x-k8s.io/v1beta1
+kind: SandboxWarmPool
+metadata:
+  name: navra-agents
+  namespace: navra
+spec:
+  # Size for expected concurrent teammates; the gateway falls back to
+  # cold-create when the pool is drained.
+  replicas: 2
+  sandboxTemplateRef:
+    name: navra-agent-template

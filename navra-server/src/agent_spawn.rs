@@ -7,6 +7,45 @@ pub struct KubernetesAgentConfig {
     pub namespace: String,
     pub context: Option<String>,
     pub gateway_service: String,
+    /// Name of a SandboxWarmPool to claim pre-warmed Sandboxes from.
+    /// None = cold-create (inline Sandbox manifest).
+    pub warm_pool: Option<String>,
+}
+
+/// Mint a delegated capability token for a teammate.
+///
+/// Shared by the spawn paths (env-baked delivery) and the task
+/// endpoint's warm-pool adoption (fresh token minted when the
+/// adopted pod fetches its task). Uses the proper delegation chain
+/// when a root payload is available, falling back to a flat payload
+/// otherwise.
+pub(crate) fn mint_teammate_token(
+    root_payload: Option<&navra_core::auth::capability::CapabilityPayload>,
+    signer: &navra_core::identity::Ed25519Signer,
+    did: &str,
+    operations: Vec<String>,
+    tools: Vec<String>,
+    ttl_secs: u64,
+) -> Result<String, String> {
+    if let Some(root) = root_payload {
+        let payload = navra_core::auth::capability::build_delegated_payload(
+            root, did, operations, tools, 2, ttl_secs,
+        )
+        .map_err(|e| format!("Token delegation error: {e}"))?;
+        navra_core::auth::capability::encode_token(&payload, signer)
+            .map_err(|e| format!("Token error: {e}"))
+    } else {
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations,
+            tools,
+            credentials: vec![],
+        };
+        let payload =
+            navra_core::auth::capability::build_payload(signer.did(), did, cap, 2, ttl_secs);
+        navra_core::auth::capability::encode_token(&payload, signer)
+            .map_err(|e| format!("Token error: {e}"))
+    }
 }
 
 /// Context needed to spawn a teammate as a background agent task.
@@ -153,54 +192,18 @@ fn spawn_containerized_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
-            let token = if let Some(ref root) = root_payload {
-                match navra_core::auth::capability::build_delegated_payload(
-                    root,
-                    &did,
-                    tm_ops,
-                    tm_tools,
-                    2,
-                    timeout_secs,
-                ) {
-                    Ok(payload) => {
-                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
-                        {
-                            Ok(t) => t,
-                            Err(e) => {
-                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        reg.set_failed(
-                            &team_id,
-                            &teammate_id,
-                            format!("Token delegation error: {e}"),
-                        );
-                        return;
-                    }
-                }
-            } else {
-                let cap = navra_core::auth::capability::CapabilitySet {
-                    paths: vec!["**".to_string()],
-                    operations: tm_ops,
-                    tools: tm_tools,
-                    credentials: vec![],
-                };
-                let payload = navra_core::auth::capability::build_payload(
-                    signer.did(),
-                    &did,
-                    cap,
-                    2,
-                    timeout_secs,
-                );
-                match navra_core::auth::capability::encode_token(&payload, signer.as_ref()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                        return;
-                    }
+            let token = match mint_teammate_token(
+                root_payload.as_ref(),
+                signer.as_ref(),
+                &did,
+                tm_ops,
+                tm_tools,
+                timeout_secs,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    reg.set_failed(&team_id, &teammate_id, e);
+                    return;
                 }
             };
 
@@ -527,54 +530,18 @@ fn spawn_openshell_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
-            let token = if let Some(ref root) = root_payload {
-                match navra_core::auth::capability::build_delegated_payload(
-                    root,
-                    &did,
-                    tm_ops,
-                    tm_tools,
-                    2,
-                    timeout_secs,
-                ) {
-                    Ok(payload) => {
-                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
-                        {
-                            Ok(t) => t,
-                            Err(e) => {
-                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        reg.set_failed(
-                            &team_id,
-                            &teammate_id,
-                            format!("Token delegation error: {e}"),
-                        );
-                        return;
-                    }
-                }
-            } else {
-                let cap = navra_core::auth::capability::CapabilitySet {
-                    paths: vec!["**".to_string()],
-                    operations: tm_ops,
-                    tools: tm_tools,
-                    credentials: vec![],
-                };
-                let payload = navra_core::auth::capability::build_payload(
-                    signer.did(),
-                    &did,
-                    cap,
-                    2,
-                    timeout_secs,
-                );
-                match navra_core::auth::capability::encode_token(&payload, signer.as_ref()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                        return;
-                    }
+            let token = match mint_teammate_token(
+                root_payload.as_ref(),
+                signer.as_ref(),
+                &did,
+                tm_ops,
+                tm_tools,
+                timeout_secs,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    reg.set_failed(&team_id, &teammate_id, e);
+                    return;
                 }
             };
 
@@ -906,6 +873,179 @@ fn kubectl_base(k8s: &KubernetesAgentConfig) -> tokio::process::Command {
     cmd
 }
 
+/// Build a SandboxClaim manifest that adopts the next pre-warmed
+/// Sandbox from `pool` (extensions.agents.x-k8s.io). The claim name
+/// becomes the resource name; the adopted Sandbox keeps its
+/// pool-generated name, reported at `.status.sandbox.name`.
+fn build_sandbox_claim_manifest(claim_name: &str, pool: &str) -> serde_json::Value {
+    serde_json::json!({
+        "apiVersion": "extensions.agents.x-k8s.io/v1beta1",
+        "kind": "SandboxClaim",
+        "metadata": {
+            "name": claim_name,
+            "labels": {
+                "app.kubernetes.io/managed-by": "navra"
+            }
+        },
+        "spec": {
+            "warmPoolRef": { "name": pool }
+        }
+    })
+}
+
+/// Build an Opaque Secret manifest carrying a warm-pool bootstrap
+/// token. The pool's SandboxTemplate pulls `token` from this secret
+/// via envFrom secretKeyRef, so pre-warmed pods can authenticate to
+/// the task endpoint before adoption assigns them a teammate token.
+fn build_pool_token_secret_manifest(secret_name: &str, token: &str) -> serde_json::Value {
+    serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": secret_name,
+            "labels": {
+                "app.kubernetes.io/managed-by": "navra"
+            }
+        },
+        "type": "Opaque",
+        "stringData": {
+            "token": token
+        }
+    })
+}
+
+/// Apply a JSON manifest via `kubectl apply -f -`. Returns the
+/// kubectl stderr on failure.
+async fn kubectl_apply_manifest(
+    k8s: &KubernetesAgentConfig,
+    manifest: &serde_json::Value,
+) -> Result<(), String> {
+    let manifest_json = serde_json::to_string(manifest)
+        .map_err(|e| format!("manifest serialization error: {e}"))?;
+    let mut cmd = kubectl_base(k8s);
+    cmd.args(["apply", "-f", "-"]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("kubectl spawn error: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use tokio::io::AsyncWriteExt;
+        stdin
+            .write_all(manifest_json.as_bytes())
+            .await
+            .map_err(|e| format!("kubectl stdin error: {e}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|e| format!("kubectl wait error: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "kubectl apply failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// Claim a pre-warmed Sandbox from the warm pool for a teammate.
+///
+/// Ensures the pool bootstrap-token Secret exists (so the pool's
+/// template can authenticate adopted pods), applies a SandboxClaim,
+/// waits briefly for it to be fulfilled, and returns the adopted
+/// Sandbox name. On failure the claim is deleted and the error is
+/// returned — the caller falls back to cold-create.
+async fn claim_warm_sandbox(
+    k8s: &KubernetesAgentConfig,
+    pool: &str,
+    claim_name: &str,
+    signer: &std::sync::Arc<navra_core::identity::Ed25519Signer>,
+    root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
+) -> Result<String, String> {
+    // 1. Ensure the pool bootstrap token secret. Long-lived (90d)
+    //    low-privilege identity: no operations, no tools — it only
+    //    authenticates the task poll; the fresh per-teammate token
+    //    is minted at adoption.
+    let pool_did = format!("did:pool:{pool}");
+    let bootstrap_token = mint_teammate_token(
+        root_payload.as_ref(),
+        signer,
+        &pool_did,
+        Vec::new(),
+        Vec::new(),
+        90 * 24 * 3600,
+    )?;
+    let secret_name = format!("{pool}-bootstrap-token");
+    kubectl_apply_manifest(
+        k8s,
+        &build_pool_token_secret_manifest(&secret_name, &bootstrap_token),
+    )
+    .await?;
+
+    // 2. Apply the claim.
+    kubectl_apply_manifest(k8s, &build_sandbox_claim_manifest(claim_name, pool)).await?;
+
+    // 3. Wait briefly for the claim to be fulfilled from the pool.
+    //    A drained pool times out here → caller falls back to
+    //    cold-create.
+    let mut wait_cmd = kubectl_base(k8s);
+    wait_cmd.args([
+        "wait",
+        "--for=condition=Ready",
+        &format!("sandboxclaim/{claim_name}"),
+        "--timeout=15s",
+    ]);
+    let wait_output = wait_cmd
+        .output()
+        .await
+        .map_err(|e| format!("kubectl wait error: {e}"))?;
+    if !wait_output.status.success() {
+        cleanup_k8s_claim(k8s, claim_name).await;
+        return Err(format!(
+            "warm pool claim not ready within 15s: {}",
+            String::from_utf8_lossy(&wait_output.stderr)
+        ));
+    }
+
+    // 4. Read the adopted Sandbox name.
+    let mut get_cmd = kubectl_base(k8s);
+    get_cmd.args([
+        "get",
+        "sandboxclaim",
+        claim_name,
+        "-o",
+        "jsonpath={.status.sandbox.name}",
+    ]);
+    let get_output = get_cmd
+        .output()
+        .await
+        .map_err(|e| format!("kubectl get error: {e}"))?;
+    if !get_output.status.success() {
+        cleanup_k8s_claim(k8s, claim_name).await;
+        return Err(format!(
+            "could not read adopted sandbox name: {}",
+            String::from_utf8_lossy(&get_output.stderr)
+        ));
+    }
+    let sandbox_name = String::from_utf8_lossy(&get_output.stdout)
+        .trim()
+        .to_string();
+    if sandbox_name.is_empty() {
+        cleanup_k8s_claim(k8s, claim_name).await;
+        return Err("claim is Ready but reports no sandbox name".to_string());
+    }
+    Ok(sandbox_name)
+}
+
+/// Delete a SandboxClaim, ignoring a missing resource.
+async fn cleanup_k8s_claim(k8s: &KubernetesAgentConfig, claim_name: &str) {
+    let mut cmd = kubectl_base(k8s);
+    cmd.args(["delete", "sandboxclaim", claim_name, "--ignore-not-found"]);
+    let _ = cmd.output().await;
+}
+
 /// Normalize a memory quantity for the Kubernetes API.
 ///
 /// navra's `container_memory` uses Podman-style suffixes (`2g`,
@@ -1063,54 +1203,18 @@ fn spawn_kubernetes_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
-            let token = if let Some(ref root) = root_payload {
-                match navra_core::auth::capability::build_delegated_payload(
-                    root,
-                    &did,
-                    tm_ops,
-                    tm_tools,
-                    2,
-                    timeout_secs,
-                ) {
-                    Ok(payload) => {
-                        match navra_core::auth::capability::encode_token(&payload, signer.as_ref())
-                        {
-                            Ok(t) => t,
-                            Err(e) => {
-                                reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                                return;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        reg.set_failed(
-                            &team_id,
-                            &teammate_id,
-                            format!("Token delegation error: {e}"),
-                        );
-                        return;
-                    }
-                }
-            } else {
-                let cap = navra_core::auth::capability::CapabilitySet {
-                    paths: vec!["**".to_string()],
-                    operations: tm_ops,
-                    tools: tm_tools,
-                    credentials: vec![],
-                };
-                let payload = navra_core::auth::capability::build_payload(
-                    signer.did(),
-                    &did,
-                    cap,
-                    2,
-                    timeout_secs,
-                );
-                match navra_core::auth::capability::encode_token(&payload, signer.as_ref()) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        reg.set_failed(&team_id, &teammate_id, format!("Token error: {e}"));
-                        return;
-                    }
+            let token = match mint_teammate_token(
+                root_payload.as_ref(),
+                signer.as_ref(),
+                &did,
+                tm_ops,
+                tm_tools,
+                timeout_secs,
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    reg.set_failed(&team_id, &teammate_id, e);
+                    return;
                 }
             };
 
@@ -1145,96 +1249,92 @@ fn spawn_kubernetes_agent(
                 )
             });
 
-            let sandbox_name = sanitize_k8s_name("navra-agent", &team_id, &teammate_id);
+            let claim_name = sanitize_k8s_name("navra-agent", &team_id, &teammate_id);
+            let mut sandbox_name = claim_name.clone();
 
             reg.set_resolved_model(&team_id, &teammate_id, &model);
+
+            // Warm-pool path: adopt a pre-warmed Sandbox via
+            // SandboxClaim. The pod's env comes from the pool's
+            // SandboxTemplate (endpoints + bootstrap token); the
+            // task, model, persona, and a fresh per-teammate token
+            // are delivered when the adopted pod polls the task
+            // endpoint. Falls back to cold-create below when the
+            // pool is drained or the extensions are not installed.
+            let mut claimed_warm = false;
+            if let Some(ref pool) = k8s.warm_pool {
+                match claim_warm_sandbox(&k8s, pool, &sandbox_name, &signer, &root_payload).await {
+                    Ok(adopted) => {
+                        // Register the sandbox → teammate mapping
+                        // before the pod's next task poll resolves
+                        // it (the poll loop tolerates 404 in the
+                        // window before this runs).
+                        reg.set_k8s_sandbox(&team_id, &teammate_id, adopted.clone());
+                        sandbox_name = adopted;
+                        claimed_warm = true;
+                        tracing::info!(
+                            team = %team_id, teammate = %teammate_id,
+                            pool = %pool, sandbox = %sandbox_name,
+                            "Warm-pool Sandbox claimed for teammate"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            team = %team_id, teammate = %teammate_id,
+                            error = %e,
+                            "Warm-pool claim failed — falling back to cold-create"
+                        );
+                    }
+                }
+            }
+
             eprintln!(
-                "  [kubernetes] {} → model: {}, sandbox: {}",
-                teammate_id, model, sandbox_name
+                "  [kubernetes] {} → model: {}, sandbox: {}{}",
+                teammate_id,
+                model,
+                sandbox_name,
+                if claimed_warm { " (warm)" } else { "" }
             );
 
-            // Build env vars
+            // Build env vars (cold path only — warm pods get their
+            // task via the task-delivery endpoint)
             let mut env = std::collections::HashMap::new();
-            env.insert("NAVRA_ENDPOINT".to_string(), gateway_url);
-            env.insert("NAVRA_TOKEN".to_string(), token);
-            env.insert("NAVRA_MODEL_ENDPOINT".to_string(), model_endpoint);
-            env.insert("NAVRA_MODEL_NAME".to_string(), model.clone());
-            env.insert("NAVRA_TASK".to_string(), message.clone());
-            env.insert(
-                "NAVRA_MAX_ITERATIONS".to_string(),
-                max_iterations.to_string(),
-            );
-            if let Some(ref name) = tm_persona {
-                env.insert("NAVRA_PERSONA".to_string(), name.clone());
+            if !claimed_warm {
+                env.insert("NAVRA_ENDPOINT".to_string(), gateway_url);
+                env.insert("NAVRA_TOKEN".to_string(), token);
+                env.insert("NAVRA_MODEL_ENDPOINT".to_string(), model_endpoint);
+                env.insert("NAVRA_MODEL_NAME".to_string(), model.clone());
+                env.insert("NAVRA_TASK".to_string(), message.clone());
                 env.insert(
-                    "NAVRA_COGNITIVE_CORE".to_string(),
-                    "/cognitive_core".to_string(),
+                    "NAVRA_MAX_ITERATIONS".to_string(),
+                    max_iterations.to_string(),
                 );
-            }
-
-            // Build and apply the Sandbox manifest
-            let manifest = build_agent_sandbox_manifest(
-                &k8s,
-                &sandbox_name,
-                &agent_image,
-                &env,
-                &container_memory,
-                &container_cpus,
-                &team_id,
-                &teammate_id,
-            );
-
-            let manifest_json = match serde_json::to_string(&manifest) {
-                Ok(j) => j,
-                Err(e) => {
-                    reg.set_failed(
-                        &team_id,
-                        &teammate_id,
-                        format!("Manifest serialization error: {e}"),
+                if let Some(ref name) = tm_persona {
+                    env.insert("NAVRA_PERSONA".to_string(), name.clone());
+                    env.insert(
+                        "NAVRA_COGNITIVE_CORE".to_string(),
+                        "/cognitive_core".to_string(),
                     );
-                    return;
-                }
-            };
-
-            // kubectl apply -f -
-            let mut apply_cmd = kubectl_base(&k8s);
-            apply_cmd.args(["apply", "-f", "-"]);
-            apply_cmd.stdin(std::process::Stdio::piped());
-            apply_cmd.stdout(std::process::Stdio::piped());
-            apply_cmd.stderr(std::process::Stdio::piped());
-
-            let mut child = match apply_cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => {
-                    reg.set_failed(&team_id, &teammate_id, format!("kubectl spawn error: {e}"));
-                    return;
-                }
-            };
-
-            if let Some(mut stdin) = child.stdin.take() {
-                use tokio::io::AsyncWriteExt;
-                if let Err(e) = stdin.write_all(manifest_json.as_bytes()).await {
-                    reg.set_failed(&team_id, &teammate_id, format!("kubectl stdin error: {e}"));
-                    return;
                 }
             }
 
-            let apply_output = match child.wait_with_output().await {
-                Ok(o) => o,
-                Err(e) => {
-                    reg.set_failed(&team_id, &teammate_id, format!("kubectl wait error: {e}"));
-                    return;
-                }
-            };
-
-            if !apply_output.status.success() {
-                let stderr = String::from_utf8_lossy(&apply_output.stderr);
-                reg.set_failed(
+            // Build and apply the Sandbox manifest (cold path only)
+            if !claimed_warm {
+                let manifest = build_agent_sandbox_manifest(
+                    &k8s,
+                    &sandbox_name,
+                    &agent_image,
+                    &env,
+                    &container_memory,
+                    &container_cpus,
                     &team_id,
                     &teammate_id,
-                    format!("kubectl apply failed: {stderr}"),
                 );
-                return;
+
+                if let Err(e) = kubectl_apply_manifest(&k8s, &manifest).await {
+                    reg.set_failed(&team_id, &teammate_id, e);
+                    return;
+                }
             }
 
             tracing::info!(
@@ -1255,7 +1355,12 @@ fn spawn_kubernetes_agent(
                 Ok(o) => o,
                 Err(e) => {
                     reg.set_failed(&team_id, &teammate_id, format!("kubectl wait error: {e}"));
-                    cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+                    cleanup_k8s_spawn(
+                        &k8s,
+                        claimed_warm.then_some(claim_name.as_str()),
+                        &sandbox_name,
+                    )
+                    .await;
                     return;
                 }
             };
@@ -1267,7 +1372,12 @@ fn spawn_kubernetes_agent(
                     &teammate_id,
                     format!("Sandbox not ready: {stderr}"),
                 );
-                cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+                cleanup_k8s_spawn(
+                    &k8s,
+                    claimed_warm.then_some(claim_name.as_str()),
+                    &sandbox_name,
+                )
+                .await;
                 return;
             }
 
@@ -1424,7 +1534,12 @@ fn spawn_kubernetes_agent(
             }
 
             // Cleanup
-            cleanup_k8s_sandbox(&k8s, &sandbox_name).await;
+            cleanup_k8s_spawn(
+                &k8s,
+                claimed_warm.then_some(claim_name.as_str()),
+                &sandbox_name,
+            )
+            .await;
         })
         .await;
 
@@ -1433,8 +1548,17 @@ fn spawn_kubernetes_agent(
                 team = %timeout_team, teammate = %timeout_task,
                 "Kubernetes teammate timed out after {timeout_secs}s"
             );
-            let sandbox_name = sanitize_k8s_name("navra-agent", &timeout_team, &timeout_task);
-            cleanup_k8s_sandbox(&timeout_k8s, &sandbox_name).await;
+            let claim_name = sanitize_k8s_name("navra-agent", &timeout_team, &timeout_task);
+            // Warm spawns run under the pool-generated sandbox name
+            // recorded on the teammate; fall back to the claim name
+            // (identical for cold spawns).
+            let adopted = timeout_reg.k8s_sandbox_of(&timeout_team, &timeout_task);
+            cleanup_k8s_spawn(
+                &timeout_k8s,
+                adopted.as_ref().map(|_| claim_name.as_str()),
+                adopted.as_deref().unwrap_or(&claim_name),
+            )
+            .await;
             timeout_reg.set_failed(
                 &timeout_team,
                 &timeout_task,
@@ -1444,20 +1568,26 @@ fn spawn_kubernetes_agent(
     })
 }
 
-async fn cleanup_k8s_sandbox(k8s: &KubernetesAgentConfig, name: &str) {
+/// Delete a spawned teammate's Kubernetes resources. `claim` is the
+/// SandboxClaim name (warm-pool spawns; `None` for cold-create),
+/// `sandbox` the (possibly pool-generated) Sandbox name.
+async fn cleanup_k8s_spawn(k8s: &KubernetesAgentConfig, claim: Option<&str>, sandbox: &str) {
+    if let Some(claim_name) = claim {
+        cleanup_k8s_claim(k8s, claim_name).await;
+    }
     let mut cmd = kubectl_base(k8s);
-    cmd.args(["delete", "sandbox", name, "--ignore-not-found"]);
+    cmd.args(["delete", "sandbox", sandbox, "--ignore-not-found"]);
     let output = cmd.output().await;
     match output {
         Ok(o) if !o.status.success() => {
             let stderr = String::from_utf8_lossy(&o.stderr);
-            tracing::warn!(sandbox = %name, error = %stderr, "Failed to delete K8s sandbox");
+            tracing::warn!(sandbox = %sandbox, error = %stderr, "Failed to delete K8s sandbox");
         }
         Err(e) => {
-            tracing::warn!(sandbox = %name, error = %e, "Failed to run kubectl delete");
+            tracing::warn!(sandbox = %sandbox, error = %e, "Failed to run kubectl delete");
         }
         _ => {
-            tracing::info!(sandbox = %name, "Kubernetes agent sandbox deleted");
+            tracing::info!(sandbox = %sandbox, "Kubernetes agent sandbox deleted");
         }
     }
 }
@@ -1894,6 +2024,7 @@ mod tests {
 
     fn test_k8s_config() -> KubernetesAgentConfig {
         KubernetesAgentConfig {
+            warm_pool: None,
             namespace: "navra".into(),
             context: None,
             gateway_service: "navra-gateway".into(),
@@ -2012,6 +2143,7 @@ mod tests {
     #[test]
     fn kubernetes_manifest_with_custom_config() {
         let k8s = KubernetesAgentConfig {
+            warm_pool: None,
             namespace: "prod".into(),
             context: Some("prod-cluster".into()),
             gateway_service: "navra-gw".into(),
@@ -2055,6 +2187,7 @@ mod tests {
     #[test]
     fn kubectl_base_includes_context_when_set() {
         let k8s = KubernetesAgentConfig {
+            warm_pool: None,
             namespace: "navra".into(),
             context: Some("my-ctx".into()),
             gateway_service: "navra-gateway".into(),
@@ -2087,5 +2220,28 @@ mod tests {
         // Not a numeric+suffix form — leave it to the API server to
         // reject (surfaces the real error rather than mangling it).
         assert_eq!(normalize_k8s_memory("generous"), "generous");
+    }
+
+    #[test]
+    fn sandbox_claim_manifest_structure() {
+        let manifest = build_sandbox_claim_manifest("navra-agent-t1-rev", "navra-agents");
+        assert_eq!(manifest["apiVersion"], "extensions.agents.x-k8s.io/v1beta1");
+        assert_eq!(manifest["kind"], "SandboxClaim");
+        assert_eq!(manifest["metadata"]["name"], "navra-agent-t1-rev");
+        assert_eq!(manifest["spec"]["warmPoolRef"]["name"], "navra-agents");
+        assert_eq!(
+            manifest["metadata"]["labels"]["app.kubernetes.io/managed-by"],
+            "navra"
+        );
+    }
+
+    #[test]
+    fn pool_token_secret_manifest_structure() {
+        let manifest = build_pool_token_secret_manifest("navra-agents-bootstrap-token", "tok123");
+        assert_eq!(manifest["apiVersion"], "v1");
+        assert_eq!(manifest["kind"], "Secret");
+        assert_eq!(manifest["type"], "Opaque");
+        assert_eq!(manifest["metadata"]["name"], "navra-agents-bootstrap-token");
+        assert_eq!(manifest["stringData"]["token"], "tok123");
     }
 }

@@ -114,7 +114,7 @@ pub(crate) fn attach_ui_routes(
     router: axum::Router,
     cfg: &config::Config,
     server: &Arc<navra_core::McpServer>,
-    team_registry: std::sync::Arc<crate::team_tools::TeamRegistry>,
+    agent_api: std::sync::Arc<crate::agent_task_api::AgentTaskApi>,
     models: &std::collections::HashMap<String, Arc<dyn navra_model::ModelBackend>>,
     ollama_fallback_model: Option<&str>,
     ui_broadcaster: Option<Arc<UiBroadcaster>>,
@@ -248,46 +248,64 @@ pub(crate) fn attach_ui_routes(
         // --- API: Teammate task delivery (NAVRA-195) ---
         // Warm-pool pods and restarted teammates fetch their task
         // spec here instead of receiving it baked into env. The
-        // caller authenticates with its delegated capability token;
-        // the did identifies the teammate.
+        // caller authenticates with its delegated capability token
+        // (teammate did) or its pool bootstrap token plus the
+        // X-Navra-Sandbox header (warm-pool adoption).
         .route("/agent/task", {
             let server = Arc::clone(server);
-            let reg = team_registry.clone();
-            axum::routing::get(move |headers: axum::http::HeaderMap| {
-                let server = server.clone();
-                let reg = reg.clone();
-                async move {
-                    let agent = match server.authenticator().authenticate(&headers) {
-                        Ok(a) => a,
-                        Err(_) => {
-                            return (
-                                axum::http::StatusCode::UNAUTHORIZED,
-                                axum::Json(serde_json::json!({"error": "unauthorized"})),
+            let api = agent_api.clone();
+            axum::routing::get(
+                move |headers: axum::http::HeaderMap| {
+                    let server = server.clone();
+                    let api = api.clone();
+                    async move {
+                        let agent = match server.authenticator().authenticate(&headers) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    axum::Json(serde_json::json!({"error": "unauthorized"})),
+                                )
+                                    .into_response();
+                            }
+                        };
+                        let sandbox = headers
+                            .get("x-navra-sandbox")
+                            .and_then(|v| v.to_str().ok());
+                        match api.task_for(agent.did.as_deref(), sandbox) {
+                            Ok(spec) => axum::Json(spec).into_response(),
+                            Err(crate::agent_task_api::TaskFetchError::NotATeammate) => (
+                                axum::http::StatusCode::FORBIDDEN,
+                                axum::Json(serde_json::json!({
+                                    "error": "not a teammate identity"
+                                })),
                             )
-                                .into_response();
-                        }
-                    };
-                    match teammate_from_did(agent.did.as_deref()) {
-                        Some((team, mate)) => match reg.task_spec(team, mate) {
-                            Some(spec) => axum::Json(spec).into_response(),
-                            None => (
+                                .into_response(),
+                            Err(
+                                crate::agent_task_api::TaskFetchError::MissingSandboxHeader,
+                            ) => (
+                                axum::http::StatusCode::FORBIDDEN,
+                                axum::Json(serde_json::json!({
+                                    "error": "warm-pool identity requires X-Navra-Sandbox header"
+                                })),
+                            )
+                                .into_response(),
+                            Err(crate::agent_task_api::TaskFetchError::NotFound) => (
                                 axum::http::StatusCode::NOT_FOUND,
                                 axum::Json(serde_json::json!({
                                     "error": "unknown team or teammate"
                                 })),
                             )
                                 .into_response(),
-                        },
-                        None => (
-                            axum::http::StatusCode::FORBIDDEN,
-                            axum::Json(serde_json::json!({
-                                "error": "not a teammate identity"
-                            })),
-                        )
-                            .into_response(),
+                            Err(crate::agent_task_api::TaskFetchError::Mint(e)) => (
+                                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                                axum::Json(serde_json::json!({"error": e})),
+                            )
+                                .into_response(),
+                        }
                     }
-                }
-            })
+                },
+            )
         })
         // --- API: Teammate result publishing (NAVRA-194/195) ---
         // Teammates POST their final result here instead of relying
@@ -295,12 +313,12 @@ pub(crate) fn attach_ui_routes(
         // makes result collection work across replicas.
         .route("/agent/result", {
             let server = Arc::clone(server);
-            let reg = team_registry.clone();
+            let api = agent_api.clone();
             axum::routing::post(
                 move |headers: axum::http::HeaderMap,
                       axum::Json(body): axum::Json<serde_json::Value>| {
                     let server = server.clone();
-                    let reg = reg.clone();
+                    let api = api.clone();
                     async move {
                         let agent = match server.authenticator().authenticate(&headers) {
                             Ok(a) => a,
@@ -314,7 +332,7 @@ pub(crate) fn attach_ui_routes(
                         };
                         match teammate_from_did(agent.did.as_deref()) {
                             Some((team, mate)) => {
-                                reg.submit_result(team, mate, &body);
+                                api.registry.submit_result(team, mate, &body);
                                 axum::Json(serde_json::json!({"status": "ok"})).into_response()
                             }
                             None => (
@@ -1894,7 +1912,7 @@ mod tests {
             base,
             &cfg,
             &server,
-            Arc::new(crate::team_tools::TeamRegistry::default()),
+            test_agent_api(),
             &models,
             Some("stub"),
             None,
@@ -1903,6 +1921,14 @@ mod tests {
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
         )
+    }
+
+    fn test_agent_api() -> Arc<crate::agent_task_api::AgentTaskApi> {
+        Arc::new(crate::agent_task_api::AgentTaskApi {
+            registry: Arc::new(crate::team_tools::TeamRegistry::default()),
+            signer: Arc::new(navra_core::identity::Ed25519Signer::generate()),
+            root_payload: None,
+        })
     }
 
     async fn post_json(
@@ -2048,7 +2074,7 @@ mod tests {
             axum::Router::new(),
             cfg,
             &server,
-            Arc::new(crate::team_tools::TeamRegistry::default()),
+            test_agent_api(),
             &models,
             Some("stub"),
             None,
@@ -2524,12 +2550,14 @@ mod tests {
         reg
     }
 
-    /// Router with a real capability authenticator plus a teammate
-    /// token for `did:teammate:team-1:researcher`. Returns the router
-    /// and the minted token.
+    /// Router with a real capability authenticator plus teammate and
+    /// pool tokens minted from the same signer the AgentTaskApi uses
+    /// for adoption. Returns the router, a token for
+    /// `did:teammate:team-1:researcher`, a root (non-teammate) token,
+    /// and a pool bootstrap token.
     fn build_agent_api_router(
         registry: Arc<crate::team_tools::TeamRegistry>,
-    ) -> (axum::Router, String, String) {
+    ) -> (axum::Router, String, String, String) {
         use navra_core::identity::CapSigner as _;
         let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
         let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
@@ -2551,14 +2579,20 @@ mod tests {
         };
         let teammate_token = mint("did:teammate:team-1:researcher");
         let root_token = mint("did:root:human");
+        let pool_token = mint("did:pool:navra-agents");
 
         let cfg = test_config();
         let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
+        let agent_api = Arc::new(crate::agent_task_api::AgentTaskApi {
+            registry,
+            signer,
+            root_payload: None,
+        });
         let router = attach_ui_routes(
             axum::Router::new(),
             &cfg,
             &server,
-            registry,
+            agent_api,
             &test_models(),
             Some("stub"),
             None,
@@ -2567,7 +2601,7 @@ mod tests {
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
         );
-        (router, teammate_token, root_token)
+        (router, teammate_token, root_token, pool_token)
     }
 
     async fn request_with_token(
@@ -2577,9 +2611,23 @@ mod tests {
         token: Option<&str>,
         body: Option<serde_json::Value>,
     ) -> (StatusCode, serde_json::Value) {
+        request_with_token_and_sandbox(router, method, path, token, body, None).await
+    }
+
+    async fn request_with_token_and_sandbox(
+        router: &axum::Router,
+        method: &str,
+        path: &str,
+        token: Option<&str>,
+        body: Option<serde_json::Value>,
+        sandbox: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
         let mut builder = Request::builder().method(method).uri(path);
         if let Some(t) = token {
             builder = builder.header("authorization", format!("Bearer {t}"));
+        }
+        if let Some(s) = sandbox {
+            builder = builder.header("x-navra-sandbox", s);
         }
         let req = match body {
             Some(b) => builder
@@ -2599,7 +2647,7 @@ mod tests {
     #[tokio::test]
     async fn agent_task_returns_spec_for_teammate_token() {
         let reg = registry_with_teammate();
-        let (router, token, _) = build_agent_api_router(reg);
+        let (router, token, _, _) = build_agent_api_router(reg);
         let (status, json) =
             request_with_token(&router, "GET", "/api/agent/task", Some(&token), None).await;
 
@@ -2614,7 +2662,7 @@ mod tests {
     #[tokio::test]
     async fn agent_task_requires_auth() {
         let reg = registry_with_teammate();
-        let (router, _, _) = build_agent_api_router(reg);
+        let (router, _, _, _) = build_agent_api_router(reg);
         let (status, _) = request_with_token(&router, "GET", "/api/agent/task", None, None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
@@ -2622,7 +2670,7 @@ mod tests {
     #[tokio::test]
     async fn agent_task_rejects_non_teammate_identity() {
         let reg = registry_with_teammate();
-        let (router, _, root_token) = build_agent_api_router(reg);
+        let (router, _, root_token, _) = build_agent_api_router(reg);
         let (status, json) =
             request_with_token(&router, "GET", "/api/agent/task", Some(&root_token), None).await;
         assert_eq!(status, StatusCode::FORBIDDEN);
@@ -2632,16 +2680,63 @@ mod tests {
     #[tokio::test]
     async fn agent_task_unknown_teammate_is_not_found() {
         let reg = Arc::new(crate::team_tools::TeamRegistry::default());
-        let (router, token, _) = build_agent_api_router(reg);
+        let (router, token, _, _) = build_agent_api_router(reg);
         let (status, _) =
             request_with_token(&router, "GET", "/api/agent/task", Some(&token), None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
+    async fn agent_task_warm_pool_adoption_mints_fresh_token() {
+        let reg = registry_with_teammate();
+        reg.set_k8s_sandbox("team-1", "researcher", "navra-agents-wxyz9".to_string());
+        let (router, _, _, pool_token) = build_agent_api_router(reg);
+
+        let (status, json) = request_with_token_and_sandbox(
+            &router,
+            "GET",
+            "/api/agent/task",
+            Some(&pool_token),
+            None,
+            Some("navra-agents-wxyz9"),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["task"], "analyze the dataset");
+        let token = json["token"].as_str().expect("fresh token in spec");
+        assert!(token.starts_with("navra_cap_v1."));
+    }
+
+    #[tokio::test]
+    async fn agent_task_warm_pool_requires_sandbox_header() {
+        let reg = registry_with_teammate();
+        let (router, _, _, pool_token) = build_agent_api_router(reg);
+        let (status, _) =
+            request_with_token(&router, "GET", "/api/agent/task", Some(&pool_token), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn agent_task_warm_pool_unknown_sandbox_not_found() {
+        let reg = registry_with_teammate();
+        let (router, _, _, pool_token) = build_agent_api_router(reg);
+        let (status, _) = request_with_token_and_sandbox(
+            &router,
+            "GET",
+            "/api/agent/task",
+            Some(&pool_token),
+            None,
+            Some("unknown-sandbox"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn agent_result_publishes_output() {
         let reg = registry_with_teammate();
-        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (router, token, _, _) = build_agent_api_router(reg.clone());
         let (status, json) = request_with_token(
             &router,
             "POST",
@@ -2678,7 +2773,7 @@ mod tests {
             "researcher",
             navra_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
         );
-        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (router, token, _, _) = build_agent_api_router(reg.clone());
         let (status, _) = request_with_token(
             &router,
             "POST",
@@ -2699,7 +2794,7 @@ mod tests {
     #[tokio::test]
     async fn agent_result_error_marks_failed() {
         let reg = registry_with_teammate();
-        let (router, token, _) = build_agent_api_router(reg.clone());
+        let (router, token, _, _) = build_agent_api_router(reg.clone());
         let (status, _) = request_with_token(
             &router,
             "POST",

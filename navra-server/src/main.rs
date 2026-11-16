@@ -9,6 +9,7 @@ use anyhow::Context as _;
 mod acp_agent;
 mod agent_bundle;
 mod agent_spawn;
+mod agent_task_api;
 mod build_tools;
 mod cli;
 mod cmd_agent;
@@ -1391,21 +1392,26 @@ async fn serve_inner(
 
     // --- Team orchestration tools ---
     let reasoning_pii_filter = setup::models::build_reasoning_pii_filter(&cfg, &safety_state);
-    let (mut builder, team_registry_ref, _trigger_registry, mut trigger_webhook_router) =
-        setup::tools::wire_team_tools(
-            builder,
-            &cfg,
-            &root_signer,
-            &models,
-            &exec_module,
-            &embedding_model,
-            &flow_registry,
-            &audit_log,
-            &resolved_flow_dirs,
-            &reasoning_pii_filter,
-            &mut running_endpoints,
-        )
-        .await;
+    let (
+        mut builder,
+        team_registry_ref,
+        agent_task_api,
+        _trigger_registry,
+        mut trigger_webhook_router,
+    ) = setup::tools::wire_team_tools(
+        builder,
+        &cfg,
+        &root_signer,
+        &models,
+        &exec_module,
+        &embedding_model,
+        &flow_registry,
+        &audit_log,
+        &resolved_flow_dirs,
+        &reasoning_pii_filter,
+        &mut running_endpoints,
+    )
+    .await;
 
     // --- Knowledge memory tools ---
     let pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>> =
@@ -1549,7 +1555,7 @@ async fn serve_inner(
                     root_signer: Arc::clone(&root_signer),
                     approvals,
                     flow_registry,
-                    team_registry: Arc::clone(&team_registry_ref),
+                    agent_task_api,
                     resolved_flow_dirs,
                     models,
                     trigger_webhook_router: trigger_webhook_router.take(),

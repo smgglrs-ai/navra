@@ -467,6 +467,7 @@ impl Default for Config {
                 kubernetes_namespace: None,
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
+                kubernetes_warm_pool: None,
                 cedar_action_version: 1,
                 hide_denied_tools: None,
             },
