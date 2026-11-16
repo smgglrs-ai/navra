@@ -36,11 +36,12 @@ spec:
           - port: 9315
             protocol: TCP
       - to:
-          # OpenShift's DNS pods do not carry the upstream
+          # OpenShift runs cluster DNS in the openshift-dns
+          # namespace (not kube-system), without the upstream
           # k8s-app=kube-dns label — select by namespace + port only.
           - namespaceSelector:
               matchLabels:
-                kubernetes.io/metadata.name: kube-system
+                kubernetes.io/metadata.name: openshift-dns
         ports:
           - port: 53
             protocol: UDP
