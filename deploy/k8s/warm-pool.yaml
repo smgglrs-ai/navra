@@ -36,12 +36,13 @@ spec:
           - port: 9315
             protocol: TCP
       - to:
-          # OpenShift runs cluster DNS in the openshift-dns
-          # namespace (not kube-system), without the upstream
-          # k8s-app=kube-dns label — select by namespace + port only.
-          - namespaceSelector:
-              matchLabels:
-                kubernetes.io/metadata.name: openshift-dns
+          # DNS under OVN-Kubernetes: egress policy is evaluated
+          # against the service ClusterIP (service network), which
+          # namespace/pod selectors never match. Allow the service
+          # network on port 53 — OpenShift's default service CIDR.
+          # (OpenShift's DNS pods run in openshift-dns.)
+          - ipBlock:
+              cidr: 172.30.0.0/16
         ports:
           - port: 53
             protocol: UDP
