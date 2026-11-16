@@ -21,6 +21,32 @@ metadata:
   name: navra-agent-template
   namespace: navra
 spec:
+  # Without an explicit policy the controller isolates sandbox pods
+  # from all private address space — including the gateway and
+  # cluster DNS, which the agent needs. Allow exactly: egress to the
+  # navra-gateway (MCP + /v1 + task/result endpoints) and cluster
+  # DNS. No ingress — the agent only makes outbound connections.
+  networkPolicy:
+    egress:
+      - to:
+          - podSelector:
+              matchLabels:
+                app.kubernetes.io/name: navra-gateway
+        ports:
+          - port: 9315
+            protocol: TCP
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: kube-system
+            podSelector:
+              matchLabels:
+                k8s-app: kube-dns
+        ports:
+          - port: 53
+            protocol: UDP
+          - port: 53
+            protocol: TCP
   podTemplate:
     metadata:
       labels:
