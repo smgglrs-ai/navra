@@ -1418,7 +1418,7 @@ async fn serve_inner(
     // claim (claims re-apply it to keep it current). Failure is
     // non-fatal: cold-create still works.
     if let Some(ns) = cfg.server.kubernetes_namespace.as_ref()
-        && let Some(ref pool) = cfg.server.kubernetes_warm_pool
+        && let Some(pool) = cfg.server.kubernetes_warm_pool.clone()
     {
         let k8s = agent_spawn::KubernetesAgentConfig {
             namespace: ns.clone(),
@@ -1430,7 +1430,7 @@ async fn serve_inner(
         let root_payload = agent_task_api.root_payload.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                agent_spawn::ensure_pool_bootstrap_secret(&k8s, pool, &signer, &root_payload).await
+                agent_spawn::ensure_pool_bootstrap_secret(&k8s, &pool, &signer, &root_payload).await
             {
                 tracing::warn!(
                     pool = %pool,
