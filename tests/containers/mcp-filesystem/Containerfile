@@ -1,9 +1,16 @@
 FROM docker.io/oven/bun:1 AS build
 WORKDIR /build
 RUN bun init -y && bun add @modelcontextprotocol/server-filesystem
-RUN bun build node_modules/@modelcontextprotocol/server-filesystem/dist/index.js \
-    --compile --minify --outfile mcp-filesystem
+
+# Do NOT `bun build --compile` this into a single binary: the server
+# resolves its version at runtime by reading package.json next to
+# dist/ (dist/version.js, upstream #4472). A compiled binary has no
+# package.json on disk and crashes with "Could not locate
+# package.json for server version". Ship the bun runtime plus the
+# installed package layout instead.
 
 FROM registry.access.redhat.com/ubi10/ubi-micro
-COPY --from=build /build/mcp-filesystem /usr/local/bin/mcp-filesystem
-ENTRYPOINT ["mcp-filesystem"]
+COPY --from=build /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=build /build/package.json /app/package.json
+COPY --from=build /build/node_modules /app/node_modules
+ENTRYPOINT ["bun", "/app/node_modules/@modelcontextprotocol/server-filesystem/dist/index.js"]
