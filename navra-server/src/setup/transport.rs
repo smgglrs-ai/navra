@@ -325,22 +325,28 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
 
         let shutdown = shutdown_signal();
 
-        // TLS (NAVRA-199): wrap the TCP listener when configured.
-        // The Unix socket is unaffected (node-local).
-        let tls_acceptor = crate::tls::build_tls_acceptor(&state.cfg)?;
+        // TLS (NAVRA-199/201): wrap the TCP listener when
+        // configured. The Unix socket is unaffected (node-local).
+        // The acceptor hot-reloads when the certificate files
+        // change (SPIFFE SVIDs rotate hourly).
+        let tls_shared = crate::tls::build_tls_acceptor(&state.cfg)?.map(|acceptor| {
+            let shared = crate::tls::SharedTlsAcceptor::new(acceptor);
+            shared.clone().spawn_watcher(state.cfg.clone());
+            shared
+        });
 
         if let Some(addr) = tcp_addr {
             let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
             let shutdown = shutdown;
 
             let tcp_router = router.clone();
-            match tls_acceptor {
-                Some(acceptor) => {
+            match tls_shared {
+                Some(shared) => {
                     tracing::info!(
                         client_auth = state.cfg.server.tls_client_ca_path.is_some(),
                         "Listening on https://{addr}"
                     );
-                    let tls_listener = crate::tls::TlsListener::new(tcp_listener, acceptor);
+                    let tls_listener = crate::tls::TlsListener::shared(tcp_listener, shared);
                     tokio::select! {
                         result = axum::serve(unix_listener, router)
                             .with_graceful_shutdown(shutdown) => result?,
@@ -366,13 +372,17 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
         let listener = tokio::net::TcpListener::bind(&addr).await?;
         let shutdown = shutdown_signal();
 
-        match crate::tls::build_tls_acceptor(&state.cfg)? {
-            Some(acceptor) => {
+        match crate::tls::build_tls_acceptor(&state.cfg)?.map(|acceptor| {
+            let shared = crate::tls::SharedTlsAcceptor::new(acceptor);
+            shared.clone().spawn_watcher(state.cfg.clone());
+            shared
+        }) {
+            Some(shared) => {
                 tracing::info!(
                     client_auth = state.cfg.server.tls_client_ca_path.is_some(),
                     "Listening on https://{addr}"
                 );
-                let tls_listener = crate::tls::TlsListener::new(listener, acceptor);
+                let tls_listener = crate::tls::TlsListener::shared(listener, shared);
                 axum::serve(tls_listener, router)
                     .with_graceful_shutdown(shutdown)
                     .await?;

@@ -22,9 +22,17 @@ data:
     cluster_statefulset = "{{ include "navra.fullname" . }}"
     agent_image = "{{ include "navra.agentImage" . }}"
     {{- if .Values.tls.enabled }}
+    {{- if eq .Values.tls.source "spire" }}
+    # SPIRE SVIDs via the SPIFFE Helper sidecar (rotating; navra
+    # hot-reloads). Client CA = the helper-written SPIRE bundle.
+    tls_cert_path = "/svid/tls.crt"
+    tls_key_path = "/svid/tls.key"
+    tls_client_ca_path = "/svid/ca.crt"
+    {{- else }}
     tls_cert_path = "/tls/server/tls.crt"
     tls_key_path = "/tls/server/tls.key"
     tls_client_ca_path = "/tls/ca.crt"
+    {{- end }}
     {{- end }}
 
     [server.identity]

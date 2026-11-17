@@ -52,20 +52,28 @@ identity:
   create: true
   existingSecret: ""
 
-# In-transit encryption (NAVRA-199). When enabled, the gateway
-# serves HTTPS with a chart-issued certificate (SANs cover the
-# Service, headless Service, and per-pod DNS names), workers
-# present a client certificate to the coordinator (optional mutual
-# TLS — agents still authenticate with delegated capability tokens
-# and connect without one), and warm-pool agents trust the CA via
-# NAVRA_TLS_CA_FILE.
+# In-transit encryption (NAVRA-199/201). When enabled, the gateway
+# serves HTTPS. Two certificate sources:
 #
-# Certificates are generated at first install and preserved across
-# upgrades (the CA key is never persisted). To use cluster-issued
-# certs instead (OpenShift service CA, cert-manager), leave this
-# disabled and run your own TLS terminator in front.
+# - internal (default): chart-issued CA + certs (SANs cover the
+#   Service, headless Service, and per-pod DNS), preserved across
+#   upgrades via lookup; the CA key is never persisted.
+# - spire: X509-SVIDs from the cluster's Zero Trust Workload
+#   Identity Manager (Red Hat's SPIRE operator, cluster-scoped).
+#   A SPIFFE Helper sidecar writes the rotating SVID + trust bundle
+#   to a shared volume; navra hot-reloads them (SVIDs rotate
+#   hourly). Worker replicas present their own SVIDs to the
+#   coordinator (mutual TLS); agents keep delegated-token auth.
+#   Requires ZTWIM installed with the same trust domain.
 tls:
   enabled: false
+  source: internal
+  spire:
+    # Must match the ZeroTrustWorkloadIdentityManager trustDomain.
+    trustDomain: ""
+    # Must match the spire-controller-manager's className.
+    className: zero-trust-workload-identity-manager-spire
+    helperImage: ghcr.io/spiffe/spiffe-helper:v0.12.3
 
 # Pre-warmed teammate agent pool (NAVRA-195). The gateway claims
 # from it on teammate spawn (kubernetes_warm_pool is wired

@@ -55,10 +55,18 @@ spec:
               value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
               {{- end }}
             {{- if .Values.tls.enabled }}
+            {{- if eq .Values.tls.source "spire" }}
+            # Trust the helper-written SPIRE bundle (rotates with the
+            # cluster CA): the agent's task-fetch, result-publish,
+            # model, and MCP clients honor it.
+            - name: NAVRA_TLS_CA_FILE
+              value: /svid/ca.crt
+            {{- else }}
             # Trust the chart CA (NAVRA-199): the agent's task-fetch,
             # result-publish, model, and MCP clients honor it.
             - name: NAVRA_TLS_CA_FILE
               value: /tls/ca.crt
+            {{- end }}
             {{- end }}
             # Pool bootstrap token (minted by the gateway)
             - name: NAVRA_TOKEN
@@ -84,11 +92,53 @@ spec:
               drop: ["ALL"]
           {{- if .Values.tls.enabled }}
           volumeMounts:
+            {{- if eq .Values.tls.source "spire" }}
+            - name: svid
+              mountPath: /svid
+              readOnly: true
+            {{- else }}
             - name: tls-ca
               mountPath: /tls
               readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if .Values.tls.enabled }}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
+        # SPIFFE Helper sidecar: the agent container only needs the
+        # trust bundle (auth is delegated capability tokens), but the
+        # helper writes the SVID files alongside it — same volume.
+        - name: spiffe-helper
+          image: {{ .Values.tls.spire.helperImage }}
+          imagePullPolicy: IfNotPresent
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+            - name: svid
+              mountPath: /svid
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
+      {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: svid
+          emptyDir: {}
+        - name: spiffe-helper-config
+          configMap:
+            name: {{ include "navra.fullname" . }}-spiffe-helper
+      {{- else if .Values.tls.enabled }}
       volumes:
         - name: tls-ca
           secret:

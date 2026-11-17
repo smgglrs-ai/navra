@@ -61,6 +61,25 @@ fn cluster_http_client_with_timeout(timeout: std::time::Duration) -> reqwest::Cl
                 tracing::warn!(path = pem_path, error = %e, "NAVRA_TLS_CLIENT_PEM invalid — connecting without a client certificate")
             }
         }
+    } else {
+        // Separate cert + key files (e.g. written by the SPIFFE
+        // Helper): concatenate into the single PEM reqwest expects.
+        let cert_path = std::env::var("NAVRA_TLS_CLIENT_CERT").unwrap_or_default();
+        let key_path = std::env::var("NAVRA_TLS_CLIENT_KEY").unwrap_or_default();
+        if !cert_path.is_empty()
+            && !key_path.is_empty()
+            && let (Ok(cert), Ok(key)) = (std::fs::read(&cert_path), std::fs::read(&key_path))
+        {
+            let mut pem = cert;
+            pem.extend_from_slice(b"\n");
+            pem.extend_from_slice(&key);
+            match reqwest::Identity::from_pem(&pem) {
+                Ok(identity) => builder = builder.identity(identity),
+                Err(e) => {
+                    tracing::warn!(cert = cert_path, key = key_path, error = %e, "client certificate unreadable — connecting without one")
+                }
+            }
+        }
     }
     builder.build().unwrap_or_default()
 }

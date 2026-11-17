@@ -44,6 +44,32 @@ spec:
           image: {{ include "navra.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config", "/config/config.toml"]
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
+          # --- SPIFFE Helper sidecar (NAVRA-201): writes this
+          # replica's rotating X509-SVID + the SPIRE trust bundle to
+          # the shared /svid volume. The gateway container watches
+          # those files and hot-reloads its TLS acceptor.
+        - name: spiffe-helper
+          image: {{ .Values.tls.spire.helperImage }}
+          imagePullPolicy: IfNotPresent
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+            - name: svid
+              mountPath: /svid
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
           env:
             - name: NAVRA_COORDINATOR_URL
               {{- if .Values.tls.enabled }}
@@ -51,16 +77,28 @@ spec:
               {{- else }}
               value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:9315
               {{- end }}
-            {{- if .Values.tls.enabled }}
-            # Cluster TLS (NAVRA-199): trust the chart CA and present
-            # the client certificate to the coordinator (optional
-            # mutual TLS; the coordinator itself ignores these files
-            # as a server).
+          {{- if .Values.tls.enabled }}
+          {{- if eq .Values.tls.source "spire" }}
+          # Cluster TLS from SPIRE SVIDs (NAVRA-201): trust the
+          # helper-written bundle and present this replica's own
+          # SVID to the coordinator (mutual TLS).
+            - name: NAVRA_TLS_CA_FILE
+              value: /svid/ca.crt
+            - name: NAVRA_TLS_CLIENT_CERT
+              value: /svid/tls.crt
+            - name: NAVRA_TLS_CLIENT_KEY
+              value: /svid/tls.key
+          {{- else }}
+          # Cluster TLS (NAVRA-199): trust the chart CA and present
+          # the client certificate to the coordinator (optional
+          # mutual TLS; the coordinator itself ignores these files
+          # as a server).
             - name: NAVRA_TLS_CA_FILE
               value: /tls/ca.crt
             - name: NAVRA_TLS_CLIENT_PEM
               value: /tls/client/tls.pem
-            {{- end }}
+          {{- end }}
+          {{- end }}
           ports:
             - name: mcp
               containerPort: 9315
@@ -105,6 +143,11 @@ spec:
               mountPath: /identity
               readOnly: true
             {{- if .Values.tls.enabled }}
+            {{- if eq .Values.tls.source "spire" }}
+            - name: svid
+              mountPath: /svid
+              readOnly: true
+            {{- else }}
             - name: tls-server
               mountPath: /tls/server
               readOnly: true
@@ -114,6 +157,7 @@ spec:
             - name: tls-ca
               mountPath: /tls
               readOnly: true
+            {{- end }}
             {{- end }}
             - name: data
               mountPath: /data
@@ -128,7 +172,7 @@ spec:
         - name: identity
           secret:
             secretName: {{ if .Values.identity.create }}{{ include "navra.fullname" . }}-identity{{ else }}{{ .Values.identity.existingSecret }}{{ end }}
-        {{- if .Values.tls.enabled }}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "internal") }}
         - name: tls-server
           secret:
             secretName: {{ include "navra.fullname" . }}-tls-server
@@ -138,6 +182,19 @@ spec:
         - name: tls-ca
           secret:
             secretName: {{ include "navra.fullname" . }}-tls-ca
+        {{- end }}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
+        # SPIFFE Workload API socket (CSI) shared with the helper
+        # sidecar, and the shared SVID directory the helper writes.
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
+        - name: svid
+          emptyDir: {}
+        - name: spiffe-helper-config
+          configMap:
+            name: {{ include "navra.fullname" . }}-spiffe-helper
         {{- end }}
         - name: tmp
           emptyDir: {}

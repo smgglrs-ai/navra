@@ -1,0 +1,61 @@
+id: NAVRA-201
+title: "SPIRE workload identity via Red Hat ZTWIM for gateway mTLS"
+status: in-progress
+priority: medium
+effort: 5-8d
+tags: [security, spiffe, spire, mtls, kubernetes]
+depends_on: ["NAVRA-199"]
+source: user direction 2026-11-17 — the NAVRA-199 phase-3 trigger fired
+relates: |
+  NAVRA-199 documented the SPIRE trigger conditions and the
+  SA-token/attestation wrinkle; this item executes phase 3 with the
+  Red Hat Zero Trust Workload Identity Manager (ZTWIM) operator
+  (GA 1.1, standard OCP entitlement, channel stable-v1). navra
+  already federates SPIFFE IDs at the app layer (WIMSE: spiffe:// →
+  did:web, JWT-SVID acceptance) — this adds the transport layer.
+description: |
+  Replace the chart-internal CA (NAVRA-199 phases 1-2) with
+  cluster-attested SPIFFE identities for the gateway deployment:
+
+  1. ZTWIM operator + operands on the cluster (SpireServer,
+     SpireAgent, SpiffeCSIDriver, trust domain, bundle ConfigMap).
+  2. Workload registration for the gateway StatefulSet pods with
+     DNS names in the SVID (service + headless + per-pod DNS) so
+     standard clients (reqwest, curl) can verify hostname while
+     SPIFFE-aware verification uses the URI SAN.
+  3. SVID consumption: SPIFFE Helper (ZTWIM 1.1) writes the
+     X509-SVID cert/key to a shared volume and signals on rotation
+     — navra must HOT-RELOAD its TLS acceptor (SVID TTLs are short;
+     the current acceptor is built once at startup). The agent
+     binary stays file/env based (distr.less scratch cannot use the
+     Workload API; agents authenticate with delegated tokens and
+     only need the SPIRE bundle as NAVRA_TLS_CA_FILE trust).
+  4. Worker→coordinator mTLS with SVIDs: worker presents its SVID,
+     coordinator verifies against the SPIRE bundle
+     (tls_client_ca_path → bundle from the ConfigMap).
+  5. Helm: tls.source = "spire" option mounting the bundle
+     ConfigMap + SPIFFE Helper sidecar.
+
+  Known design points:
+  - X509-SVIDs use URI SANs; hostname verification for normal
+    clients requires dnsNames on the SPIRE entry.
+  - The SA-token wrinkle from NAVRA-199 was about SPIRE's classic
+    in-pod psat attestation; ZTWIM's agent runs at node level with
+    its own identity and attests workloads via pod selectors —
+    sandbox pods with automountServiceAccountToken: false are not
+    blockers for the GATEWAY path (agents are not being SVID'd in
+    v1).
+
+acceptance:
+  - Gateway serves TLS with an SVID issued by ZTWIM (verified via
+    the bundle from the ConfigMap)
+  - Cert rotation hot-reloads without pod restart
+  - Worker→coordinator mTLS presents SVIDs; full two-replica e2e
+    passes with tls.source = spire
+  - Chart-internal CA remains available (tls.enabled) for clusters
+    without ZTWIM
+scope:
+  - navra-server/src/tls.rs (acceptor hot-reload)
+  - deploy/helm/navra/ (spire option, helper sidecar)
+verification:
+  quick: cargo test -p navra-server --bin navra tls; SNO e2e
