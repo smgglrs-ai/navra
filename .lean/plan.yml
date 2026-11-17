@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 14 active items
+# 13 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -30,12 +30,6 @@ items:
     status: planned
     priority: medium
     effort: 2-4d
-
-  - id: "NAVRA-199"
-    title: "In-transit encryption: TLS listener, cluster-CA mTLS, SPIRE ladder"
-    status: planned
-    priority: medium
-    effort: 3-5d (phases 1-2)
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"

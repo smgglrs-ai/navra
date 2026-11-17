@@ -1,6 +1,6 @@
 id: NAVRA-199
 title: "In-transit encryption: TLS listener, cluster-CA mTLS, SPIRE ladder"
-status: planned
+status: completed
 priority: medium
 effort: 3-5d (phases 1-2)
 tags: [security, tls, mtls, spiffe]
@@ -47,3 +47,36 @@ scope:
   - deploy/helm/navra/ (cert mounts)
 verification:
   quick: cargo test -p navra-core -p navra-server; cluster e2e
+notes:
+  - "COMPLETED phases 1-2 (2026-11-17, lab SNO)": rustls
+    HTTPS listener ([server] tls_cert_path/tls_key_path; the Unix
+    socket stays plaintext) with OPTIONAL client-cert verification
+    (tls_client_ca_path) — presented certs verified, absent certs
+    allowed, so workers mTLS-authenticate at the transport layer
+    while agents keep delegated-token auth. NAVRA_TLS_CA_FILE /
+    NAVRA_TLS_CLIENT_PEM are honored by worker forwarding, internal
+    label queries, the agent binary (task fetch, result publish,
+    rmcp MCP transport), and the model backends (OpenAI +
+    Anthropic). Helm tls.enabled issues a chart CA + serving cert
+    (SANs for Service/headless/per-pod DNS) + worker client cert,
+    preserved across upgrades via lookup with the CA key never
+    persisted; probes switch to tcpSocket (kubelet cannot verify
+    the chart CA). Validated live: full two-replica e2e over TLS
+    (team created on the coordinator, teammate warm-claimed, task
+    fetch + model calls through the HTTPS /v1, result collected via
+    the worker); curl with the CA succeeds, without it fails (rc
+    60). Gotchas found: (1) OpenSSL treats a leaf whose issuer DN
+    equals its own subject DN as self-signed regardless of
+    signatures — the chart CA and server cert must not share a CN;
+    (2) Helm cert durations are DAYS (8760 meant 24 years); (3)
+    tcpSocket probes against a TLS listener produce harmless
+    handshake-eof warnings in the gateway log (the probe client
+    closes immediately) — filterable if noisy; (4) the ring crypto
+    provider must be installed as process default before first TLS
+    use (feature unification leaves both ring and aws-lc-rs
+    enabled, making rustls auto-detection ambiguous).
+  - Phase 3 (SPIRE) deliberately NOT done: it triggers only on
+    cross-cluster trust domains or un-annotatable workloads, and
+    SPIRE's Kubernetes attestation conflicts with the sandbox pods'
+    automountServiceAccountToken: false posture (documented in the
+    description above). Reopen when a trigger fires.
