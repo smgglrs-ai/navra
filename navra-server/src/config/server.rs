@@ -115,6 +115,12 @@ pub struct ServerConfig {
     /// Kubernetes Service name for the navra gateway (in-cluster DNS).
     #[serde(default = "default_kubernetes_gateway_service")]
     pub kubernetes_gateway_service: String,
+    /// Port the Kubernetes gateway Service presents (the Service's
+    /// `port`, not the container's targetPort). Teammate spawn URLs
+    /// are built with this so the Service can present 80/443 while
+    /// the container keeps listening on its own port. Default 9315.
+    #[serde(default = "default_kubernetes_gateway_port")]
+    pub kubernetes_gateway_port: u16,
     /// Name of a SandboxWarmPool of pre-warmed navra-agent Sandboxes
     /// (extensions.agents.x-k8s.io). When set, teammate spawns claim
     /// from this pool instead of cold-creating Sandboxes; the pool
@@ -223,6 +229,10 @@ fn default_agent_signature_policy() -> String {
 
 fn default_kubernetes_gateway_service() -> String {
     "navra-gateway".to_string()
+}
+
+fn default_kubernetes_gateway_port() -> u16 {
+    9315
 }
 
 /// Root identity configuration.

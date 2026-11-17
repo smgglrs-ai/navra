@@ -14,6 +14,13 @@
 # the kubernetes-sigs/agent-sandbox controller with extensions:
 #   kubectl apply -f https://github.com/kubernetes-sigs/agent-sandbox/releases/download/v1.0.11/sandbox-with-extensions.yaml
 
+# Port the gateway Service presents to the cluster (Service
+# `port`). The container always listens on 9315 (Service
+# `targetPort`) — set this to 80/443 for conventional ports
+# without touching the container's security context. Spawned
+# teammates' in-cluster URLs follow it automatically.
+gatewayPort: 9315
+
 # Replicas of the gateway StatefulSet. Pod 0 is the coordinator
 # (team/flow state, teammate spawning); pods 1+ are stateless
 # workers (NAVRA-194). 1 = single-instance.

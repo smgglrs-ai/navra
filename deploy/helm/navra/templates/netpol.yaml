@@ -4,7 +4,7 @@
 # Selects every pod the gateway spawns (warm-pool Sandboxes and
 # cold-created Sandboxes both carry app.kubernetes.io/managed-by:
 # navra) and restricts egress to exactly:
-#   - this release's gateway pods, TCP 9315 (MCP + /v1 + the agent
+#   - this release's gateway pods, TCP {{ .Values.gatewayPort }} (MCP + /v1 + the agent
 #     task/result API)
 #   - cluster DNS
 #
@@ -40,6 +40,12 @@ spec:
             matchLabels:
               app.kubernetes.io/name: {{ include "navra.name" . }}
       ports:
+        # Both the Service port and the container targetPort:
+        # OVN-Kubernetes evaluates egress policy AFTER service DNAT
+        # (backend port), other CNIs may match the declared service
+        # port — allow both so gatewayPort can differ from 9315.
+        - port: {{ .Values.gatewayPort }}
+          protocol: TCP
         - port: 9315
           protocol: TCP
     - to:

@@ -1441,6 +1441,7 @@ async fn serve_inner(
             namespace: ns.clone(),
             context: cfg.server.kubernetes_context.clone(),
             gateway_service: cfg.server.kubernetes_gateway_service.clone(),
+            gateway_port: cfg.server.kubernetes_gateway_port,
             warm_pool: Some(pool.clone()),
         };
         let signer = Arc::clone(&root_signer);

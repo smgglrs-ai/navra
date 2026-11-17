@@ -12,7 +12,7 @@ Warm pool: {{ include "navra.warmPoolName" . }} ({{ .Values.warmPool.replicas }}
 {{- end }}
 
 Connect:
-  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "navra.fullname" . }} 9315:9315
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "navra.fullname" . }} 9315:{{ .Values.gatewayPort }}
   # MCP endpoint: http://localhost:9315/mcp
   # Model proxy:   http://localhost:9315/v1/chat/completions
 

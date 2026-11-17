@@ -7,6 +7,9 @@ pub struct KubernetesAgentConfig {
     pub namespace: String,
     pub context: Option<String>,
     pub gateway_service: String,
+    /// Port the gateway Service presents (Service `port`; the
+    /// container listens on its own targetPort). Spawn URLs use this.
+    pub gateway_port: u16,
     /// Name of a SandboxWarmPool to claim pre-warmed Sandboxes from.
     /// None = cold-create (inline Sandbox manifest).
     pub warm_pool: Option<String>,
@@ -1246,17 +1249,19 @@ fn spawn_kubernetes_agent(
                 model = bare.to_string();
             }
 
-            // In-cluster gateway URL via K8s Service DNS
+            // In-cluster gateway URL via K8s Service DNS (the
+            // Service's presented port — the container listens on
+            // its own targetPort behind it).
             let gateway_url = format!(
-                "http://{}.{}.svc.cluster.local:9315/mcp",
-                k8s.gateway_service, k8s.namespace
+                "http://{}.{}.svc.cluster.local:{}/mcp",
+                k8s.gateway_service, k8s.namespace, k8s.gateway_port
             );
 
             // Model endpoint: use configured model server URL or gateway's /v1
             let model_endpoint = model_server_url.clone().unwrap_or_else(|| {
                 format!(
-                    "http://{}.{}.svc.cluster.local:9315/v1",
-                    k8s.gateway_service, k8s.namespace
+                    "http://{}.{}.svc.cluster.local:{}/v1",
+                    k8s.gateway_service, k8s.namespace, k8s.gateway_port
                 )
             });
 
@@ -2039,6 +2044,7 @@ mod tests {
             namespace: "navra".into(),
             context: None,
             gateway_service: "navra-gateway".into(),
+            gateway_port: 9315,
         }
     }
 
@@ -2158,6 +2164,7 @@ mod tests {
             namespace: "prod".into(),
             context: Some("prod-cluster".into()),
             gateway_service: "navra-gw".into(),
+            gateway_port: 9315,
         };
         let env = std::collections::HashMap::new();
         let manifest = build_agent_sandbox_manifest(
@@ -2202,6 +2209,7 @@ mod tests {
             namespace: "navra".into(),
             context: Some("my-ctx".into()),
             gateway_service: "navra-gateway".into(),
+            gateway_port: 9315,
         };
         let cmd = kubectl_base(&k8s);
         let args: Vec<_> = cmd

@@ -467,6 +467,7 @@ impl Default for Config {
                 kubernetes_namespace: None,
                 kubernetes_context: None,
                 kubernetes_gateway_service: "navra-gateway".to_string(),
+                kubernetes_gateway_port: 9315,
                 kubernetes_warm_pool: None,
                 cluster_role: None,
                 cluster_statefulset: None,

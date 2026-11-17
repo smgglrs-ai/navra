@@ -50,15 +50,15 @@ spec:
             # from the task endpoint.
             - name: NAVRA_ENDPOINT
               {{- if .Values.tls.enabled }}
-              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/mcp
+              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}/mcp
               {{- else }}
-              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/mcp
+              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}/mcp
               {{- end }}
             - name: NAVRA_MODEL_ENDPOINT
               {{- if .Values.tls.enabled }}
-              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
+              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}/v1
               {{- else }}
-              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
+              value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}/v1
               {{- end }}
             {{- if .Values.tls.enabled }}
             {{- if eq .Values.tls.source "spire" }}
