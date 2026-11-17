@@ -9,7 +9,11 @@
 {{- $caSecret := lookup "v1" "Secret" $ns (printf "%s-tls-ca" $fullname) }}
 {{- $serverSecret := lookup "v1" "Secret" $ns (printf "%s-tls-server" $fullname) }}
 {{- $clientSecret := lookup "v1" "Secret" $ns (printf "%s-tls-client" $fullname) }}
-{{- $ca := genCA $fullname 3650 }}
+{{- /* Distinct CA common name: a leaf whose issuer DN equals its
+       own subject DN is treated as self-signed by OpenSSL chain
+       building (check_issued compares names, not keys) — the CA
+       and the server certificate must not share a CN. */}}
+{{- $ca := genCA (printf "%s-tls-ca" $fullname) 3650 }}
 {{- $sans := list
       $fullname
       (printf "%s.%s.svc" $fullname $ns)
@@ -19,8 +23,8 @@
       (printf "%s-headless.%s.svc.cluster.local" $fullname $ns)
       (printf "*.%s-headless.%s.svc" $fullname $ns)
       (printf "*.%s-headless.%s.svc.cluster.local" $fullname $ns) }}
-{{- $server := genSignedCert $fullname (list "127.0.0.1") $sans 8760 $ca }}
-{{- $client := genSignedCert (printf "%s-client" $fullname) nil nil 8760 $ca }}
+{{- $server := genSignedCert $fullname (list "127.0.0.1") $sans 825 $ca }}
+{{- $client := genSignedCert (printf "%s-client" $fullname) nil nil 825 $ca }}
 
 {{- /* Reuse stored PEMs across upgrades (lookup returns an empty
        map when the secret does not exist — check .data presence,

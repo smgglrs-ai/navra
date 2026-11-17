@@ -38,7 +38,7 @@ impl AnthropicBackend {
         let base_url = base_url.into().trim_end_matches('/').to_string();
         let is_vertex = base_url.contains("googleapis.com");
         Self {
-            client: reqwest::Client::new(),
+            client: crate::openai::tls_aware_client(),
             base_url,
             model: model.into(),
             api_key,
