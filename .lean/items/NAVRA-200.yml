@@ -1,0 +1,55 @@
+id: NAVRA-200
+title: "Datastore externalization sequencing + coordinator sharding path"
+status: planned
+priority: low
+effort: phased; build on demand
+tags: [state, postgres, redis, scaling, leaderworkerset]
+depends_on: ["NAVRA-198"]
+source: multi-replica production review (2026-11-17)
+relates: |
+  Records the sequencing decisions from the 2026-11-17 production
+  review so they are not re-litigated. NAVRA-194's notes said
+  "Redis is the general answer" — this item refines that to "only
+  at the coordinator bottleneck, and sharding comes first."
+description: |
+  Sequencing (protect the single-binary/laptop property — external
+  stores are options behind existing seams, never requirements):
+
+  1. DONE FIRST: NAVRA-198 (persist TeamRegistry to the
+     coordinator volume) — fixes the SPOF with zero new
+     infrastructure.
+  2. PostgreSQL backends on DEMAND, behind the existing traits
+     (SessionBackend already has SQLite/in-memory/DashMap
+     implementations; the audit log and hash-chained blackbox map
+     to Postgres cleanly — append-only favors it). Build when a
+     real deployment needs it, not speculatively.
+  3. Coordinator SHARDING before Redis: when the singleton
+     coordinator bottlenecks, shard teams across N coordinator
+     groups with workers forwarding by team affinity. The
+     designated vehicle is kubernetes-sigs/LeaderWorkerSet — its
+     group semantics (leader identity, leader-first rolling
+     updates, subgroups, auto worker→leader NetworkPolicy) map
+     directly onto this. Deliberately NOT adopted for the current
+     single-coordinator split: LWS's default group-restart-on-
+     leader-restart conflicts with our workers' survive-
+     coordinator-restart behavior, the leader PVC story needed
+     verification, and it would add a CRD dependency to replace
+     ~60 lines of validated ordinal-based role resolution.
+  4. Redis/Valkey LAST, for the sharded-coordinator case (shared
+     team state across groups, revocation propagation) — or
+     narrowly as a subscribed cache replacing the per-request
+     /api/internal/agent-label hop, but only when label queries
+     show up in profiles.
+
+  The nonce cache stays process-local regardless (audit-only;
+  replay protection is token TTL). Revocation lists become
+  coordinator-owned or shared at step 4.
+
+acceptance:
+  - This item tracks decisions; each phase gets its own item when
+    triggered (bottleneck evidence, deployment demand)
+scope:
+  - navra-memory (SessionBackend implementations)
+  - navra-server/src/team_tools.rs, cluster.rs (when sharding)
+verification:
+  quick: n/a

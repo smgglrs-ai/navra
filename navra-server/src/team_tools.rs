@@ -152,7 +152,7 @@ pub struct Teammate {
 pub use navra_model_hub::ModelCard;
 
 /// A blackboard entry shared across the team.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BlackboardEntry {
     pub key: String,
     pub value: String,
@@ -226,6 +226,124 @@ pub struct TeamRegistry {
     pub model_cards: Vec<ModelCard>,
     /// Operation classification per tool, injected after server build.
     tool_operations: Mutex<HashMap<String, navra_mcp::ToolOperation>>,
+    /// Persistence path (NAVRA-198). When set, every persisted-state
+    /// mutation writes a snapshot here (write-through) and
+    /// `load_or_new` restores from it. Only the coordinator and
+    /// standalone gateways set this; workers keep scratch registries.
+    persist_path: Option<std::path::PathBuf>,
+}
+
+// ── Persistence (NAVRA-198) ───────────────────────────────────────
+//
+// The registry is a low-churn structure (teams, teammates,
+// blackboard), so a whole-registry JSON snapshot written through on
+// every mutation is sufficient — no WAL, no per-entry journal.
+// Transient state (task JoinHandles, SignalHandles) is not
+// persisted; the sandbox→teammate mappings ARE, so results
+// published via POST /api/agent/result still route after a
+// coordinator restart.
+
+/// Serializable mirror of [`Teammate`].
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct TeammateSnapshot {
+    name: String,
+    persona: Option<String>,
+    model: String,
+    locality: String,
+    operations: Vec<String>,
+    tools: Vec<String>,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+    force_tool_iterations: Option<usize>,
+    status: String,
+    task: Option<String>,
+    output: Option<String>,
+    container_id: Option<String>,
+    sandbox_id: Option<String>,
+    k8s_sandbox: Option<String>,
+    workspace_path: Option<std::path::PathBuf>,
+    last_bb_check: Option<u64>,
+    iterations: Option<u32>,
+    agent_tokens: Option<u32>,
+}
+
+impl From<&Teammate> for TeammateSnapshot {
+    fn from(tm: &Teammate) -> Self {
+        Self {
+            name: tm.name.clone(),
+            persona: tm.persona.clone(),
+            model: tm.model.clone(),
+            locality: tm.locality.clone(),
+            operations: tm.operations.clone(),
+            tools: tm.tools.clone(),
+            temperature: tm.temperature,
+            max_tokens: tm.max_tokens,
+            force_tool_iterations: tm.force_tool_iterations,
+            status: tm.status.clone(),
+            task: tm.task.clone(),
+            output: tm.output.clone(),
+            container_id: tm.container_id.clone(),
+            sandbox_id: tm.sandbox_id.clone(),
+            k8s_sandbox: tm.k8s_sandbox.clone(),
+            workspace_path: tm.workspace_path.clone(),
+            last_bb_check: tm.last_bb_check,
+            iterations: tm.iterations,
+            agent_tokens: tm.agent_tokens,
+        }
+    }
+}
+
+impl From<TeammateSnapshot> for Teammate {
+    fn from(s: TeammateSnapshot) -> Self {
+        Self {
+            name: s.name,
+            persona: s.persona,
+            model: s.model,
+            locality: s.locality,
+            operations: s.operations,
+            tools: s.tools,
+            temperature: s.temperature,
+            max_tokens: s.max_tokens,
+            force_tool_iterations: s.force_tool_iterations,
+            status: s.status,
+            task: s.task,
+            output: s.output,
+            created_at: Instant::now(),
+            container_id: s.container_id,
+            sandbox_id: s.sandbox_id,
+            k8s_sandbox: s.k8s_sandbox,
+            workspace_path: s.workspace_path,
+            last_bb_check: None, // restart returns all notifications (safe superset)
+            iterations: s.iterations,
+            agent_tokens: s.agent_tokens,
+            signal_handle: None, // transient
+        }
+    }
+}
+
+/// Serializable mirror of [`Team`].
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct TeamSnapshot {
+    team_id: String,
+    name: String,
+    description: Option<String>,
+    lead: String,
+    depth: u32,
+    budget: TeamBudget,
+    teammates: Vec<TeammateSnapshot>,
+    blackboard: Vec<BlackboardEntry>,
+    tokens_used: u32,
+    /// Wall-clock creation time (Unix seconds); re-derived to
+    /// Instant on load for timeout math.
+    created_at_unix: i64,
+}
+
+/// Whole-registry snapshot.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct RegistrySnapshot {
+    next_id: u64,
+    total_agents: u32,
+    teams: Vec<TeamSnapshot>,
 }
 
 /// Infrastructure tools always included in teammate allowlists.
@@ -248,6 +366,146 @@ impl TeamRegistry {
     pub fn with_models(mut self, cards: Vec<ModelCard>) -> Self {
         self.model_cards = cards;
         self
+    }
+
+    /// Enable write-through persistence to `path`. (Currently used
+    /// only by tests and external embedders; the server wires
+    /// persistence via `load_or_new`.)
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn with_persistence(mut self, path: std::path::PathBuf) -> Self {
+        self.persist_path = Some(path);
+        self
+    }
+
+    /// Load a registry from its snapshot (when present and valid)
+    /// and keep persisting to `path`. A missing or corrupt snapshot
+    /// starts empty — persistence failures never block startup, but
+    /// are logged loudly.
+    pub fn load_or_new(path: &std::path::Path) -> Self {
+        let mut reg = Self {
+            persist_path: Some(path.to_path_buf()),
+            ..Default::default()
+        };
+        reg.persist_path = Some(path.to_path_buf());
+
+        match std::fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<RegistrySnapshot>(&content) {
+                Ok(snap) => {
+                    let now_unix = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let mut teams = HashMap::new();
+                    for t in snap.teams {
+                        // Re-derive the Instant clock from wall time.
+                        // Teams older than process uptime (always,
+                        // after a restart) lose exact timeout
+                        // arithmetic — clamp to now, which restarts
+                        // their timeout budget.
+                        let elapsed = (now_unix - t.created_at_unix).max(0) as u64;
+                        let created_at = Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(elapsed))
+                            .unwrap_or_else(Instant::now);
+                        teams.insert(
+                            t.team_id.clone(),
+                            Team {
+                                team_id: t.team_id,
+                                name: t.name,
+                                description: t.description,
+                                lead: t.lead,
+                                depth: t.depth,
+                                budget: t.budget,
+                                teammates: t
+                                    .teammates
+                                    .into_iter()
+                                    .map(|s| (s.name.clone(), Teammate::from(s)))
+                                    .collect(),
+                                blackboard: t.blackboard,
+                                tokens_used: AtomicU32::new(t.tokens_used),
+                                created_at,
+                                task_handles: HashMap::new(),
+                            },
+                        );
+                    }
+                    let team_count = teams.len();
+                    let agent_count = snap.total_agents;
+                    *reg.next_id.lock().unwrap_or_else(|e| e.into_inner()) = snap.next_id;
+                    reg.total_agents.store(snap.total_agents, Ordering::Relaxed);
+                    *reg.teams.lock().unwrap_or_else(|e| e.into_inner()) = teams;
+                    tracing::info!(
+                        teams = team_count,
+                        agents = agent_count,
+                        path = %path.display(),
+                        "TeamRegistry restored from snapshot"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        path = %path.display(),
+                        "TeamRegistry snapshot unreadable — starting empty"
+                    );
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    path = %path.display(),
+                    "TeamRegistry snapshot unreadable — starting empty"
+                );
+            }
+        }
+        reg
+    }
+
+    /// Write the snapshot. MUST be called while holding the `teams`
+    /// lock (takes the map by reference — no re-locking, no
+    /// deadlock). Failures are logged, never fatal to the mutation.
+    fn persist(&self, teams: &HashMap<String, Team>) {
+        let Some(path) = &self.persist_path else {
+            return;
+        };
+        let next_id = *self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+        let snap = RegistrySnapshot {
+            next_id,
+            total_agents: self.total_agents.load(Ordering::Relaxed),
+            teams: teams
+                .values()
+                .map(|t| TeamSnapshot {
+                    team_id: t.team_id.clone(),
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    lead: t.lead.clone(),
+                    depth: t.depth,
+                    budget: t.budget.clone(),
+                    teammates: t.teammates.values().map(TeammateSnapshot::from).collect(),
+                    blackboard: t.blackboard.clone(),
+                    tokens_used: t.tokens_used.load(Ordering::Relaxed),
+                    created_at_unix: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64,
+                })
+                .collect(),
+        };
+        let json = match serde_json::to_string(&snap) {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::warn!(error = %e, "TeamRegistry snapshot serialization failed");
+                return;
+            }
+        };
+        // Atomic write: temp file + rename, so a crash mid-write
+        // never corrupts the previous snapshot.
+        let tmp = path.with_extension("json.tmp");
+        if let Err(e) = std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, path)) {
+            tracing::warn!(
+                error = %e,
+                path = %path.display(),
+                "TeamRegistry snapshot write failed"
+            );
+        }
     }
 
     pub fn set_tool_operations(&self, ops: HashMap<String, navra_mcp::ToolOperation>) {
@@ -312,9 +570,14 @@ impl TeamRegistry {
             ));
         }
 
-        let mut id = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
-        *id += 1;
-        let team_id = format!("team-{}", *id);
+        // Scope the id guard: persist() re-locks next_id while the
+        // teams lock is held, so the two must never be held
+        // simultaneously here.
+        let team_id = {
+            let mut id = self.next_id.lock().unwrap_or_else(|e| e.into_inner());
+            *id += 1;
+            format!("team-{}", *id)
+        };
 
         let team = Team {
             team_id: team_id.clone(),
@@ -330,10 +593,9 @@ impl TeamRegistry {
             task_handles: HashMap::new(),
         };
 
-        self.teams
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(team_id.clone(), team);
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        teams.insert(team_id.clone(), team);
+        self.persist(&teams);
 
         Ok(team_id)
     }
@@ -399,6 +661,7 @@ impl TeamRegistry {
         );
 
         self.total_agents.fetch_add(1, Ordering::Relaxed);
+        self.persist(&teams);
         Ok(())
     }
 
@@ -464,6 +727,7 @@ impl TeamRegistry {
 
         teammate.task = Some(message.to_string());
         teammate.status = "working".to_string();
+        self.persist(&teams);
         Ok(())
     }
 
@@ -485,6 +749,7 @@ impl TeamRegistry {
                 timestamp_secs: team.created_at.elapsed().as_secs(),
                 label,
             });
+            self.persist(&teams);
         }
     }
 
@@ -564,6 +829,7 @@ impl TeamRegistry {
         {
             tm.container_id = Some(container_id);
         }
+        self.persist(&teams);
     }
 
     /// Record the adopted Kubernetes Sandbox name for a teammate
@@ -577,6 +843,7 @@ impl TeamRegistry {
         {
             tm.k8s_sandbox = Some(sandbox);
         }
+        self.persist(&teams);
     }
 
     /// Resolve `(team_id, teammate_id)` for a teammate spawned in the
@@ -631,6 +898,7 @@ impl TeamRegistry {
             tm.output = Some(output);
             tm.status = "done".to_string();
         }
+        self.persist(&teams);
     }
 
     pub fn set_failed(&self, team_id: &str, teammate: &str, error: String) {
@@ -641,6 +909,7 @@ impl TeamRegistry {
             tm.output = Some(error);
             tm.status = "failed".to_string();
         }
+        self.persist(&teams);
     }
 
     pub fn add_tokens(&self, team_id: &str, tokens: u32) {
@@ -648,6 +917,7 @@ impl TeamRegistry {
         if let Some(team) = teams.get(team_id) {
             team.tokens_used.fetch_add(tokens, Ordering::Relaxed);
         }
+        self.persist(&teams);
     }
 
     pub fn set_resolved_model(&self, team_id: &str, teammate: &str, model: &str) {
@@ -657,6 +927,7 @@ impl TeamRegistry {
         {
             tm.model = model.to_string();
         }
+        self.persist(&teams);
     }
 
     pub fn set_agent_metrics(&self, team_id: &str, teammate: &str, iterations: u32, tokens: u32) {
@@ -667,6 +938,7 @@ impl TeamRegistry {
             tm.iterations = Some(iterations);
             tm.agent_tokens = Some(tokens);
         }
+        self.persist(&teams);
     }
 
     /// Task spec served to a teammate over the task-delivery endpoint
@@ -862,6 +1134,7 @@ impl TeamRegistry {
 
         let agent_count = team.teammates.len() as u32;
         self.total_agents.fetch_sub(agent_count, Ordering::Relaxed);
+        self.persist(&teams);
 
         Ok(serde_json::json!({
             "team_id": team_id,
@@ -1533,3 +1806,176 @@ pub async fn handle_personas_list(
 // Re-export items moved to sibling modules so `crate::team_tools::X` paths keep working.
 pub use crate::agent_spawn::{TeammateSpawnContext, is_podman_available, spawn_teammate_agent};
 pub use crate::model_selection::handle_team_message;
+
+#[cfg(test)]
+mod persistence_tests {
+    use super::*;
+
+    fn reg_with_persistence(dir: &tempfile::TempDir) -> TeamRegistry {
+        TeamRegistry::load_or_new(&dir.path().join("teams.json"))
+    }
+
+    #[test]
+    fn snapshot_roundtrip_preserves_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let reg = reg_with_persistence(&dir);
+
+        let team = reg
+            .create_team("e2e", Some("desc"), "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "worker",
+            Some("analyst"),
+            "granite3.3:8b",
+            "local",
+            vec!["read".to_string()],
+            vec![],
+            Some(0.2),
+            None,
+            None,
+        )
+        .unwrap();
+        reg.send_message(&team, "worker", "do the thing").unwrap();
+        reg.bb_publish(
+            &team,
+            "findings/worker",
+            "found 3 issues",
+            "worker",
+            navra_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
+        reg.set_k8s_sandbox(&team, "worker", "navra-agents-abc12".to_string());
+        reg.set_output(&team, "worker", "final report".to_string());
+        reg.add_tokens(&team, 4242);
+
+        // "Restart": load a fresh registry from the same path.
+        let restored = reg_with_persistence(&dir);
+
+        // Team, teammate, task, output survive.
+        let result = restored.get_result(&team, "worker").unwrap();
+        assert_eq!(result["status"], "done");
+        assert_eq!(result["output"], "final report");
+
+        // Blackboard survives (with values).
+        let entry = restored.bb_read(&team, "findings/worker").unwrap();
+        assert_eq!(entry.value, "found 3 issues");
+
+        // The sandbox → teammate mapping survives: a post-restart
+        // POST /api/agent/result still routes.
+        assert_eq!(
+            restored.teammate_by_k8s_sandbox("navra-agents-abc12"),
+            Some((team.clone(), "worker".to_string()))
+        );
+
+        // Token accounting survives.
+        let status = restored.get_status(&team).unwrap();
+        assert_eq!(status["tokens_used"], 4242);
+
+        // Task survives (redelivery after restart).
+        let spec = restored.task_spec(&team, "worker").unwrap();
+        assert_eq!(spec["task"], "do the thing");
+
+        // Team ids continue without collision after restore.
+        let team2 = restored
+            .create_team("next", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        assert_ne!(team, team2);
+        // And the restored agent budget accounts for the prior teammate.
+        assert_eq!(
+            restored.get_status(&team).unwrap()["members"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn shutdown_persists_team_removal() {
+        let dir = tempfile::tempdir().unwrap();
+        let reg = reg_with_persistence(&dir);
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.shutdown(&team).unwrap();
+
+        let restored = reg_with_persistence(&dir);
+        assert!(restored.get_status(&team).is_none());
+    }
+
+    #[test]
+    fn missing_snapshot_starts_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let reg = reg_with_persistence(&dir);
+        assert!(reg.get_status("team-1").is_none());
+    }
+
+    #[test]
+    fn corrupt_snapshot_starts_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("teams.json");
+        std::fs::write(&path, "not json").unwrap();
+        let reg = TeamRegistry::load_or_new(&path);
+        assert!(reg.get_status("team-1").is_none());
+    }
+
+    #[test]
+    fn persistence_off_is_noop() {
+        // Default registries (tests, workers) never touch the disk.
+        let reg = TeamRegistry::default();
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "w",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.set_output(&team, "w", "out".to_string());
+        assert_eq!(reg.get_teammate_output(&team, "w").as_deref(), Some("out"));
+    }
+
+    #[test]
+    fn restored_notification_cursor_resets_safely() {
+        // After restore, last_bb_check is None → bb_notifications
+        // returns all entries (a safe superset, never a gap).
+        let dir = tempfile::tempdir().unwrap();
+        let reg = reg_with_persistence(&dir);
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "w",
+            None,
+            "m",
+            "local",
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.bb_publish(
+            &team,
+            "note",
+            "hello",
+            "lead",
+            navra_core::protocol::label::DataLabel::TRUSTED_PUBLIC,
+        );
+
+        let restored = reg_with_persistence(&dir);
+        let notes = restored.bb_notifications(&team, "w").unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].key, "note");
+    }
+}

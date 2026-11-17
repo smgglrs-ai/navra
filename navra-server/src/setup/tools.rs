@@ -410,7 +410,27 @@ pub(crate) async fn wire_team_tools(
     // Build composite model cards
     let model_cards = build_model_cards(cfg, &ollama_meta);
 
-    let team_registry = Arc::new(team_tools::TeamRegistry::new().with_models(model_cards));
+    // TeamRegistry persistence (NAVRA-198): the coordinator and
+    // standalone gateways persist the registry to their data volume
+    // so teams/blackboards survive restarts. Workers keep scratch
+    // registries — their coordinator owns the state.
+    let team_registry = if is_worker {
+        tracing::info!("Worker replica: TeamRegistry is scratch (coordinator owns state)");
+        Arc::new(team_tools::TeamRegistry::new().with_models(model_cards))
+    } else {
+        let path = dirs::data_dir().map(|d| d.join("navra").join("teams.json"));
+        match path {
+            Some(p) => {
+                let reg = team_tools::TeamRegistry::load_or_new(&p).with_models(model_cards);
+                tracing::info!(path = %p.display(), "TeamRegistry persistence enabled");
+                Arc::new(reg)
+            }
+            None => {
+                tracing::warn!("No data directory available — TeamRegistry is in-memory only");
+                Arc::new(team_tools::TeamRegistry::new().with_models(model_cards))
+            }
+        }
+    };
 
     // Containerized agent execution
     let containerized = match cfg.server.containerized {

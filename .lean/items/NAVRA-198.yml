@@ -1,0 +1,52 @@
+id: NAVRA-198
+title: "Persist TeamRegistry across coordinator restarts"
+status: in-progress
+priority: high
+effort: 2-3d
+tags: [kubernetes, state, teams]
+depends_on: []
+source: multi-replica production review (2026-11-17)
+relates: |
+  The state-loss SPOF identified when closing NAVRA-194: the
+  TeamRegistry is in-memory, so every coordinator restart (node
+  drain, OOM, config rollout — the Helm chart's checksum
+  annotations deliberately restart pods on config change) loses
+  all teams, blackboards, and running teammate handles.
+description: |
+  Persist the TeamRegistry to a JSON snapshot on the coordinator's
+  data volume, write-through on every mutation (teams are
+  low-churn), loaded at startup. Scope:
+
+  - Persisted: teams (metadata, budget), teammates (task, status,
+    output, metrics, model, persona, container/sandbox ids —
+    k8s_sandbox is what lets POST /api/agent/result route to the
+    right teammate after a restart), blackboard entries (with IFC
+    labels), tokens_used, next_id, wall-clock created_at
+    (re-derived to Instant on load for timeout math).
+  - Transient (dropped on restore): task JoinHandles (collection
+    loops die with the process), SignalHandles (in-process
+    interrupts).
+  - Workers never persist (empty scratch registries); standalone
+    gateways persist like the coordinator.
+
+  Honest limitation to document: teammates that were "working" at
+  restart lose their log-collection loop; warm-path teammates can
+  still deliver results via POST /api/agent/result (the sandbox →
+  teammate mapping survives), cold-path teammates finish
+  uncollected unless the operator reads sandbox logs manually.
+  Full liveness recovery is the LWS/sharding scale-out (NAVRA-200)
+  or an external store, not this.
+
+acceptance:
+  - Coordinator restart preserves teams, teammates, blackboard,
+    and token accounting; team_result returns pre-restart output
+  - Post-restart POST /api/agent/result reaches the right teammate
+    (k8s_sandbox mapping survives)
+  - next_id / team ids continue without collision after restore
+  - Persistence is off for workers and for in-process/test
+    registries
+scope:
+  - navra-server/src/team_tools.rs (snapshot + write-through)
+  - navra-server/src/setup/tools.rs (wire persistence path)
+verification:
+  quick: cargo test -p navra-server --bin navra team

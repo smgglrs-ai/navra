@@ -1,0 +1,49 @@
+id: NAVRA-199
+title: "In-transit encryption: TLS listener, cluster-CA mTLS, SPIRE ladder"
+status: planned
+priority: medium
+effort: 3-5d (phases 1-2)
+tags: [security, tls, mtls, spiffe]
+depends_on: []
+source: multi-replica production review (2026-11-17)
+relates: |
+  navra already federates SPIFFE identities at the APPLICATION
+  layer (WIMSE: spiffe:// → did:web mapping, JWT-SVID acceptance
+  in navra-auth/src/auth/wimse.rs) — but the listener is plain
+  HTTP on 9315 with no TLS config at all.
+description: |
+  Ladder, cheapest-highest-leverage first:
+
+  1. TLS listener support in navra (none exists today): config for
+     cert/key paths, axum served over HTTPS, Helm mounts the
+     cluster-issued cert (OpenShift:
+     service.beta.openshift.io/serving-cert-secret-name; cert-manager
+     elsewhere). ~1d.
+  2. mTLS worker→coordinator and coordinator-internal endpoints
+     (the forwarding path and /api/internal/agent-label carry
+     caller credentials and taint data) via the same cluster CA.
+     ~1-2d.
+  3. SPIRE only when its actual superpower is needed: cross-cluster
+     trust domains or workloads that cannot be annotated. Known
+     wrinkle for our topology: SPIRE's Kubernetes attestation
+     requires the projected service-account token, but agent
+     Sandbox pods deliberately run automountServiceAccountToken:
+     false — attesting them means either weakening that posture or
+     node-based attestation. Agents already have app-layer
+     identity (bootstrap token → adoption mints a per-teammate
+     delegated token); transport mTLS for them is additive.
+
+  Do NOT adopt SPIRE for single-cluster in-transit encryption —
+  the cluster's own CA gets 90% for 10% of the effort.
+
+acceptance:
+  - Gateway serves HTTPS with a cluster-issued cert; MCP, /v1, UI
+    all work over TLS
+  - Worker↔coordinator traffic is mutually authenticated
+  - Helm chart options for both
+scope:
+  - navra-core/src/transport/ (TLS listener)
+  - navra-server/src/cluster.rs (mTLS client config)
+  - deploy/helm/navra/ (cert mounts)
+verification:
+  quick: cargo test -p navra-core -p navra-server; cluster e2e
