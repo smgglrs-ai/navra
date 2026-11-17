@@ -73,7 +73,7 @@ tls:
     trustDomain: ""
     # Must match the spire-controller-manager's className.
     className: zero-trust-workload-identity-manager-spire
-    helperImage: ghcr.io/spiffe/spiffe-helper:v0.12.3
+    helperImage: ghcr.io/spiffe/spiffe-helper:0.12.1
 
 # Pre-warmed teammate agent pool (NAVRA-195). The gateway claims
 # from it on teammate spawn (kubernetes_warm_pool is wired

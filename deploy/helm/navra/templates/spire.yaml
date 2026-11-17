@@ -10,7 +10,7 @@
 # an SVID named by namespace + service account. DNS names cover the
 # client-facing Service, the headless Service, and the per-pod
 # coordinator DNS so standard hostname-verifying clients work.
-apiVersion: spiffe.spiffe.io/v1alpha1
+apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterSPIFFEID
 metadata:
   name: {{ $fullname }}

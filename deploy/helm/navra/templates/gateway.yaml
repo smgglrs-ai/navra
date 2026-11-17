@@ -44,32 +44,6 @@ spec:
           image: {{ include "navra.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["--config", "/config/config.toml"]
-        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
-          # --- SPIFFE Helper sidecar (NAVRA-201): writes this
-          # replica's rotating X509-SVID + the SPIRE trust bundle to
-          # the shared /svid volume. The gateway container watches
-          # those files and hot-reloads its TLS acceptor.
-        - name: spiffe-helper
-          image: {{ .Values.tls.spire.helperImage }}
-          imagePullPolicy: IfNotPresent
-          args: ["-config", "/etc/spiffe-helper/helper.conf"]
-          volumeMounts:
-            - name: spiffe-workload-api
-              mountPath: /run/spire/agent-sockets
-              readOnly: true
-            - name: svid
-              mountPath: /svid
-            - name: spiffe-helper-config
-              mountPath: /etc/spiffe-helper
-              readOnly: true
-          securityContext:
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
-            seccompProfile:
-              type: RuntimeDefault
-        {{- end }}
           env:
             - name: NAVRA_COORDINATOR_URL
               {{- if .Values.tls.enabled }}
@@ -165,6 +139,32 @@ spec:
               mountPath: /tmp
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
+        # --- SPIFFE Helper sidecar (NAVRA-201): writes this
+        # replica's rotating X509-SVID + the SPIRE trust bundle to
+        # the shared /svid volume. The gateway container watches
+        # those files and hot-reloads its TLS acceptor.
+        - name: spiffe-helper
+          image: {{ .Values.tls.spire.helperImage }}
+          imagePullPolicy: IfNotPresent
+          args: ["-config", "/etc/spiffe-helper/helper.conf"]
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+            - name: svid
+              mountPath: /svid
+            - name: spiffe-helper-config
+              mountPath: /etc/spiffe-helper
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+        {{- end }}
       volumes:
         - name: config
           configMap:
