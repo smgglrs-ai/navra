@@ -47,6 +47,7 @@ mod registry_tools;
 mod session_distillation;
 pub(crate) mod setup;
 mod team_tools;
+mod tls;
 mod tray;
 mod triggers;
 mod ui;

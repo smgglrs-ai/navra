@@ -43,9 +43,23 @@ spec:
             # Per-deployment constants — everything per-spawn comes
             # from the task endpoint.
             - name: NAVRA_ENDPOINT
+              {{- if .Values.tls.enabled }}
+              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/mcp
+              {{- else }}
               value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/mcp
+              {{- end }}
             - name: NAVRA_MODEL_ENDPOINT
+              {{- if .Values.tls.enabled }}
+              value: https://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
+              {{- else }}
               value: http://{{ include "navra.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:9315/v1
+              {{- end }}
+            {{- if .Values.tls.enabled }}
+            # Trust the chart CA (NAVRA-199): the agent's task-fetch,
+            # result-publish, model, and MCP clients honor it.
+            - name: NAVRA_TLS_CA_FILE
+              value: /tls/ca.crt
+            {{- end }}
             # Pool bootstrap token (minted by the gateway)
             - name: NAVRA_TOKEN
               valueFrom:
@@ -68,6 +82,18 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls-ca
+              mountPath: /tls
+              readOnly: true
+          {{- end }}
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls-ca
+          secret:
+            secretName: {{ include "navra.fullname" . }}-tls-ca
+      {{- end }}
 ---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool

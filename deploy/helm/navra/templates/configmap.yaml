@@ -21,6 +21,11 @@ data:
     cluster_role = "auto"
     cluster_statefulset = "{{ include "navra.fullname" . }}"
     agent_image = "{{ include "navra.agentImage" . }}"
+    {{- if .Values.tls.enabled }}
+    tls_cert_path = "/tls/server/tls.crt"
+    tls_key_path = "/tls/server/tls.key"
+    tls_client_ca_path = "/tls/ca.crt"
+    {{- end }}
 
     [server.identity]
     key_path = "/identity/identity.key"

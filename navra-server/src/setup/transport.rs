@@ -325,15 +325,36 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
 
         let shutdown = shutdown_signal();
 
+        // TLS (NAVRA-199): wrap the TCP listener when configured.
+        // The Unix socket is unaffected (node-local).
+        let tls_acceptor = crate::tls::build_tls_acceptor(&state.cfg)?;
+
         if let Some(addr) = tcp_addr {
             let tcp_listener = tokio::net::TcpListener::bind(&addr).await?;
-            tracing::info!("Listening on tcp:{addr}");
+            let shutdown = shutdown;
 
             let tcp_router = router.clone();
-            tokio::select! {
-                result = axum::serve(unix_listener, router)
-                    .with_graceful_shutdown(shutdown) => result?,
-                result = axum::serve(tcp_listener, tcp_router) => result?,
+            match tls_acceptor {
+                Some(acceptor) => {
+                    tracing::info!(
+                        client_auth = state.cfg.server.tls_client_ca_path.is_some(),
+                        "Listening on https://{addr}"
+                    );
+                    let tls_listener = crate::tls::TlsListener::new(tcp_listener, acceptor);
+                    tokio::select! {
+                        result = axum::serve(unix_listener, router)
+                            .with_graceful_shutdown(shutdown) => result?,
+                        result = axum::serve(tls_listener, tcp_router) => result?,
+                    }
+                }
+                None => {
+                    tracing::info!("Listening on tcp:{addr}");
+                    tokio::select! {
+                        result = axum::serve(unix_listener, router)
+                            .with_graceful_shutdown(shutdown) => result?,
+                        result = axum::serve(tcp_listener, tcp_router) => result?,
+                    }
+                }
             }
         } else {
             axum::serve(unix_listener, router)
@@ -343,13 +364,26 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
     } else {
         let addr = state.cfg.server.listen_addr();
         let listener = tokio::net::TcpListener::bind(&addr).await?;
-        tracing::info!("Listening on tcp:{addr}");
-
         let shutdown = shutdown_signal();
 
-        axum::serve(listener, router)
-            .with_graceful_shutdown(shutdown)
-            .await?;
+        match crate::tls::build_tls_acceptor(&state.cfg)? {
+            Some(acceptor) => {
+                tracing::info!(
+                    client_auth = state.cfg.server.tls_client_ca_path.is_some(),
+                    "Listening on https://{addr}"
+                );
+                let tls_listener = crate::tls::TlsListener::new(listener, acceptor);
+                axum::serve(tls_listener, router)
+                    .with_graceful_shutdown(shutdown)
+                    .await?;
+            }
+            None => {
+                tracing::info!("Listening on tcp:{addr}");
+                axum::serve(listener, router)
+                    .with_graceful_shutdown(shutdown)
+                    .await?;
+            }
+        }
     }
 
     Ok(())

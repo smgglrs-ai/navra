@@ -51,6 +51,8 @@ pub mod replay;
 pub mod resolve;
 /// Cooperative signal delivery for running agents.
 pub mod signal;
+/// TLS-aware HTTP client construction.
+pub mod tls;
 mod tool_loop;
 /// Hermes-format trace export for agent conversations.
 pub mod trace;
@@ -62,6 +64,7 @@ pub use client::McpClient;
 pub use error::AgentError;
 pub use resolve::{resolve_mcp_prompts, resolve_persona, resolve_persona_source};
 pub use signal::{AgentSignal, SignalHandle, SignalReceiver};
+pub use tls::{http_client, http_client_with_timeout};
 pub use tool_loop::{
     ContextRetriever, ToolLoopConfig, ToolLoopResult, extract_text, run_tool_loop,
 };

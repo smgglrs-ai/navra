@@ -494,7 +494,12 @@ impl AgentBuilder {
             if let Some(ref token) = self.auth_token {
                 config = config.auth_header(token);
             }
-            let transport = rmcp::transport::StreamableHttpClientTransport::from_config(config);
+            // TLS-aware client (NAVRA-199): honors NAVRA_TLS_CA_FILE
+            // so agents reach gateways serving HTTPS with an
+            // internal CA; plain HTTP is unaffected.
+            let http = crate::tls::http_client();
+            let transport =
+                rmcp::transport::StreamableHttpClientTransport::with_client(http, config);
             let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
                 .await
                 .map_err(|e| AgentError::Upstream(format!("connect error: {e}")))?;

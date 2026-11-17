@@ -46,10 +46,39 @@ spec:
           args: ["--config", "/config/config.toml"]
           env:
             - name: NAVRA_COORDINATOR_URL
+              {{- if .Values.tls.enabled }}
+              value: https://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:9315
+              {{- else }}
               value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:9315
+              {{- end }}
+            {{- if .Values.tls.enabled }}
+            # Cluster TLS (NAVRA-199): trust the chart CA and present
+            # the client certificate to the coordinator (optional
+            # mutual TLS; the coordinator itself ignores these files
+            # as a server).
+            - name: NAVRA_TLS_CA_FILE
+              value: /tls/ca.crt
+            - name: NAVRA_TLS_CLIENT_PEM
+              value: /tls/client/tls.pem
+            {{- end }}
           ports:
             - name: mcp
               containerPort: 9315
+          {{- if .Values.tls.enabled }}
+          # kubelet HTTP probes would reject the chart-issued
+          # certificate (kubelet does not trust the chart CA) —
+          # probe the TCP port instead.
+          readinessProbe:
+            tcpSocket:
+              port: mcp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: mcp
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          {{- else }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -62,6 +91,7 @@ spec:
               port: mcp
             initialDelaySeconds: 20
             periodSeconds: 30
+          {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -74,6 +104,17 @@ spec:
             - name: identity
               mountPath: /identity
               readOnly: true
+            {{- if .Values.tls.enabled }}
+            - name: tls-server
+              mountPath: /tls/server
+              readOnly: true
+            - name: tls-client
+              mountPath: /tls/client
+              readOnly: true
+            - name: tls-ca
+              mountPath: /tls
+              readOnly: true
+            {{- end }}
             - name: data
               mountPath: /data
             - name: tmp
@@ -87,6 +128,17 @@ spec:
         - name: identity
           secret:
             secretName: {{ if .Values.identity.create }}{{ include "navra.fullname" . }}-identity{{ else }}{{ .Values.identity.existingSecret }}{{ end }}
+        {{- if .Values.tls.enabled }}
+        - name: tls-server
+          secret:
+            secretName: {{ include "navra.fullname" . }}-tls-server
+        - name: tls-client
+          secret:
+            secretName: {{ include "navra.fullname" . }}-tls-client
+        - name: tls-ca
+          secret:
+            secretName: {{ include "navra.fullname" . }}-tls-ca
+        {{- end }}
         - name: tmp
           emptyDir: {}
   volumeClaimTemplates:

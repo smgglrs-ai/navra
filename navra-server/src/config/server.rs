@@ -137,6 +137,22 @@ pub struct ServerConfig {
     /// source; workers in "auto" mode require it).
     #[serde(default)]
     pub coordinator_url: Option<String>,
+    /// TLS server certificate (PEM). When set together with
+    /// tls_key_path, the TCP listener serves HTTPS (NAVRA-199).
+    #[serde(default)]
+    pub tls_cert_path: Option<String>,
+    /// TLS server private key (PEM).
+    #[serde(default)]
+    pub tls_key_path: Option<String>,
+    /// CA bundle (PEM) for OPTIONAL client-certificate verification
+    /// (mutual TLS). When set, clients may present a certificate
+    /// signed by this CA — verified when presented, but connection
+    /// is not refused without one (app-layer capability tokens
+    /// remain the authentication mechanism). This lets worker
+    /// replicas authenticate at the transport layer while agents
+    /// authenticate with delegated tokens only.
+    #[serde(default)]
+    pub tls_client_ca_path: Option<String>,
     /// Cedar action dispatch version. 1 (default) dispatches bare
     /// tool names as Cedar actions (compatibility). 2 namespaces
     /// upstream tool calls under the modeled

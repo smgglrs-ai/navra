@@ -1,0 +1,85 @@
+# TLS certificates (NAVRA-199). Generated at first install with
+# Helm's crypto functions and PRESERVED across upgrades by reusing
+# the stored PEMs (the CA key is never persisted — only the issued
+# certificates, which is all verification needs). helm template
+# (no cluster access) always generates fresh values.
+{{- if .Values.tls.enabled }}
+{{- $fullname := include "navra.fullname" . }}
+{{- $ns := .Release.Namespace }}
+{{- $caSecret := lookup "v1" "Secret" $ns (printf "%s-tls-ca" $fullname) }}
+{{- $serverSecret := lookup "v1" "Secret" $ns (printf "%s-tls-server" $fullname) }}
+{{- $clientSecret := lookup "v1" "Secret" $ns (printf "%s-tls-client" $fullname) }}
+{{- $ca := genCA $fullname 3650 }}
+{{- $sans := list
+      $fullname
+      (printf "%s.%s.svc" $fullname $ns)
+      (printf "%s.%s.svc.cluster.local" $fullname $ns)
+      (printf "%s-headless" $fullname)
+      (printf "%s-headless.%s.svc" $fullname $ns)
+      (printf "%s-headless.%s.svc.cluster.local" $fullname $ns)
+      (printf "*.%s-headless.%s.svc" $fullname $ns)
+      (printf "*.%s-headless.%s.svc.cluster.local" $fullname $ns) }}
+{{- $server := genSignedCert $fullname (list "127.0.0.1") $sans 8760 $ca }}
+{{- $client := genSignedCert (printf "%s-client" $fullname) nil nil 8760 $ca }}
+
+{{- /* Reuse stored PEMs across upgrades (lookup returns an empty
+       map when the secret does not exist — check .data presence,
+       not truthiness). */}}
+{{- $caCrt := $ca.Cert }}
+{{- if hasKey $caSecret "data" }}
+  {{- $caCrt = index $caSecret.data "ca.crt" | b64dec }}
+{{- end }}
+{{- $srvCrt := $server.Cert }}
+{{- $srvKey := $server.Key }}
+{{- if hasKey $serverSecret "data" }}
+  {{- $srvCrt = index $serverSecret.data "tls.crt" | b64dec }}
+  {{- $srvKey = index $serverSecret.data "tls.key" | b64dec }}
+{{- end }}
+{{- $cliCrt := $client.Cert }}
+{{- $cliKey := $client.Key }}
+{{- $cliPem := cat $client.Cert $client.Key }}
+{{- if hasKey $clientSecret "data" }}
+  {{- $cliCrt = index $clientSecret.data "tls.crt" | b64dec }}
+  {{- $cliKey = index $clientSecret.data "tls.key" | b64dec }}
+  {{- $cliPem = index $clientSecret.data "tls.pem" | b64dec }}
+{{- end }}
+---
+# Public CA certificate — mount wherever the gateway's TLS must be
+# trusted (worker replicas, warm-pool agent pods).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-tls-ca
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  ca.crt: {{ $caCrt | quote }}
+---
+# Gateway serving certificate + key.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-tls-server
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+stringData:
+  tls.crt: {{ $srvCrt | quote }}
+  tls.key: {{ $srvKey | quote }}
+---
+# Client certificate for worker replicas (transport-level mutual
+# auth to the coordinator). tls.pem is the cert+key concatenation
+# reqwest Identity::from_pem expects.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-tls-client
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  tls.crt: {{ $cliCrt | quote }}
+  tls.key: {{ $cliKey | quote }}
+  tls.pem: {{ $cliPem | quote }}
+{{- end }}

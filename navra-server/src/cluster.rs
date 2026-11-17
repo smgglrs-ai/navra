@@ -21,6 +21,50 @@
 use axum::body::Body;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 
+/// Build a reqwest client with cluster TLS settings (NAVRA-199):
+///
+/// - `NAVRA_TLS_CA_FILE` — CA bundle (PEM) to trust in addition to
+///   the system roots. Set for workers and agents when the gateway
+///   serves HTTPS with an internal CA.
+/// - `NAVRA_TLS_CLIENT_PEM` — client certificate + key (PEM) for
+///   mutual TLS. Set for worker replicas so the coordinator can
+///   authenticate them at the transport layer.
+///
+/// Plain HTTP is unaffected by either.
+pub(crate) fn cluster_http_client() -> reqwest::Client {
+    cluster_http_client_with_timeout(std::time::Duration::from_secs(120))
+}
+
+fn cluster_http_client_with_timeout(timeout: std::time::Duration) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder().timeout(timeout);
+    if let Ok(ca_path) = std::env::var("NAVRA_TLS_CA_FILE")
+        && !ca_path.is_empty()
+        && let Ok(pem) = std::fs::read(&ca_path)
+        && let Ok(cert) = reqwest::Certificate::from_pem(&pem)
+    {
+        builder = builder.add_root_certificate(cert);
+    } else if let Ok(ca_path) = std::env::var("NAVRA_TLS_CA_FILE")
+        && !ca_path.is_empty()
+    {
+        tracing::warn!(
+            path = ca_path,
+            "NAVRA_TLS_CA_FILE unreadable — using system roots only"
+        );
+    }
+    if let Ok(pem_path) = std::env::var("NAVRA_TLS_CLIENT_PEM")
+        && !pem_path.is_empty()
+        && let Ok(pem) = std::fs::read(&pem_path)
+    {
+        match reqwest::Identity::from_pem(&pem) {
+            Ok(identity) => builder = builder.identity(identity),
+            Err(e) => {
+                tracing::warn!(path = pem_path, error = %e, "NAVRA_TLS_CLIENT_PEM invalid — connecting without a client certificate")
+            }
+        }
+    }
+    builder.build().unwrap_or_default()
+}
+
 /// The gateway's role in a multi-replica deployment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ClusterRole {
@@ -232,19 +276,7 @@ pub(crate) async fn forward_buffered(
         "{coordinator_url}{}",
         uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("")
     );
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("client error: {e}"),
-            );
-        }
-    };
-
+    let client = cluster_http_client();
     let mut req = client.request(
         reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap(),
         &target,
@@ -310,10 +342,7 @@ pub(crate) async fn remote_agent_label(
         "{coordinator_url}/api/internal/agent-label?agent={}",
         urlencoding_encode(agent_name)
     );
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .ok()?;
+    let client = cluster_http_client_with_timeout(std::time::Duration::from_secs(5));
     let mut req = client.get(&url);
     if let Some(auth) = headers.get("authorization").and_then(|v| v.to_str().ok()) {
         req = req.header("authorization", auth);

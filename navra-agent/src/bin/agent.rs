@@ -87,10 +87,7 @@ fn api_url(endpoint: &str, path: &str) -> String {
 /// adopted sandbox and mint a fresh token (warm-pool adoption).
 async fn fetch_task_spec(endpoint: &str, token: Option<&str>) -> Result<TaskSpec, String> {
     let url = api_url(endpoint, "/api/agent/task");
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("http client error: {e}"))?;
+    let client = navra_agent::http_client_with_timeout(Duration::from_secs(30));
     let deadline = Duration::from_secs(
         env::var("NAVRA_TASK_POLL_TIMEOUT_SECS")
             .ok()
@@ -147,16 +144,7 @@ async fn fetch_task_spec(endpoint: &str, token: Option<&str>) -> Result<TaskSpec
 /// collectors.
 async fn publish_result(endpoint: &str, token: Option<&str>, result: &serde_json::Value) {
     let url = api_url(endpoint, "/api/agent/result");
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("warning: result publish client error: {e}");
-            return;
-        }
-    };
+    let client = navra_agent::http_client_with_timeout(Duration::from_secs(30));
     let mut req = client.post(&url).json(result);
     if let Some(t) = token {
         req = req.bearer_auth(t);
