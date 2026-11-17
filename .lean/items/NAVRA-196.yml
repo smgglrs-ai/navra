@@ -1,6 +1,6 @@
 id: NAVRA-196
 title: "OVN-compatible network isolation for agent Sandboxes"
-status: planned
+status: completed
 priority: medium
 effort: 2-4d
 tags: [kubernetes, security, network-policy, ovn]
@@ -75,3 +75,44 @@ scope:
     Sandboxes to fall under the policy)
 verification:
   quick: cluster e2e via examples/kubernetes/e2e-driver.py
+notes:
+  - "COMPLETED (2026-11-17, lab SNO) — root cause found by
+    clean bisection, fix shipped as a chart NetworkPolicy":
+    under OVN-Kubernetes (OpenShift 4.22), an egress rule WITH ANY
+    `ports` restriction never matches cluster-DNS service traffic
+    (the punt path) — `ports: [53]` to any destination silently
+    drops all DNS. Destination-based allows WITHOUT a ports
+    restriction work. The earlier 'every allow combination fails'
+    conclusion was contaminated: the agent-sandbox controller
+    reverts patched Managed policies within seconds, so mid-test
+    patches never actually applied. Bisection matrix (own policy,
+    no controller): allow-all egress → DNS OK; ports 53 to
+    ClusterIP/pod-CIDR/openshift-dns/any-dest → DNS FAILS; to
+    pod-CIDR or openshift-dns with NO ports → DNS OK; ports 9315
+    to gateway ClusterIP → TCP OK (port restrictions work for
+    normal services; the punt path is the exception).
+  - "FIX": the chart ships netpol.yaml — egress to this release's
+    gateway pods (TCP 9315, podSelector+namespaceSelector) and to
+    the DNS namespace (NO ports restriction; dnsNamespace value:
+    openshift-dns on OpenShift, kube-system on vanilla k8s; ""
+    disables). Selects app.kubernetes.io/managed-by: navra, which
+    the warm SandboxTemplate now sets and the cold-create
+    manifest always set — one policy covers both spawn paths.
+    Ingress left unrestricted (sandbox pods are clients only;
+    denying ingress would break kubelet readiness probing).
+    networkPolicyManagement stays Unmanaged on the template.
+  - "VALIDATED": busybox A/B under the exact chart-rendered policy
+    — selected pod resolves DNS and reaches the gateway, blocked
+    to ollama/internet/node-kubelet; unselected control pod
+    unaffected. Full warm-pool e2e under the live policy in the
+    navra namespace: teammate claimed, task fetched, model calls
+    through /v1, result published — status done.
+  - Follow-up (optional): file the punt-path/port-restriction
+    mismatch upstream with ovn-kubernetes (the bisection matrix
+    above is the reproduction). Also note two operational gotchas
+    from validation: the kubeconfig's default context namespace
+    drifts (oc apply without -n lands policies in the wrong
+    namespace — apply with explicit -n), and hand-deployed
+    gateways carry different pod labels than chart deployments
+    (name: navra-gateway vs the chart's selectorLabels name:
+    navra) — the chart policy is consistent with chart labels.

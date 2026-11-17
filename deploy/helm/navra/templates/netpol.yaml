@@ -1,0 +1,49 @@
+# Egress isolation for agent Sandbox pods (NAVRA-196).
+{{- if .Values.netpol.dnsNamespace }}
+#
+# Selects every pod the gateway spawns (warm-pool Sandboxes and
+# cold-created Sandboxes both carry app.kubernetes.io/managed-by:
+# navra) and restricts egress to exactly:
+#   - this release's gateway pods, TCP 9315 (MCP + /v1 + the agent
+#     task/result API)
+#   - cluster DNS
+#
+# CRITICAL — no `ports` restriction on the DNS rule: under
+# OVN-Kubernetes, port-restricted egress rules never match the
+# DNS punt path, so `ports: [53]` silently drops all DNS
+# regardless of the destination allow (verified by bisection on
+# OpenShift 4.22: any egress rule WITH a ports restriction breaks
+# DNS; destination-based allows without ports work). The
+# DNS namespace is a value because it differs per platform
+# (openshift-dns on OpenShift, kube-system on vanilla Kubernetes).
+#
+# Ingress is intentionally unrestricted: sandbox pods run as
+# clients only (no listener), and denying ingress would also break
+# kubelet readiness probing from the node.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "navra.fullname" . }}-sandbox-egress
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: navra
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "navra.name" . }}
+      ports:
+        - port: 9315
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.netpol.dnsNamespace }}
+{{ end }}

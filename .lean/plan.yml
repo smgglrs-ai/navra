@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 13 active items
+# 12 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -24,12 +24,6 @@ items:
     status: planned
     priority: medium
     effort: 3-5d
-
-  - id: "NAVRA-196"
-    title: "OVN-compatible network isolation for agent Sandboxes"
-    status: planned
-    priority: medium
-    effort: 2-4d
 
   - id: "NAVRA-022"
     title: "KAME tandem voice"

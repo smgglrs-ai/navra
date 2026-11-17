@@ -8,10 +8,12 @@
 # itself (at startup and on every claim) — do not create it
 # manually.
 #
-# networkPolicyManagement: Unmanaged — under OVN-Kubernetes the
-# controller's Managed policy breaks cluster DNS for sandbox pods
-# regardless of allow rules (see NAVRA-196); Unmanaged matches the
-# cold-create Sandbox posture.
+# networkPolicyManagement: Unmanaged — the controller's Managed
+# policy isolates sandbox pods from all private address space,
+# which breaks cluster DNS under OVN-Kubernetes (see NAVRA-196:
+# port-restricted egress rules never match the DNS punt path).
+# Isolation is provided by the chart's own NetworkPolicy
+# (netpol.yaml), which allows egress to the gateway and DNS only.
 {{- if .Values.warmPool.enabled }}
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
@@ -26,6 +28,10 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "navra.name" . }}-agent
         app.kubernetes.io/instance: {{ .Release.Name }}
+        # Selected by the {{ include "navra.fullname" . }}-sandbox-egress
+        # NetworkPolicy (NAVRA-196) — same label the cold-create
+        # path sets, so one policy isolates both spawn paths.
+        app.kubernetes.io/managed-by: navra
     spec:
       automountServiceAccountToken: false
       restartPolicy: OnFailure  # task redelivery on crash via the poll endpoint

@@ -75,6 +75,14 @@ tls:
     className: zero-trust-workload-identity-manager-spire
     helperImage: ghcr.io/spiffe/spiffe-helper:0.12.1
 
+# Network isolation for spawned agent Sandbox pods
+# (NAVRA-196). Egress is restricted to this release's gateway and
+# cluster DNS. dnsNamespace differs per platform: openshift-dns on
+# OpenShift, kube-system on vanilla Kubernetes. Set to "" to
+# disable the policy entirely.
+netpol:
+  dnsNamespace: openshift-dns
+
 # Pre-warmed teammate agent pool (NAVRA-195). The gateway claims
 # from it on teammate spawn (kubernetes_warm_pool is wired
 # automatically); falls back to cold-create when drained.
