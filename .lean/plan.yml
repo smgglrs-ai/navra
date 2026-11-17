@@ -1,5 +1,5 @@
 # GENERATED — do not edit. Source of truth: .lean/items/*.yml
-# 12 active items
+# 14 active items
 # Regenerate: bash ~/.claude/lean/scripts/generate-plan.sh
 
 version: 1
@@ -31,6 +31,12 @@ items:
     priority: medium
     effort: 2-4d
 
+  - id: "NAVRA-199"
+    title: "In-transit encryption: TLS listener, cluster-CA mTLS, SPIRE ladder"
+    status: planned
+    priority: medium
+    effort: 3-5d (phases 1-2)
+
   - id: "NAVRA-022"
     title: "KAME tandem voice"
     status: planned
@@ -61,6 +67,13 @@ items:
     depends_on: ['NAVRA-079']
     feeds: ['NAVRA-048']
     gate: "ADR-Bench dataset publicly available"
+
+  - id: "NAVRA-200"
+    title: "Datastore externalization sequencing + coordinator sharding path"
+    status: planned
+    priority: low
+    effort: phased; build on demand
+    depends_on: ['NAVRA-198']
 
   - id: "NAVRA-056"
     title: "Embeddable rendra-ag-ui widget"

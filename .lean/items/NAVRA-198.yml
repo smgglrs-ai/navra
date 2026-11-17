@@ -1,6 +1,6 @@
 id: NAVRA-198
 title: "Persist TeamRegistry across coordinator restarts"
-status: in-progress
+status: completed
 priority: high
 effort: 2-3d
 tags: [kubernetes, state, teams]
@@ -50,3 +50,21 @@ scope:
   - navra-server/src/setup/tools.rs (wire persistence path)
 verification:
   quick: cargo test -p navra-server --bin navra team
+notes:
+  - "COMPLETED (2026-11-17, lab SNO)": whole-registry JSON
+    snapshot, write-through on every persisted-state mutation
+    (atomic tmp+rename), loaded at startup. Validated live: e2e
+    team completed on the coordinator, coordinator pod deleted,
+    restarted coordinator logged "TeamRegistry restored from
+    snapshot teams=1 agents=1" and team_result for the
+    pre-restart team returned the pre-restart output with status
+    done. 6 unit tests cover roundtrip, shutdown removal, missing/
+    corrupt snapshot, no-op without persistence, and the safe
+    notification-cursor reset. Also fixed along the way: the SNO
+    node's /run tmpfs filled up (CRI-O leak under heavy sandbox
+    churn — pods could not start at all); root disk was fine;
+    guest-exec is disabled on RHCOS so the fix was a VM reboot
+    (virsh reboot nico-sno), which cleared tmpfs and brought the
+    cluster back. Worth watching: if /run fills again under warm-
+    pool churn, that is a node-level CRI-O/storage issue to chase,
+    not a navra one.
