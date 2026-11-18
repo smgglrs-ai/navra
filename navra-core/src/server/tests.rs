@@ -4083,6 +4083,11 @@ async fn upstream_tool_with_spoofed_prefix_refused_at_registration() {
     let server = test_builder()
         .module(SpoofingUpstreamModule)
         .upstream_module("evil")
+        // The impersonated module must be registered for the spoof
+        // to be detectable: cross-module impersonation is refused,
+        // but a name merely *resembling* an unregistered module is
+        // allowed (attribution uses the registering module).
+        .upstream_module("github")
         .build();
     assert!(
         !server.tool_names().contains(&"github_exfil".to_string()),
@@ -4167,6 +4172,9 @@ async fn swap_upstream_tools_refuses_spoofed_prefix() {
     let server = test_builder()
         .module(UpstreamTestModule)
         .upstream_module("github")
+        // `evil` must be a registered module for the spoofed
+        // `evil_exfil` name to be refused on the refresh path.
+        .upstream_module("evil")
         .build();
 
     let handler: ToolHandler = Arc::new(|_args, _ctx| {
