@@ -26,6 +26,13 @@ use crate::flow_tools::FlowRegistry;
 /// open and exhaust the runtime.
 const MAX_SSE_CONNECTIONS: usize = 32;
 
+/// Maximum concurrent SSE connections per authenticated identity.
+///
+/// A per-identity sub-cap of the global limit so a single client
+/// cannot monopolize all [`MAX_SSE_CONNECTIONS`] slots and starve
+/// every other watcher.
+const MAX_SSE_CONNECTIONS_PER_IDENTITY: usize = 8;
+
 /// Shared state for flow API handlers.
 #[derive(Clone)]
 pub(crate) struct FlowApiState {
@@ -34,17 +41,69 @@ pub(crate) struct FlowApiState {
     pub server: Option<Arc<navra_core::McpServer>>,
     /// Active SSE connections across all flows (server-wide cap).
     sse_connections: Arc<AtomicUsize>,
+    /// Active SSE connections per caller identity (fairness sub-cap).
+    sse_per_identity: SsePerIdentity,
 }
+
+/// Per-identity SSE connection counter map.
+type SsePerIdentity = Arc<std::sync::Mutex<std::collections::HashMap<String, usize>>>;
 
 /// Releases one SSE connection slot when dropped.
 struct SseConnectionGuard {
     counter: Arc<AtomicUsize>,
+    identity: Option<(String, SsePerIdentity)>,
 }
 
 impl Drop for SseConnectionGuard {
     fn drop(&mut self) {
         self.counter.fetch_sub(1, Ordering::AcqRel);
+        if let Some((id, map)) = self.identity.take() {
+            let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(count) = map.get_mut(&id) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    map.remove(&id);
+                }
+            }
+        }
     }
+}
+
+/// Acquire an SSE connection slot for `identity`.
+///
+/// Enforces both the server-wide cap ([`MAX_SSE_CONNECTIONS`]) and
+/// the per-identity fairness sub-cap
+/// ([`MAX_SSE_CONNECTIONS_PER_IDENTITY`]). Returns a guard that
+/// releases the slot on drop, or an error message when a cap is
+/// reached.
+fn acquire_sse_slot(
+    state: &FlowApiState,
+    identity: &str,
+) -> Result<SseConnectionGuard, &'static str> {
+    let active = state.sse_connections.fetch_add(1, Ordering::AcqRel);
+    if active >= MAX_SSE_CONNECTIONS {
+        state.sse_connections.fetch_sub(1, Ordering::AcqRel);
+        return Err("Too many concurrent SSE connections");
+    }
+
+    let mut per_identity = state
+        .sse_per_identity
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let count = per_identity.entry(identity.to_string()).or_insert(0);
+    *count += 1;
+    if *count > MAX_SSE_CONNECTIONS_PER_IDENTITY {
+        *count -= 1;
+        // Release the global slot acquired above — the connection
+        // is not established.
+        state.sse_connections.fetch_sub(1, Ordering::AcqRel);
+        return Err("Too many concurrent SSE connections for this identity");
+    }
+
+    Ok(SseConnectionGuard {
+        counter: Arc::clone(&state.sse_connections),
+        identity: Some((identity.to_string(), Arc::clone(&state.sse_per_identity))),
+    })
 }
 
 /// `GET /flows` — returns a list of all flow runs.
@@ -190,7 +249,7 @@ async fn handle_flow_events(
     Path(flow_id): Path<String>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    let Some(event_log) = state.event_log else {
+    let Some(event_log) = state.event_log.clone() else {
         return (StatusCode::SERVICE_UNAVAILABLE, "Event log not configured").into_response();
     };
 
@@ -207,18 +266,29 @@ async fn handle_flow_events(
 
     // Connection cap: each stream holds a polling task open, so a
     // client that opens many streams can exhaust the runtime. Fail
-    // closed with 503 once the server-wide cap is reached.
-    let active = state.sse_connections.fetch_add(1, Ordering::AcqRel);
-    if active >= MAX_SSE_CONNECTIONS {
-        state.sse_connections.fetch_sub(1, Ordering::AcqRel);
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Too many concurrent SSE connections",
-        )
-            .into_response();
-    }
-    let _guard = SseConnectionGuard {
-        counter: Arc::clone(&state.sse_connections),
+    // closed with 503 once the server-wide cap is reached. A
+    // per-identity sub-cap keeps one client from monopolizing all
+    // slots. Re-authenticate to bucket the connection by caller.
+    let identity = match &state.server {
+        Some(server) => match server.authenticator().authenticate(&headers) {
+            Ok(id) => id.name,
+            Err(_) => {
+                return (StatusCode::UNAUTHORIZED, "invalid or missing token").into_response();
+            }
+        },
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Flow execution not available",
+            )
+                .into_response();
+        }
+    };
+    let _guard = match acquire_sse_slot(&state, &identity) {
+        Ok(guard) => guard,
+        Err(msg) => {
+            return (StatusCode::SERVICE_UNAVAILABLE, msg).into_response();
+        }
     };
 
     let flow_id_owned = flow_id.clone();
@@ -366,6 +436,7 @@ pub(crate) fn flow_api_router(
         event_log,
         server: server.clone(),
         sse_connections: Arc::new(AtomicUsize::new(0)),
+        sse_per_identity: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     let router = axum::Router::new()
@@ -402,6 +473,62 @@ pub(crate) fn flow_api_router(
 mod tests {
     use super::*;
     use crate::flow_tools::{FlowRegistry, NodeStatus};
+
+    fn test_state(registry: Arc<FlowRegistry>) -> FlowApiState {
+        FlowApiState {
+            registry,
+            event_log: None,
+            server: None,
+            sse_connections: Arc::new(AtomicUsize::new(0)),
+            sse_per_identity: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        }
+    }
+
+    #[test]
+    fn sse_identity_cap_rejects_beyond_limit_while_global_has_capacity() {
+        let state = test_state(Arc::new(FlowRegistry::new()));
+
+        // One identity may hold up to MAX_SSE_CONNECTIONS_PER_IDENTITY.
+        let mut guards = Vec::new();
+        for _ in 0..MAX_SSE_CONNECTIONS_PER_IDENTITY {
+            guards.push(acquire_sse_slot(&state, "agent-a").expect("within per-identity cap"));
+        }
+        assert_eq!(
+            state.sse_connections.load(Ordering::Acquire),
+            MAX_SSE_CONNECTIONS_PER_IDENTITY
+        );
+
+        // The next slot for the same identity is rejected even though
+        // the global cap (32) has plenty of capacity left.
+        let err = match acquire_sse_slot(&state, "agent-a") {
+            Ok(_) => panic!("per-identity cap must reject"),
+            Err(msg) => msg,
+        };
+        assert!(err.contains("identity"), "got: {err}");
+        assert_eq!(
+            state.sse_connections.load(Ordering::Acquire),
+            MAX_SSE_CONNECTIONS_PER_IDENTITY,
+            "rejected slot must not leak a global count"
+        );
+
+        // A different identity can still connect.
+        let guard_b = acquire_sse_slot(&state, "agent-b").expect("other identity unaffected");
+        assert_eq!(state.sse_connections.load(Ordering::Acquire), 9);
+
+        // Dropping the guards releases both counters.
+        drop(guards);
+        assert_eq!(state.sse_connections.load(Ordering::Acquire), 1);
+        assert!(
+            state
+                .sse_per_identity
+                .lock()
+                .unwrap()
+                .get("agent-a")
+                .is_none()
+        );
+        drop(guard_b);
+        assert_eq!(state.sse_connections.load(Ordering::Acquire), 0);
+    }
 
     fn anon_server() -> Arc<navra_core::McpServer> {
         Arc::new(navra_core::McpServer::builder().allow_anonymous().build())
@@ -741,26 +868,25 @@ mod tests {
 
     #[tokio::test]
     async fn sse_connection_cap_rejects_beyond_limit() {
-        let counter = Arc::new(AtomicUsize::new(0));
+        let state = test_state(Arc::new(FlowRegistry::new()));
 
-        // Fill all slots.
+        // Fill all slots, using a fresh identity per connection so
+        // the per-identity sub-cap is not hit first.
         let mut guards: Vec<SseConnectionGuard> = Vec::new();
-        for _ in 0..MAX_SSE_CONNECTIONS {
-            assert!(counter.fetch_add(1, Ordering::AcqRel) < MAX_SSE_CONNECTIONS);
-            guards.push(SseConnectionGuard {
-                counter: Arc::clone(&counter),
-            });
+        for i in 0..MAX_SSE_CONNECTIONS {
+            guards.push(acquire_sse_slot(&state, &format!("agent-{i}")).expect("global capacity"));
         }
-        assert_eq!(counter.load(Ordering::Acquire), MAX_SSE_CONNECTIONS);
+        assert_eq!(
+            state.sse_connections.load(Ordering::Acquire),
+            MAX_SSE_CONNECTIONS
+        );
 
         // The next acquisition attempt would exceed the cap — the
         // handler checks before keeping the slot.
-        let active = counter.fetch_add(1, Ordering::AcqRel);
-        assert!(active >= MAX_SSE_CONNECTIONS);
-        counter.fetch_sub(1, Ordering::AcqRel);
+        assert!(acquire_sse_slot(&state, "agent-late").is_err());
 
         // Dropping guards releases slots.
         guards.clear();
-        assert_eq!(counter.load(Ordering::Acquire), 0);
+        assert_eq!(state.sse_connections.load(Ordering::Acquire), 0);
     }
 }

@@ -931,10 +931,12 @@ pub(crate) fn wire_memory_tools(
 
     let ks_store = Arc::clone(&ks);
     let sanitizer_for_store = pii_sanitizer.clone();
-    builder = builder.tool(memory_tools::memory_store_def(), move |args, _ctx| {
+    builder = builder.tool(memory_tools::memory_store_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_store);
         let sanitizer = sanitizer_for_store.clone();
-        Box::pin(memory_tools::handle_memory_store(args, ks, sanitizer))
+        Box::pin(
+            async move { memory_tools::handle_memory_store(args, ks, sanitizer, Some(&ctx)).await },
+        )
     });
 
     let ks_query = Arc::clone(&ks);

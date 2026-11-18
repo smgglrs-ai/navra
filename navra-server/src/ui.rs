@@ -126,6 +126,24 @@ pub(crate) fn attach_ui_routes(
     config_path: std::path::PathBuf,
     approvals: Arc<navra_core::permissions::ApprovalStore>,
 ) -> axum::Router {
+    // Approval-gate wiring audit: permission sets with `approve`
+    // rules register `requires_approval` in the path ACLs (which
+    // yield NeedsApproval), but nothing in the gateway currently
+    // files those requests with the ApprovalStore — the store is
+    // only reachable via this route. Warn loudly so operators know
+    // approval-gated operations are denied outright rather than
+    // queued for human resolution.
+    if cfg.permissions.values().any(|ps| !ps.approve.is_empty()) {
+        tracing::warn!(
+            "Config declares `approve` rules (path-ACL requires_approval), but no \
+             approval gate is wired to the ApprovalStore: approval-requiring \
+             operations are denied outright instead of queued for human \
+             resolution via /api/approvals. Wiring requires the navra-core \
+             tool-call path to call ApprovalStore::request() and await the \
+             receiver before executing."
+        );
+    }
+
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
         let expanded = expand_tilde(path);
@@ -754,18 +772,96 @@ pub(crate) fn attach_ui_routes(
         })
 
         // --- API: Approval resolution (admin) ---
+        // GET /api/approvals lists pending requests so operators (and
+        // the `navra approve` CLI) can discover what awaits resolution.
+        .route("/approvals", {
+            let approvals = Arc::clone(&approvals);
+            axum::routing::get(move || {
+                let approvals = Arc::clone(&approvals);
+                async move {
+                    let pending: Vec<serde_json::Value> = approvals
+                        .pending_requests()
+                        .into_iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "id": r.id,
+                                "agent": r.agent_name,
+                                "operation": r.operation,
+                                "path": r.path,
+                            })
+                        })
+                        .collect();
+                    axum::Json(serde_json::json!({ "pending": pending }))
+                }
+            })
+        })
         // Resolves a pending human-approval request. Authenticated
         // like every other /api route; consumed by `navra approve` /
         // `navra deny` (which send a bearer token from NAVRA_TOKEN).
         // There is deliberately NO agent-callable self-approval
         // tool — only out-of-band human channels resolve approvals.
+        // Authorization (in addition to authentication): the caller
+        // must hold an elevated permission set (admin/root) and must
+        // not be the agent that filed the request — an authenticated
+        // agent cannot resolve its own pending approval.
         .route("/approvals/{id}", {
             let approvals = Arc::clone(&approvals);
+            let auth_server = Arc::clone(server);
             axum::routing::post(
                 move |axum::extract::Path(id): axum::extract::Path<String>,
+                      headers: axum::http::HeaderMap,
                       axum::Json(body): axum::Json<serde_json::Value>| {
                     let approvals = Arc::clone(&approvals);
+                    let auth_server = Arc::clone(&auth_server);
                     async move {
+                        // Re-authenticate to identify the resolver
+                        // (the route-level middleware only checked
+                        // validity, fail closed here).
+                        let caller = match auth_server.authenticator().authenticate(&headers) {
+                            Ok(id) => id,
+                            Err(_) => {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    "invalid or missing token",
+                                )
+                                    .into_response();
+                            }
+                        };
+
+                        let Some(pending) = approvals.get_pending(&id) else {
+                            return (
+                                axum::http::StatusCode::NOT_FOUND,
+                                "Unknown or already-resolved approval request",
+                            )
+                                .into_response();
+                        };
+
+                        if !crate::memory_tools::is_elevated(caller.permissions.as_str()) {
+                            tracing::warn!(
+                                resolver = %caller.name,
+                                request_id = %id,
+                                "Approval resolution denied: caller is not elevated"
+                            );
+                            return (
+                                axum::http::StatusCode::FORBIDDEN,
+                                "Resolving approval requests requires an elevated \
+                                 permission set",
+                            )
+                                .into_response();
+                        }
+                        if pending.agent_name == caller.name {
+                            tracing::warn!(
+                                resolver = %caller.name,
+                                request_id = %id,
+                                "Approval resolution denied: self-approval attempt"
+                            );
+                            return (
+                                axum::http::StatusCode::FORBIDDEN,
+                                "Agents cannot resolve their own approval requests",
+                            )
+                                .into_response();
+                        }
+
                         let approve = body
                             .get("approve")
                             .and_then(|v| v.as_bool())
@@ -776,6 +872,14 @@ pub(crate) fn attach_ui_routes(
                             approvals.deny(&id)
                         };
                         if resolved {
+                            // Audit-log the resolver identity.
+                            tracing::info!(
+                                resolver = %caller.name,
+                                requester = %pending.agent_name,
+                                request_id = %id,
+                                approved = approve,
+                                "Approval request resolved via /api/approvals"
+                            );
                             axum::Json(serde_json::json!({
                                 "ok": true,
                                 "id": id,
@@ -1811,6 +1915,11 @@ pub(crate) fn attach_ui_routes(
     r = r.route("/ws/ui", {
         let broadcaster = ui_broadcaster;
         let server = Arc::clone(server);
+        // DNS-rebinding defense: the router-level Host allowlist only
+        // covers /mcp (rmcp StreamableHttpService). Validate the
+        // Host header here with the same allowlist (bind host +
+        // localhost variants) before upgrading.
+        let allowed_hosts = ui_allowed_http_hosts(cfg);
         axum::routing::get(move |
                 ws: axum::extract::WebSocketUpgrade,
                 headers: axum::http::HeaderMap,
@@ -1819,8 +1928,39 @@ pub(crate) fn attach_ui_routes(
                 let broadcaster = broadcaster.clone();
                 let server = server.clone();
                 async move {
+                    let host = headers
+                        .get(axum::http::header::HOST)
+                        .and_then(|h| h.to_str().ok());
+                    let host_ok = host.is_some_and(|h| {
+                        let h = h.trim();
+                        // Strip the port: the allowlist holds
+                        // hostnames, clients may send host:port.
+                        let bare = h.rsplit_once(':').map(|(n, _)| n).unwrap_or(h);
+                        allowed_hosts.iter().any(|a| a == h || a == bare)
+                    });
+                    if !host_ok {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            "Host not allowed",
+                        )
+                            .into_response();
+                    }
+
                     // Origin check: browsers always send Origin on WS
                     // upgrades; a mismatch means cross-site hijacking.
+                    // `Origin: null` comes from sandboxed frames and
+                    // is never a legitimate same-origin upgrade.
+                    if headers
+                        .get(axum::http::header::ORIGIN)
+                        .and_then(|o| o.to_str().ok())
+                        .is_some_and(|o| o.trim() == "null")
+                    {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            "Origin not allowed",
+                        )
+                            .into_response();
+                    }
                     if !ws_origin_matches_host(&headers) {
                         return (
                             axum::http::StatusCode::FORBIDDEN,
@@ -1901,6 +2041,34 @@ pub(crate) fn attach_ui_routes(
     }
 
     r
+}
+
+/// Compute the Host-header allowlist for the `/ws/ui` route — the
+/// same set the MCP transport uses (bind host + localhost variants).
+/// Wildcard binds fall back to the localhost set; operators binding
+/// publicly should set `tcp` to a specific hostname.
+fn ui_allowed_http_hosts(cfg: &config::Config) -> Vec<String> {
+    let mut hosts: Vec<String> = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    let bind_host = cfg
+        .server
+        .tcp
+        .as_deref()
+        .and_then(|addr| addr.rsplit_once(':'))
+        .map(|(host, _)| host.trim_start_matches('[').trim_end_matches(']'))
+        .unwrap_or("127.0.0.1");
+    if !bind_host.is_empty()
+        && bind_host != "0.0.0.0"
+        && bind_host != "::"
+        && bind_host != "*"
+        && !hosts.iter().any(|h| h == bind_host)
+    {
+        hosts.push(bind_host.to_string());
+    }
+    hosts
 }
 
 /// Check that a WebSocket upgrade's `Origin` (when present) matches
@@ -2101,6 +2269,31 @@ mod tests {
             .uri(path)
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
+
+        let resp = router.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes)
+            .unwrap_or(serde_json::json!({"raw": String::from_utf8_lossy(&bytes).to_string()}));
+        (status, json)
+    }
+
+    async fn post_json_bearer(
+        router: &axum::Router,
+        path: &str,
+        body: serde_json::Value,
+        token: Option<&str>,
+    ) -> (StatusCode, serde_json::Value) {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json");
+        if let Some(t) = token {
+            builder = builder.header("authorization", format!("Bearer {t}"));
+        }
+        let req = builder
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
 
         let resp = router.clone().oneshot(req).await.unwrap();
@@ -3062,12 +3255,22 @@ mod tests {
     async fn api_approvals_resolves_request() {
         let approvals = test_approvals();
         let (req, rx) = approvals.request("claude", "write", "/home/user/doc.md");
-        let router = build_router_with_approvals(&test_config(), test_server(), approvals);
+        // Elevated caller (admin permission set), different from the
+        // requesting agent.
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register(
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0",
+            navra_core::auth::AgentIdentity::new("approver", "admin"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let router = build_router_with_approvals(&test_config(), server, Arc::clone(&approvals));
 
-        let (status, json) = post_json(
+        let (status, json) = post_json_bearer(
             &router,
             &format!("/api/approvals/{}", req.id),
             serde_json::json!({"approve": true}),
+            Some("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"),
         )
         .await;
 
@@ -3079,6 +3282,57 @@ mod tests {
             rx.await.unwrap(),
             navra_core::permissions::ApprovalStatus::Approved
         );
+    }
+
+    #[tokio::test]
+    async fn api_approvals_rejects_self_approval() {
+        let approvals = test_approvals();
+        let (req, _rx) = approvals.request("claude", "write", "/home/user/doc.md");
+        // Elevated caller with the SAME name as the requesting agent.
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register(
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0",
+            navra_core::auth::AgentIdentity::new("claude", "admin"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let router = build_router_with_approvals(&test_config(), server, Arc::clone(&approvals));
+
+        let (status, _) = post_json_bearer(
+            &router,
+            &format!("/api/approvals/{}", req.id),
+            serde_json::json!({"approve": true}),
+            Some("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        // The request is still pending.
+        assert!(approvals.get_pending(&req.id).is_some());
+    }
+
+    #[tokio::test]
+    async fn api_approvals_requires_elevation() {
+        let approvals = test_approvals();
+        let (req, _rx) = approvals.request("claude", "write", "/home/user/doc.md");
+        // Authenticated but non-elevated caller.
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register(
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0",
+            navra_core::auth::AgentIdentity::new("other", "dev"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let router = build_router_with_approvals(&test_config(), server, Arc::clone(&approvals));
+
+        let (status, _) = post_json_bearer(
+            &router,
+            &format!("/api/approvals/{}", req.id),
+            serde_json::json!({"approve": true}),
+            Some("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(approvals.get_pending(&req.id).is_some());
     }
 
     #[tokio::test]
@@ -3156,6 +3410,40 @@ mod tests {
             .unwrap_or(0)
     }
 
+    /// Send a raw WebSocket upgrade request with a custom Host header;
+    /// return the HTTP status.
+    async fn raw_ws_status_with_host(
+        base: &str,
+        path: &str,
+        origin: Option<&str>,
+        host: &str,
+    ) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let addr = base.trim_start_matches("http://");
+        let mut stream = tokio::net::TcpStream::connect(addr).await.unwrap();
+        let mut req = format!(
+            "GET {path} HTTP/1.1\r\n\
+             Host: {host}\r\n\
+             Connection: Upgrade\r\n\
+             Upgrade: websocket\r\n\
+             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+             Sec-WebSocket-Version: 13\r\n"
+        );
+        if let Some(o) = origin {
+            req.push_str(&format!("Origin: {o}\r\n"));
+        }
+        req.push_str("\r\n");
+        stream.write_all(req.as_bytes()).await.unwrap();
+
+        let mut buf = vec![0u8; 1024];
+        let n = stream.read(&mut buf).await.unwrap();
+        let head = String::from_utf8_lossy(&buf[..n]).to_string();
+        head.split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    }
+
     fn ws_token_router() -> axum::Router {
         let mut auth = navra_core::auth::TokenAuthenticator::new();
         auth.register(
@@ -3207,6 +3495,73 @@ mod tests {
             .await,
             101
         );
+    }
+
+    #[tokio::test]
+    async fn ws_ui_rejects_host_not_in_allowlist() {
+        // DNS-rebinding defense: a Host header that is neither the
+        // bind host nor a localhost variant must be rejected before
+        // the upgrade, even with a valid token.
+        let base = serve_router(ws_token_router()).await;
+        let addr = base.trim_start_matches("http://").to_string();
+        assert_eq!(
+            raw_ws_status_with_host(
+                &base,
+                "/ws/ui?token=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
+                None,
+                "evil.example:9315"
+            )
+            .await,
+            403
+        );
+        // The real bind address (with port) is allowed.
+        assert_eq!(
+            raw_ws_status_with_host(
+                &base,
+                "/ws/ui?token=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
+                None,
+                &addr
+            )
+            .await,
+            101
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_ui_rejects_null_origin() {
+        // `Origin: null` (sandboxed frames) is never a legitimate
+        // same-origin upgrade.
+        let base = serve_router(ws_token_router()).await;
+        let addr = base.trim_start_matches("http://").to_string();
+        assert_eq!(
+            raw_ws_status_with_host(
+                &base,
+                "/ws/ui?token=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
+                Some("null"),
+                &addr
+            )
+            .await,
+            403
+        );
+    }
+
+    #[test]
+    fn ui_allowed_http_hosts_defaults_and_bind_host() {
+        let cfg = test_config();
+        let hosts = ui_allowed_http_hosts(&cfg);
+        assert!(hosts.contains(&"localhost".to_string()));
+        assert!(hosts.contains(&"127.0.0.1".to_string()));
+
+        let mut cfg = test_config();
+        cfg.server.tcp = Some("navra.lan:9315".to_string());
+        let hosts = ui_allowed_http_hosts(&cfg);
+        assert!(hosts.contains(&"navra.lan".to_string()));
+
+        // Wildcard binds fall back to the localhost set.
+        let mut cfg = test_config();
+        cfg.server.tcp = Some("0.0.0.0:9315".to_string());
+        let hosts = ui_allowed_http_hosts(&cfg);
+        assert!(!hosts.iter().any(|h| h == "0.0.0.0"));
     }
 
     #[test]

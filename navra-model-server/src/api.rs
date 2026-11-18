@@ -183,7 +183,7 @@ async fn chat_completions(
     let mut response = backend
         .respond(&request)
         .await
-        .map_err(|e| internal(&format!("inference error: {e}")))?;
+        .map_err(|e| internal_inference("chat completion", &e))?;
 
     // Transparency: the client sees the model it requested; the
     // header carries what actually served the request.
@@ -229,7 +229,7 @@ async fn embeddings(
     let response = backend
         .embed(&embed_req)
         .await
-        .map_err(|e| internal(&format!("embedding error: {e}")))?;
+        .map_err(|e| internal_inference("embedding", &e))?;
 
     Ok(Json(EmbedApiResponse {
         object: "list",
@@ -273,7 +273,7 @@ async fn classify(
     let response = backend
         .classify(&classify_req)
         .await
-        .map_err(|e| internal(&format!("classification error: {e}")))?;
+        .map_err(|e| internal_inference("classification", &e))?;
 
     Ok(Json(ClassifyApiResponse {
         labels: response
@@ -319,6 +319,17 @@ fn internal(msg: &str) -> (StatusCode, Json<ApiError>) {
             error: msg.to_string(),
         }),
     )
+}
+
+/// Internal error from a model backend: log the full error
+/// server-side, return only a generic message to the client.
+///
+/// Backend errors can embed upstream URLs, API keys in malformed
+/// request errors, or local file paths — none of which belong in a
+/// client-visible response body.
+fn internal_inference(stage: &str, e: &navra_model::ModelError) -> (StatusCode, Json<ApiError>) {
+    tracing::error!(stage, error = %e, "Model backend inference failure");
+    internal("internal model error")
 }
 
 #[cfg(test)]
@@ -574,6 +585,59 @@ mod tests {
             .unwrap();
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// A backend that always fails with a detail-rich error, to
+    /// verify the client only sees a generic message.
+    struct FailingBackend;
+
+    impl ModelBackend for FailingBackend {
+        fn respond(
+            &self,
+            _request: &CreateResponseRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<ModelResponse, ModelError>> + Send + '_>> {
+            Box::pin(async {
+                Err(ModelError::Inference(
+                    "upstream http://10.0.0.5:8080/v1 with key sk-super-secret failed".into(),
+                ))
+            })
+        }
+    }
+
+    async fn failing_state() -> ServerState {
+        let mut registry = ModelRegistry::from_config(&std::collections::HashMap::new())
+            .await
+            .unwrap();
+        registry.insert("broken", Arc::new(FailingBackend));
+        ServerState {
+            registry: Arc::new(RwLock::new(registry)),
+            router: Arc::new(SessionRouter::new(crate::router::RoutingConfig::default())),
+        }
+    }
+
+    #[tokio::test]
+    async fn inference_error_response_is_generic() {
+        let app = router(failing_state().await);
+        let resp = post_chat(
+            app,
+            serde_json::json!({
+                "model": "broken",
+                "input": [{"type": "message", "role": "user", "content": "hello"}]
+            }),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let msg = body["error"].as_str().unwrap();
+        assert_eq!(msg, "internal model error");
+        assert!(
+            !msg.contains("sk-super-secret") && !msg.contains("10.0.0.5"),
+            "internal details must not leak: {msg}"
+        );
     }
 
     // --- Token auth ---

@@ -109,21 +109,21 @@ pub fn memory_store_def() -> ToolDefinition {
                     "entity_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: scope to a specific user/entity identity"
+                        "description": "Optional: scope to a specific user/entity identity (requires an elevated permission set)"
                     }),
                 ),
                 (
                     "process_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: scope to a flow/workflow execution"
+                        "description": "Optional: scope to a flow/workflow execution (requires an elevated permission set)"
                     }),
                 ),
                 (
                     "session_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: scope to a session"
+                        "description": "Optional: scope to a session. Non-elevated callers are restricted to their own session."
                     }),
                 ),
                 (
@@ -179,21 +179,21 @@ pub fn memory_query_def() -> ToolDefinition {
                     "entity_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: filter to entries scoped to this user/entity"
+                        "description": "Optional: filter to entries scoped to this user/entity (requires an elevated permission set)"
                     }),
                 ),
                 (
                     "process_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: filter to entries scoped to this flow/workflow"
+                        "description": "Optional: filter to entries scoped to this flow/workflow (requires an elevated permission set)"
                     }),
                 ),
                 (
                     "session_id".to_string(),
                     serde_json::json!({
                         "type": "string",
-                        "description": "Optional: filter to entries scoped to this session"
+                        "description": "Optional: filter to entries scoped to this session. Non-elevated callers are restricted to their own session."
                     }),
                 ),
                 (
@@ -211,14 +211,33 @@ pub fn memory_query_def() -> ToolDefinition {
 
 // --- Handler functions ---
 
+/// Permission sets allowed to bypass session scoping on memory tools
+/// (write to or read another session's scope, query globally, or use
+/// entity_id/process_id scoping). Any other caller is clamped to
+/// their own session.
+pub const ELEVATED_PERMISSIONS: &[&str] = &["admin", "root"];
+
+/// Whether a permission set is elevated (admin/root) and may bypass
+/// per-session memory scoping and resolve approval requests.
+pub fn is_elevated(permissions: &str) -> bool {
+    ELEVATED_PERMISSIONS.contains(&permissions)
+}
+
 /// Handle memory_store tool call.
 ///
 /// When a PII sanitizer is provided, both the title and content are
 /// filtered before being written to SQLite.
+///
+/// When `ctx` is provided and the caller is not elevated, the write
+/// is forced into the caller's own session scope: a caller-supplied
+/// `session_id` must match the caller's session, and `entity_id` /
+/// `process_id` scoping is rejected. Elevated callers may write to
+/// any scope.
 pub async fn handle_memory_store(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
     sanitizer: PiiSanitizer,
+    ctx: Option<&navra_auth::auth::CallContext>,
 ) -> navra_core::protocol::CallToolResult {
     use navra_core::protocol::CallToolResult;
 
@@ -262,7 +281,7 @@ pub async fn handle_memory_store(
     let sanitized_content = sanitize_for_storage(content, &sanitizer).await;
 
     // Extract scope parameters
-    let scope = navra_memory::MemoryScope {
+    let mut scope = navra_memory::MemoryScope {
         entity_id: args
             .get("entity_id")
             .and_then(|v| v.as_str())
@@ -277,6 +296,32 @@ pub async fn handle_memory_store(
             .map(String::from),
     };
     let ttl_secs = args.get("ttl_secs").and_then(|v| v.as_u64());
+
+    // Scope enforcement: a non-elevated caller may only write inside
+    // its own session. Caller-supplied scopes that point elsewhere
+    // are rejected (never silently honored), and entity/process
+    // scoping is an elevated privilege.
+    if let Some(ctx) = ctx
+        && !is_elevated(ctx.agent.permissions.as_str())
+    {
+        use navra_core::protocol::CallToolResult;
+        if scope.entity_id.is_some() || scope.process_id.is_some() {
+            return CallToolResult::error_msg(
+                "Permission denied: entity_id/process_id scoping on memory_store \
+                 requires an elevated permission set",
+            );
+        }
+        if let Some(sid) = scope.session_id.as_deref()
+            && sid != ctx.session_id
+        {
+            return CallToolResult::error_msg(
+                "Permission denied: memory_store cannot target another session's scope",
+            );
+        }
+        // Force the scope to the caller's session (also applies when
+        // no scope was supplied, so writes are never unscoped/global).
+        scope.session_id = Some(ctx.session_id.clone());
+    }
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -322,15 +367,18 @@ pub async fn handle_memory_store(
 }
 
 /// Permission sets allowed to query memory globally (across all
-/// sessions/teams). Any other caller is scoped to their session.
-const GLOBAL_MEMORY_QUERY_PERMISSIONS: &[&str] = &["admin", "root"];
+/// sessions/teams) or to supply an explicit foreign scope. Any other
+/// caller is scoped to their session.
+const GLOBAL_MEMORY_QUERY_PERMISSIONS: &[&str] = ELEVATED_PERMISSIONS;
 
 /// Handle memory_query with caller scoping.
 ///
 /// - When the caller supplies no scope, the query defaults to the
 ///   caller's own session (from `CallContext::session_id`).
-/// - Explicit scope parameters (session/entity/process) are honored:
-///   they only narrow the search.
+/// - For non-elevated callers, any supplied scope is clamped to the
+///   caller's own session: a foreign `session_id` is rejected, and
+///   `entity_id`/`process_id` filters require an elevated permission
+///   set.
 /// - A global query (no scope, explicit `"global": true`) requires
 ///   the caller's permission set to be in
 ///   [`GLOBAL_MEMORY_QUERY_PERMISSIONS`].
@@ -384,6 +432,28 @@ async fn handle_memory_query_inner(
         .get("global")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+
+    // Scope clamping: for non-elevated callers, a supplied foreign
+    // session_id is rejected (never honored verbatim) and
+    // entity/process filters require elevation.
+    if let Some(ctx) = ctx
+        && !is_elevated(ctx.agent.permissions.as_str())
+    {
+        if let Some(sid) = scope.session_id.as_deref()
+            && sid != ctx.session_id
+        {
+            return CallToolResult::error_msg(
+                "Permission denied: memory_query cannot target another session's scope",
+            );
+        }
+        if scope.entity_id.is_some() || scope.process_id.is_some() {
+            return CallToolResult::error_msg(
+                "Permission denied: entity_id/process_id filters on memory_query \
+                 require an elevated permission set",
+            );
+        }
+    }
+
     if scope.is_global()
         && scope.session_id.is_none()
         && !wants_global
@@ -1040,7 +1110,7 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("standard");
         let content = "Contact john.doe@example.com or call 555-123-4567";
-        let result = handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
+        let result = handle_memory_store(store_args(content), ks.clone(), sanitizer, None).await;
 
         // Should succeed
         let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
@@ -1068,7 +1138,7 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("none");
         let content = "Contact john.doe@example.com or call 555-123-4567";
-        handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
+        handle_memory_store(store_args(content), ks.clone(), sanitizer, None).await;
 
         let store = ks.lock().unwrap();
         let entries = store.list(None).unwrap();
@@ -1214,17 +1284,140 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn memory_query_scoped_explicit_narrowing_still_works() {
+    async fn memory_query_scoped_foreign_session_rejected() {
         let ks = scoped_ks().await;
 
-        // Caller in sess-a explicitly querying sess-b's scope: honored
-        // (explicit narrowing is a caller choice, not a default)
+        // Caller in sess-a explicitly querying sess-b's scope: a
+        // foreign session_id is rejected for non-elevated callers
         let args = serde_json::json!({"query": "secret", "session_id": "sess-b"});
         let result = handle_memory_query_scoped(args, ks, &query_ctx("sess-a", "dev")).await;
         let text =
             navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        assert!(text.contains("Permission denied"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn memory_query_scoped_elevated_cross_session_allowed() {
+        let ks = scoped_ks().await;
+
+        // Elevated caller explicitly querying sess-b's scope: allowed
+        let args = serde_json::json!({"query": "secret", "session_id": "sess-b"});
+        let result = handle_memory_query_scoped(args, ks, &query_ctx("sess-a", "admin")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
         let entries: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
         assert!(entries.iter().all(|e| e["id"] == "b"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn memory_query_scoped_entity_filter_requires_elevation() {
+        let ks = scoped_ks().await;
+
+        let args = serde_json::json!({"query": "secret", "entity_id": "user-1"});
+        let result = handle_memory_query_scoped(args, ks, &query_ctx("sess-a", "dev")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        assert!(text.contains("elevated permission"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn memory_store_cross_session_write_rejected() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let args = serde_json::json!({
+            "kind": "fact",
+            "title": "t",
+            "content": "c",
+            "session_id": "sess-other",
+        });
+        let result =
+            handle_memory_store(args, ks.clone(), None, Some(&query_ctx("sess-a", "dev"))).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        assert!(text.contains("Permission denied"), "got: {text}");
+
+        // Nothing was written.
+        let store = ks.lock().unwrap();
+        assert!(store.list(None).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn memory_store_entity_scope_requires_elevation() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let args = serde_json::json!({
+            "kind": "fact",
+            "title": "t",
+            "content": "c",
+            "entity_id": "user-1",
+        });
+        let result =
+            handle_memory_store(args, ks.clone(), None, Some(&query_ctx("sess-a", "dev"))).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        assert!(text.contains("elevated permission"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn memory_store_own_session_write_works() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let args = serde_json::json!({
+            "kind": "fact",
+            "title": "t",
+            "content": "c",
+        });
+        let result =
+            handle_memory_store(args, ks.clone(), None, Some(&query_ctx("sess-a", "dev"))).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["status"], "stored");
+
+        // The entry landed in the caller's session scope, not global.
+        let store = ks.lock().unwrap();
+        let scope = navra_memory::MemoryScope {
+            session_id: Some("sess-a".to_string()),
+            ..Default::default()
+        };
+        let hits = store.search_scoped("c", &scope, 10).unwrap();
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn memory_store_elevated_explicit_scope_works() {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+
+        let args = serde_json::json!({
+            "kind": "fact",
+            "title": "t",
+            "content": "c",
+            "session_id": "sess-other",
+            "entity_id": "user-1",
+        });
+        let result =
+            handle_memory_store(args, ks.clone(), None, Some(&query_ctx("sess-a", "admin"))).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        let response: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(response["status"], "stored");
+
+        let store = ks.lock().unwrap();
+        let scope = navra_memory::MemoryScope {
+            session_id: Some("sess-other".to_string()),
+            entity_id: Some("user-1".to_string()),
+            process_id: None,
+        };
+        let hits = store.search_scoped("c", &scope, 10).unwrap();
+        assert_eq!(hits.len(), 1);
     }
 
     #[tokio::test]
@@ -1235,7 +1428,7 @@ mod tests {
 
         let sanitizer = build_pii_sanitizer("standard");
         let content = "Contact john.doe@example.com";
-        let result = handle_memory_store(store_args(content), ks.clone(), sanitizer).await;
+        let result = handle_memory_store(store_args(content), ks.clone(), sanitizer, None).await;
 
         let text = navra_protocol::compat::content_as_text(result.content.first().unwrap())
             .expect("expected text content");

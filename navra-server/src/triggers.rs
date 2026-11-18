@@ -90,7 +90,9 @@ impl<'de> Deserialize<'de> for TriggerConfig {
                 secret,
                 flow_name,
             } => {
-                if secret.as_deref().is_none_or(str::is_empty) {
+                // Trim before checking: a whitespace-only secret is
+                // as weak as an empty one.
+                if secret.as_deref().is_none_or(|s| s.trim().is_empty()) {
                     return Err(serde::de::Error::custom(format!(
                         "webhook trigger '{path}' requires a non-empty `secret` \
                          (HMAC-SHA256); unauthenticated webhooks are not allowed"
@@ -1030,6 +1032,26 @@ flow_name = "deploy"
             triggers: Vec<TriggerConfig>,
         }
         assert!(toml::from_str::<Wrapper>(toml).is_err());
+    }
+
+    #[test]
+    fn deserialize_webhook_with_whitespace_secret_fails() {
+        let toml = r#"
+[[triggers]]
+type = "webhook"
+path = "/hook/deploy"
+secret = "   "
+flow_name = "deploy"
+"#;
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[allow(dead_code)]
+            triggers: Vec<TriggerConfig>,
+        }
+        assert!(
+            toml::from_str::<Wrapper>(toml).is_err(),
+            "a whitespace-only secret must be rejected like an empty one"
+        );
     }
 
     // --- File watch debounce (unit-level) ---
