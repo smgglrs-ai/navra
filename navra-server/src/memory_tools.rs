@@ -276,10 +276,10 @@ pub async fn handle_memory_store(
     // Detect PII in original content before sanitization
     let has_pii = content_has_pii(content, &sanitizer)
         || content_has_pii(title, &sanitizer)
-        || navra_memory::tags_have_pii(&tags, sanitizer.as_ref());
+        || navra_memory::tags_have_pii(&tags, sanitizer.as_ref().map(|v| &**v));
 
     // Sanitize tags (control chars, PII, injection text) before storage
-    let tags = navra_memory::sanitize_tags(&tags, sanitizer.as_ref());
+    let tags = navra_memory::sanitize_tags(&tags, sanitizer.as_ref().map(|v| &**v));
 
     // Sanitize title and content through PII filter before storage
     let sanitized_title = sanitize_for_storage(title, &sanitizer).await;
@@ -680,7 +680,7 @@ pub async fn handle_memory_purge_pii(
     for entry in &entries {
         let has_pii = content_has_pii(&entry.content, &sanitizer)
             || content_has_pii(&entry.title, &sanitizer)
-            || navra_memory::tags_have_pii(&entry.tags, sanitizer.as_ref());
+            || navra_memory::tags_have_pii(&entry.tags, sanitizer.as_ref().map(|v| &**v));
 
         if !has_pii {
             continue;
