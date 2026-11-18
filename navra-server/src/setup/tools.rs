@@ -943,9 +943,9 @@ pub(crate) fn wire_memory_tools(
     });
 
     let ks_query = Arc::clone(&ks);
-    builder = builder.tool(memory_tools::memory_query_def(), move |args, _ctx| {
+    builder = builder.tool(memory_tools::memory_query_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_query);
-        Box::pin(memory_tools::handle_memory_query(args, ks))
+        Box::pin(async move { memory_tools::handle_memory_query_scoped(args, ks, &ctx).await })
     });
 
     let ks_forget = Arc::clone(&ks);
