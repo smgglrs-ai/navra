@@ -135,7 +135,6 @@ pub(crate) async fn wire_upstream(
 
                 builder = builder.merge_tool_operations(module.tool_operations().clone());
                 builder = builder.merge_tool_classifications(module.tool_classifications().clone());
-                builder = builder.upstream_module(&upstream_cfg.name);
 
                 if !upstream_cfg.tool_class.is_empty() {
                     let mut classes = std::collections::HashMap::new();
@@ -192,7 +191,9 @@ pub(crate) async fn wire_upstream(
                     }
                 }
 
-                builder = builder.module(module);
+                // Register the module and mark it as upstream-hosted
+                // in one atomic call (see McpServerBuilder::module_upstream).
+                builder = builder.module_upstream(module);
             }
             Err(e) => {
                 tracing::error!(
@@ -370,9 +371,7 @@ async fn wire_openapi_upstream(
             // Mark the module in `upstream_modules` so OpenAPI-bridged
             // tools are treated as upstream-hosted, matching MCP
             // upstream wiring (parity with setup/modules.rs discovery).
-            builder = builder
-                .upstream_module(upstream_cfg.name.clone())
-                .module(module);
+            builder = builder.module_upstream(module);
         }
         Err(e) => {
             tracing::error!(

@@ -148,6 +148,36 @@ fn valid_token_hash(s: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// Authorization-relevant `AgentConfig` fields a non-elevated agent
+/// may NOT change when editing its own entry via PUT /api/agents.
+///
+/// Everything else (token_hash rotation, model, max_concurrent,
+/// max_context) is permitted. Returns the name of the first changed
+/// immutable field, if any — the caller reports the field NAME only,
+/// never the value (values can be secrets: key paths, DIDs).
+fn immutable_self_edit_field(
+    existing: &config::AgentConfig,
+    new: &config::AgentConfig,
+) -> Option<&'static str> {
+    if existing.permissions != new.permissions {
+        Some("permissions")
+    } else if existing.did != new.did {
+        Some("did")
+    } else if existing.signing_key != new.signing_key {
+        Some("signing_key")
+    } else if existing.pubkey != new.pubkey {
+        Some("pubkey")
+    } else if existing.capability_token != new.capability_token {
+        Some("capability_token")
+    } else if existing.upstream != new.upstream {
+        Some("upstream")
+    } else if existing.token_ttl != new.token_ttl {
+        Some("token_ttl")
+    } else {
+        None
+    }
+}
+
 /// Build the web UI routes and attach them to the given router.
 ///
 /// This adds static asset routes (`/`, `/ui/style.css`, `/ui/app.js`)
@@ -426,13 +456,16 @@ pub(crate) fn attach_ui_routes(
                       >| {
                     let server = server.clone();
                     async move {
-                        if server.authenticator().authenticate(&headers).is_err() {
-                            return (
-                                axum::http::StatusCode::UNAUTHORIZED,
-                                axum::Json(serde_json::json!({"error": "unauthorized"})),
-                            )
-                                .into_response();
-                        }
+                        let caller = match server.authenticator().authenticate(&headers) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    axum::Json(serde_json::json!({"error": "unauthorized"})),
+                                )
+                                    .into_response();
+                            }
+                        };
                         let agent = match params.get("agent") {
                             Some(a) if !a.is_empty() => a,
                             _ => {
@@ -445,6 +478,21 @@ pub(crate) fn attach_ui_routes(
                                     .into_response();
                             }
                         };
+                        // Context taint labels are per-agent state: a
+                        // caller may only query its own label unless
+                        // elevated (cross-agent reads would disclose
+                        // other agents' IFC clearance posture).
+                        if agent != &caller.name
+                            && !crate::memory_tools::is_elevated(caller.permissions.as_str())
+                        {
+                            return (
+                                axum::http::StatusCode::FORBIDDEN,
+                                axum::Json(serde_json::json!({
+                                    "error": "agents may only query their own label"
+                                })),
+                            )
+                                .into_response();
+                        }
                         let label = server.sessions().agent_context_label(agent);
                         axum::Json(label).into_response()
                     }
@@ -724,7 +772,10 @@ pub(crate) fn attach_ui_routes(
                     // "admin"/"root" may only come from config.toml —
                     // an API upsert of these names would let even an
                     // elevated caller reshape the elevation boundary.
-                    if RESERVED_PERMISSION_SETS.contains(&name.as_str()) {
+                    // Fold case and trim first: "Admin", "ADMIN ",
+                    // and " root" are the same boundary.
+                    let folded_name = name.trim().to_lowercase();
+                    if RESERVED_PERMISSION_SETS.contains(&folded_name.as_str()) {
                         return (
                             axum::http::StatusCode::CONFLICT,
                             format!(
@@ -777,10 +828,14 @@ pub(crate) fn attach_ui_routes(
         })
 
         // --- API: Upsert agent ---
-        // Agents may edit ONLY their own config; any other agent
-        // (or a new one) requires an elevated caller. Without this,
-        // any authenticated agent could overwrite another agent's
-        // config — token hash, permission set, upstreams — wholesale.
+        // Agents may edit ONLY their own config — and even then may
+        // only rotate their bearer token and adjust cosmetic fields
+        // (model, concurrency/context caps); authorization-relevant
+        // fields (permissions, did, keys, upstreams, TTL) are
+        // immutable without elevation. Editing any other agent, or
+        // creating a new entry, requires an elevated caller.
+        // Capability-token identities are never eligible for the
+        // self-edit path (their name is the minted token's subject).
         .route("/agents/{name}", {
             let cs_put = Arc::clone(&config_state);
             let cp_put = config_path.clone();
@@ -810,12 +865,20 @@ pub(crate) fn attach_ui_routes(
                                 .into_response();
                         }
                     };
-                    if caller.name != name
-                        && !crate::memory_tools::is_elevated(caller.permissions.as_str())
-                    {
+                    let elevated = crate::memory_tools::is_elevated(caller.permissions.as_str());
+                    // Capability-token identities are NEVER eligible
+                    // for the self-edit path: their name is the
+                    // token's DID-shaped subject, chosen by whoever
+                    // minted the delegation, so even a name that
+                    // matches a config agent must not be trusted —
+                    // elevation is required.
+                    let cap_token_caller = caller.did.as_deref() == Some(caller.name.as_str())
+                        && navra_core::auth::is_did_shaped(&caller.name);
+                    if !elevated && (caller.name != name || cap_token_caller) {
                         tracing::warn!(
                             caller = %caller.name,
                             target = %name,
+                            capability_token = cap_token_caller,
                             "Agent upsert denied: caller is not elevated and not the target agent"
                         );
                         return (
@@ -837,6 +900,47 @@ pub(crate) fn attach_ui_routes(
                     }
                     body.name = name.clone();
                     let mut cfg = cs.write().await;
+                    // Non-elevated self-edits may only rotate the
+                    // bearer token and adjust cosmetic fields
+                    // (model, concurrency/context caps). Everything
+                    // that shapes authorization is immutable without
+                    // elevation — otherwise an agent could set
+                    // itself to "admin" and pass every is_elevated
+                    // gate after the next restart.
+                    if !elevated {
+                        let Some(existing) = cfg.agents.iter().find(|a| a.name == name) else {
+                            // Creating a NEW agent entry means
+                            // choosing its permission set — that is
+                            // minting an identity, not editing one's
+                            // own, and requires elevation.
+                            tracing::warn!(
+                                caller = %caller.name,
+                                target = %name,
+                                "Agent upsert denied: creating agent entries requires elevation"
+                            );
+                            return (
+                                axum::http::StatusCode::FORBIDDEN,
+                                "Creating agent entries requires an elevated permission set",
+                            )
+                                .into_response();
+                        };
+                        if let Some(field) = immutable_self_edit_field(existing, &body) {
+                            tracing::warn!(
+                                caller = %caller.name,
+                                target = %name,
+                                field = field,
+                                "Agent self-edit denied: authorization-relevant field changed"
+                            );
+                            return (
+                                axum::http::StatusCode::FORBIDDEN,
+                                format!(
+                                    "Field '{field}' is immutable for self-edits; \
+                                     changing it requires an elevated permission set"
+                                ),
+                            )
+                                .into_response();
+                        }
+                    }
                     if let Some(existing) = cfg.agents.iter_mut().find(|a| a.name == name) {
                         *existing = body;
                     } else {
@@ -888,13 +992,26 @@ pub(crate) fn attach_ui_routes(
         })
 
         // --- API: Force config reload ---
+        // Elevated-only: reloading swaps the entire live config
+        // (agents, permission sets, upstreams) from disk; a
+        // non-elevated caller could otherwise point the server at a
+        // config it cannot itself write via the API.
         .route("/config/reload", {
             let cs = Arc::clone(&config_state);
             let cp = config_path.clone();
-            axum::routing::post(move || {
+            let auth_reload = Arc::clone(server);
+            axum::routing::post(move |headers: axum::http::HeaderMap| {
                 let cs = cs.clone();
                 let cp = cp.clone();
+                let auth = Arc::clone(&auth_reload);
                 async move {
+                    if let Err(status) = require_elevated(&auth, &headers) {
+                        return (
+                            status,
+                            "Reloading config requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
                     match config::Config::load(Some(cp.to_str().unwrap_or("config.json"))) {
                         Ok(new_cfg) => {
                             *cs.write().await = new_cfg;
@@ -3288,13 +3405,19 @@ mod tests {
     #[tokio::test]
     async fn internal_agent_label_serves_session_taint() {
         // The /v1 proxy on a worker replica queries this endpoint to
-        // join IFC taint across replicas (NAVRA-194).
-        use navra_core::identity::CapSigner as _;
-        let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
-        let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
-            Box::new(Arc::clone(&signer)),
-            std::time::Duration::from_secs(3600),
-        );
+        // join IFC taint across replicas (NAVRA-194). A caller may
+        // query its OWN label: use a token-authenticated "tester"
+        // identity (the old version minted an unelevated capability
+        // token for a different name, which the cross-agent
+        // restriction now correctly denies).
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        let tester_token =
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0".to_string();
+        auth.register(
+            tester_token.as_str(),
+            navra_core::auth::AgentIdentity::new("tester", "dev"),
+        )
+        .unwrap();
         let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
 
         // Seed a session with a non-default label for agent "tester".
@@ -3331,31 +3454,95 @@ mod tests {
         );
 
         // Mint a token so the internal endpoint authorizes the query.
-        let cap = navra_core::auth::capability::CapabilitySet {
-            paths: vec!["**".to_string()],
-            operations: vec!["read".to_string()],
-            tools: vec![],
-            credentials: vec![],
-        };
-        let payload = navra_core::auth::capability::build_payload(
-            signer.did(),
-            "did:root:human",
-            cap,
-            2,
-            3600,
-        );
-        let token = navra_core::auth::capability::encode_token(&payload, signer.as_ref()).unwrap();
-
         let (status, json) = request_with_token(
             &router,
             "GET",
             "/api/internal/agent-label?agent=tester",
-            Some(&token),
+            Some(&tester_token),
             None,
         )
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["integrity"], "Untrusted");
+        assert_eq!(json["confidentiality"], "Sensitive");
+    }
+
+    #[tokio::test]
+    async fn internal_agent_label_rejects_cross_agent_query() {
+        // Context taint labels are per-agent state: a non-elevated
+        // caller must not read another agent's label.
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        let tester_token =
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0".to_string();
+        auth.register(
+            tester_token.as_str(),
+            navra_core::auth::AgentIdentity::new("tester", "dev"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let cfg = test_config();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("label-cross"),
+            test_approvals(),
+        );
+
+        let (status, _) = request_with_token(
+            &router,
+            "GET",
+            "/api/internal/agent-label?agent=someone-else",
+            Some(&tester_token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn internal_agent_label_allows_elevated_cross_agent_query() {
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        let admin_token =
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0".to_string();
+        auth.register(
+            admin_token.as_str(),
+            navra_core::auth::AgentIdentity::new("admin-agent", "admin"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+
+        // Seed a session with a non-default label for agent "tester".
+        let label = navra_core::protocol::label::DataLabel {
+            integrity: navra_core::protocol::label::Integrity::Untrusted,
+            confidentiality: navra_core::protocol::label::Confidentiality::Sensitive,
+        };
+        server.sessions().create(navra_core::session::Session {
+            id: "s1".to_string(),
+            agent: navra_auth::auth::AgentIdentity::new("tester", "dev"),
+            client_info: Default::default(),
+            initialized: true,
+            context_label: label,
+            created_at: 0,
+            last_accessed: 0,
+        });
+
+        let cfg = test_config();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("label-elev"),
+            test_approvals(),
+        );
+
+        let (status, json) = request_with_token(
+            &router,
+            "GET",
+            "/api/internal/agent-label?agent=tester",
+            Some(&admin_token),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
         assert_eq!(json["confidentiality"], "Sensitive");
     }
 
@@ -3604,7 +3791,7 @@ mod tests {
         )
     }
 
-    /// Config seeded with a deletable permission set and agent.
+    /// Config seeded with a deletable permission set and agents.
     fn config_api_test_config() -> config::Config {
         let mut cfg = test_config();
         cfg.permissions.insert(
@@ -3617,6 +3804,20 @@ mod tests {
         cfg.agents.push(config::AgentConfig {
             name: "victim".into(),
             token_hash: "3".repeat(64),
+            permissions: "dev".into(),
+            signing_key: None,
+            pubkey: None,
+            did: None,
+            capability_token: false,
+            token_ttl: None,
+            model: None,
+            upstream: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
+        });
+        cfg.agents.push(config::AgentConfig {
+            name: "worker".into(),
+            token_hash: "1".repeat(64),
             permissions: "dev".into(),
             signing_key: None,
             pubkey: None,
@@ -3695,6 +3896,47 @@ mod tests {
             .await;
             assert_eq!(status, StatusCode::CONFLICT);
         }
+
+        // Case/whitespace confusion must not slip a reserved name
+        // through: "Admin" and " admin " (URL-encoded) are the same
+        // boundary as "admin".
+        for name in ["Admin", "ADMIN", "%20admin%20", "root%09"] {
+            let (status, _) = request_with_token(
+                &router,
+                "PUT",
+                &format!("/api/permissions/{name}"),
+                Some(&admin),
+                Some(serde_json::json!({"operations": ["**"]})),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CONFLICT, "name {name:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn config_api_reload_requires_elevation() {
+        let cfg = config_api_test_config();
+        let (server, admin, worker) = config_api_server();
+        let path = unique_config_path("reload");
+        // Persist a loadable config at the reload path first.
+        cfg.save(std::path::Path::new(&path)).unwrap();
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        // Non-elevated authenticated caller: 403.
+        let (status, _) =
+            request_with_token(&router, "POST", "/api/config/reload", Some(&worker), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // Elevated caller: 200.
+        let (status, json) =
+            request_with_token(&router, "POST", "/api/config/reload", Some(&admin), None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["ok"], true);
+
+        // Unauthenticated caller: 401 from the route middleware.
+        let (status, _) =
+            request_with_token(&router, "POST", "/api/config/reload", None, None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
@@ -3788,7 +4030,9 @@ mod tests {
         let path = unique_config_path("agent-self");
         let router = build_config_api_router(&cfg, server, &path, test_approvals());
 
-        // Non-elevated agents may still edit their own entry.
+        // Non-elevated agents may still edit their own entry — but
+        // only within the allowed fields. Rotating the bearer token
+        // hash is the canonical legitimate self-edit.
         let (status, json) = request_with_token(
             &router,
             "PUT",
@@ -3804,7 +4048,185 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(json["name"], "worker");
         let saved = config::Config::load(Some(path.as_str())).unwrap();
-        assert!(saved.agents.iter().any(|a| a.name == "worker"));
+        let saved_worker = saved
+            .agents
+            .iter()
+            .find(|a| a.name == "worker")
+            .expect("worker entry persisted");
+        assert_eq!(saved_worker.token_hash, VALID_HASH);
+        assert_eq!(saved_worker.permissions, "dev");
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_self_edit_cannot_change_permissions() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let path = unique_config_path("agent-self-perm");
+        // Seed the config file so "unchanged" is checkable on disk.
+        cfg.save(std::path::Path::new(&path)).unwrap();
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        // Self-elevation attempt: worker PUTs itself with the
+        // "admin" permission set. Must be rejected and leave the
+        // persisted config untouched.
+        let (status, body) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/worker",
+            Some(&worker),
+            Some(serde_json::json!({
+                "name": "worker",
+                "token_hash": VALID_HASH,
+                "permissions": "admin",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        // The error names the immutable field, not its value.
+        let raw = body["raw"].as_str().unwrap_or_default();
+        assert!(raw.contains("permissions"), "got: {raw}");
+        let saved = config::Config::load(Some(path.as_str())).unwrap();
+        let saved_worker = saved
+            .agents
+            .iter()
+            .find(|a| a.name == "worker")
+            .expect("worker entry still present");
+        assert_eq!(saved_worker.permissions, "dev");
+        assert_eq!(saved_worker.token_hash, "1".repeat(64));
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_self_edit_cannot_change_auth_fields() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("agent-self-fields"),
+            test_approvals(),
+        );
+
+        // Every authorization-relevant field is immutable for
+        // non-elevated self-edits.
+        let mutations = [
+            serde_json::json!({"did": "did:key:z6MkAttacker"}),
+            serde_json::json!({"signing_key": "/tmp/attacker.key"}),
+            serde_json::json!({"pubkey": "/tmp/attacker.pub"}),
+            serde_json::json!({"capability_token": true}),
+            serde_json::json!({"upstream": ["secret-upstream"]}),
+            serde_json::json!({"token_ttl": 99999999}),
+        ];
+        for extra in &mutations {
+            let mut body = serde_json::json!({
+                "name": "worker",
+                "token_hash": VALID_HASH,
+                "permissions": "dev",
+            });
+            let (key, value) = extra.as_object().unwrap().iter().next().unwrap();
+            body[key] = value.clone();
+            let (status, _) = request_with_token(
+                &router,
+                "PUT",
+                "/api/agents/worker",
+                Some(&worker),
+                Some(body),
+            )
+            .await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "mutation of {key}");
+        }
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_self_edit_cannot_create_entry() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let path = unique_config_path("agent-self-create");
+        // Seed the config file so the absence check is meaningful.
+        cfg.save(std::path::Path::new(&path)).unwrap();
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        // A non-elevated caller cannot mint a new agent entry —
+        // that means choosing its permission set.
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/brand-new",
+            Some(&worker),
+            Some(serde_json::json!({
+                "name": "brand-new",
+                "token_hash": VALID_HASH,
+                "permissions": "admin",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let saved = config::Config::load(Some(path.as_str())).unwrap();
+        assert!(!saved.agents.iter().any(|a| a.name == "brand-new"));
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_upsert_capability_token_caller_needs_elevation() {
+        // C-2: a capability-token identity whose subject happens to
+        // match a config agent's name must not qualify for the
+        // self-edit path — the subject is mint-time attacker input.
+        use navra_core::identity::CapSigner as _;
+        let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
+        let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
+            Box::new(Arc::clone(&signer)),
+            std::time::Duration::from_secs(3600),
+        );
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+
+        // Config agent whose name IS a DID-shaped string, matching
+        // the token's subject.
+        let mut cfg = config_api_test_config();
+        cfg.agents.push(config::AgentConfig {
+            name: "agent:worker".into(),
+            token_hash: "2".repeat(64),
+            permissions: "dev".into(),
+            signing_key: None,
+            pubkey: None,
+            did: None,
+            capability_token: false,
+            token_ttl: None,
+            model: None,
+            upstream: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
+        });
+
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec!["read".to_string()],
+            tools: vec![],
+            credentials: vec![],
+        };
+        let payload =
+            navra_core::auth::capability::build_payload(signer.did(), "agent:worker", cap, 2, 3600);
+        let token = navra_core::auth::capability::encode_token(&payload, signer.as_ref()).unwrap();
+
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("agent-cap-caller"),
+            test_approvals(),
+        );
+
+        // Names match, caller is not elevated, identity came from a
+        // capability token: 403, config unchanged.
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/agent:worker",
+            Some(&token),
+            Some(serde_json::json!({
+                "name": "agent:worker",
+                "token_hash": VALID_HASH,
+                "permissions": "admin",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -3814,6 +4236,8 @@ mod tests {
         let path = unique_config_path("agent-admin");
         let router = build_config_api_router(&cfg, server, &path, test_approvals());
 
+        // Elevated callers may change authorization-relevant fields,
+        // including the permission set.
         let (status, _) = request_with_token(
             &router,
             "PUT",
@@ -3822,13 +4246,18 @@ mod tests {
             Some(serde_json::json!({
                 "name": "victim",
                 "token_hash": VALID_HASH,
-                "permissions": "dev",
+                "permissions": "admin",
             })),
         )
         .await;
         assert_eq!(status, StatusCode::OK);
         let saved = config::Config::load(Some(path.as_str())).unwrap();
-        assert!(saved.agents.iter().any(|a| a.name == "victim"));
+        let saved_victim = saved
+            .agents
+            .iter()
+            .find(|a| a.name == "victim")
+            .expect("victim entry persisted");
+        assert_eq!(saved_victim.permissions, "admin");
     }
 
     #[tokio::test]

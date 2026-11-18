@@ -5,7 +5,7 @@
 //! compatibility: capability tokens are checked first, then legacy
 //! BLAKE3 tokens, then development-mode no-auth.
 
-use super::{AgentIdentity, AuthError, Authenticator};
+use super::{AgentIdentity, AuthError, Authenticator, is_did_shaped};
 use crate::auth::capability;
 use crate::identity::{CapSigner, Ed25519Verifier};
 use std::collections::HashMap;
@@ -131,6 +131,17 @@ impl Authenticator for CapabilityAuthenticator {
             self.revocation_list.as_deref(),
         )
         .map_err(|_| AuthError::InvalidToken)?;
+
+        // C-2 identity forge: the subject must be a DID-shaped,
+        // namespaced identifier. `payload.sub` is caller-controlled
+        // at delegation time — a token with a plain-name subject
+        // like "ops-admin" would otherwise authenticate as
+        // AgentIdentity { name: "ops-admin" } and pass name-based
+        // gates (e.g. the config-API self-edit path) as a config
+        // agent it is not.
+        if !is_did_shaped(&payload.sub) {
+            return Err(AuthError::InvalidToken);
+        }
 
         // Audience validation: when the authenticator is configured
         // with an expected audience, tokens that declare an `aud`
@@ -426,6 +437,54 @@ mod tests {
         headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
 
         assert!(auth.authenticate(&headers).is_ok());
+    }
+
+    fn auth_headers_for(signer: &Ed25519Signer, subject: &str) -> HeaderMap {
+        let cap = CapabilitySet {
+            paths: vec!["/home/**".to_string()],
+            operations: vec!["read".to_string()],
+            tools: vec![],
+            credentials: vec![],
+        };
+        let payload = build_payload(signer.did(), subject, cap, 2, 3600);
+        let token = encode_token(&payload, signer).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
+        headers
+    }
+
+    #[test]
+    fn capability_auth_rejects_plain_name_subject() {
+        // C-2: a delegated token whose subject is a bare agent name
+        // ("ops-admin") must not authenticate — it would forge
+        // AgentIdentity.name and pass name-based gates.
+        let signer = std::sync::Arc::new(Ed25519Signer::generate());
+        for subject in ["ops-admin", "admin", "did:", "agent:", ""] {
+            let headers = auth_headers_for(&signer, subject);
+            let auth = CapabilityAuthenticator::new(Box::new(std::sync::Arc::clone(&signer)));
+            assert!(
+                auth.authenticate(&headers).is_err(),
+                "subject {subject:?} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn capability_auth_accepts_did_shaped_subjects() {
+        let signer = std::sync::Arc::new(Ed25519Signer::generate());
+        for subject in [
+            "did:key:z6MkSubject",
+            "did:teammate:team-1:researcher",
+            "did:pool:navra-agents",
+            "agent:worker-1",
+        ] {
+            let headers = auth_headers_for(&signer, subject);
+            let auth = CapabilityAuthenticator::new(Box::new(std::sync::Arc::clone(&signer)));
+            let identity = auth
+                .authenticate(&headers)
+                .unwrap_or_else(|e| panic!("subject {subject:?} must authenticate: {e}"));
+            assert_eq!(identity.name, subject);
+        }
     }
 
     #[test]
