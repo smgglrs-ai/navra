@@ -355,3 +355,119 @@ async fn mcp_allows_configured_host() {
         "allowlisted host must complete the initialize handshake, got: {text}"
     );
 }
+
+// --- Registry pagination with an active search filter ---
+
+fn registry_entry(name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "server": {
+            "name": name,
+            "description": format!("The {name} server"),
+        }
+    })
+}
+
+fn discovery_router(entries: Vec<serde_json::Value>) -> axum::Router {
+    let server = Arc::new(
+        McpServer::builder()
+            .name("registry-server")
+            .authenticator(NoAuthenticator {
+                default_identity: AgentIdentity::new("tester", "dev"),
+            })
+            .build(),
+    );
+    super::router::build_router_with_discovery(
+        server,
+        crate::transport::sse::SseBroadcaster::new(),
+        None,
+        entries,
+        None,
+        None,
+    )
+}
+
+#[tokio::test]
+async fn registry_search_final_page_has_no_phantom_cursor() {
+    // 5 entries, 2 matching the search. A page covering both matches
+    // is the final FILTERED page: nextCursor must be null. The old
+    // code compared against the unfiltered entry count and emitted a
+    // phantom cursor pointing past the last match.
+    let entries = vec![
+        registry_entry("match-a"),
+        registry_entry("match-b"),
+        registry_entry("other-c"),
+        registry_entry("other-d"),
+        registry_entry("other-e"),
+    ];
+    let router = discovery_router(entries);
+    let response = router
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/v0.1/servers?search=match&limit=2")
+                .header("host", "localhost:9315")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let text = body_text(response).await;
+    let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let servers = body["servers"].as_array().unwrap();
+    assert_eq!(servers.len(), 2, "both matches fit on one page");
+    assert!(
+        body["metadata"]["nextCursor"].is_null(),
+        "final filtered page must not carry a phantom cursor, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn registry_search_paginates_within_filtered_set() {
+    // 3 matches, page size 2: page 1 carries a cursor, page 2
+    // (1 remaining match) is final and must not.
+    let entries = vec![
+        registry_entry("match-a"),
+        registry_entry("match-b"),
+        registry_entry("match-c"),
+        registry_entry("other-d"),
+    ];
+    let router = discovery_router(entries);
+
+    let response = router
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/v0.1/servers?search=match&limit=2")
+                .header("host", "localhost:9315")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let text = body_text(response).await;
+    let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let cursor = body["metadata"]["nextCursor"]
+        .as_str()
+        .expect("partial filtered page must carry a cursor")
+        .to_string();
+
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(format!(
+                    "/v0.1/servers?search=match&limit=2&cursor={cursor}"
+                ))
+                .header("host", "localhost:9315")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let text = body_text(response).await;
+    let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(body["servers"].as_array().unwrap().len(), 1);
+    assert!(
+        body["metadata"]["nextCursor"].is_null(),
+        "final filtered page must not carry a phantom cursor, got: {text}"
+    );
+}

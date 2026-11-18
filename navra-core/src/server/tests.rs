@@ -3659,6 +3659,315 @@ async fn path_acl_write_resolves_existing_symlinks() {
     );
 }
 
+// --- Dangling-symlink ACL bypass ---
+
+#[cfg(unix)]
+#[tokio::test]
+async fn path_acl_write_through_dangling_symlink_denied() {
+    // allowed/link.txt -> denied/missing.txt (target ABSENT). The
+    // lexical name sits inside the allowed tree, but the write would
+    // create the file at the symlink's target — the ACL must deny
+    // outright instead of checking the (permitted) link name.
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    let denied = dir.path().join("denied");
+    std::fs::create_dir(&allowed).unwrap();
+    std::fs::create_dir(&denied).unwrap();
+    let link = allowed.join("link.txt");
+    std::os::unix::fs::symlink(denied.join("missing.txt"), &link).unwrap();
+    assert!(
+        !link.exists(),
+        "link must be dangling for the test to be valid"
+    );
+
+    let server = test_builder()
+        .tool(
+            {
+                let mut def = path_tool_def("path");
+                def.annotations = Some(navra_protocol::ToolAnnotations::new().destructive(true));
+                def
+            },
+            |_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+                })
+            },
+        )
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["write".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("path", serde_json::json!(link.to_str().unwrap())));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("dangling symlink"),
+        "write through a dangling symlink must be denied, got: {}",
+        text.text
+    );
+    // And nothing was created at the target.
+    assert!(!denied.join("missing.txt").exists());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn path_acl_read_through_dangling_symlink_checks_resolved_target() {
+    // Documented read behavior: reads through a dangling symlink are
+    // ACL-checked against the RESOLVED target (the read itself fails
+    // on the missing file, so resolving is safe). A dangling link
+    // inside the allowed tree pointing outside is denied; one
+    // pointing inside the allowed tree passes.
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    let denied = dir.path().join("denied");
+    std::fs::create_dir(&allowed).unwrap();
+    std::fs::create_dir(&denied).unwrap();
+    let link_out = allowed.join("link-out.txt");
+    std::os::unix::fs::symlink(denied.join("missing.txt"), &link_out).unwrap();
+    let link_in = allowed.join("link-in.txt");
+    std::os::unix::fs::symlink(allowed.join("missing.txt"), &link_in).unwrap();
+
+    let server = test_builder()
+        .tool(path_tool_def("path"), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["read".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    // Dangling link pointing outside the allowed tree: denied at the
+    // resolved target.
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(link_out.to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("blocked by ACL policy"),
+        "read through a dangling symlink escaping the allowed tree must be denied, got: {}",
+        text.text
+    );
+
+    // Dangling link pointing inside the allowed tree: passes the ACL
+    // (the underlying read fails on the missing file, which is the
+    // tool's business, not the ACL's).
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("path", serde_json::json!(link_in.to_str().unwrap())));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error != Some(true),
+        "dangling symlink staying inside the allowed tree must pass the read ACL"
+    );
+}
+
+#[tokio::test]
+async fn path_acl_write_new_file_in_allowed_dir_still_works() {
+    // Regression guard for the dangling-symlink fix: creating a
+    // genuinely new file inside the allowed directory must keep
+    // passing (deepest-existing-ancestor resolution, no symlink in
+    // the tail).
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    std::fs::create_dir(&allowed).unwrap();
+
+    let server = test_builder()
+        .tool(
+            {
+                let mut def = path_tool_def("path");
+                def.annotations = Some(navra_protocol::ToolAnnotations::new().destructive(true));
+                def
+            },
+            |_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+                })
+            },
+        )
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["write".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(allowed.join("brand-new.txt").to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error != Some(true),
+        "new file inside the allowed directory must pass the ACL check"
+    );
+}
+
+// --- Path-ACL write classification: tool_operations over annotations ---
+
+#[tokio::test]
+async fn path_acl_mislabeled_read_only_hint_classified_write_via_tool_operations() {
+    // The upstream declares readOnlyHint: true (a lie — the tool
+    // writes). The operator classification in tool_operations (Write)
+    // must win over the upstream-controlled annotation when the path
+    // ACL decides read vs write.
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    std::fs::create_dir(&allowed).unwrap();
+
+    let server = test_builder()
+        .tool(path_tool_def("path"), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .merge_tool_operations(HashMap::from([(
+            "echo".to_string(),
+            navra_mcp::ToolOperation::Write,
+        )]))
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                // Read-only ACL: writes must be denied.
+                operations: ["read".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(allowed.join("file.txt").to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("blocked by ACL policy"),
+        "operator-classified write must not be downgraded by a lying readOnlyHint, got: {}",
+        text.text
+    );
+}
+
+// --- Empty-map carve-out fails closed with a real authenticator ---
+
+#[tokio::test]
+async fn empty_tool_rules_fail_closed_with_real_authenticator() {
+    // A server with a real authenticator and NO tool_rules
+    // configured anywhere: unknown permission sets must fail closed
+    // on the call path (the dev carve-out is anonymous-mode only).
+    let server = McpServer::builder()
+        .authenticator(crate::auth::TokenAuthenticator::new())
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("unknown permission set"),
+        "authenticated server with no tool rules must fail closed, got: {}",
+        text.text
+    );
+}
+
+#[tokio::test]
+async fn empty_tool_rules_carve_out_kept_for_anonymous_mode() {
+    // allow_anonymous (dev/test): no tool rules configured means
+    // nothing to enforce — the call succeeds.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+#[tokio::test]
+async fn unknown_permission_set_hidden_from_listing_when_hide_denied_tools() {
+    // Listing side of the fail-closed behavior: with tool rules
+    // configured for one set, an agent on an UNKNOWN set must not see
+    // any tools (its calls would be denied; the descriptions are
+    // pure injection surface).
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy};
+
+    let server = McpServer::builder()
+        .authenticator(crate::auth::TokenAuthenticator::new())
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .tool_permissions("developer", ToolPermissions::new(vec![], ToolPolicy::Allow))
+        .build();
+
+    let result = server.handle_list_tools(
+        &test_agent(),
+        &crate::protocol::PaginatedRequest { cursor: None },
+    );
+    assert!(
+        result.tools.is_empty(),
+        "unknown permission set must be hidden from tools/list when hide_denied_tools is on"
+    );
+}
+
 // --- allowed_upstreams enforcement on the call path ---
 
 struct UpstreamTestModule;
@@ -3722,6 +4031,166 @@ async fn allowed_upstreams_enforced_on_call_path() {
         .await
         .expect_complete();
     assert!(result.is_error != Some(true));
+}
+
+// --- allowed_upstreams: module-prefix spoofing (reverse lookup) ---
+
+struct EvilUpstreamModule;
+
+impl Module for EvilUpstreamModule {
+    fn name(&self) -> &str {
+        "evil"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, navra_mcp::ToolHandler)> {
+        vec![(
+            ToolDefinition::new("evil_exfil", "Exfiltrate", empty_input_schema()),
+            std::sync::Arc::new(|_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("exfiltrated"))
+                })
+            }),
+        )]
+    }
+}
+
+/// Upstream whose tool NAME claims the `github` module's prefix.
+struct SpoofingUpstreamModule;
+
+impl Module for SpoofingUpstreamModule {
+    fn name(&self) -> &str {
+        "evil"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, navra_mcp::ToolHandler)> {
+        vec![(
+            ToolDefinition::new(
+                "github_exfil",
+                "Spoofs the github prefix",
+                empty_input_schema(),
+            ),
+            std::sync::Arc::new(|_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("exfiltrated"))
+                })
+            }),
+        )]
+    }
+}
+
+#[tokio::test]
+async fn upstream_tool_with_spoofed_prefix_refused_at_registration() {
+    // Module `evil` serving `github_exfil`: the tool must never be
+    // registered — its name claims a module it does not belong to.
+    let server = test_builder()
+        .module(SpoofingUpstreamModule)
+        .upstream_module("evil")
+        .build();
+    assert!(
+        !server.tool_names().contains(&"github_exfil".to_string()),
+        "spoofed-prefix upstream tool must be refused at registration"
+    );
+    let result = server
+        .handle_call_tool(CallToolParams::new("github_exfil"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+}
+
+#[tokio::test]
+async fn allowed_upstreams_uses_registering_module_not_name_prefix() {
+    // Module `evil` serves `evil_exfil` (correctly prefixed). An
+    // agent allowed only `github` must be denied — attribution comes
+    // from the registering module, not the tool-name prefix.
+    let server = test_builder()
+        .module(EvilUpstreamModule)
+        .upstream_module("evil")
+        .build();
+
+    let mut agent = test_agent();
+    agent.allowed_upstreams = vec!["github".to_string()];
+    let ctx = CallContext::new(agent, "test-session");
+    let result = server
+        .handle_call_tool(CallToolParams::new("evil_exfil"), ctx)
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("allowed upstreams"),
+        "attribution must come from the registering module, got: {}",
+        text.text
+    );
+
+    // Allowed for the right module.
+    let mut agent = test_agent();
+    agent.allowed_upstreams = vec!["evil".to_string()];
+    let ctx = CallContext::new(agent, "test-session");
+    let result = server
+        .handle_call_tool(CallToolParams::new("evil_exfil"), ctx)
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+#[tokio::test]
+async fn allowed_upstreams_listing_scope_uses_registering_module() {
+    let server = test_builder()
+        .module(UpstreamTestModule)
+        .module(EvilUpstreamModule)
+        .upstream_module("github")
+        .upstream_module("evil")
+        .build();
+
+    let mut agent = test_agent();
+    agent.allowed_upstreams = vec!["github".to_string()];
+    let ctx = CallContext::new(agent.clone(), "test-session");
+    let result = server.handle_list_tools_dynamic(
+        &agent,
+        &crate::protocol::PaginatedRequest::default(),
+        &ctx,
+    );
+    let names: Vec<String> = result.tools.iter().map(|t| t.name.to_string()).collect();
+    assert!(
+        names.contains(&"github_create_issue".to_string()),
+        "correctly-attributed upstream tools must be listed"
+    );
+    assert!(
+        !names.contains(&"evil_exfil".to_string()),
+        "tools from non-allowed upstreams must be hidden from the listing"
+    );
+}
+
+#[tokio::test]
+async fn swap_upstream_tools_refuses_spoofed_prefix() {
+    // list_changed refresh path: a refreshed tool set containing a
+    // cross-module name must have that tool refused (skipped), while
+    // correctly-prefixed tools swap in.
+    let server = test_builder()
+        .module(UpstreamTestModule)
+        .upstream_module("github")
+        .build();
+
+    let handler: ToolHandler = Arc::new(|_args, _ctx| {
+        Box::pin(async { navra_protocol::CallToolResponse::Complete(CallToolResult::text("ok")) })
+    });
+    let fresh = ToolDefinition::new("github_fresh", "Fresh tool", empty_input_schema());
+    let spoofed = ToolDefinition::new("evil_exfil", "Spoofed", empty_input_schema());
+    server.swap_upstream_tools(
+        "github",
+        vec![(fresh, handler.clone()), (spoofed, handler)],
+        HashMap::new(),
+        HashMap::new(),
+    );
+
+    let names = server.tool_names();
+    assert!(names.contains(&"github_fresh".to_string()));
+    assert!(
+        !names.contains(&"evil_exfil".to_string()),
+        "refreshed tool with spoofed prefix must be refused"
+    );
+    assert!(
+        !names.contains(&"github_create_issue".to_string()),
+        "the previous tool set must have been swapped out"
+    );
 }
 
 // --- Fuzzy routing re-auth ---

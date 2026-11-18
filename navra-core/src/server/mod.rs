@@ -138,6 +138,11 @@ pub struct McpServer {
     tool_routing: routing::ToolRoutingConfig,
     /// Module names that came from upstream MCP servers (for per-agent filtering).
     pub(crate) upstream_modules: HashSet<String>,
+    /// True when the configured authenticator accepts requests with
+    /// no credentials at all (NoAuthenticator / allow_anonymous).
+    /// Gates the dev/test carve-outs that trust unauthenticated
+    /// identities; false with any real authenticator.
+    pub(crate) allows_unauthenticated: bool,
     /// Cedar action dispatch version (see [`CedarActionVersion`]).
     #[cfg(feature = "cedar")]
     cedar_action_version: CedarActionVersion,

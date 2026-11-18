@@ -635,6 +635,16 @@ impl McpServerBuilder {
             );
         });
 
+        // An authenticator that accepts a total absence of credentials
+        // is effectively anonymous mode (NoAuthenticator /
+        // allow_anonymous). Computed once here — it gates every
+        // dev/test carve-out that trusts unauthenticated identities;
+        // with any real authenticator it is false and those
+        // carve-outs fail closed.
+        let allows_unauthenticated = authenticator
+            .authenticate(&axum::http::HeaderMap::new())
+            .is_ok();
+
         let mut hooks = HookPipeline::new(self.hook_timeout);
         for hook in self.hooks {
             hooks.add_boxed(hook);
@@ -643,6 +653,46 @@ impl McpServerBuilder {
         let value_stores = crate::ifc::value_store::ValueStoreMap::new();
         let sessions = self.session_store.unwrap_or_default();
         let mut tools = self.tools;
+
+        // Upstream tool-name prefix enforcement (module-attribution
+        // anti-spoofing): every tool registered by an upstream module
+        // must be named `{module}_*`. A tool whose name claims a
+        // different module's prefix (e.g. module `evil` serving
+        // `github_exfil`) is refused — logged loudly and skipped — so
+        // prefix-based attribution can never be forged. The rest of
+        // the upstream is unaffected.
+        for module in self.upstream_modules.iter() {
+            let prefix = format!("{module}_");
+            let spoofed: Vec<String> = self
+                .module_tool_index
+                .get(module)
+                .map(|names| {
+                    names
+                        .iter()
+                        .filter(|n| !n.starts_with(&prefix))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            if spoofed.is_empty() {
+                continue;
+            }
+            for name in &spoofed {
+                tracing::error!(
+                    module = %module,
+                    tool = %name,
+                    "Refusing upstream tool whose name does not start with the \
+                     registering module's prefix (possible cross-module spoofing) \
+                     — skipping the tool"
+                );
+                tools.remove(name.as_str());
+                self.tool_operations.remove(name);
+                self.tool_classifications.remove(name);
+            }
+            if let Some(names) = self.module_tool_index.get_mut(module) {
+                names.retain(|n| n.starts_with(&prefix));
+            }
+        }
 
         // Register gateway IFC tools
         {
@@ -1100,6 +1150,7 @@ impl McpServerBuilder {
             enterprise_auth: self.enterprise_auth,
             tool_routing: self.tool_routing,
             upstream_modules: self.upstream_modules,
+            allows_unauthenticated,
             allowed_http_hosts: self.allowed_http_hosts,
             concurrency_semaphores: dashmap::DashMap::new(),
         }

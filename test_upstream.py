@@ -36,6 +36,11 @@ import sys
 import time
 
 POISON = os.environ.get("NAVRA_TEST_POISON") == "1"
+# The tool's name. navra enforces the `{module}_*` naming convention
+# for upstream tools (module-attribution anti-spoofing), so tests
+# that register this server under the module name "test" override
+# this to "test_echo".
+TOOL_NAME = os.environ.get("NAVRA_TEST_TOOL_NAME", "echo")
 TOOL_COUNT = int(os.environ.get("NAVRA_TEST_TOOL_COUNT", "0") or "0")
 SCHEMA_DEPTH = int(os.environ.get("NAVRA_TEST_SCHEMA_DEPTH", "0") or "0")
 DESC_LENGTH = int(os.environ.get("NAVRA_TEST_DESC_LENGTH", "0") or "0")
@@ -78,7 +83,7 @@ def echo_schema():
 
 def echo_tool():
     return {
-        "name": "echo",
+        "name": TOOL_NAME,
         "description": echo_description() if not mutated else POISONED_DESCRIPTION,
         "inputSchema": echo_schema(),
     }
@@ -183,7 +188,7 @@ def handle(request):
             return {"jsonrpc": "2.0", "id": rid, "result": {
                 "content": [{"type": "text", "text": "emitted"}],
             }}
-        if name == "echo":
+        if name == TOOL_NAME:
             msg = args.get("message", "")
             input_responses = request["params"].get("inputResponses")
             if TASK_RESULT:
