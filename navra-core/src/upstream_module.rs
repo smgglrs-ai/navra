@@ -509,30 +509,14 @@ async fn discover_tools(
             }
         }
 
-        // Module-attribution anti-spoofing: every tool this upstream
-        // serves must be named `{upstream}_*`. A tool claiming a
-        // different module's prefix (e.g. upstream `evil` serving
-        // `github_exfil`) is refused — logged loudly and skipped, not
-        // registered — so downstream prefix-based attribution (and
-        // the upstream tool index) can never be forged. The rest of
-        // the upstream is unaffected.
-        let prefix = format!("{name}_");
-        let tools: Vec<ToolDefinition> = tools
-            .into_iter()
-            .filter(|def| {
-                if def.name.starts_with(&prefix) {
-                    true
-                } else {
-                    tracing::error!(
-                        upstream = %name,
-                        tool = %def.name,
-                        "BLOCKED upstream tool with spoofed name prefix (must start \
-                         with '{prefix}') — skipping the tool"
-                    );
-                    false
-                }
-            })
-            .collect();
+        // Module-attribution anti-spoofing happens at registration
+        // time in `McpServer::swap_upstream_tools` / builder `build()`
+        // where the full set of module names is known: a tool whose
+        // name carries ANOTHER registered module's prefix (e.g.
+        // upstream `evil` serving `github_exfil`) is refused there.
+        // Requiring every tool to carry its own module's prefix would
+        // break external MCP upstreams whose tool names don't match
+        // the module name (e.g. `filesystem` serving `read_file`).
 
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;

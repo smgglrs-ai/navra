@@ -658,18 +658,24 @@ impl McpServerBuilder {
         // anti-spoofing): every tool registered by an upstream module
         // must be named `{module}_*`. A tool whose name claims a
         // different module's prefix (e.g. module `evil` serving
-        // `github_exfil`) is refused — logged loudly and skipped — so
-        // prefix-based attribution can never be forged. The rest of
-        // the upstream is unaffected.
+        // `github_exfil` while `github` is registered) is refused —
+        // logged loudly and skipped. Tools carrying no known
+        // module's prefix are allowed (attribution uses the
+        // registering module, not the name).
         for module in self.upstream_modules.iter() {
-            let prefix = format!("{module}_");
+            let others: Vec<String> = self
+                .upstream_modules
+                .iter()
+                .filter(|m| *m != module)
+                .map(|m| format!("{m}_"))
+                .collect();
             let spoofed: Vec<String> = self
                 .module_tool_index
                 .get(module)
                 .map(|names| {
                     names
                         .iter()
-                        .filter(|n| !n.starts_with(&prefix))
+                        .filter(|n| others.iter().any(|p| n.starts_with(p)))
                         .cloned()
                         .collect()
                 })
@@ -681,16 +687,15 @@ impl McpServerBuilder {
                 tracing::error!(
                     module = %module,
                     tool = %name,
-                    "Refusing upstream tool whose name does not start with the \
-                     registering module's prefix (possible cross-module spoofing) \
-                     — skipping the tool"
+                    "Refusing upstream tool whose name carries another module's \
+                     prefix (cross-module spoofing) — skipping the tool"
                 );
                 tools.remove(name.as_str());
                 self.tool_operations.remove(name);
                 self.tool_classifications.remove(name);
             }
             if let Some(names) = self.module_tool_index.get_mut(module) {
-                names.retain(|n| n.starts_with(&prefix));
+                names.retain(|n| !spoofed.contains(n));
             }
         }
 

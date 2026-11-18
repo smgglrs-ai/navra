@@ -2639,13 +2639,22 @@ impl McpServer {
             index.get(module_name).cloned().unwrap_or_default()
         };
 
-        // Anti-spoofing: an upstream's tools must be named
-        // `{module}_*`. A tool whose name claims a different module's
-        // prefix (e.g. module `evil` serving `github_exfil`) is
-        // refused — logged loudly and skipped, never registered —
-        // so name-prefix-based attribution can never be forged. The
-        // rest of the upstream is unaffected.
-        let prefix = format!("{module_name}_");
+        // Anti-spoofing: a tool whose name carries ANOTHER registered
+        // module's prefix (e.g. module `evil` serving `github_exfil`
+        // while `github` is also registered) is refused — logged
+        // loudly and skipped, never registered — so name-prefix
+        // attribution can never be forged. Tools that carry no known
+        // module's prefix (e.g. `filesystem` serving `read_file`)
+        // are allowed: attribution uses the registering module via
+        // the upstream tool index, not the name.
+        let modules = self.upstream_modules.clone();
+        let spoofed_prefix = |tool_name: &str| -> Option<String> {
+            modules.iter().find_map(|m| {
+                let prefix = format!("{m}_");
+                (m != module_name && tool_name.starts_with(&prefix))
+                    .then(|| m.clone())
+            })
+        };
         let mut new_names: Vec<String> = Vec::new();
         {
             let mut tools_map = self.tools.write().unwrap_or_else(|e| e.into_inner());
@@ -2654,13 +2663,13 @@ impl McpServer {
             }
             for (definition, handler) in tools {
                 let name = definition.name.to_string();
-                if !name.starts_with(&prefix) {
+                if let Some(victim) = spoofed_prefix(&name) {
                     tracing::error!(
                         module = %module_name,
                         tool = %name,
-                        "Refusing upstream tool whose name does not start with the \
-                         registering module's prefix (possible cross-module spoofing) \
-                         — skipping the tool"
+                        victim_module = %victim,
+                        "Refusing upstream tool whose name carries another module's \
+                         prefix (cross-module spoofing) — skipping the tool"
                     );
                     continue;
                 }
