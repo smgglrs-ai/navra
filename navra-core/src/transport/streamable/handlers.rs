@@ -178,7 +178,19 @@ pub(super) async fn handle_sys_status(
     .into_response()
 }
 
-pub(super) async fn handle_metrics(State(state): State<AppState>) -> impl IntoResponse {
+pub(super) async fn handle_metrics(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    // Require authentication — metrics expose agent names, call
+    // volumes, and denial counts (operational reconnaissance data).
+    if state.server.authenticator().authenticate(&headers).is_err() {
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            "Authentication required for /metrics",
+        )
+            .into_response();
+    }
     (
         [(
             axum::http::header::CONTENT_TYPE,
@@ -186,6 +198,7 @@ pub(super) async fn handle_metrics(State(state): State<AppState>) -> impl IntoRe
         )],
         state.metrics.render(),
     )
+        .into_response()
 }
 
 // --- OAuth 2.0 endpoints ---
@@ -221,6 +234,15 @@ pub(super) async fn handle_oauth_register(
         Some(p) => p,
         None => return (axum::http::StatusCode::NOT_FOUND, "OAuth not enabled").into_response(),
     };
+    // Dynamic client registration is opt-in: an open /oauth/register
+    // lets any caller mint client credentials. Default off.
+    if !provider.dynamic_registration_enabled() {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "Dynamic client registration is disabled",
+        )
+            .into_response();
+    }
     let reg = provider.register_dynamic(&request);
     (axum::http::StatusCode::CREATED, axum::Json(reg)).into_response()
 }

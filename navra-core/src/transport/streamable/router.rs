@@ -32,10 +32,16 @@ fn build_mcp_service(
     rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
 > {
     let server_for_factory = server.clone();
-    let config = rmcp::transport::StreamableHttpServerConfig::default()
+    let mut config = rmcp::transport::StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
-        .with_json_response(true)
-        .disable_allowed_hosts();
+        .with_json_response(true);
+    // DNS-rebinding defense: validate the Host header against an
+    // allowlist. The builder-supplied list (bind host + localhost,
+    // set during server wiring) overrides rmcp's localhost-only
+    // default. The check is never disabled.
+    if !server.allowed_http_hosts.is_empty() {
+        config = config.with_allowed_hosts(server.allowed_http_hosts.clone());
+    }
     StreamableHttpService::new(
         move || Ok(NavraHandler::new(server_for_factory.clone())),
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()

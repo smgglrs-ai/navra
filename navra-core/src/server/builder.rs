@@ -89,6 +89,10 @@ pub struct McpServerBuilder {
     upstream_modules: HashSet<String>,
     max_sessions: Option<usize>,
     session_ttl_secs: Option<u64>,
+    /// Host-header allowlist for the streamable HTTP transport
+    /// (DNS-rebinding defense). Empty = rmcp's default localhost
+    /// allowlist.
+    allowed_http_hosts: Vec<String>,
 }
 
 impl McpServerBuilder {
@@ -141,7 +145,17 @@ impl McpServerBuilder {
             upstream_modules: HashSet::new(),
             max_sessions: None,
             session_ttl_secs: None,
+            allowed_http_hosts: Vec::new(),
         }
+    }
+
+    /// Set the HTTP `Host`-header allowlist for the streamable
+    /// transport (DNS-rebinding defense). Should contain the bind
+    /// host plus localhost. When empty, rmcp's default localhost-only
+    /// allowlist applies — never "allow all hosts".
+    pub fn allowed_http_hosts(mut self, hosts: Vec<String>) -> Self {
+        self.allowed_http_hosts = hosts;
+        self
     }
 
     pub fn max_sessions(mut self, n: usize) -> Self {
@@ -1086,6 +1100,7 @@ impl McpServerBuilder {
             enterprise_auth: self.enterprise_auth,
             tool_routing: self.tool_routing,
             upstream_modules: self.upstream_modules,
+            allowed_http_hosts: self.allowed_http_hosts,
             concurrency_semaphores: dashmap::DashMap::new(),
         }
     }
