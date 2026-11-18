@@ -26,5 +26,6 @@ pub mod notify;
 pub mod permissions;
 pub mod process;
 pub mod quota;
+pub mod secret;
 pub mod tool_scanner;
 pub mod trust_score;

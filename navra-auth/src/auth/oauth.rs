@@ -16,8 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::capability::{self, CapabilitySet, OboIdentity};
 use super::{AgentIdentity, AuthError, Authenticator};
-use crate::credentials::Secret;
 use crate::identity::CapSigner;
+use crate::secret::Secret;
 
 /// OAuth 2.0 server metadata per RFC 8414 / MCP spec.
 #[derive(Debug, Clone, Serialize, Deserialize)]

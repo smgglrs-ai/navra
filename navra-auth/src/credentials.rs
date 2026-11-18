@@ -8,7 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use zeroize::Zeroizing;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CredentialError {
@@ -29,21 +28,10 @@ pub enum CredentialError {
 }
 
 /// A resolved secret value. Zeroized on drop via the `zeroize` crate.
-pub struct Secret(Zeroizing<Vec<u8>>);
-
-impl Secret {
-    pub fn new(data: Vec<u8>) -> Self {
-        Self(Zeroizing::new(data))
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    pub fn as_str(&self) -> Option<&str> {
-        std::str::from_utf8(&self.0).ok()
-    }
-}
+///
+/// Re-exported from [`crate::secret`] (unconditional) so desktop and
+/// non-desktop builds share one definition.
+pub use crate::secret::Secret;
 
 /// Platform-agnostic credential store.
 ///
