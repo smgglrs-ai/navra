@@ -515,7 +515,7 @@ mod tests {
 
         // Boundary: exactly MIN_TOKEN_LENGTH chars of a strong-looking
         // token is accepted.
-        let ok_token = "q7w1e5r9t2u6i0o3p8a4s7d2f5g8h";
+        let ok_token = "q7w1e5r9t2u6i0o3p8a4s7d2f5g8hj5k";
         assert_eq!(ok_token.chars().count(), MIN_TOKEN_LENGTH);
         assert!(auth.register(ok_token, test_identity()).is_ok());
     }
