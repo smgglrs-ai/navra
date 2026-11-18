@@ -44,7 +44,14 @@ spec:
       kubernetes.io/metadata.name: {{ $ns }}
   podSelector:
     matchLabels:
+      # Release-scoped, not just name-scoped: the DNS-SAN SVIDs this
+      # entry issues can impersonate the gateway, so an arbitrary
+      # in-namespace pod that merely copies the app.kubernetes.io/name
+      # label (e.g. a second navra deployment sharing the name, or a
+      # hand-labelled pod) must NOT match. The instance label pins
+      # the selector to this release's gateway pods.
       app.kubernetes.io/name: {{ include "navra.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
 ---
 # Agent sandbox SVIDs: same trust domain, NO DNS SANs (see above).
 apiVersion: spire.spiffe.io/v1alpha1
