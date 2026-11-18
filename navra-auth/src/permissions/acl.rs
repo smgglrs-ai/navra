@@ -1236,6 +1236,8 @@ mod drift_tests {
     use super::*;
 
     /// Verbatim transcription of `spec_deny_wins_eval` — keep in sync.
+    /// (The duplicated branch mirrors the spec fn; do not "simplify".)
+    #[allow(clippy::if_same_then_else)]
     fn spec_twin(
         deny_matched: bool,
         allow_matched: bool,
