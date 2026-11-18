@@ -72,12 +72,15 @@ impl NavraHandler {
             return Ok(id.clone());
         }
         if let Some(parts) = ctx.extensions.get::<axum::http::request::Parts>() {
-            return server.authenticator().authenticate(&parts.headers).map_err(|_| {
-                ErrorData::invalid_request(
-                    "Authentication required: invalid or missing credentials",
-                    None,
-                )
-            });
+            return server
+                .authenticator()
+                .authenticate(&parts.headers)
+                .map_err(|_| {
+                    ErrorData::invalid_request(
+                        "Authentication required: invalid or missing credentials",
+                        None,
+                    )
+                });
         }
         // No HTTP parts (stdio / in-memory duplex): use the
         // transport-level identity when one was authenticated
@@ -165,11 +168,8 @@ impl ServerHandler for NavraHandler {
         request: rmcp::model::InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let session_id = Self::session_id_for(&agent);
         // Remove any prior session for this agent (clean slate on
         // re-init). NOTE: this also resets the persisted IFC context
@@ -190,11 +190,8 @@ impl ServerHandler for NavraHandler {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let session_id = Self::session_id_for(&agent);
 
         // Ensure a navra session exists (auto-create for stateless mode)
@@ -227,11 +224,8 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_tools(&agent, &pagination))
     }
@@ -241,11 +235,8 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_prompts(&agent, &pagination))
     }
@@ -255,11 +246,8 @@ impl ServerHandler for NavraHandler {
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<GetPromptResponse, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_get_prompt(request, &agent, &session_id)
@@ -273,11 +261,8 @@ impl ServerHandler for NavraHandler {
         request: Option<rmcp::model::PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let pagination = Self::pagination(&request);
         Ok(self.server.handle_list_resources(&agent, &pagination))
     }
@@ -287,11 +272,8 @@ impl ServerHandler for NavraHandler {
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
-        let agent = Self::agent_from_context(
-            &context,
-            &self.server,
-            self.default_identity.as_ref(),
-        )?;
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
         let session_id = Self::session_id_for(&agent);
         self.server
             .handle_read_resource(request, &agent, &session_id)

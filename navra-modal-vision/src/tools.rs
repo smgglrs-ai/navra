@@ -73,8 +73,9 @@ const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024;
 /// and bytes both come from the open file, so a path swap between
 /// the permission check and the read has no effect (TOCTOU-safe).
 fn image_from_file(mut file: std::fs::File, path: &Path) -> Result<ImageInput, String> {
-    let meta =
-        file.metadata().map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
     if !meta.is_file() {
         return Err(format!("Not a file: {}", path.display()));
     }
@@ -115,8 +116,7 @@ fn image_from_file(mut file: std::fs::File, path: &Path) -> Result<ImageInput, S
 /// callers must use [`open_resolved`] + [`image_from_file`] instead.
 #[cfg(test)]
 fn load_image(path: &Path) -> Result<ImageInput, String> {
-    let file =
-        std::fs::File::open(path).map_err(|_| format!("Not a file: {}", path.display()))?;
+    let file = std::fs::File::open(path).map_err(|_| format!("Not a file: {}", path.display()))?;
     image_from_file(file, path)
 }
 
@@ -843,12 +843,9 @@ mod tests {
         let ctx = CallContext::new(AgentIdentity::new("scoped-agent", "scoped"), "test");
 
         let (_, handler) = handle_describe_handler(state);
-        let result = handler(
-            serde_json::json!({"path": link.to_str().unwrap()}),
-            ctx,
-        )
-        .await
-        .expect_complete();
+        let result = handler(serde_json::json!({"path": link.to_str().unwrap()}), ctx)
+            .await
+            .expect_complete();
         assert!(
             result.is_error != Some(true),
             "symlink to an allowed target must be permitted (canonical resolution)"

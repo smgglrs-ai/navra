@@ -1406,13 +1406,8 @@ async fn serve_inner(
     // each flow. flow_status/flow_result deny cross-agent reads.
     let flow_owners: setup::tools::FlowOwnerLedger =
         Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-    builder = setup::tools::wire_flow_tools(
-        builder,
-        &cfg,
-        &flow_registry,
-        &audit_log,
-        &flow_owners,
-    );
+    builder =
+        setup::tools::wire_flow_tools(builder, &cfg, &flow_registry, &audit_log, &flow_owners);
 
     // --- Team orchestration tools ---
     let reasoning_pii_filter = setup::models::build_reasoning_pii_filter(&cfg, &safety_state);

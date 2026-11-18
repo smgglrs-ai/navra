@@ -786,10 +786,18 @@ mod auth_chain {
     #[test]
     fn blake3_agent_has_no_capabilities() {
         let mut auth = TokenAuthenticator::new();
-        auth.register("test-token-0123456789abcdef0123456789abcdef", AgentIdentity::new("agent", "dev"));
+        auth.register(
+            "test-token-0123456789abcdef0123456789abcdef",
+            AgentIdentity::new("agent", "dev"),
+        );
 
         let mut headers = HeaderMap::new();
-        headers.insert("authorization", "Bearer test-token-0123456789abcdef0123456789abcdef".parse().unwrap());
+        headers.insert(
+            "authorization",
+            "Bearer test-token-0123456789abcdef0123456789abcdef"
+                .parse()
+                .unwrap(),
+        );
 
         let identity = auth.authenticate(&headers).unwrap();
         assert!(identity.capabilities.is_none());
@@ -831,7 +839,10 @@ mod auth_chain {
         let root = Ed25519Signer::generate();
 
         let mut blake3 = TokenAuthenticator::new();
-        blake3.register("legacy-token-0123456789abcdef012345", AgentIdentity::new("legacy", "dev"));
+        blake3.register(
+            "legacy-token-0123456789abcdef012345",
+            AgentIdentity::new("legacy", "dev"),
+        );
 
         let cap_payload = build_payload(
             root.did(),
@@ -862,7 +873,12 @@ mod auth_chain {
 
         // BLAKE3 token → cap auth rejects, blake3 handles
         let mut h2 = HeaderMap::new();
-        h2.insert("authorization", "Bearer legacy-token-0123456789abcdef012345".parse().unwrap());
+        h2.insert(
+            "authorization",
+            "Bearer legacy-token-0123456789abcdef012345"
+                .parse()
+                .unwrap(),
+        );
         let id2 = chain.authenticate(&h2).unwrap();
         assert!(id2.capabilities.is_none());
         assert_eq!(id2.name, "legacy");

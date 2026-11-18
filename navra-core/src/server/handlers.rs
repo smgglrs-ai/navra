@@ -505,7 +505,9 @@ impl McpServer {
         // quota.
         let identity_key = format!("{}:{}", ctx.agent.permissions, ctx.agent.name);
         if self.quota_engine.has_limits()
-            && !self.quota_engine.check(&identity_key, &ctx.agent.permissions)
+            && !self
+                .quota_engine
+                .check(&identity_key, &ctx.agent.permissions)
         {
             return CallToolResult::error_msg(format!(
                 "Rate limit exceeded for agent '{}'",
@@ -1029,11 +1031,8 @@ impl McpServer {
                 None => path.to_path_buf(),
             };
             let tool_op = if is_write { "write" } else { "read" };
-            match navra_auth::permissions::PermissionEngine::check_acl(
-                acl,
-                tool_op,
-                &checked_path,
-            ) {
+            match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, &checked_path)
+            {
                 navra_auth::permissions::PermissionResult::Allowed => {}
                 result => {
                     self.process_table.record_denied(

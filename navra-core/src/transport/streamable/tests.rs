@@ -342,7 +342,11 @@ async fn mcp_allows_configured_host() {
     );
     let router = super::router::build_router(server);
     let response = router
-        .oneshot(http_post("/mcp", "navra.internal:9315", initialize_request()))
+        .oneshot(http_post(
+            "/mcp",
+            "navra.internal:9315",
+            initialize_request(),
+        ))
         .await
         .unwrap();
     let text = body_text(response).await;

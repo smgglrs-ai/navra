@@ -355,8 +355,7 @@ pub(crate) fn wire_flow_tools(
 }
 
 /// Per-agent flow ownership ledger: flow_id → owning agent name.
-pub(crate) type FlowOwnerLedger =
-    Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>;
+pub(crate) type FlowOwnerLedger = Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>;
 
 /// Attribute every flow in the registry that has no recorded owner to
 /// `agent`. Called after flow_start/flow_escalate/flow_resume so the
@@ -370,9 +369,7 @@ fn attribute_new_flows(
     let mut owned = ledger.lock().unwrap_or_else(|e| e.into_inner());
     let flows = registry.flows.lock().unwrap_or_else(|e| e.into_inner());
     for id in flows.keys() {
-        owned
-            .entry(id.clone())
-            .or_insert_with(|| agent.to_string());
+        owned.entry(id.clone()).or_insert_with(|| agent.to_string());
     }
 }
 
@@ -835,8 +832,7 @@ pub(crate) async fn wire_team_tools(
         let registry = Arc::clone(&fs_registry);
         let owners = Arc::clone(&fs_owners);
         Box::pin(async move {
-            let result =
-                flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await;
+            let result = flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await;
             // The starting agent owns the flow (and any subflows
             // registered during the call).
             attribute_new_flows(&registry, &owners, &agent_name);
@@ -857,8 +853,7 @@ pub(crate) async fn wire_team_tools(
             if let Err(msg) = check_flow_ownership(&owners, &args, &ctx) {
                 return navra_core::protocol::CallToolResult::error_msg(msg);
             }
-            let result =
-                flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await;
+            let result = flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await;
             // Escalation children belong to the escalating agent.
             attribute_new_flows(&registry, &owners, &agent_name);
             result
@@ -1374,12 +1369,14 @@ mod tests {
         ));
 
         // Owner passes.
-        assert!(check_flow_ownership(
-            &ledger,
-            &serde_json::json!({"flow_id": "flow-1"}),
-            &ctx_for("alice")
-        )
-        .is_ok());
+        assert!(
+            check_flow_ownership(
+                &ledger,
+                &serde_json::json!({"flow_id": "flow-1"}),
+                &ctx_for("alice")
+            )
+            .is_ok()
+        );
 
         // Another agent is denied.
         let err = check_flow_ownership(
@@ -1392,12 +1389,14 @@ mod tests {
 
         // Unowned flows (e.g. recovered from a previous run) remain
         // readable so flow_resume works across restarts.
-        assert!(check_flow_ownership(
-            &ledger,
-            &serde_json::json!({"flow_id": "flow-unknown"}),
-            &ctx_for("bob")
-        )
-        .is_ok());
+        assert!(
+            check_flow_ownership(
+                &ledger,
+                &serde_json::json!({"flow_id": "flow-unknown"}),
+                &ctx_for("bob")
+            )
+            .is_ok()
+        );
 
         // Requests without a flow_id are not gated here.
         assert!(check_flow_ownership(&ledger, &serde_json::json!({}), &ctx_for("bob")).is_ok());

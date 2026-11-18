@@ -33,8 +33,8 @@ pub fn open_resolved(raw: &str) -> Result<(std::fs::File, PathBuf), String> {
         return Err(format!("Path must be absolute: {raw}"));
     }
 
-    let file = std::fs::File::open(&expanded)
-        .map_err(|e| format!("Cannot open path {raw}: {e}"))?;
+    let file =
+        std::fs::File::open(&expanded).map_err(|e| format!("Cannot open path {raw}: {e}"))?;
     let canonical = expanded
         .canonicalize()
         .map_err(|e| format!("Cannot resolve path {raw}: {e}"))?;
@@ -50,8 +50,7 @@ pub fn open_resolved(raw: &str) -> Result<(std::fs::File, PathBuf), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if handle_meta.dev() != canonical_meta.dev() || handle_meta.ino() != canonical_meta.ino()
-        {
+        if handle_meta.dev() != canonical_meta.dev() || handle_meta.ino() != canonical_meta.ino() {
             return Err(format!(
                 "Path {raw} changed while opening (possible symlink swap)"
             ));

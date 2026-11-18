@@ -3306,7 +3306,10 @@ async fn tool_permissions_unknown_set_denied_by_default() {
         .build();
 
     let result = server
-        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .handle_call_tool(
+            CallToolParams::new("echo"),
+            echo_server_agent_perms("other"),
+        )
         .await
         .expect_complete();
 
@@ -3344,7 +3347,10 @@ async fn agent_operations_unknown_set_denies_write_tools() {
         .build();
 
     let result = server
-        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .handle_call_tool(
+            CallToolParams::new("echo"),
+            echo_server_agent_perms("other"),
+        )
         .await
         .expect_complete();
     assert!(result.is_error == Some(true));
@@ -3386,7 +3392,10 @@ async fn domain_rules_unknown_set_denied_by_default() {
         .build();
 
     let result = server
-        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .handle_call_tool(
+            CallToolParams::new("echo"),
+            echo_server_agent_perms("other"),
+        )
         .await
         .expect_complete();
     assert!(result.is_error == Some(true));
@@ -3413,7 +3422,10 @@ async fn safety_profile_unknown_set_blocks_result() {
         .build();
 
     let result = server
-        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .handle_call_tool(
+            CallToolParams::new("echo"),
+            echo_server_agent_perms("other"),
+        )
         .await
         .expect_complete();
     assert!(result.is_error == Some(true));
@@ -3523,10 +3535,8 @@ async fn path_acl_checks_canonical_symlink_target() {
         )
         .build();
 
-    let params = CallToolParams::new("echo").with_arguments(args_1(
-        "path",
-        serde_json::json!(link.to_str().unwrap()),
-    ));
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("path", serde_json::json!(link.to_str().unwrap())));
     let result = server
         .handle_call_tool(params, test_ctx())
         .await
@@ -3560,10 +3570,8 @@ async fn path_acl_uses_schema_derived_path_keys() {
         )
         .build();
 
-    let params = CallToolParams::new("echo").with_arguments(args_1(
-        "image_path",
-        serde_json::json!("/etc/passwd"),
-    ));
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("image_path", serde_json::json!("/etc/passwd")));
     let result = server
         .handle_call_tool(params, test_ctx())
         .await
@@ -3636,10 +3644,8 @@ async fn path_acl_write_resolves_existing_symlinks() {
 
     // Symlink inside the allowed tree pointing at the denied tree:
     // canonical resolution must see the real target and deny.
-    let params = CallToolParams::new("echo").with_arguments(args_1(
-        "path",
-        serde_json::json!(link.to_str().unwrap()),
-    ));
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("path", serde_json::json!(link.to_str().unwrap())));
     let result = server
         .handle_call_tool(params, test_ctx())
         .await
@@ -3685,7 +3691,10 @@ async fn allowed_upstreams_enforced_on_call_path() {
         .handle_call_tool(CallToolParams::new("github_create_issue"), test_ctx())
         .await
         .expect_complete();
-    assert!(result.is_error != Some(true), "unscoped agent must call upstream");
+    assert!(
+        result.is_error != Some(true),
+        "unscoped agent must call upstream"
+    );
 
     // Scoped to a different upstream: denied even though the tool
     // never appeared in tools/list for this agent.

@@ -651,7 +651,11 @@ mod tests {
 
         let reg = Arc::new(FlowRegistry::new());
         let _id = reg.register("auth-test");
-        let app = flow_api_router(reg, None, Some(token_server("test-token-0123456789abcdef0123456789abcdef")));
+        let app = flow_api_router(
+            reg,
+            None,
+            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+        );
 
         for uri in [
             "/api/flow-runs",
@@ -670,7 +674,11 @@ mod tests {
 
         let reg = Arc::new(FlowRegistry::new());
         let _id = reg.register("auth-test");
-        let app = flow_api_router(reg, None, Some(token_server("test-token-0123456789abcdef0123456789abcdef")));
+        let app = flow_api_router(
+            reg,
+            None,
+            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+        );
 
         let resp = app
             .oneshot(graph_request("/api/flow-runs", Some("wrong")))
@@ -696,10 +704,17 @@ mod tests {
                 completed_at: None,
             }],
         );
-        let app = flow_api_router(reg, None, Some(token_server("test-token-0123456789abcdef0123456789abcdef")));
+        let app = flow_api_router(
+            reg,
+            None,
+            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+        );
 
         let resp = app
-            .oneshot(graph_request(&format!("/flows/{id}/graph"), Some("test-token-0123456789abcdef0123456789abcdef")))
+            .oneshot(graph_request(
+                &format!("/flows/{id}/graph"),
+                Some("test-token-0123456789abcdef0123456789abcdef"),
+            ))
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
