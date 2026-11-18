@@ -30,7 +30,7 @@ pub use anthropic::AnthropicBackend;
 pub use cli::CliBackend;
 pub use ogx::{DEFAULT_OGX_URL, OgxBackend};
 #[cfg(feature = "onnx")]
-pub use onnx::{Device, ModelTask, OnnxBackend, OpenVinoDevice};
+pub use onnx::{Device, MAX_SEQ_TOKENS, ModelTask, OnnxBackend, OpenVinoDevice};
 pub use openai::OpenAiBackend;
 pub use safe_backend::{ModelSafetyFilter, SafeModelBackend};
 

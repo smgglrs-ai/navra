@@ -27,6 +27,20 @@ pub trait Classifier: Send + Sync + 'static {
         &'a self,
         text: &'a str,
     ) -> Pin<Box<dyn Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a>>;
+
+    /// Maximum input length (in tokens) the backend feeds to the
+    /// model in a single inference call.
+    ///
+    /// Backends truncate longer inputs before inference (e.g. the
+    /// ONNX backend caps at `MAX_SEQ_TOKENS = 512`), so windowing
+    /// callers must slice inputs into sub-windows aligned to this
+    /// budget or payloads past the truncation point are never
+    /// classified. The default (512) matches the common
+    /// transformer classifier cap; override when the backend uses a
+    /// different budget.
+    fn max_input_tokens(&self) -> usize {
+        512
+    }
 }
 
 /// Classification output containing scored labels.
