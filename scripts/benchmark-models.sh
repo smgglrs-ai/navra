@@ -39,8 +39,11 @@ Report what you found."
 if [[ $# -gt 0 ]]; then
     MODELS=("$@")
 else
-    MODELS=($(curl -sf http://localhost:11434/api/tags 2>/dev/null | \
-        python3 -c "import sys,json; [print(m['name']) for m in json.load(sys.stdin).get('models',[])]" 2>/dev/null))
+    # mapfile avoids word-splitting pitfalls (glob expansion of model
+    # names, splitting on whitespace) that unquoted array assignment
+    # from command substitution is subject to.
+    mapfile -t MODELS < <(curl -sf http://localhost:11434/api/tags 2>/dev/null | \
+        python3 -c "import sys,json; [print(m['name']) for m in json.load(sys.stdin).get('models',[])]" 2>/dev/null)
 fi
 
 if [[ ${#MODELS[@]} -eq 0 ]]; then

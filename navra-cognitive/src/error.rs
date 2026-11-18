@@ -37,6 +37,17 @@ pub enum CognitiveError {
         source: serde_yaml::Error,
     },
 
+    /// Cognitive core integrity failure: missing or unreadable
+    /// `checksums.sha256`, an untracked file in a checksummed core,
+    /// or a hash mismatch.
+    #[error("integrity check failed for cognitive core at {path}: {message}")]
+    Integrity {
+        /// Cognitive core directory that failed the check.
+        path: String,
+        /// What failed and how to fix it.
+        message: String,
+    },
+
     /// Filesystem I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

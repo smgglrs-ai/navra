@@ -2,6 +2,10 @@
 //! (25 system personas, 36 heuristics, 7 directives, 3 specializations).
 //! 18 generic personas live in examples/personas/ as starter templates.
 
+// The bundled cognitive_core/ ships without checksums.sha256; these
+// tests validate content, not integrity — use the explicit unsigned
+// escape. Integrity behavior is covered in forge.rs unit tests.
+
 use navra_cognitive::{ForgeService, assemble};
 use std::path::Path;
 
@@ -21,7 +25,7 @@ fn cognitive_core_path() -> std::path::PathBuf {
 
 #[test]
 fn load_all_artifacts() {
-    let forge = ForgeService::load(&cognitive_core_path()).unwrap();
+    let forge = ForgeService::load_allow_unsigned(&cognitive_core_path()).unwrap();
     assert!(
         forge.persona_count() >= 25,
         "expected ≥25 system personas, got {}",
@@ -41,7 +45,7 @@ fn load_all_artifacts() {
 
 #[test]
 fn assemble_software_developer() {
-    let forge = ForgeService::load(&cognitive_core_path()).unwrap();
+    let forge = ForgeService::load_allow_unsigned(&cognitive_core_path()).unwrap();
     let output = assemble(
         &forge,
         "software_developer",
@@ -65,7 +69,7 @@ fn assemble_software_developer() {
 
 #[test]
 fn assemble_guardian_loads_directives() {
-    let forge = ForgeService::load(&cognitive_core_path()).unwrap();
+    let forge = ForgeService::load_allow_unsigned(&cognitive_core_path()).unwrap();
     let output = assemble(&forge, "navra_guardian", "Check system", None, None).unwrap();
     let prompt = output.system_prompt();
     assert!(
@@ -76,7 +80,7 @@ fn assemble_guardian_loads_directives() {
 
 #[test]
 fn all_personas_assemble_without_error() {
-    let forge = ForgeService::load(&cognitive_core_path()).unwrap();
+    let forge = ForgeService::load_allow_unsigned(&cognitive_core_path()).unwrap();
     for name in forge.persona_names() {
         let result = assemble(&forge, name, "test", None, None);
         assert!(
@@ -90,7 +94,7 @@ fn all_personas_assemble_without_error() {
 
 #[test]
 fn model_for_phase_returns_configured_models() {
-    let forge = ForgeService::load(&cognitive_core_path()).unwrap();
+    let forge = ForgeService::load_allow_unsigned(&cognitive_core_path()).unwrap();
     // software_developer has execution_model set
     if let Some(model) = forge.model_for_phase("software_developer", "execution") {
         assert!(!model.is_empty());

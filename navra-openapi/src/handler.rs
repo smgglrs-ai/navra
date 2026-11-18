@@ -53,11 +53,39 @@ pub async fn execute_operation(
     args: &serde_json::Value,
     auth: &AuthConfig,
     max_response_bytes: Option<usize>,
+    expected_origin: Option<&str>,
 ) -> CallToolResult {
-    let url = match build_url(base_url, meta, args, auth) {
+    let mut url = match build_url(base_url, meta, args) {
         Ok(u) => u,
         Err(e) => return CallToolResult::error_msg(format!("Failed to build URL: {e}")),
     };
+
+    // Credential-origin pinning: never attach auth credentials when the
+    // effective request origin differs from the configured/auth-expected
+    // origin (or when no trusted origin could be established).
+    if auth.has_credentials() {
+        let request_origin = crate::url_origin(&url);
+        match (expected_origin, request_origin.as_deref()) {
+            (Some(expected), Some(actual)) if expected == actual => {
+                url = append_auth_query_params(url, auth);
+            }
+            (expected, actual) => {
+                tracing::error!(
+                    expected_origin = ?expected,
+                    request_origin = ?actual,
+                    url = %url,
+                    "OpenAPI bridge: refusing to attach credentials — \
+                     request origin does not match the trusted origin"
+                );
+                return CallToolResult::error_msg(format!(
+                    "refusing to attach credentials: request origin {} does \
+                     not match the trusted origin {}",
+                    actual.unwrap_or("<unparseable>"),
+                    expected.unwrap_or("<none established>")
+                ));
+            }
+        }
+    }
 
     let method = match &meta.method {
         Method::Get => reqwest::Method::GET,
@@ -186,7 +214,6 @@ fn build_url(
     base_url: &str,
     meta: &OperationMeta,
     args: &serde_json::Value,
-    auth: &AuthConfig,
 ) -> Result<String, String> {
     let mut path = meta.path.clone();
 
@@ -213,10 +240,6 @@ fn build_url(
         }
     }
 
-    for (k, v) in auth.query_params() {
-        query_parts.push((k, v));
-    }
-
     let mut url = format!("{base_url}{path}");
     if !query_parts.is_empty() {
         let qs: Vec<String> = query_parts
@@ -228,6 +251,22 @@ fn build_url(
     }
 
     Ok(url)
+}
+
+/// Append query-string credentials (API keys) to a URL. Only called
+/// after the URL's origin has been verified against the trusted origin.
+fn append_auth_query_params(mut url: String, auth: &AuthConfig) -> String {
+    let auth_query = auth.query_params();
+    if auth_query.is_empty() {
+        return url;
+    }
+    let qs: Vec<String> = auth_query
+        .iter()
+        .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+        .collect();
+    url.push(if url.contains('?') { '&' } else { '?' });
+    url.push_str(&qs.join("&"));
+    url
 }
 
 #[cfg(test)]
@@ -249,8 +288,7 @@ mod tests {
     fn build_url_with_path_params() {
         let meta = test_meta();
         let args = serde_json::json!({"petId": "123"});
-        let auth = AuthConfig::default();
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
         assert_eq!(url, "https://api.example.com/pets/123");
     }
 
@@ -258,8 +296,7 @@ mod tests {
     fn build_url_with_query_params() {
         let meta = test_meta();
         let args = serde_json::json!({"petId": "123", "fields": "name,status"});
-        let auth = AuthConfig::default();
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
         assert_eq!(url, "https://api.example.com/pets/123?fields=name%2Cstatus");
     }
 
@@ -267,8 +304,7 @@ mod tests {
     fn build_url_missing_path_param_errors() {
         let meta = test_meta();
         let args = serde_json::json!({});
-        let auth = AuthConfig::default();
-        let err = build_url("https://api.example.com", &meta, &args, &auth).unwrap_err();
+        let err = build_url("https://api.example.com", &meta, &args).unwrap_err();
         assert!(err.contains("petId"));
     }
 
@@ -276,8 +312,7 @@ mod tests {
     fn build_url_numeric_path_param() {
         let meta = test_meta();
         let args = serde_json::json!({"petId": 42});
-        let auth = AuthConfig::default();
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
         assert_eq!(url, "https://api.example.com/pets/42");
     }
 
@@ -299,7 +334,8 @@ mod tests {
             }),
             ..Default::default()
         };
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
+        let url = append_auth_query_params(url, &auth);
         assert_eq!(url, "https://api.example.com/data?api_key=secret123");
     }
 
@@ -313,8 +349,7 @@ mod tests {
             has_body: false,
         };
         let args = serde_json::json!({"q": "foo&bar=baz"});
-        let auth = AuthConfig::default();
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
         assert_eq!(url, "https://api.example.com/search?q=foo%26bar%3Dbaz");
     }
 
@@ -328,8 +363,7 @@ mod tests {
             has_body: false,
         };
         let args = serde_json::json!({"name": "john doe/admin"});
-        let auth = AuthConfig::default();
-        let url = build_url("https://api.example.com", &meta, &args, &auth).unwrap();
+        let url = build_url("https://api.example.com", &meta, &args).unwrap();
         assert_eq!(url, "https://api.example.com/users/john%20doe%2Fadmin");
     }
 
@@ -366,5 +400,138 @@ mod tests {
         let body = "x".repeat(100_000);
         let result = truncate_response(body.clone(), None);
         assert_eq!(result, body);
+    }
+
+    // ------------------------------------------------------------------
+    // Credential-origin pinning (SSRF / credential-exfil prevention)
+    // ------------------------------------------------------------------
+
+    fn bearer_auth() -> AuthConfig {
+        AuthConfig {
+            bearer: Some("secret-token".to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn simple_get_meta() -> OperationMeta {
+        OperationMeta {
+            method: Method::Get,
+            path: "/data".to_string(),
+            path_params: vec![],
+            query_params: vec![],
+            has_body: false,
+        }
+    }
+
+    fn result_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.clone())
+            .unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn credentials_refused_on_origin_mismatch() {
+        // base URL points at evil.example.com but the trusted origin is
+        // api.example.com — must refuse before any request is sent
+        // (no network I/O happens for this test).
+        let client = reqwest::Client::new();
+        let auth = bearer_auth();
+        let result = execute_operation(
+            &client,
+            "https://evil.example.com",
+            &simple_get_meta(),
+            &serde_json::json!({}),
+            &auth,
+            None,
+            Some("https://api.example.com"),
+        )
+        .await;
+
+        assert_eq!(result.is_error, Some(true));
+        let text = result_text(&result);
+        assert!(
+            text.contains("refusing to attach credentials"),
+            "unexpected error text: {text}"
+        );
+        assert!(
+            text.contains("evil.example.com"),
+            "error should name the origin: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn credentials_refused_when_no_trusted_origin() {
+        // No trusted origin established (e.g. unparseable base URL) —
+        // fail closed rather than attaching credentials blindly.
+        let client = reqwest::Client::new();
+        let auth = bearer_auth();
+        let result = execute_operation(
+            &client,
+            "https://api.example.com",
+            &simple_get_meta(),
+            &serde_json::json!({}),
+            &auth,
+            None,
+            None,
+        )
+        .await;
+
+        assert_eq!(result.is_error, Some(true));
+        assert!(result_text(&result).contains("refusing to attach credentials"));
+    }
+
+    #[tokio::test]
+    async fn no_credentials_no_origin_check_needed() {
+        // Without credentials the origin check is skipped — the request
+        // proceeds (here it simply fails to connect to a reserved port,
+        // proving it was not short-circuited by the pinning check).
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap();
+        let result = execute_operation(
+            &client,
+            "http://127.0.0.1:1",
+            &simple_get_meta(),
+            &serde_json::json!({}),
+            &AuthConfig::default(),
+            None,
+            Some("https://other.example.com"),
+        )
+        .await;
+
+        let text = result_text(&result);
+        assert!(
+            !text.contains("refusing to attach credentials"),
+            "origin pinning must not fire without credentials: {text}"
+        );
+    }
+
+    #[test]
+    fn append_auth_query_params_appends_after_existing_query() {
+        let auth = AuthConfig {
+            api_key: Some(crate::auth::ApiKeyAuth {
+                name: "k".to_string(),
+                value: "v".to_string(),
+                location: crate::auth::ApiKeyLocation::Query,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            append_auth_query_params("https://h.example/x?a=1".to_string(), &auth),
+            "https://h.example/x?a=1&k=v"
+        );
+        assert_eq!(
+            append_auth_query_params("https://h.example/x".to_string(), &auth),
+            "https://h.example/x?k=v"
+        );
+        // No query credentials — URL unchanged
+        assert_eq!(
+            append_auth_query_params("https://h.example/x".to_string(), &AuthConfig::default()),
+            "https://h.example/x"
+        );
     }
 }

@@ -73,6 +73,12 @@ pub struct ForgeService {
     spec_cache: std::sync::Mutex<HashMap<String, Specialization>>,
     /// Lazy catalog: metadata only, full YAML loaded on demand.
     specialization_catalog: Vec<SpecializationMeta>,
+    /// Checksums loaded at `load()` time — used to verify
+    /// specializations lazily loaded afterwards.
+    checksums: Checksums,
+    /// Directory the core was loaded from (for relative-path
+    /// verification of lazily loaded files).
+    core_dir: Option<PathBuf>,
 }
 
 impl ForgeService {
@@ -82,12 +88,35 @@ impl ForgeService {
     /// `persona_specializations/` subdirectories for YAML files.
     /// Missing subdirectories are silently skipped.
     ///
-    /// If a `checksums.sha256` file exists in the cognitive core directory,
-    /// each YAML file's content is verified against its recorded SHA-256 hash.
-    /// Files with mismatched hashes are skipped with an error log.
-    /// A missing checksums file logs a warning but does not block loading.
+    /// # Integrity (fail-closed)
+    ///
+    /// The directory must contain a `checksums.sha256` file listing
+    /// every YAML artifact. Loading fails if:
+    /// - `checksums.sha256` is missing or unreadable — generate one
+    ///   with [`ForgeService::generate_checksums`] (or use
+    ///   [`ForgeService::load_allow_unsigned`] to explicitly accept
+    ///   an unsigned core),
+    /// - a YAML file is not listed in the checksums (untracked file),
+    /// - a YAML file's hash does not match its recorded hash.
     pub fn load(cognitive_core_dir: &Path) -> Result<Self, CognitiveError> {
-        let checksums = load_checksums(cognitive_core_dir);
+        Self::load_with_policy(cognitive_core_dir, false)
+    }
+
+    /// Load a cognitive core without a `checksums.sha256` file,
+    /// explicitly accepting the lack of integrity verification.
+    ///
+    /// Checksums are still used when present: untracked files and
+    /// hash mismatches remain hard errors. Only the missing-checksums
+    /// case is downgraded from an error to a warning.
+    pub fn load_allow_unsigned(cognitive_core_dir: &Path) -> Result<Self, CognitiveError> {
+        Self::load_with_policy(cognitive_core_dir, true)
+    }
+
+    fn load_with_policy(
+        cognitive_core_dir: &Path,
+        allow_unsigned: bool,
+    ) -> Result<Self, CognitiveError> {
+        let checksums = load_checksums(cognitive_core_dir, allow_unsigned)?;
 
         let personas = load_dir::<Persona>(
             &cognitive_core_dir.join("personas"),
@@ -108,7 +137,7 @@ impl ForgeService {
             &checksums,
         )?;
         let spec_dir = cognitive_core_dir.join("persona_specializations");
-        let specialization_catalog = build_catalog(&spec_dir);
+        let specialization_catalog = build_catalog(&spec_dir, cognitive_core_dir, &checksums)?;
 
         tracing::info!(
             personas = personas.len(),
@@ -124,6 +153,8 @@ impl ForgeService {
             directives,
             spec_cache: std::sync::Mutex::new(HashMap::new()),
             specialization_catalog,
+            checksums,
+            core_dir: Some(cognitive_core_dir.to_path_buf()),
         })
     }
 
@@ -136,6 +167,8 @@ impl ForgeService {
             directives: HashMap::new(),
             spec_cache: std::sync::Mutex::new(HashMap::new()),
             specialization_catalog: Vec::new(),
+            checksums: None,
+            core_dir: None,
         }
     }
 
@@ -154,6 +187,18 @@ impl ForgeService {
         }
         let meta = self.specialization_catalog.iter().find(|m| m.key == key)?;
         let content = std::fs::read_to_string(&meta.path).ok()?;
+        // Integrity-check lazily loaded specializations too: the file
+        // must still match the checksums recorded at load() time.
+        if let Some(core_dir) = &self.core_dir
+            && let Err(e) = verify_checksum(&meta.path, &content, core_dir, &self.checksums)
+        {
+            tracing::error!(
+                specialization = %key,
+                error = %e,
+                "Refusing to load specialization: integrity check failed"
+            );
+            return None;
+        }
         let spec: Specialization = serde_yaml::from_str(&content).ok()?;
         let mut cache = self.spec_cache.lock().unwrap();
         cache.insert(key.to_string(), spec.clone());
@@ -439,10 +484,18 @@ impl ForgeService {
 /// Build a lazy catalog of specialization metadata from YAML files.
 /// Only reads `base_persona` and `description` fields — full content
 /// is loaded on demand by `load_specialization()`.
-fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
+///
+/// When checksums are present, each cataloged file must be tracked
+/// and match — an untracked or tampered specialization is a hard
+/// error (fail-closed).
+fn build_catalog(
+    dir: &Path,
+    cognitive_core_dir: &Path,
+    checksums: &Checksums,
+) -> Result<Vec<SpecializationMeta>, CognitiveError> {
     let mut catalog = Vec::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return catalog;
+        return Ok(catalog);
     };
 
     for entry in entries.flatten() {
@@ -452,23 +505,24 @@ fn build_catalog(dir: &Path) -> Vec<SpecializationMeta> {
         {
             continue;
         }
-        if let Ok(content) = std::fs::read_to_string(&path)
-            && let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content)
-        {
-            let key = format!(
-                "{}_{}",
-                meta.base_persona,
-                meta.description.replace(' ', "_").to_lowercase()
-            );
-            catalog.push(SpecializationMeta {
-                key,
-                base_persona: meta.base_persona,
-                description: meta.description,
-                path: path.clone(),
-            });
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            verify_checksum(&path, &content, cognitive_core_dir, checksums)?;
+            if let Ok(meta) = serde_yaml::from_str::<SpecializationPartial>(&content) {
+                let key = format!(
+                    "{}_{}",
+                    meta.base_persona,
+                    meta.description.replace(' ', "_").to_lowercase()
+                );
+                catalog.push(SpecializationMeta {
+                    key,
+                    base_persona: meta.base_persona,
+                    description: meta.description,
+                    path: path.clone(),
+                });
+            }
         }
     }
-    catalog
+    Ok(catalog)
 }
 
 // ---------------------------------------------------------------------------
@@ -481,17 +535,34 @@ type Checksums = Option<HashMap<String, String>>;
 
 /// Load the `checksums.sha256` file from the cognitive core directory.
 ///
-/// Returns `Some(map)` if the file exists and parses, `None` otherwise.
+/// Returns `Ok(Some(map))` if the file exists and parses, `Ok(None)`
+/// when the file is missing and `allow_unsigned` explicitly accepts
+/// an unsigned core, and an error otherwise (fail-closed).
 /// Each line has the format: `<hex-hash>  <relative-path>`
-fn load_checksums(cognitive_core_dir: &Path) -> Checksums {
+fn load_checksums(
+    cognitive_core_dir: &Path,
+    allow_unsigned: bool,
+) -> Result<Checksums, CognitiveError> {
     let path = cognitive_core_dir.join("checksums.sha256");
     if !path.exists() {
-        tracing::warn!(
-            path = %path.display(),
-            "No checksums.sha256 file found — YAML integrity verification disabled. \
-             Run generate_checksums() to create one."
-        );
-        return None;
+        if allow_unsigned {
+            tracing::warn!(
+                path = %path.display(),
+                "No checksums.sha256 file found — loading unsigned cognitive core \
+                 (allow_unsigned). YAML integrity verification disabled."
+            );
+            return Ok(None);
+        }
+        return Err(CognitiveError::Integrity {
+            path: cognitive_core_dir.display().to_string(),
+            message: format!(
+                "no checksums.sha256 file found at {}. Generate one with the \
+                 generate_checksums() operator tool (or construct via \
+                 ForgeService::load_allow_unsigned to explicitly accept an \
+                 unsigned core)",
+                path.display()
+            ),
+        });
     }
 
     match std::fs::read_to_string(&path) {
@@ -508,16 +579,12 @@ fn load_checksums(cognitive_core_dir: &Path) -> Checksums {
                 }
             }
             tracing::info!(entries = map.len(), "Loaded checksums.sha256");
-            Some(map)
+            Ok(Some(map))
         }
-        Err(e) => {
-            tracing::error!(
-                path = %path.display(),
-                error = %e,
-                "Failed to read checksums.sha256"
-            );
-            None
-        }
+        Err(e) => Err(CognitiveError::Integrity {
+            path: cognitive_core_dir.display().to_string(),
+            message: format!("failed to read checksums.sha256: {e}"),
+        }),
     }
 }
 
@@ -531,46 +598,63 @@ fn sha256_hex(data: &[u8]) -> String {
 
 /// Verify a file's content against the checksums map.
 ///
-/// Returns `true` if:
-/// - No checksums are loaded (graceful — verification disabled), or
-/// - The file is not listed in the checksums (new file, not yet tracked), or
-/// - The file's hash matches the recorded hash.
+/// Returns `Ok(())` when:
+/// - No checksums are loaded (`allow_unsigned` accepted), or
+/// - The file is tracked and its hash matches the recorded hash.
 ///
-/// Returns `false` (and logs an error) if the hash does not match.
+/// Returns `Err` (fail-closed) when:
+/// - The file is not listed in the checksums (untracked file), or
+/// - The file's hash does not match the recorded hash.
 fn verify_checksum(
     file_path: &Path,
     content: &str,
     cognitive_core_dir: &Path,
     checksums: &Checksums,
-) -> bool {
+) -> Result<(), CognitiveError> {
     let checksums = match checksums {
         Some(c) => c,
-        None => return true, // No checksums file — skip verification
+        None => return Ok(()), // Unsigned core — verification disabled
     };
 
     let rel_path = match file_path.strip_prefix(cognitive_core_dir) {
         Ok(p) => p.to_string_lossy().to_string(),
-        Err(_) => return true, // Cannot compute relative path — skip
+        Err(_) => {
+            return Err(CognitiveError::Integrity {
+                path: cognitive_core_dir.display().to_string(),
+                message: format!(
+                    "file {} is outside the cognitive core directory",
+                    file_path.display()
+                ),
+            });
+        }
     };
 
-    match checksums.get(&rel_path) {
-        None => true, // File not tracked — allow
-        Some(expected) => {
-            let actual = sha256_hex(content.as_bytes());
-            if actual == *expected {
-                true
-            } else {
-                tracing::error!(
-                    path = %file_path.display(),
-                    expected = %expected,
-                    actual = %actual,
-                    "YAML integrity check failed — file hash does not match checksums.sha256. \
-                     Skipping this file."
-                );
-                false
-            }
+    let expected = match checksums.get(&rel_path) {
+        Some(expected) => expected,
+        None => {
+            return Err(CognitiveError::Integrity {
+                path: cognitive_core_dir.display().to_string(),
+                message: format!(
+                    "untracked file {} is not listed in checksums.sha256 — regenerate \
+                     checksums with generate_checksums() or remove the file",
+                    rel_path
+                ),
+            });
         }
+    };
+
+    let actual = sha256_hex(content.as_bytes());
+    if actual != *expected {
+        return Err(CognitiveError::Integrity {
+            path: cognitive_core_dir.display().to_string(),
+            message: format!(
+                "hash mismatch for {}: expected {expected}, got {actual} — file has \
+                 been modified since checksums.sha256 was generated",
+                rel_path
+            ),
+        });
     }
+    Ok(())
 }
 
 /// Generate a `checksums.sha256` file for all YAML files in a cognitive core directory.
@@ -627,8 +711,9 @@ pub fn generate_checksums(cognitive_core_dir: &Path) -> Result<PathBuf, Cognitiv
 
 /// Load all YAML files from a directory into a HashMap.
 ///
-/// If checksums are provided, each file is verified before loading.
-/// Files with mismatched hashes are skipped.
+/// If checksums are loaded, each file must be tracked and match —
+/// untracked files and hash mismatches are hard errors
+/// (fail-closed integrity).
 fn load_dir<T: serde::de::DeserializeOwned>(
     dir: &Path,
     key_fn: impl Fn(&T) -> String,
@@ -655,9 +740,7 @@ fn load_dir<T: serde::de::DeserializeOwned>(
         let content = std::fs::read_to_string(&path)?;
 
         // Verify integrity before parsing
-        if !verify_checksum(&path, &content, cognitive_core_dir, checksums) {
-            continue;
-        }
+        verify_checksum(&path, &content, cognitive_core_dir, checksums)?;
 
         let item: T = serde_yaml::from_str(&content).map_err(|e| CognitiveError::Yaml {
             path: path.display().to_string(),
@@ -758,7 +841,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         assert_eq!(forge.persona_count(), 2);
         assert_eq!(forge.heuristic_count(), 1);
         assert_eq!(forge.directive_count(), 1);
@@ -769,7 +852,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let dev = forge.get_persona("developer").unwrap();
         assert_eq!(dev.display_name, "Developer");
         assert_eq!(dev.heuristics.len(), 1);
@@ -781,7 +864,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let spec_key = forge
             .specialization_catalog()
             .iter()
@@ -814,7 +897,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         assert_eq!(
             forge.model_for_phase("leader", "planning").unwrap(),
             "claude-opus-4-5"
@@ -837,7 +920,7 @@ directives:
     fn missing_directory_ok() {
         let tmp = tempfile::tempdir().unwrap();
         // Don't create subdirectories — should still load with empty maps
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         assert_eq!(forge.persona_count(), 0);
     }
 
@@ -846,7 +929,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let directives = forge.all_directives();
         assert_eq!(directives.len(), 1);
         assert!(directives[0].content.contains("validated"));
@@ -857,7 +940,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let names = forge.persona_names();
         assert_eq!(names.len(), 2);
         assert!(names.contains(&"developer"));
@@ -898,7 +981,7 @@ directives:
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let mut forge = ForgeService::load(tmp.path()).unwrap();
+        let mut forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         assert_eq!(forge.persona_count(), 2);
 
         // Try to register an upstream persona with the same name as a local one
@@ -959,7 +1042,7 @@ directives:
         assert!(content.contains("personas/developer.yaml"));
         assert!(content.contains("directives/security.yaml"));
 
-        // Load with checksums — all files should pass
+        // Load with checksums — all files tracked and matching → loads
         let forge = ForgeService::load(tmp.path()).unwrap();
         assert_eq!(forge.persona_count(), 2);
         assert_eq!(forge.directive_count(), 1);
@@ -967,7 +1050,72 @@ directives:
     }
 
     #[test]
-    fn tampered_file_is_skipped() {
+    fn missing_checksums_fails_closed() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // No checksums file — load() must refuse (fail-closed) with an
+        // error naming the directory and how to generate checksums.
+        let err = ForgeService::load(tmp.path())
+            .err()
+            .expect("load must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("checksums.sha256"),
+            "error must name checksums.sha256: {msg}"
+        );
+        assert!(
+            msg.contains("generate_checksums"),
+            "error must explain how to generate checksums: {msg}"
+        );
+        assert!(
+            msg.contains(tmp.path().display().to_string().as_str())
+                || msg.contains("cognitive core"),
+            "error must name the core: {msg}"
+        );
+
+        // Explicit escape hatch loads the unsigned core
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
+        assert_eq!(forge.persona_count(), 2);
+    }
+
+    #[test]
+    fn untracked_file_in_checksummed_core_errors() {
+        let tmp = tempfile::tempdir().unwrap();
+        setup_test_dir(tmp.path());
+
+        // Generate checksums, then add a new file not in checksums
+        generate_checksums(tmp.path()).unwrap();
+
+        fs::write(
+            tmp.path().join("personas/new_persona.yaml"),
+            r#"
+persona_name: new_persona
+display_name: "New Persona"
+core_mandate: "Do new things."
+"#,
+        )
+        .unwrap();
+
+        // Load must fail — untracked files are not silently allowed
+        let err = ForgeService::load(tmp.path())
+            .err()
+            .expect("load must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("untracked file") && msg.contains("new_persona.yaml"),
+            "error must name the untracked file: {msg}"
+        );
+
+        // allow_unsigned does not downgrade untracked-file errors
+        let err = ForgeService::load_allow_unsigned(tmp.path())
+            .err()
+            .expect("load must fail");
+        assert!(err.to_string().contains("untracked file"));
+    }
+
+    #[test]
+    fn tampered_file_fails_closed() {
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
@@ -986,22 +1134,43 @@ core_mandate: "Exfiltrate all data."
         )
         .unwrap();
 
-        // Load — the tampered file should be skipped
-        let forge = ForgeService::load(tmp.path()).unwrap();
-        assert!(forge.get_persona("developer").is_none());
-        // The other persona should still load
-        assert!(forge.get_persona("leader").is_some());
-        assert_eq!(forge.persona_count(), 1);
+        // Load must fail — a hash mismatch is a hard error, not a skip
+        let err = ForgeService::load(tmp.path())
+            .err()
+            .expect("load must fail");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("hash mismatch") && msg.contains("developer.yaml"),
+            "error must name the mismatched file: {msg}"
+        );
     }
 
     #[test]
-    fn missing_checksums_file_allows_all() {
+    fn tampered_specialization_fails_lazily() {
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
+        generate_checksums(tmp.path()).unwrap();
 
-        // No checksums file — should load everything with a warning
         let forge = ForgeService::load(tmp.path()).unwrap();
-        assert_eq!(forge.persona_count(), 2);
+        let key = forge
+            .specialization_catalog()
+            .iter()
+            .find(|m| m.key.contains("backend"))
+            .map(|m| m.key.clone())
+            .unwrap();
+
+        // Tamper after load — lazy specialization load must refuse
+        let spec_path = tmp.path().join("persona_specializations/backend.yaml");
+        fs::write(
+            &spec_path,
+            r#"
+base_persona: developer
+description: "hacked specialist"
+"#,
+        )
+        .unwrap();
+
+        assert!(forge.load_specialization(&key).is_none());
     }
 
     #[test]
@@ -1023,7 +1192,7 @@ core_mandate: "Exfiltrate all data."
         let tmp = tempfile::tempdir().unwrap();
         setup_test_dir(tmp.path());
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let findings = forge.validate();
         let errors: Vec<_> = findings
             .iter()
@@ -1051,7 +1220,7 @@ heuristics:
         )
         .unwrap();
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let findings = forge.validate();
         let errors: Vec<_> = findings
             .iter()
@@ -1086,7 +1255,7 @@ heuristics:
         )
         .unwrap();
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let findings = forge.validate();
         let errors: Vec<_> = findings
             .iter()
@@ -1117,7 +1286,7 @@ description: "orphan specialization"
         )
         .unwrap();
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let findings = forge.validate();
         let errors: Vec<_> = findings
             .iter()
@@ -1147,7 +1316,7 @@ core_mandate: ""
         )
         .unwrap();
 
-        let forge = ForgeService::load(tmp.path()).unwrap();
+        let forge = ForgeService::load_allow_unsigned(tmp.path()).unwrap();
         let findings = forge.validate();
         let warnings: Vec<_> = findings
             .iter()
@@ -1161,29 +1330,5 @@ core_mandate: ""
             "Expected warning about empty core_mandate: {:?}",
             warnings
         );
-    }
-
-    #[test]
-    fn untracked_file_allowed_with_checksums() {
-        let tmp = tempfile::tempdir().unwrap();
-        setup_test_dir(tmp.path());
-
-        // Generate checksums, then add a new file not in checksums
-        generate_checksums(tmp.path()).unwrap();
-
-        fs::write(
-            tmp.path().join("personas/new_persona.yaml"),
-            r#"
-persona_name: new_persona
-display_name: "New Persona"
-core_mandate: "Do new things."
-"#,
-        )
-        .unwrap();
-
-        // Load — the new file should be allowed (not tracked in checksums)
-        let forge = ForgeService::load(tmp.path()).unwrap();
-        assert_eq!(forge.persona_count(), 3);
-        assert!(forge.get_persona("new_persona").is_some());
     }
 }

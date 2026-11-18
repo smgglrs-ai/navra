@@ -40,6 +40,15 @@ pub struct BasicAuth {
 }
 
 impl AuthConfig {
+    /// True when any credential material is configured. Used to decide
+    /// whether origin pinning must be enforced before a request is sent.
+    pub fn has_credentials(&self) -> bool {
+        self.bearer.is_some()
+            || self.api_key.is_some()
+            || self.basic.is_some()
+            || self.oauth.is_some()
+    }
+
     pub fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
         if let Some(ref token) = self.bearer

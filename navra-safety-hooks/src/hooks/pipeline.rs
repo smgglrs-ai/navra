@@ -534,6 +534,66 @@ mod tests {
         assert!(matches!(outcome, PreHookOutcome::Blocked(_)));
     }
 
+    /// Drift detection for proof/code linkage (F2): the local Kani
+    /// model `kani_proofs::pre_dispatch` (in the `#[cfg(kani)]` module
+    /// below) maps a timed-out hook to `Decision::Block`, which
+    /// dispatches to `(Outcome::Blocked, short-circuits = true)`.
+    /// This test exercises the REAL `HookPipeline::run_pre` path with
+    /// a hook that sleeps past the timeout and asserts the same
+    /// mapping: the outcome is Blocked AND the chain short-circuits
+    /// (a later hook never runs). If `run_pre`'s timeout handling ever
+    /// drifts from the model, this test fails.
+    #[tokio::test]
+    async fn kani_pre_dispatch_model_matches_run_pre_timeout_mapping() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        /// Records whether it ran (models the hook after the slow one
+        /// in the chain — the model's `short-circuits = true` says it
+        /// must never execute).
+        struct RecordingHook(Arc<AtomicBool>);
+
+        #[async_trait::async_trait]
+        impl Hook for RecordingHook {
+            fn name(&self) -> &str {
+                "recording-hook"
+            }
+
+            async fn pre_tool_use(
+                &self,
+                _tool_name: &str,
+                _arguments: &serde_json::Value,
+                _ctx: &CallContext,
+                _annotations: Option<&navra_protocol::ToolAnnotations>,
+            ) -> HookDecision {
+                self.0.store(true, Ordering::SeqCst);
+                HookDecision::Continue
+            }
+        }
+
+        let mut pipeline = HookPipeline::new(Duration::from_millis(50));
+        pipeline.add(SlowHook);
+        let ran = Arc::new(AtomicBool::new(false));
+        pipeline.add(RecordingHook(ran.clone()));
+
+        let outcome = pipeline
+            .run_pre("echo", serde_json::json!({}), &test_ctx(), None)
+            .await;
+
+        // Model: timeout → Block → (Outcome::Blocked, true)
+        match &outcome {
+            PreHookOutcome::Blocked(reason) => assert!(
+                reason.contains("timed out"),
+                "timeout Block reason expected, got: {reason}"
+            ),
+            other => panic!("expected Blocked (timeout → Block), got {:?}", other),
+        }
+        assert!(
+            !ran.load(Ordering::SeqCst),
+            "hook after the timed-out hook must not run (model: short-circuits = true)"
+        );
+    }
+
     // --- Model-call hook tests ---
 
     struct ModelBlockHook;

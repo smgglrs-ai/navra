@@ -1220,3 +1220,97 @@ mod kani_proofs {
         assert_eq!(with_dot, with_dot2);
     }
 }
+
+/// Drift detection for proof/code linkage (F2).
+///
+/// The executable `PermissionEngine::deny_wins_eval` must agree with
+/// its Verus spec twin `spec_deny_wins_eval` (defined inside the
+/// `verus!` block above) across the FULL decision table. The spec fn
+/// is ghost code and is compiled out of normal builds, so this test
+/// transcribes it verbatim as `spec_twin` below — keep the two in
+/// sync. Verus proves `spec_deny_wins_eval` satisfies the exhaustive
+/// table in `deny_wins_exhaustive`; this test proves the executable
+/// satisfies the same table, closing the loop between proof and code.
+#[cfg(test)]
+mod drift_tests {
+    use super::*;
+
+    /// Verbatim transcription of `spec_deny_wins_eval` — keep in sync.
+    /// (The duplicated branch mirrors the spec fn; do not "simplify".)
+    #[allow(clippy::if_same_then_else)]
+    fn spec_twin(
+        deny_matched: bool,
+        allow_matched: bool,
+        needs_approval: bool,
+    ) -> PermissionResult {
+        if deny_matched {
+            PermissionResult::DeniedPath
+        } else if !allow_matched {
+            PermissionResult::DeniedPath
+        } else if needs_approval {
+            PermissionResult::NeedsApproval
+        } else {
+            PermissionResult::Allowed
+        }
+    }
+
+    #[test]
+    fn deny_wins_eval_matches_spec_twin_full_decision_table() {
+        for deny_matched in [false, true] {
+            for allow_matched in [false, true] {
+                for needs_approval in [false, true] {
+                    assert_eq!(
+                        PermissionEngine::deny_wins_eval(
+                            deny_matched,
+                            allow_matched,
+                            needs_approval
+                        ),
+                        spec_twin(deny_matched, allow_matched, needs_approval),
+                        "drift between deny_wins_eval and spec_deny_wins_eval at \
+                         (deny={deny_matched}, allow={allow_matched}, \
+                         approval={needs_approval})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The exhaustive table from the `deny_wins_exhaustive` proof's
+    /// ensures clauses, asserted directly against the executable.
+    #[test]
+    fn deny_wins_eval_matches_proof_ensures_table() {
+        use PermissionResult::*;
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(false, false, false),
+            DeniedPath
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(false, false, true),
+            DeniedPath
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(false, true, false),
+            Allowed
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(false, true, true),
+            NeedsApproval
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(true, false, false),
+            DeniedPath
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(true, false, true),
+            DeniedPath
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(true, true, false),
+            DeniedPath
+        );
+        assert_eq!(
+            PermissionEngine::deny_wins_eval(true, true, true),
+            DeniedPath
+        );
+    }
+}
