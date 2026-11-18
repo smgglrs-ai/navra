@@ -23,6 +23,13 @@ use std::sync::Arc;
 /// gateway classify it Read. The only authority that can classify a
 /// heuristic-write tool as Read is the operator, via a
 /// `tool_overrides` entry applied by the caller in `discover_tools`.
+///
+/// Read requires a truthful-looking signal: `read_only_hint == true`
+/// AND a read-sounding name (annotations and heuristic agreeing), or
+/// an operator override. A read-sounding name with NO annotations
+/// classifies Write — deny-by-default in both directions, so a
+/// hostile upstream cannot sneak a state-changing tool past
+/// read-scoped agents just by naming it `db_migrate_status`.
 fn classify_tool(def: &ToolDefinition) -> ToolOperation {
     // Name/behavior heuristic first, with annotations withheld: this
     // is the floor the upstream cannot talk its way below.
@@ -35,10 +42,24 @@ fn classify_tool(def: &ToolDefinition) -> ToolOperation {
             return ToolOperation::Read;
         }
     }
-    if heuristic_write {
-        return ToolOperation::Write;
+    // No truthful read signal (no annotations, or annotations that
+    // do not agree with a read-sounding name): Write.
+    ToolOperation::Write
+}
+
+/// The operation for a discovered tool after operator overrides:
+/// an explicit `read`/`write`/`deny` override wins; anything else
+/// falls back to [`classify_tool`].
+fn operation_for(def: &ToolDefinition, override_str: Option<&str>) -> ToolOperation {
+    if let Some(s) = override_str {
+        return match s {
+            "read" => ToolOperation::Read,
+            "write" => ToolOperation::Write,
+            "deny" => ToolOperation::Deny,
+            _ => classify_tool(def),
+        };
     }
-    ToolOperation::Read
+    classify_tool(def)
 }
 
 /// Signed-manifest verification to run during upstream discovery.
@@ -579,16 +600,10 @@ async fn discover_tools(
         let mut tool_operations = HashMap::new();
         let mut accepted_tools = Vec::new();
         for def in tools {
-            let op = if let Some(override_str) = tool_overrides.get(def.name.as_ref()) {
-                match override_str.as_str() {
-                    "read" => ToolOperation::Read,
-                    "write" => ToolOperation::Write,
-                    "deny" => ToolOperation::Deny,
-                    _ => classify_tool(&def),
-                }
-            } else {
-                classify_tool(&def)
-            };
+            let op = operation_for(
+                &def,
+                tool_overrides.get(def.name.as_ref()).map(|s| s.as_str()),
+            );
             if op == ToolOperation::Deny {
                 tracing::info!(upstream = %name, tool = %def.name, "Denied upstream tool by policy");
                 continue;
@@ -1105,9 +1120,11 @@ mod tests {
 
     #[test]
     fn classify_tool_read_write() {
+        // Deny-by-default both directions: without annotations a
+        // read-sounding name is NOT enough to classify Read.
         assert_eq!(
             classify_tool(&tool_def("read_file", None)),
-            ToolOperation::Read
+            ToolOperation::Write
         );
         assert_eq!(
             classify_tool(&tool_def("write_file", None)),
@@ -1144,6 +1161,59 @@ mod tests {
     }
 
     #[test]
+    fn classify_tool_read_sounding_name_without_annotation_is_write() {
+        // The hostile-upstream case: a state-changing tool named
+        // `db_migrate_status` (contains "status") must NOT classify
+        // Read on its name alone — read-scoped agents could call it.
+        assert_eq!(
+            classify_tool(&tool_def("db_migrate_status", None)),
+            ToolOperation::Write
+        );
+        assert_eq!(
+            classify_tool(&tool_def("git_status", None)),
+            ToolOperation::Write
+        );
+    }
+
+    #[test]
+    fn classify_tool_read_sounding_name_with_read_only_hint_is_read() {
+        // Truthful-looking signal: the name heuristic AND the
+        // upstream annotation agree the tool reads.
+        let ann = navra_protocol::ToolAnnotations::new().read_only(true);
+        assert_eq!(
+            classify_tool(&tool_def("db_migrate_status", Some(ann))),
+            ToolOperation::Read
+        );
+    }
+
+    #[test]
+    fn operation_for_operator_override_classifies_read() {
+        // The operator is the only authority that can classify a
+        // heuristic-write tool as Read.
+        assert_eq!(
+            operation_for(&tool_def("db_migrate", None), Some("read")),
+            ToolOperation::Read
+        );
+        assert_eq!(
+            operation_for(&tool_def("read_file", None), Some("write")),
+            ToolOperation::Write
+        );
+        assert_eq!(
+            operation_for(&tool_def("anything", None), Some("deny")),
+            ToolOperation::Deny
+        );
+        // Unknown override strings fall back to the classifier.
+        assert_eq!(
+            operation_for(&tool_def("write_file", None), Some("nonsense")),
+            ToolOperation::Write
+        );
+        assert_eq!(
+            operation_for(&tool_def("anything", None), None),
+            ToolOperation::Write
+        );
+    }
+
+    #[test]
     fn classify_tool_destructive_annotation_returns_write() {
         let ann = navra_protocol::ToolAnnotations::new().destructive(true);
         // A tool with a read-like name should be classified Write
@@ -1168,15 +1238,16 @@ mod tests {
     }
 
     #[test]
-    fn classify_tool_no_annotations_falls_through_to_name_heuristic() {
-        // Tools without annotations are classified by name heuristic.
+    fn classify_tool_no_annotations_denies_by_default() {
+        // Without annotations nothing classifies Read on name alone:
+        // every tool, read-sounding or not, defaults to Write.
         assert_eq!(
             classify_tool(&tool_def("git_commit", None)),
             ToolOperation::Write
         );
         assert_eq!(
             classify_tool(&tool_def("git_status", None)),
-            ToolOperation::Read
+            ToolOperation::Write
         );
         assert_eq!(
             classify_tool(&tool_def("shell_exec", None)),

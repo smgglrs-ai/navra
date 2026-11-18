@@ -301,10 +301,49 @@ impl McpServerBuilder {
     /// plain `module()` path never touches the upstream set.
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();
+        // Re-registering a module name REPLACES the previous
+        // registration cleanly (mirroring `swap_upstream_tools`):
+        // the old module's tools, operations, and classifications
+        // are removed first so they can never be orphaned — a stale
+        // tool or classification left behind would keep the old
+        // module's attribution and permissions alive with no owner.
+        if let Some(previous) = self.module_tool_index.remove(&mod_name) {
+            for name in &previous {
+                self.tools.remove(name);
+                self.tool_operations.remove(name);
+                self.tool_classifications.remove(name);
+            }
+        }
+        if let Some(previous) = self.module_prompt_index.remove(&mod_name) {
+            for name in &previous {
+                self.prompts.remove(name);
+            }
+        }
+        if let Some(previous) = self.module_resource_index.remove(&mod_name) {
+            for uri in &previous {
+                self.resources.remove(uri);
+            }
+        }
+        // An upstream module's tool set is untrusted, discovered
+        // input: a name collision with another module's tool is a
+        // refused registration (error log + skip), not a panic — a
+        // hostile upstream must not be able to crash the gateway at
+        // build time. First-party modules keep the panic: a collision
+        // there is a programming error.
+        let is_upstream = self.upstream_modules.contains(&mod_name);
         let mut mod_tools = Vec::new();
         for (definition, handler) in module.tools() {
             let tool_name = definition.name.to_string();
             if self.tools.contains_key(&tool_name) {
+                if is_upstream {
+                    tracing::error!(
+                        module = %mod_name,
+                        tool = %tool_name,
+                        "Upstream tool name collides with an already-registered tool — \
+                         refusing registration (fail closed)"
+                    );
+                    continue;
+                }
                 panic!(
                     "Tool name conflict: '{}' from module '{}' already registered by another module",
                     tool_name, mod_name
