@@ -54,9 +54,8 @@ clippy-crate crate:
     fi
     CARGO_BUILD_JOBS=2 cargo clippy -p {{ crate }} -- -D warnings
 
-# Run clippy on navra-server, one target kind at a time (lib/bin first, then tests)
+# Run clippy on navra-server, one target kind at a time (bins first, then tests)
 clippy-crate-server:
-    CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --lib -- -D warnings
     CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --bins -- -D warnings
     CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --tests -- -D warnings
 
