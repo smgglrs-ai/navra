@@ -2,6 +2,7 @@
 name = "navra-safety"
 version = "0.1.0"
 edition = "2024"
+publish = false
 license = "Apache-2.0"
 rust-version = "1.96"
 description = "PII detection, content safety filters, and pseudonymization for Rust applications"

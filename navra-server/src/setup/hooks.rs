@@ -36,7 +36,10 @@ impl navra_core::hooks::ExtractionStore for KnowledgeExtractionStore {
                 memory_type: navra_memory::MemoryType::Fact,
                 title: sanitized_title,
                 content: sanitized_content,
-                tags: tags.to_vec(),
+                // Defense-in-depth: the hook sanitizes tags upstream,
+                // but any future ExtractionStore caller (the trait is
+                // public) must not be able to persist poisoned tags.
+                tags: navra_memory::sanitize_tags(tags, self.sanitizer.as_deref()),
                 created_at: now,
                 updated_at: None,
             };

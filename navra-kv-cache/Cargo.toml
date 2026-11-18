@@ -2,6 +2,7 @@
 name = "navra-kv-cache"
 version = "0.3.0"
 edition = "2024"
+publish = false
 license = "Apache-2.0"
 description = "TurboQuant KV cache compression: PolarQuant + QJL in pure Rust"
 

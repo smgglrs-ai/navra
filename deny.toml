@@ -58,23 +58,12 @@ multiple-versions = "warn"
 # external dependency is version-resolved via Cargo.lock, so
 # wildcards here are only intra-workspace path deps.
 #
-# RESIDUAL RISK (accepted, cargo-deny 0.21.0): `wildcards = "allow"`
-# is broader than the comment above implies — an EXTERNAL dependency
-# pinned with a bare `"*"` version requirement would also pass this
-# check unflagged. The tighter settings were evaluated and rejected:
-#   - `wildcards = "workspace"` does not exist in cargo-deny 0.21.0.
-#   - `wildcards = "deny"` + `allow-wildcard-paths = true` was tested
-#     (2026-11-18, `cargo deny check bans`): it fails with one error
-#     per workspace crate because `allow-wildcard-paths` only exempts
-#     crates marked `publish = false` (or dev-deps), and no workspace
-#     crate sets `publish = false`.
-# LEAD FOLLOW-UP: add `publish = false` to `[workspace.package]` (or
-# each member) — crates are never published — then switch to
-# `wildcards = "deny"` + `allow-wildcard-paths = true` so external
-# wildcard deps are denied while intra-workspace path deps pass.
-# Mitigation until then: `highlight = "all"` surfaces every wildcard
-# in the report for review, and Cargo.lock pins resolved versions.
-wildcards = "allow"
+# Wildcard version requirements: external wildcards are DENIED;
+# intra-workspace versionless `path = "../..."` deps are exempt via
+# `allow-wildcard-paths` because every workspace crate is marked
+# `publish = false` (crates are consumed from this repository only).
+wildcards = "deny"
+allow-wildcard-paths = true
 highlight = "all"
 
 [sources]

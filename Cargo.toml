@@ -35,6 +35,10 @@ license = "Apache-2.0"
 rust-version = "1.98"
 homepage = "https://github.com/smgglrs-ai/navra"
 repository = "https://github.com/smgglrs-ai/navra"
+# Crates are consumed from this repository only; never published.
+# Also lets cargo-deny's `bans.allow-wildcard-paths` exempt the
+# intra-workspace versionless path deps (see deny.toml).
+publish = false
 
 [workspace.dependencies]
 async-trait = "0.1"
