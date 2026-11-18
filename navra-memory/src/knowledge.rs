@@ -362,6 +362,132 @@ impl KnowledgeStore {
         Ok(())
     }
 
+    /// Update the tags of an existing entry in-place (for redaction).
+    ///
+    /// Used by the PII purge path so a "redact" action can also
+    /// rewrite poisoned tags instead of leaving them alongside
+    /// cleaned title/content.
+    pub fn update_tags(&self, id: &str, tags: &[String]) -> Result<(), MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let tags_json = serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string());
+        db.execute(
+            "UPDATE memory_knowledge SET tags_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![tags_json, now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Get the session scope an entry was stored under.
+    ///
+    /// Returns `Ok(None)` when the entry does not exist. The inner
+    /// `Option<String>` is the entry's `session_id` column: `None`
+    /// means the entry is global/unscoped. Used by the destructive
+    /// memory tools to check that a non-elevated caller only touches
+    /// entries in its own session.
+    pub fn entry_session_id(&self, id: &str) -> Result<Option<Option<String>>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let result = db.query_row(
+            "SELECT session_id FROM memory_knowledge WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, Option<String>>(0),
+        );
+        match result {
+            Ok(sid) => Ok(Some(sid)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// List entries strictly scoped to a session (`session_id`
+    /// matches exactly; global entries are excluded).
+    ///
+    /// Unlike [`KnowledgeStore::search_scoped`], which also returns
+    /// global (NULL-scope) entries, this is for destructive
+    /// operations where a non-elevated caller must only ever touch
+    /// its own session's entries.
+    pub fn list_scoped_to_session(
+        &self,
+        session_id: &str,
+        kind: Option<MemoryType>,
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let (sql, params_vec): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match kind {
+            Some(mt) => (
+                "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+                 FROM memory_knowledge
+                 WHERE session_id = ?1 AND memory_type = ?2
+                 ORDER BY created_at DESC",
+                vec![
+                    Box::new(session_id.to_string()),
+                    Box::new(mt.as_str().to_string()),
+                ],
+            ),
+            None => (
+                "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+                 FROM memory_knowledge
+                 WHERE session_id = ?1
+                 ORDER BY created_at DESC",
+                vec![Box::new(session_id.to_string())],
+            ),
+        };
+        let mut stmt = db.prepare(sql)?;
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        let entries = stmt
+            .query_map(params_ref.as_slice(), row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// Full-text search strictly scoped to a session (`session_id`
+    /// matches exactly; global entries are excluded).
+    pub fn search_scoped_to_session(
+        &self,
+        query: &str,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let sql = format!(
+            "SELECT k.id, k.memory_type, k.title, k.content, k.tags_json, k.created_at, k.updated_at
+             FROM memory_knowledge k
+             JOIN memory_knowledge_fts f ON k.rowid = f.rowid
+             WHERE memory_knowledge_fts MATCH ?1 AND k.session_id = ?2
+             ORDER BY rank
+             LIMIT {limit}"
+        );
+        let mut stmt = db.prepare(&sql)?;
+        let entries = stmt
+            .query_map(params![query, session_id], row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
+    /// List entries filtered by consent basis, strictly scoped to a
+    /// session (`session_id` matches exactly; global entries are
+    /// excluded).
+    pub fn list_by_consent_scoped(
+        &self,
+        basis: &str,
+        session_id: &str,
+    ) -> Result<Vec<MemoryEntry>, MemoryError> {
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = db.prepare(
+            "SELECT id, memory_type, title, content, tags_json, created_at, updated_at
+             FROM memory_knowledge
+             WHERE consent_basis = ?1 AND session_id = ?2
+             ORDER BY created_at DESC",
+        )?;
+        let entries = stmt
+            .query_map(params![basis, session_id], row_to_entry)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(entries)
+    }
+
     /// Delete entries older than the specified number of days.
     /// Returns the count of deleted entries.
     pub fn expire_older_than(&self, days: u32) -> Result<usize, MemoryError> {
@@ -1064,6 +1190,138 @@ mod tests {
         assert_eq!(retrieved.title, "Redacted");
         assert_eq!(retrieved.content, "[REDACTED]");
         assert!(retrieved.updated_at.is_some());
+    }
+
+    #[test]
+    fn update_tags_in_place() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        let e = entry("e1", MemoryType::Fact, "Title", "Content");
+        store.store(&e).unwrap();
+
+        store
+            .update_tags("e1", &["clean".to_string(), "safe".to_string()])
+            .unwrap();
+
+        let retrieved = store.get("e1").unwrap().unwrap();
+        assert_eq!(retrieved.tags, vec!["clean", "safe"]);
+        assert!(retrieved.updated_at.is_some());
+    }
+
+    #[test]
+    fn entry_session_id_lookup() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        store
+            .store_scoped(
+                &entry("s1", MemoryType::Fact, "Scoped", "scoped content"),
+                &scope(None, None, Some("sess-a")),
+                None,
+            )
+            .unwrap();
+        store
+            .store(&entry("g1", MemoryType::Fact, "Global", "global content"))
+            .unwrap();
+
+        assert_eq!(
+            store.entry_session_id("s1").unwrap(),
+            Some(Some("sess-a".to_string()))
+        );
+        // Global/unscoped entry: exists, session_id column is NULL.
+        assert_eq!(store.entry_session_id("g1").unwrap(), Some(None));
+        // Missing entry.
+        assert_eq!(store.entry_session_id("nope").unwrap(), None);
+    }
+
+    #[test]
+    fn list_scoped_to_session_excludes_global_and_foreign() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        store
+            .store_scoped(
+                &entry("a1", MemoryType::Fact, "A", "alpha content"),
+                &scope(None, None, Some("sess-a")),
+                None,
+            )
+            .unwrap();
+        store
+            .store_scoped(
+                &entry("b1", MemoryType::Fact, "B", "beta content"),
+                &scope(None, None, Some("sess-b")),
+                None,
+            )
+            .unwrap();
+        store
+            .store(&entry("g1", MemoryType::Fact, "G", "gamma content"))
+            .unwrap();
+
+        let mine = store.list_scoped_to_session("sess-a", None).unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].id, "a1");
+
+        // Kind filter composes with the session filter.
+        store
+            .store_scoped(
+                &entry("a2", MemoryType::Event, "A2", "alpha event"),
+                &scope(None, None, Some("sess-a")),
+                None,
+            )
+            .unwrap();
+        let facts = store
+            .list_scoped_to_session("sess-a", Some(MemoryType::Fact))
+            .unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].id, "a1");
+    }
+
+    #[test]
+    fn search_scoped_to_session_excludes_global_and_foreign() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        store
+            .store_scoped(
+                &entry("a1", MemoryType::Fact, "A", "alpha secret"),
+                &scope(None, None, Some("sess-a")),
+                None,
+            )
+            .unwrap();
+        store
+            .store_scoped(
+                &entry("b1", MemoryType::Fact, "B", "beta secret"),
+                &scope(None, None, Some("sess-b")),
+                None,
+            )
+            .unwrap();
+        store
+            .store(&entry("g1", MemoryType::Fact, "G", "gamma secret"))
+            .unwrap();
+
+        let hits = store
+            .search_scoped_to_session("secret", "sess-a", 10)
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "a1");
+    }
+
+    #[test]
+    fn list_by_consent_scoped_to_session() {
+        let store = KnowledgeStore::open_memory().unwrap();
+        store
+            .store_scoped(
+                &entry("a1", MemoryType::Fact, "A", "alpha"),
+                &scope(None, None, Some("sess-a")),
+                None,
+            )
+            .unwrap();
+        store
+            .store_scoped(
+                &entry("b1", MemoryType::Fact, "B", "beta"),
+                &scope(None, None, Some("sess-b")),
+                None,
+            )
+            .unwrap();
+        store.set_consent_basis("a1", "consent").unwrap();
+        store.set_consent_basis("b1", "consent").unwrap();
+
+        let mine = store.list_by_consent_scoped("consent", "sess-a").unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0].id, "a1");
     }
 
     #[test]
