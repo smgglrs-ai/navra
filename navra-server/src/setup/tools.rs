@@ -298,26 +298,46 @@ pub(crate) fn wire_sys_status(
 
 /// Register flow orchestration tools (flow_status, flow_result, flow_list).
 /// Returns the flow_registry for later use and resolved flow dirs.
+///
+/// `flow_owners` is the per-agent flow ownership ledger shared with
+/// `wire_team_tools`: flow_status/flow_result deny access to flows
+/// owned by a different agent, so agents cannot read other agents'
+/// flow outputs.
 pub(crate) fn wire_flow_tools(
     mut builder: navra_core::McpServerBuilder,
     cfg: &config::Config,
     flow_registry: &Arc<flow_tools::FlowRegistry>,
     audit_log: &Arc<navra_memory::AuditLog>,
+    flow_owners: &FlowOwnerLedger,
 ) -> navra_core::McpServerBuilder {
     // flow_status
     let registry = Arc::clone(flow_registry);
-    builder = builder.tool(flow_tools::flow_status_tool_def(), move |args, _ctx| {
+    let owners = Arc::clone(flow_owners);
+    builder = builder.tool(flow_tools::flow_status_tool_def(), move |args, ctx| {
         let registry = Arc::clone(&registry);
-        Box::pin(flow_tools::handle_flow_status(args, registry))
+        let owners = Arc::clone(&owners);
+        Box::pin(async move {
+            if let Err(msg) = check_flow_ownership(&owners, &args, &ctx) {
+                return navra_core::protocol::CallToolResult::error_msg(msg);
+            }
+            flow_tools::handle_flow_status(args, registry).await
+        })
     });
 
     // flow_result
     let registry = Arc::clone(flow_registry);
     let fr_audit = Arc::clone(audit_log);
-    builder = builder.tool(flow_tools::flow_result_tool_def(), move |args, _ctx| {
+    let owners = Arc::clone(flow_owners);
+    builder = builder.tool(flow_tools::flow_result_tool_def(), move |args, ctx| {
         let registry = Arc::clone(&registry);
         let audit = Arc::clone(&fr_audit);
-        Box::pin(flow_tools::handle_flow_result(args, registry, Some(audit)))
+        let owners = Arc::clone(&owners);
+        Box::pin(async move {
+            if let Err(msg) = check_flow_ownership(&owners, &args, &ctx) {
+                return navra_core::protocol::CallToolResult::error_msg(msg);
+            }
+            flow_tools::handle_flow_result(args, registry, Some(audit)).await
+        })
     });
 
     // flow_list
@@ -332,6 +352,59 @@ pub(crate) fn wire_flow_tools(
     );
 
     builder
+}
+
+/// Per-agent flow ownership ledger: flow_id → owning agent name.
+pub(crate) type FlowOwnerLedger =
+    Arc<std::sync::Mutex<std::collections::HashMap<String, String>>>;
+
+/// Attribute every flow in the registry that has no recorded owner to
+/// `agent`. Called after flow_start/flow_escalate/flow_resume so the
+/// agent that caused a flow (including subflows and escalation
+/// children registered during the call) owns it.
+fn attribute_new_flows(
+    registry: &Arc<flow_tools::FlowRegistry>,
+    ledger: &FlowOwnerLedger,
+    agent: &str,
+) {
+    let mut owned = ledger.lock().unwrap_or_else(|e| e.into_inner());
+    let flows = registry.flows.lock().unwrap_or_else(|e| e.into_inner());
+    for id in flows.keys() {
+        owned
+            .entry(id.clone())
+            .or_insert_with(|| agent.to_string());
+    }
+}
+
+/// Deny access when the requested flow is owned by a different agent.
+///
+/// Flows without a recorded owner (e.g. recovered from a previous
+/// process run) remain readable so `flow_resume` works across
+/// restarts; the resuming agent becomes the owner of the resumed
+/// flow.
+fn check_flow_ownership(
+    ledger: &FlowOwnerLedger,
+    args: &serde_json::Value,
+    ctx: &navra_core::auth::CallContext,
+) -> Result<(), String> {
+    let Some(flow_id) = args.get("flow_id").and_then(|v| v.as_str()) else {
+        return Ok(());
+    };
+    let owned = ledger.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(owner) = owned.get(flow_id)
+        && owner != &ctx.agent.name
+    {
+        tracing::warn!(
+            flow_id = %flow_id,
+            owner = %owner,
+            caller = %ctx.agent.name,
+            "flow access denied: flow belongs to another agent"
+        );
+        return Err(format!(
+            "Permission denied: flow '{flow_id}' belongs to another agent"
+        ));
+    }
+    Ok(())
 }
 
 /// Resolve flow directories (auto-discover if not configured).
@@ -362,6 +435,7 @@ pub(crate) async fn wire_team_tools(
     flow_registry: &Arc<flow_tools::FlowRegistry>,
     audit_log: &Arc<navra_memory::AuditLog>,
     resolved_flow_dirs: &[String],
+    flow_owners: &FlowOwnerLedger,
     reasoning_pii_filter: &Option<Arc<navra_core::safety::FilterPipeline>>,
     running_endpoints: &mut Vec<(
         Box<dyn navra_model_runtime::ModelRuntime>,
@@ -753,25 +827,62 @@ pub(crate) async fn wire_team_tools(
 
     // flow_start
     let fs_ctx = Arc::clone(&flow_ctx);
+    let fs_registry = Arc::clone(flow_registry);
+    let fs_owners = Arc::clone(flow_owners);
     builder = builder.tool(flow_tools::flow_start_tool_def(), move |args, ctx| {
         let flow_ctx = Arc::clone(&fs_ctx);
         let agent_name = ctx.agent.name.clone();
-        Box::pin(async move { flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await })
+        let registry = Arc::clone(&fs_registry);
+        let owners = Arc::clone(&fs_owners);
+        Box::pin(async move {
+            let result =
+                flow_tools::handle_flow_start(args, flow_ctx, &agent_name).await;
+            // The starting agent owns the flow (and any subflows
+            // registered during the call).
+            attribute_new_flows(&registry, &owners, &agent_name);
+            result
+        })
     });
 
     // flow_escalate
     let fe_ctx = Arc::clone(&flow_ctx);
+    let fe_registry = Arc::clone(flow_registry);
+    let fe_owners = Arc::clone(flow_owners);
     builder = builder.tool(flow_tools::flow_escalate_tool_def(), move |args, ctx| {
         let flow_ctx = Arc::clone(&fe_ctx);
         let agent_name = ctx.agent.name.clone();
-        Box::pin(async move { flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await })
+        let registry = Arc::clone(&fe_registry);
+        let owners = Arc::clone(&fe_owners);
+        Box::pin(async move {
+            if let Err(msg) = check_flow_ownership(&owners, &args, &ctx) {
+                return navra_core::protocol::CallToolResult::error_msg(msg);
+            }
+            let result =
+                flow_tools::handle_flow_escalate(args, flow_ctx, &agent_name).await;
+            // Escalation children belong to the escalating agent.
+            attribute_new_flows(&registry, &owners, &agent_name);
+            result
+        })
     });
 
     let fr_ctx = Arc::clone(&flow_ctx);
+    let fr_registry = Arc::clone(flow_registry);
+    let fr_owners = Arc::clone(flow_owners);
     builder = builder.tool(flow_tools::flow_resume_tool_def(), move |args, ctx| {
         let flow_ctx = Arc::clone(&fr_ctx);
         let agent = ctx.agent.name.clone();
-        Box::pin(async move { flow_tools::handle_flow_resume(args, flow_ctx, &agent).await })
+        let registry = Arc::clone(&fr_registry);
+        let owners = Arc::clone(&fr_owners);
+        Box::pin(async move {
+            if let Err(msg) = check_flow_ownership(&owners, &args, &ctx) {
+                return navra_core::protocol::CallToolResult::error_msg(msg);
+            }
+            let result = flow_tools::handle_flow_resume(args, flow_ctx, &agent).await;
+            // The resuming agent owns the resumed flow (covers flows
+            // recovered from a previous run that had no owner).
+            attribute_new_flows(&registry, &owners, &agent);
+            result
+        })
     });
 
     tracing::info!("Registered flow tools (flow_escalate, flow_resume)");
@@ -1243,4 +1354,77 @@ fn build_model_cards(
             card
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx_for(agent: &str) -> navra_core::auth::CallContext {
+        navra_core::auth::CallContext::new(
+            navra_core::auth::AgentIdentity::new(agent, "dev"),
+            "test-session",
+        )
+    }
+
+    #[test]
+    fn flow_ownership_denies_other_agents() {
+        let ledger: FlowOwnerLedger = Arc::new(std::sync::Mutex::new(
+            std::collections::HashMap::from([("flow-1".to_string(), "alice".to_string())]),
+        ));
+
+        // Owner passes.
+        assert!(check_flow_ownership(
+            &ledger,
+            &serde_json::json!({"flow_id": "flow-1"}),
+            &ctx_for("alice")
+        )
+        .is_ok());
+
+        // Another agent is denied.
+        let err = check_flow_ownership(
+            &ledger,
+            &serde_json::json!({"flow_id": "flow-1"}),
+            &ctx_for("bob"),
+        )
+        .unwrap_err();
+        assert!(err.contains("belongs to another agent"), "got: {err}");
+
+        // Unowned flows (e.g. recovered from a previous run) remain
+        // readable so flow_resume works across restarts.
+        assert!(check_flow_ownership(
+            &ledger,
+            &serde_json::json!({"flow_id": "flow-unknown"}),
+            &ctx_for("bob")
+        )
+        .is_ok());
+
+        // Requests without a flow_id are not gated here.
+        assert!(check_flow_ownership(&ledger, &serde_json::json!({}), &ctx_for("bob")).is_ok());
+    }
+
+    #[test]
+    fn attribute_new_flows_assigns_only_unowned() {
+        let registry = Arc::new(flow_tools::FlowRegistry::new());
+        let existing = registry.register("existing");
+        let ledger: FlowOwnerLedger =
+            Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        // First attribution: alice owns everything registered so far.
+        attribute_new_flows(&registry, &ledger, "alice");
+        {
+            let owned = ledger.lock().unwrap();
+            assert_eq!(owned.get(&existing).map(String::as_str), Some("alice"));
+        }
+
+        // A new flow registered later is attributed to the caller,
+        // while the existing entry keeps its owner.
+        let new_flow = registry.register("new");
+        attribute_new_flows(&registry, &ledger, "bob");
+        {
+            let owned = ledger.lock().unwrap();
+            assert_eq!(owned.get(&existing).map(String::as_str), Some("alice"));
+            assert_eq!(owned.get(&new_flow).map(String::as_str), Some("bob"));
+        }
+    }
 }
