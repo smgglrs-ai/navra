@@ -12,6 +12,45 @@ use crate::classifier::Classifier;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Maximum content length (chars) passed to the classifier in one
+/// call. Longer inputs are scanned in overlapping windows, mirroring
+/// the NER filter's sliding window — a single classify call on an
+/// adversarial multi-megabyte input is a memory/latency DoS.
+const MAX_SCAN_CHARS: usize = 4_000;
+/// Character overlap between windows, so payloads spanning a window
+/// boundary are still visible to the model.
+const SCAN_OVERLAP: usize = 200;
+
+/// Split content into overlapping windows of at most
+/// [`MAX_SCAN_CHARS`] characters, each on a char boundary.
+fn scan_windows(content: &str) -> Vec<&str> {
+    if content.len() <= MAX_SCAN_CHARS {
+        return vec![content];
+    }
+    let mut windows = Vec::new();
+    let mut start = 0usize;
+    while start < content.len() {
+        let mut end = (start + MAX_SCAN_CHARS).min(content.len());
+        while end < content.len() && !content.is_char_boundary(end) {
+            end += 1;
+        }
+        windows.push(&content[start..end]);
+        if end >= content.len() {
+            break;
+        }
+        // Advance with overlap, landing on a char boundary.
+        let mut next = end - SCAN_OVERLAP.min(end - start);
+        while next < content.len() && !content.is_char_boundary(next) {
+            next += 1;
+        }
+        if next <= start {
+            next = end;
+        }
+        start = next;
+    }
+    windows
+}
+
 /// ML-based content filter using a classification model.
 ///
 /// Runs the entire text through a classifier and reports a finding
@@ -57,33 +96,41 @@ impl ModelFilter for MlFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            match self.model.classify(content).await {
-                Ok(output) => {
-                    if output.is_unsafe(self.threshold) {
-                        vec![Finding {
-                            start: 0,
-                            end: content.len(),
-                            category: self.category.clone(),
-                            confidence: output
+            // Scan in bounded windows so oversized content cannot turn
+            // into a single unbounded model call.
+            let mut best: Option<f32> = None;
+            for window in scan_windows(content) {
+                match self.model.classify(window).await {
+                    Ok(output) => {
+                        if output.is_unsafe(self.threshold) {
+                            let conf = output
                                 .labels
                                 .iter()
                                 .find(|l| l.label != "safe")
                                 .map(|l| l.score)
-                                .unwrap_or(0.0),
-                        }]
-                    } else {
-                        Vec::new()
+                                .unwrap_or(0.0);
+                            best = Some(best.map_or(conf, |b: f32| b.max(conf)));
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "ML safety filter inference failed, blocking (fail-closed)");
+                        return vec![Finding {
+                            start: 0,
+                            end: content.len(),
+                            category: "inference_failure".to_string(),
+                            confidence: 1.0,
+                        }];
                     }
                 }
-                Err(e) => {
-                    tracing::warn!(error = %e, "ML safety filter inference failed, blocking (fail-closed)");
-                    vec![Finding {
-                        start: 0,
-                        end: content.len(),
-                        category: "inference_failure".to_string(),
-                        confidence: 1.0,
-                    }]
-                }
+            }
+            match best {
+                Some(confidence) => vec![Finding {
+                    start: 0,
+                    end: content.len(),
+                    category: self.category.clone(),
+                    confidence,
+                }],
+                None => Vec::new(),
             }
         })
     }
@@ -198,68 +245,71 @@ impl ModelFilter for MultiLabelFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            match self.model.classify(content).await {
-                Ok(output) => {
-                    let mut findings = Vec::new();
+            let mut findings = Vec::new();
+            // Scan in bounded windows so oversized content cannot turn
+            // into a single unbounded model call.
+            for window in scan_windows(content) {
+                let output = match self.model.classify(window).await {
+                    Ok(output) => output,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Multi-label safety filter inference failed, blocking (fail-closed)");
+                        return vec![Finding {
+                            start: 0,
+                            end: content.len(),
+                            category: "inference_failure".to_string(),
+                            confidence: 1.0,
+                        }];
+                    }
+                };
 
-                    for label in &output.labels {
-                        if label.label == "safe" {
-                            continue;
-                        }
-
-                        let triggered = if let Some(policy) = self.policies.get(&label.label) {
-                            label.score.is_nan() || label.score >= policy.threshold
-                        } else if let Some(fallback) = self.fallback_threshold {
-                            label.score.is_nan() || label.score >= fallback
-                        } else {
-                            false
-                        };
-
-                        if triggered {
-                            findings.push(Finding {
-                                start: 0,
-                                end: content.len(),
-                                category: label.label.clone(),
-                                confidence: label.score,
-                            });
-                        }
+                for label in &output.labels {
+                    if label.label == "safe" {
+                        continue;
                     }
 
-                    // Sort by severity (action) descending, then confidence descending.
-                    // Return only the highest-severity finding so the pipeline
-                    // applies a single coherent action.
-                    if findings.len() > 1 {
-                        findings.sort_by(|a, b| {
-                            let sev_a = self
-                                .policies
-                                .get(&a.category)
-                                .map(|p| Self::action_severity(&p.action))
-                                .unwrap_or(3); // fallback = Block
-                            let sev_b = self
-                                .policies
-                                .get(&b.category)
-                                .map(|p| Self::action_severity(&p.action))
-                                .unwrap_or(3);
-                            sev_b.cmp(&sev_a).then(
-                                b.confidence
-                                    .partial_cmp(&a.confidence)
-                                    .unwrap_or(std::cmp::Ordering::Equal),
-                            )
+                    let triggered = if let Some(policy) = self.policies.get(&label.label) {
+                        label.score.is_nan() || label.score >= policy.threshold
+                    } else if let Some(fallback) = self.fallback_threshold {
+                        label.score.is_nan() || label.score >= fallback
+                    } else {
+                        false
+                    };
+
+                    if triggered {
+                        findings.push(Finding {
+                            start: 0,
+                            end: content.len(),
+                            category: label.label.clone(),
+                            confidence: label.score,
                         });
                     }
-
-                    findings
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Multi-label safety filter inference failed, blocking (fail-closed)");
-                    vec![Finding {
-                        start: 0,
-                        end: content.len(),
-                        category: "inference_failure".to_string(),
-                        confidence: 1.0,
-                    }]
                 }
             }
+
+            // Sort by severity (action) descending, then confidence descending.
+            // Return only the highest-severity finding so the pipeline
+            // applies a single coherent action.
+            if findings.len() > 1 {
+                findings.sort_by(|a, b| {
+                    let sev_a = self
+                        .policies
+                        .get(&a.category)
+                        .map(|p| Self::action_severity(&p.action))
+                        .unwrap_or(3); // fallback = Block
+                    let sev_b = self
+                        .policies
+                        .get(&b.category)
+                        .map(|p| Self::action_severity(&p.action))
+                        .unwrap_or(3);
+                    sev_b.cmp(&sev_a).then(
+                        b.confidence
+                            .partial_cmp(&a.confidence)
+                            .unwrap_or(std::cmp::Ordering::Equal),
+                    )
+                });
+            }
+
+            findings
         })
     }
 }
@@ -294,6 +344,44 @@ mod tests {
     }
 
     struct FailingClassifier;
+
+    /// Classifier that records the length of every text it receives.
+    struct RecordingClassifier {
+        lengths: std::sync::Mutex<Vec<usize>>,
+    }
+
+    impl RecordingClassifier {
+        fn new() -> Self {
+            Self {
+                lengths: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn lengths(&self) -> Vec<usize> {
+            self.lengths.lock().unwrap().clone()
+        }
+    }
+
+    impl Classifier for RecordingClassifier {
+        fn classify<'a>(
+            &'a self,
+            text: &'a str,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a,
+            >,
+        > {
+            self.lengths.lock().unwrap().push(text.len());
+            Box::pin(async {
+                Ok(ClassifyOutput {
+                    labels: vec![ClassifyLabel {
+                        label: "safe".into(),
+                        score: 0.99,
+                    }],
+                })
+            })
+        }
+    }
 
     impl Classifier for FailingClassifier {
         fn classify<'a>(
@@ -369,6 +457,66 @@ mod tests {
         let filter = MlFilter::new(model, 0.5, "ml-unsafe");
         let findings = filter.scan("borderline content", &test_ctx()).await;
         assert!(findings.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ml_filter_chunks_oversized_input() {
+        let model = Arc::new(RecordingClassifier::new());
+        let filter = MlFilter::new(model.clone(), 0.5, "ml-unsafe");
+        let long = "a".repeat(MAX_SCAN_CHARS * 3);
+        let findings = filter.scan(&long, &test_ctx()).await;
+        assert!(findings.is_empty());
+        let lengths = model.lengths();
+        assert!(!lengths.is_empty(), "at least one classify call expected");
+        assert!(
+            lengths.iter().all(|&l| l <= MAX_SCAN_CHARS),
+            "every classify call must be bounded: {lengths:?}"
+        );
+        assert!(
+            lengths.len() >= 3,
+            "long input must be scanned in multiple windows"
+        );
+    }
+
+    #[tokio::test]
+    async fn multi_label_chunks_oversized_input() {
+        let model = Arc::new(RecordingClassifier::new());
+        let mut thresholds = HashMap::new();
+        thresholds.insert("harm".to_string(), 0.7f32);
+        let filter = MultiLabelFilter::from_thresholds(model.clone(), thresholds);
+        let long = "x".repeat(MAX_SCAN_CHARS * 2 + 50);
+        let findings = filter.scan(&long, &test_ctx()).await;
+        assert!(findings.is_empty());
+        let lengths = model.lengths();
+        assert!(
+            lengths.iter().all(|&l| l <= MAX_SCAN_CHARS),
+            "every classify call must be bounded: {lengths:?}"
+        );
+    }
+
+    #[test]
+    fn scan_windows_short_input_single_window() {
+        let windows = scan_windows("hello world");
+        assert_eq!(windows, vec!["hello world"]);
+    }
+
+    #[test]
+    fn scan_windows_bounded_and_covering() {
+        let text = "ä".repeat(MAX_SCAN_CHARS * 2 + 10); // multi-byte chars
+        let windows = scan_windows(&text);
+        assert!(windows.len() >= 3);
+        for w in &windows {
+            assert!(w.len() <= MAX_SCAN_CHARS);
+        }
+        // Coverage: the first window starts at 0 and the last ends at
+        // the end of the text.
+        assert_eq!(windows.first().unwrap().as_ptr(), text.as_ptr());
+        let last_end = windows.last().unwrap().as_ptr() as usize + windows.last().unwrap().len();
+        assert_eq!(last_end, text.as_ptr() as usize + text.len());
+        // Overlap between consecutive windows.
+        let w1_end = windows[0].as_ptr() as usize + windows[0].len();
+        let w2_start = windows[1].as_ptr() as usize;
+        assert!(w2_start < w1_end, "windows must overlap");
     }
 
     #[tokio::test]
