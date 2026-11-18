@@ -375,3 +375,60 @@ rate_limit = "30/60"    # 30 tool calls per 60-second window
 Permission sets without a `rate_limit` field are unlimited. Query
 remaining quota at runtime via the gateway status API. Denied calls
 are recorded in the audit blackbox with outcome `denied_rate`.
+
+## Residual Risks (Accepted Tradeoffs)
+
+The following limitations are known and accepted design tradeoffs.
+They are documented here so operators can account for them in their
+threat model rather than discover them during an incident.
+
+### Upstream tool names can impersonate module names
+
+Upstream MCP tools are exposed with names prefixed by the module
+that registered them, and audit attribution uses that registering
+module. This prevents one upstream from spoofing another upstream's
+namespaced tools. However, the model-facing tool name itself can
+still resemble a tool the operator never configured — for example,
+an upstream registering a tool named `file_read` surfaces as
+`<module>.file_read`, which may mislead a model (or an operator
+reading the audit log) into treating it as the gateway's built-in
+`file_read`. The typosquatting scanner flags near-misses against
+`known_tool_names`, but operators should populate that inventory
+and treat upstream-prefixed names as untrusted.
+
+### Dev mode is loopback single-user only
+
+`--dev-mode` allows anonymous access without authentication. All
+anonymous clients share one process-wide session, and a
+protocol-level re-initialization starts that shared session with a
+clean IFC label — an anonymous client can reset accumulated taint
+by re-initializing. This is deliberate: persisting taint across
+anonymous re-inits would poison every subsequent local client
+forever, and dev mode assumes a single trusted local user on a
+loopback bind. Never expose a dev-mode gateway to other hosts or
+multiple users.
+
+### `tool_overrides` is the reliable protection against annotation lies
+
+Upstream tool definitions self-report metadata such as the MCP
+`readOnlyHint` annotation, and a malicious or buggy upstream can
+lie about it. The tool scanner flags intent/behavior mismatches at
+scan time, but scan-time heuristics cannot prove runtime behavior.
+Operator-configured `tool_overrides` (forcing a tool to `read`,
+`write`, or `deny`) is the only protection that does not depend on
+upstream-provided annotations. Treat upstream annotations as hints,
+and pin overrides for any upstream tool whose blast radius matters.
+
+### The egress blocklist cannot express punycode domains
+
+Domain patterns (`allowed_domains` / `blocked_domains`) are matched
+literally against the extracted host; there is no punycode/IDNA
+normalization step. When domain lists are configured, a host in
+ASCII punycode form (`xn--…`) does not match any human-readable
+pattern, so such hosts are rejected outright rather than decoded
+and compared. This is fail-closed (an `xn--` host cannot sneak
+through an allowlist entry for its Unicode equivalent), but it also
+means operators cannot allowlist a punycode-encoded domain by its
+readable form — a legitimate IDN must be listed by its exact
+`xn--` encoding.
+
