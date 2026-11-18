@@ -1132,7 +1132,7 @@ mod tests {
         // trust is one-way (upgrade only).
         let ann = navra_protocol::ToolAnnotations::new().read_only(true);
         assert_eq!(
-            classify_tool(&tool_def("write_something", Some(ann))),
+            classify_tool(&tool_def("write_something", Some(ann.clone()))),
             ToolOperation::Write
         );
         // Deny-by-default: an unrecognized (non-obvious-read) name
