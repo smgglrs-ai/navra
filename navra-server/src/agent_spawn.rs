@@ -99,11 +99,24 @@ fn ensure_parent_fresh(
 /// the template TTL, the payload is re-minted under the write lock
 /// with the same issuer, subject, capabilities, and ring — only the
 /// expiry window rolls forward. A quarter matches the previous
-/// behavior (refresh inside the last 6h of a 24h template).
+/// behavior (refresh inside the last 6h of a 24h template). A
+/// corrupt template with `exp <= iat` (TTL 0) is re-minted with a
+/// floor TTL instead of the derived zero, which would be dead on
+/// arrival.
 #[derive(Clone)]
 pub struct RootPayloadRefresher {
     payload: std::sync::Arc<std::sync::RwLock<navra_core::auth::capability::CapabilityPayload>>,
 }
+
+/// Floor TTL for re-minted root templates. The refresh TTL is
+/// derived from the template's own `exp - iat`, so a corrupt
+/// template with `exp <= iat` (TTL 0) would otherwise be re-minted
+/// dead forever — the freshness check treats it as fresh (0 >= 0)
+/// and the re-mint path would rebuild it with the same zero TTL.
+/// Such templates are re-minted with this floor instead, matching
+/// the production root TTL (`ROOT_PAYLOAD_TTL_SECS` in
+/// setup/tools.rs).
+const ROOT_TTL_FLOOR_SECS: u64 = 24 * 3600;
 
 impl RootPayloadRefresher {
     /// Wrap an initial root payload template. Clones share the same
@@ -128,8 +141,11 @@ impl RootPayloadRefresher {
         let ttl = root.exp.saturating_sub(root.iat);
         let remaining = root.exp.saturating_sub(now);
         // remaining >= ttl / 4, without relying on u64 division
-        // rounding for tiny TTLs.
-        if remaining.saturating_mul(4) >= ttl {
+        // rounding for tiny TTLs. A zero-TTL template (exp <= iat,
+        // expired at construction) never satisfies the freshness
+        // check's spirit: it would be returned dead forever, so it
+        // falls through to the re-mint below with a floor TTL.
+        if ttl > 0 && remaining.saturating_mul(4) >= ttl {
             return root.clone();
         }
         tracing::warn!(
@@ -137,12 +153,13 @@ impl RootPayloadRefresher {
             ttl,
             "root capability template is near expiry; re-minting with a fresh TTL"
         );
+        let mint_ttl = if ttl == 0 { ROOT_TTL_FLOOR_SECS } else { ttl };
         let fresh = navra_core::auth::capability::build_payload(
             &root.iss,
             &root.sub,
             root.cap.clone(),
             root.ring,
-            ttl,
+            mint_ttl,
         );
         *guard = fresh.clone();
         fresh
@@ -2600,6 +2617,35 @@ mod tests {
         );
         // TTL derived from the template window, not a constant.
         assert_eq!(got.exp.saturating_sub(got.iat), 24 * 3600);
+        // Same issuer, subject, ring, and capabilities.
+        assert_eq!(got.iss, original_iss);
+        assert_eq!(got.ring, 1);
+        assert_eq!(
+            got.cap.operations,
+            vec!["read".to_string(), "write".to_string()]
+        );
+    }
+
+    #[test]
+    fn refresher_remints_zero_ttl_template_with_floor() {
+        // A corrupt template with exp <= iat (TTL 0) is expired at
+        // construction: the freshness check would otherwise treat it
+        // as forever-fresh (remaining 0 * 4 >= ttl 0) and return the
+        // dead root indefinitely. It must re-mint with a floor TTL.
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let dead = root_cap_payload(&signer, 0);
+        assert_eq!(
+            dead.exp, dead.iat,
+            "zero-TTL template is expired at construction"
+        );
+        let original_nonce = dead.nonce;
+        let original_iss = dead.iss.clone();
+        let refresher = RootPayloadRefresher::new(dead);
+        let got = refresher.get();
+        assert_ne!(got.nonce, original_nonce, "zero-TTL template must re-mint");
+        // Re-minted with the floor TTL, not the derived zero.
+        assert_eq!(got.exp.saturating_sub(got.iat), ROOT_TTL_FLOOR_SECS);
+        assert!(got.exp > now_unix(), "re-minted template must be valid");
         // Same issuer, subject, ring, and capabilities.
         assert_eq!(got.iss, original_iss);
         assert_eq!(got.ring, 1);

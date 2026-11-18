@@ -120,8 +120,10 @@ netpol:
   # OpenShift needs the override above. The value is VALIDATED at
   # chart render time: it must be exactly one key=value pair whose
   # value is a valid Kubernetes label value (alphanumerics, '-',
-  # '_', '.'), so a typo fails the install immediately instead of
-  # rendering a policy whose DNS rule selects nothing.
+  # '_', '.', must start and end alphanumeric, max 63 chars) and
+  # whose key is a valid label key, so a typo fails the install
+  # immediately instead of rendering a policy whose DNS rule
+  # selects nothing.
   dnsPodLabel: "k8s-app=kube-dns"
   # Restrict the DNS egress rule to ports 53 UDP/TCP. Disabled by
   # default: under OVN-Kubernetes, port-restricted egress rules

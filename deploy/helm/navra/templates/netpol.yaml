@@ -48,14 +48,43 @@
 {{- if not $dnsLabelValue }}
 {{- fail (printf "netpol.dnsPodLabel has an empty value (got %q); a key with an empty value selects almost nothing — set the whole value to \"\" to select the entire DNS namespace instead" .Values.netpol.dnsPodLabel) }}
 {{- end }}
-{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $dnsLabelValue) }}
-{{- fail (printf "netpol.dnsPodLabel value %q is not a valid Kubernetes label value (allowed: alphanumerics, '-', '_', '.')" $dnsLabelValue) }}
+{{- /* Value: Kubernetes label value grammar — alphanumeric start
+        and end, '-','_','.' allowed between (consecutive dots ARE
+        valid; the middle class is a single character class). Max
+        63 characters. */}}
+{{- if gt (len $dnsLabelValue) 63 }}
+{{- fail (printf "netpol.dnsPodLabel value %q is longer than the 63-character Kubernetes label value limit" $dnsLabelValue) }}
+{{- end }}
+{{- if not (regexMatch "^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$" $dnsLabelValue) }}
+{{- fail (printf "netpol.dnsPodLabel value %q is not a valid Kubernetes label value (must start and end with an alphanumeric; '-', '_', '.' allowed in between)" $dnsLabelValue) }}
 {{- end }}
 {{- /* Key: optional DNS-subdomain prefix (dot-separated DNS labels,
         no underscores) + '/', then the name part (alphanumerics,
-        '-', '_', '.'). */}}
+        '-', '_', '.'). Name part max 63 chars, prefix max 253
+        (each dot-separated prefix segment is itself a DNS label,
+        max 63). */}}
 {{- if not (regexMatch "^(([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?\\.)+[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?/)?[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$" $dnsLabelKey) }}
 {{- fail (printf "netpol.dnsPodLabel key %q is not a valid Kubernetes label key (optional DNS prefix like dns.operator.openshift.io/, then alphanumerics, '-', '_', '.')" $dnsLabelKey) }}
+{{- end }}
+{{- $keyName := $dnsLabelKey }}
+{{- $keyPrefix := "" }}
+{{- if contains "/" $dnsLabelKey }}
+  {{- $keyParts := splitList "/" $dnsLabelKey }}
+  {{- $keyPrefix = index $keyParts 0 }}
+  {{- $keyName = index $keyParts 1 }}
+{{- end }}
+{{- if gt (len $keyName) 63 }}
+{{- fail (printf "netpol.dnsPodLabel key name part %q is longer than the 63-character Kubernetes label name limit" $keyName) }}
+{{- end }}
+{{- if $keyPrefix }}
+{{- if gt (len $keyPrefix) 253 }}
+{{- fail (printf "netpol.dnsPodLabel key prefix %q is longer than the 253-character DNS subdomain limit" $keyPrefix) }}
+{{- end }}
+{{- range $seg := splitList "." $keyPrefix }}
+{{- if gt (len $seg) 63 }}
+{{- fail (printf "netpol.dnsPodLabel key prefix segment %q is longer than the 63-character DNS label limit" $seg) }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 apiVersion: networking.k8s.io/v1
@@ -76,7 +105,14 @@ spec:
               kubernetes.io/metadata.name: {{ .Release.Namespace }}
           podSelector:
             matchLabels:
+              # Release-scoped, not just name-scoped (same fix as
+              # the SPIFFE entry): an in-namespace pod that copies
+              # only app.kubernetes.io/name (e.g. a second navra
+              # deployment sharing the name) must not be reachable
+              # by sandbox egress. The instance label pins the rule
+              # to this release's gateway pods (selectorLabels).
               app.kubernetes.io/name: {{ include "navra.name" . }}
+              app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         # Both the Service port and the container targetPort:
         # OVN-Kubernetes evaluates egress policy AFTER service DNAT
