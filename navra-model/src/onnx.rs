@@ -12,6 +12,45 @@ use crate::{
 use std::path::Path;
 use std::sync::Mutex;
 
+/// Maximum sequence length (in tokens) fed to ONNX models.
+///
+/// Bounds the O(n²) attention memory and matches the BERT-family
+/// context window these models were trained with. The
+/// character-level fallback (`simple_tokenize`) truncates to the
+/// same cap, and the HuggingFace tokenizer gets a `TruncationParams`
+/// with this max length at load time.
+pub const MAX_SEQ_TOKENS: usize = 512;
+
+/// Maximum input size (in chars) accepted at the embed/classify
+/// entry points.
+///
+/// Pre-truncates before tokenization so the cost of tokenizing an
+/// adversarial multi-megabyte input is bounded even though the
+/// tokenizer itself scans the whole input.
+const MAX_INPUT_CHARS: usize = MAX_SEQ_TOKENS * 8;
+
+/// Apply sequence-length truncation to a tokenizer.
+///
+/// Encodes longer than `MAX_SEQ_TOKENS` are truncated by the
+/// tokenizer itself, closing the gap with the character-level
+/// fallback (which always capped at 512). If the tokenizer rejects
+/// the truncation parameters, the hard cap in [`OnnxBackend::tokenize`]
+/// still bounds the sequence.
+fn apply_truncation(mut tok: tokenizers::Tokenizer) -> tokenizers::Tokenizer {
+    if let Err(e) = tok.with_truncation(Some(tokenizers::TruncationParams {
+        max_length: MAX_SEQ_TOKENS,
+        ..Default::default()
+    })) {
+        tracing::warn!(error = %e, "failed to configure tokenizer truncation; relying on hard cap");
+    }
+    tok
+}
+
+/// Pre-truncate input text at the inference entry points.
+fn cap_input(text: &str) -> String {
+    text.chars().take(MAX_INPUT_CHARS).collect()
+}
+
 /// Execution device for ONNX models.
 #[derive(Debug, Clone, Default)]
 pub enum Device {
@@ -107,6 +146,7 @@ impl OnnxBackend {
         let tokenizer = match tokenizer_path {
             Some(path) if path.exists() => match tokenizers::Tokenizer::from_file(path) {
                 Ok(tok) => {
+                    let tok = apply_truncation(tok);
                     tracing::info!(
                         model = name,
                         tokenizer = %path.display(),
@@ -164,12 +204,17 @@ impl OnnxBackend {
                 let encoding = tok
                     .encode(text, true)
                     .map_err(|e| ModelError::Tokenization(format!("tokenization failed: {e}")))?;
-                let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
-                let attention_mask: Vec<i64> = encoding
+                let mut input_ids: Vec<i64> =
+                    encoding.get_ids().iter().map(|&id| id as i64).collect();
+                let mut attention_mask: Vec<i64> = encoding
                     .get_attention_mask()
                     .iter()
                     .map(|&m| m as i64)
                     .collect();
+                // Hard cap: guarantee the sequence bound even if the
+                // tokenizer's truncation could not be configured.
+                input_ids.truncate(MAX_SEQ_TOKENS);
+                attention_mask.truncate(MAX_SEQ_TOKENS);
                 Ok((input_ids, attention_mask))
             }
             None => {
@@ -445,7 +490,7 @@ impl ModelBackend for OnnxBackend {
             }
         };
 
-        let tokens = self.tokenize(&request.text);
+        let tokens = self.tokenize(&cap_input(&request.text));
 
         Box::pin(async move {
             let (input_ids, attention_mask) = tokens?;
@@ -472,7 +517,7 @@ impl ModelBackend for OnnxBackend {
             }
         };
 
-        let tokens = self.tokenize(&request.text);
+        let tokens = self.tokenize(&cap_input(&request.text));
 
         Box::pin(async move {
             let (input_ids, attention_mask) = tokens?;
@@ -487,10 +532,10 @@ impl ModelBackend for OnnxBackend {
 /// Simple character-level tokenization fallback.
 ///
 /// Used when no HuggingFace tokenizer is loaded. Produces CLS + char
-/// codes + SEP, truncated to 512 tokens.
+/// codes + SEP, truncated to [`MAX_SEQ_TOKENS`] characters.
 fn simple_tokenize(text: &str) -> Vec<i64> {
     let mut ids = vec![101i64]; // [CLS]
-    for ch in text.chars().take(512) {
+    for ch in text.chars().take(MAX_SEQ_TOKENS) {
         ids.push(ch as i64);
     }
     ids.push(102); // [SEP]
@@ -513,7 +558,60 @@ mod tests {
     fn simple_tokenize_truncates() {
         let long_text = "a".repeat(1000);
         let ids = simple_tokenize(&long_text);
-        assert_eq!(ids.len(), 514); // CLS + 512 + SEP
+        assert_eq!(ids.len(), MAX_SEQ_TOKENS + 2); // CLS + MAX_SEQ_TOKENS + SEP
+    }
+
+    #[test]
+    fn cap_input_bounds_entry_point() {
+        let long_text = "a".repeat(MAX_INPUT_CHARS * 4);
+        let capped = cap_input(&long_text);
+        assert_eq!(capped.chars().count(), MAX_INPUT_CHARS);
+        // Normal input passes through unchanged.
+        assert_eq!(cap_input("hello world"), "hello world");
+    }
+
+    /// Build a minimal WordPiece tokenizer via its serde form so the
+    /// truncation behavior can be tested without a model file.
+    fn test_tokenizer() -> tokenizers::Tokenizer {
+        let json = r###"{
+            "version": "1.0",
+            "truncation": null,
+            "padding": null,
+            "added_tokens": [],
+            "normalizer": null,
+            "pre_tokenizer": { "type": "Whitespace" },
+            "post_processor": null,
+            "decoder": null,
+            "model": {
+                "type": "WordPiece",
+                "vocab": { "[UNK]": 0, "a": 1, "b": 2 },
+                "unk_token": "[UNK]",
+                "continuing_subword_prefix": "##",
+                "max_input_chars_per_word": 100
+            }
+        }"###;
+        serde_json::from_str(json).expect("valid tokenizer json")
+    }
+
+    #[test]
+    fn hf_tokenizer_truncation_caps_token_count() {
+        let tok = apply_truncation(test_tokenizer());
+        let encoding = tok
+            .encode("a".repeat(10_000), true)
+            .expect("encode succeeds");
+        assert!(
+            encoding.get_ids().len() <= MAX_SEQ_TOKENS,
+            "token count {} must be capped at {}",
+            encoding.get_ids().len(),
+            MAX_SEQ_TOKENS
+        );
+    }
+
+    #[test]
+    fn hf_tokenizer_normal_input_unaffected() {
+        let tok = apply_truncation(test_tokenizer());
+        let encoding = tok.encode("a b a", true).expect("encode succeeds");
+        assert_eq!(encoding.get_ids().len(), 3);
     }
 
     #[test]
