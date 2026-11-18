@@ -83,6 +83,39 @@ fn ensure_parent_fresh(
 /// cannot yet *require* the marker — enforcement needs the route to
 /// forward the decoded payload. The adoption path is instead
 /// protected by the pool binding (see `agent_task_api` module docs).
+/// Remaining root-payload seconds below which the template is
+/// re-minted with a fresh TTL before delegation. Children clamp
+/// their expiry to the parent's, so without this a coordinator that
+/// has been up longer than the root TTL would mint dead tokens (the
+/// mint-path `ensure_parent_fresh` guard turns that into a loud
+/// error instead).
+const ROOT_REFRESH_THRESHOLD_SECS: u64 = 6 * 3600;
+
+/// Clone the root payload template, re-minting it with a fresh TTL
+/// when its remaining validity drops below
+/// [`ROOT_REFRESH_THRESHOLD_SECS`]. Same capabilities, ring, and
+/// subject — only the expiry window rolls forward.
+pub(crate) fn fresh_root_payload(
+    root: Option<&navra_core::auth::capability::CapabilityPayload>,
+) -> Option<navra_core::auth::capability::CapabilityPayload> {
+    let root = root?;
+    let remaining = root.exp.saturating_sub(now_unix());
+    if remaining >= ROOT_REFRESH_THRESHOLD_SECS {
+        return Some(root.clone());
+    }
+    tracing::warn!(
+        remaining,
+        "root capability template is near expiry; re-minting with a fresh TTL"
+    );
+    Some(navra_core::auth::capability::build_payload(
+        &root.iss,
+        &root.sub,
+        root.cap.clone(),
+        root.ring,
+        86400,
+    ))
+}
+
 pub(crate) fn mint_pool_bootstrap_token(
     root_payload: Option<&navra_core::auth::capability::CapabilityPayload>,
     signer: &navra_core::identity::Ed25519Signer,
@@ -261,7 +294,7 @@ fn spawn_containerized_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = ctx.root_payload.clone();
+    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
     let navra_addr = ctx.navra_addr.clone();
     let model_server_url = ctx.model_server_url.clone();
     let agent_image = ctx.agent_image.clone();
@@ -601,7 +634,7 @@ fn spawn_openshell_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = ctx.root_payload.clone();
+    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
     let navra_addr = ctx.navra_addr.clone();
     let gateway_url = ctx.openshell_gateway.clone().unwrap();
     let agent_image = ctx.agent_image.clone();
@@ -1306,7 +1339,7 @@ fn spawn_kubernetes_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = ctx.root_payload.clone();
+    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
     let model_server_url = ctx.model_server_url.clone();
     let agent_image = ctx.agent_image.clone();
     let container_memory = ctx.container_memory.clone();
@@ -1816,7 +1849,7 @@ pub fn spawn_teammate_agent(
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
     let forge = ctx.forge.clone();
-    let root_payload = ctx.root_payload.clone();
+    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
     let pii_filter = ctx.pii_filter.clone();
     let audit_log = ctx.audit_log.clone();
     let embedding_model = ctx.embedding_model.clone();

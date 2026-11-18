@@ -3054,7 +3054,12 @@ mod tests {
     #[tokio::test]
     async fn agent_task_warm_pool_adoption_mints_fresh_token() {
         let reg = registry_with_teammate();
-        reg.set_k8s_sandbox("team-1", "researcher", "navra-agents-wxyz9".to_string());
+        reg.set_k8s_sandbox_with_pool(
+            "team-1",
+            "researcher",
+            "navra-agents-wxyz9".to_string(),
+            "did:pool:navra-agents".to_string(),
+        );
         let (router, _, _, pool_token) = build_agent_api_router(reg);
 
         let (status, json) = request_with_token_and_sandbox(

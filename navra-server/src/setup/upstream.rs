@@ -683,6 +683,10 @@ mod tests {
     }
 
     fn test_upstream_cfg(name: &str, env: Vec<(String, String)>) -> config::UpstreamConfig {
+        // Tools must be module-prefixed ({module}_*) to pass the
+        // registration-time upstream naming enforcement.
+        let mut env = env;
+        env.push(("NAVRA_TEST_TOOL_NAME".to_string(), format!("{name}_echo")));
         config::UpstreamConfig {
             name: name.to_string(),
             transport: "stdio".to_string(),
@@ -729,7 +733,7 @@ mod tests {
         );
         let names = gateway_tool_names(&cfg).await;
         assert!(
-            names.contains(&"echo".to_string()),
+            names.contains(&"scanner-poisoned_echo".to_string()),
             "clean tool must register, got: {names:?}"
         );
         assert!(
@@ -742,7 +746,7 @@ mod tests {
     async fn scanner_wiring_registers_clean_upstream() {
         let cfg = test_upstream_cfg("scanner-clean", vec![]);
         let names = gateway_tool_names(&cfg).await;
-        assert_eq!(names, vec!["echo".to_string()]);
+        assert_eq!(names, vec!["scanner-clean_echo".to_string()]);
     }
 
     #[tokio::test]
@@ -826,7 +830,7 @@ mod tests {
         cfg.manifest = Some(manifest_cfg(inline, &keystore));
 
         let names = gateway_tool_names(&cfg).await;
-        assert_eq!(names, vec!["echo".to_string()]);
+        assert_eq!(names, vec!["manifest-wiring-ok_echo".to_string()]);
         assert!(keystore.exists(), "first use must persist the TOFU pin");
         let pinned: std::collections::HashMap<String, String> =
             serde_json::from_str(&std::fs::read_to_string(&keystore).unwrap()).unwrap();
@@ -873,7 +877,7 @@ mod tests {
         let mut cfg = test_upstream_cfg("manifest-wiring-keychange", vec![]);
         cfg.manifest = Some(manifest_cfg(inline1, &keystore));
         let names = gateway_tool_names(&cfg).await;
-        assert_eq!(names, vec!["echo".to_string()]);
+        assert_eq!(names, vec!["manifest-wiring-keychange_echo".to_string()]);
 
         // Second use with a different signer: rejected, pin intact.
         let signer2 = Ed25519Signer::generate();
@@ -928,7 +932,7 @@ mod tests {
             ..Default::default()
         });
         let names = gateway_tool_names(&cfg).await;
-        assert_eq!(names, vec!["echo".to_string()]);
+        assert_eq!(names, vec!["bounds-wiring-truncate_echo".to_string()]);
     }
 
     #[test]
