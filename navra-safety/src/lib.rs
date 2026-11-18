@@ -48,6 +48,7 @@ pub mod projection;
 pub mod pseudonym;
 mod regex;
 pub mod ssrf;
+pub mod tag;
 
 pub use self::canary::{CanaryFilter, CanaryMatch, CanaryToken};
 pub use self::classifier::{Classifier, ClassifyError, ClassifyLabel, ClassifyOutput};
@@ -71,6 +72,7 @@ pub use self::regex::{
     CustomFilter, CustomPiiFilter, PathPiiFilter, PiiFilter, PromptInjectionFilter, SecretFilter,
 };
 pub use self::ssrf::SsrfFilter;
+pub use self::tag::{MAX_TAG_LEN, sanitize_tag, sanitize_tags, tags_have_pii, text_has_pii};
 
 use serde::Serialize;
 use std::collections::HashMap;

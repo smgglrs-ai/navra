@@ -47,11 +47,27 @@ impl McpClient {
     /// A server that does not implement tools at all answers
     /// `tools/list` with JSON-RPC method-not-found (-32601); per the
     /// MCP spec that means "no tools", not a hard failure, so it maps
-    /// to an empty list here.
+    /// to an empty list here — but only when the server did not
+    /// declare the tools capability in its initialize result. A
+    /// server that *declared* tools and then fails `tools/list` has
+    /// a real problem, and the error propagates.
     pub async fn list_tools(&self) -> Result<Vec<ToolDefinition>, AgentError> {
         match self.peer.list_all_tools().await {
             Ok(tools) => Ok(tools),
-            Err(rmcp::ServiceError::McpError(e)) if e.code.0 == -32601 => Ok(Vec::new()),
+            Err(rmcp::ServiceError::McpError(e)) if e.code.0 == -32601 => {
+                let declares_tools = self
+                    .peer
+                    .peer_info()
+                    .is_some_and(|info| info.capabilities.tools.is_some());
+                if declares_tools {
+                    Err(rmcp::ServiceError::McpError(e).into())
+                } else {
+                    tracing::warn!(
+                        "list_tools: server does not implement tools (-32601, capability not declared); treating as empty tool list"
+                    );
+                    Ok(Vec::new())
+                }
+            }
             Err(e) => Err(e.into()),
         }
     }
@@ -135,6 +151,11 @@ mod tests {
 
     struct MockServer {
         tools: Vec<Tool>,
+        /// Whether the initialize result declares the tools capability.
+        declare_tools: bool,
+        /// When set, `tools/list` fails with this error instead of
+        /// returning the tool list.
+        list_tools_error: Option<rmcp::ErrorData>,
         call_response: Arc<dyn Fn(&str) -> CallToolResult + Send + Sync>,
     }
 
@@ -144,6 +165,8 @@ mod tests {
             schema.insert("type".into(), serde_json::json!("object"));
             Self {
                 tools: vec![Tool::new("echo", "Echo back", schema)],
+                declare_tools: true,
+                list_tools_error: None,
                 call_response: Arc::new(|_| CallToolResult::text("ok")),
             }
         }
@@ -155,12 +178,30 @@ mod tests {
             self.call_response = Arc::new(f);
             self
         }
+
+        /// Do not declare the tools capability in the initialize result.
+        fn without_tools_capability(mut self) -> Self {
+            self.declare_tools = false;
+            self
+        }
+
+        /// Answer `tools/list` with a JSON-RPC method-not-found error.
+        fn with_method_not_found_tools(mut self) -> Self {
+            self.list_tools_error =
+                Some(rmcp::ErrorData::method_not_found::<ListToolsRequestMethod>());
+            self
+        }
     }
 
     impl rmcp::ServerHandler for MockServer {
         fn get_info(&self) -> rmcp::model::ServerConfig {
-            InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
-                .with_server_info(Implementation::new("mock", "0.1.0"))
+            if self.declare_tools {
+                InitializeResult::new(ServerCapabilities::builder().enable_tools().build())
+                    .with_server_info(Implementation::new("mock", "0.1.0"))
+            } else {
+                InitializeResult::new(ServerCapabilities::default())
+                    .with_server_info(Implementation::new("mock", "0.1.0"))
+            }
         }
 
         async fn list_tools(
@@ -168,6 +209,9 @@ mod tests {
             _request: Option<PaginatedRequestParams>,
             _context: rmcp::service::RequestContext<rmcp::RoleServer>,
         ) -> Result<ListToolsResult, rmcp::ErrorData> {
+            if let Some(e) = &self.list_tools_error {
+                return Err(e.clone());
+            }
             Ok(ListToolsResult {
                 meta: None,
                 tools: self.tools.clone(),
@@ -238,5 +282,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(client.taint(), DataLabel::UNTRUSTED_PUBLIC);
+    }
+
+    // --- -32601 fallback gating ---
+
+    #[tokio::test]
+    async fn method_not_found_maps_to_empty_without_tools_capability() {
+        // The server never declared tools and rejects tools/list
+        // with -32601: per the MCP spec that means "no tools".
+        let server = MockServer::new()
+            .without_tools_capability()
+            .with_method_not_found_tools();
+        let client = mock_client_with(server).await;
+
+        let tools = client.list_tools().await.expect("should map to empty list");
+        assert!(tools.is_empty());
+    }
+
+    #[tokio::test]
+    async fn method_not_found_propagates_with_tools_capability() {
+        // The server declared tools but still answers -32601 — a
+        // real failure that must propagate, not silently hide the
+        // server's tools from the agent.
+        let server = MockServer::new().with_method_not_found_tools();
+        let client = mock_client_with(server).await;
+
+        let result = client.list_tools().await;
+        assert!(
+            result.is_err(),
+            "declared tools + -32601 must propagate the error"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_tools_returns_tools_when_server_implements_them() {
+        let client = mock_client().await;
+        let tools = client.list_tools().await.unwrap();
+        assert!(tools.iter().any(|t| t.name == "echo"));
     }
 }
