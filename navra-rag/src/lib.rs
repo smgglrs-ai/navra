@@ -23,4 +23,4 @@ pub use rerank::{ConfidenceGate, GatedReranker, NoopReranker, Reranker, load_rer
 #[cfg(feature = "onnx")]
 pub use rerank::{CrossEncoderError, CrossEncoderReranker};
 pub use store::{CascadeConfig, ChunkStore, SearchFilter};
-pub use tools::RagModule;
+pub use tools::{RagModule, chunk_content_is_safe};
