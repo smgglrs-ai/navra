@@ -524,7 +524,9 @@ mod tests {
         );
 
         let mut blake3_auth = TokenAuthenticator::new();
-        blake3_auth.register("plain-token-abc", AgentIdentity::new("legacy-agent", "dev"));
+        // Legacy weak token: operator override (fails entropy guard).
+        blake3_auth
+            .register_allow_weak("plain-token-abc", AgentIdentity::new("legacy-agent", "dev"));
 
         let chain = ChainAuthenticator::new().add(idjag_auth).add(blake3_auth);
 

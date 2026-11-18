@@ -190,6 +190,22 @@ impl TokenRevocationList {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// Revoke a token by its wire representation.
+    ///
+    /// Verifies the token's signature and expiry first (only tokens
+    /// this server would have accepted can be revoked), then adds
+    /// the token's nonce to the revocation list. This is the public
+    /// API navra-server uses to insert revoked token IDs.
+    pub fn revoke_token(
+        &self,
+        token: &str,
+        verifier: &dyn CapSigner,
+    ) -> Result<(), CapabilityError> {
+        let payload = decode_token(token, verifier)?;
+        self.revoke(payload.nonce);
+        Ok(())
+    }
 }
 
 /// Encode and sign a capability token.
@@ -523,15 +539,17 @@ pub fn validate_delegation(
         _ => {} // (None, Some) is fine (child adds sandbox), (None, None) is common
     }
 
-    // Depth check: max_depth indicates how many more delegations are allowed.
-    // 0 = no further delegation, 1 = one more level, etc.
-    if child.parent.is_some() && max_depth == 0 {
-        return Err(CapabilityError::DelegationViolation(
-            "chain depth exceeded (max_depth=0)".to_string(),
-        ));
+    // Strict chain-depth enforcement: the delegation depth is the
+    // number of actor-chain entries plus this hop. It must not
+    // exceed max_depth. Since validate_delegation already requires
+    // the child to reference its parent, the depth is always >= 1,
+    // so max_depth = 0 rejects every delegation.
+    let chain_depth = child.act_chain.len() + 1;
+    if chain_depth > max_depth as usize {
+        return Err(CapabilityError::DelegationViolation(format!(
+            "delegation chain depth {chain_depth} exceeds max_depth {max_depth}"
+        )));
     }
-    // The child's effective max_depth must be strictly less than the parent's
-    // to prevent unlimited re-delegation at the same depth.
 
     Ok(())
 }
@@ -1120,6 +1138,69 @@ mod tests {
     }
 
     #[test]
+    fn delegation_chain_depth_exceeded_rejected() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        // Child carries two actor-chain entries plus this hop = depth 3
+        let child = CapabilityPayload {
+            v: 1,
+            iss: parent.sub.clone(),
+            sub: "did:key:z6MkChild".to_string(),
+            cap: CapabilitySet {
+                paths: vec![],
+                operations: vec!["read".to_string()],
+                tools: vec![],
+                credentials: vec![],
+            },
+            ring: parent.ring,
+            iat: parent.iat,
+            exp: parent.exp,
+            nonce: generate_nonce(),
+            parent: Some(parent.nonce),
+            obo: None,
+            sandbox: None,
+            aud: None,
+            act_chain: vec![
+                ActorChainEntry {
+                    sub: "did:agent:a".to_string(),
+                    agent_id: "did:agent:a".to_string(),
+                    iat: parent.iat,
+                    permissions: "read".to_string(),
+                },
+                ActorChainEntry {
+                    sub: "did:agent:b".to_string(),
+                    agent_id: "did:agent:b".to_string(),
+                    iat: parent.iat,
+                    permissions: "read".to_string(),
+                },
+            ],
+        };
+
+        // depth 3 > max_depth 2 — rejected
+        let err = validate_delegation(&parent, &child, 2).unwrap_err();
+        assert!(err.to_string().contains("chain depth"));
+
+        // depth 3 == max_depth 3 — accepted (boundary)
+        assert!(validate_delegation(&parent, &child, 3).is_ok());
+    }
+
+    #[test]
+    fn delegation_max_depth_zero_rejects_all() {
+        let signer = Ed25519Signer::generate();
+        let parent = test_payload(&signer);
+
+        let mut child = parent.clone();
+        child.nonce = generate_nonce();
+        child.parent = Some(parent.nonce);
+        child.act_chain = Vec::new();
+
+        // Even a first-hop delegation (depth 1) is rejected at max_depth 0
+        let err = validate_delegation(&parent, &child, 0).unwrap_err();
+        assert!(err.to_string().contains("chain depth"));
+    }
+
+    #[test]
     fn delegation_wrong_parent_nonce_rejected() {
         let signer = Ed25519Signer::generate();
         let parent = test_payload(&signer);
@@ -1356,6 +1437,44 @@ mod tests {
 
         // decode_token() without revocation list still works
         assert!(decode_token(&token, &signer).is_ok());
+    }
+
+    #[test]
+    fn revoke_token_api_rejects_token_by_wire_format() {
+        let signer = Ed25519Signer::generate();
+        let payload = test_payload(&signer);
+        let token = encode_token(&payload, &signer).unwrap();
+
+        let rl = TokenRevocationList::new();
+        // Revoke via the public wire-format API
+        rl.revoke_token(&token, &signer).unwrap();
+        assert_eq!(rl.len(), 1);
+
+        // Token is now rejected when the list is consulted
+        let err = decode_token_with_revocation(&token, &signer, Some(&rl)).unwrap_err();
+        assert!(matches!(err, CapabilityError::Revoked));
+    }
+
+    #[test]
+    fn revoke_token_api_rejects_invalid_token() {
+        let signer = Ed25519Signer::generate();
+        let rl = TokenRevocationList::new();
+        // Malformed / unsigned garbage cannot be revoked
+        assert!(rl.revoke_token("garbage", &signer).is_err());
+        assert!(rl.is_empty());
+    }
+
+    #[test]
+    fn revoke_token_api_rejects_wrong_signer() {
+        let signer1 = Ed25519Signer::generate();
+        let signer2 = Ed25519Signer::generate();
+        let payload = test_payload(&signer1);
+        let token = encode_token(&payload, &signer1).unwrap();
+
+        let rl = TokenRevocationList::new();
+        // Only tokens this server would accept can be revoked
+        assert!(rl.revoke_token(&token, &signer2).is_err());
+        assert!(rl.is_empty());
     }
 
     // --- OBO identity tests ---
