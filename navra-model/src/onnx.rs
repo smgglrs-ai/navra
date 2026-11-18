@@ -60,7 +60,7 @@ fn cap_input(text: &str) -> String {
 fn cjk_chars_per_token(tok: &tokenizers::Tokenizer) -> f64 {
     const SAMPLE_CHARS: usize = 64;
     let sample = "字".repeat(SAMPLE_CHARS);
-    match tok.encode(&sample, false) {
+    match tok.encode(sample.as_str(), false) {
         Ok(encoding) => {
             let tokens = encoding.get_ids().len().max(1);
             SAMPLE_CHARS as f64 / tokens as f64
