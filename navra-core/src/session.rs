@@ -61,10 +61,39 @@ pub trait SessionBackend: Send + Sync {
     }
 }
 
+/// A persisted taint entry in the [`SessionStore`] taint ledger.
+///
+/// Survives the expiry (or removal) of the session object it belongs
+/// to, so a session recreated under the same key — the same
+/// authenticated identity — re-absorbs its accumulated IFC context
+/// label instead of starting clean (taint laundering via TTL expiry).
+#[derive(Debug, Clone, Copy)]
+struct TaintLedgerEntry {
+    label: DataLabel,
+    last_accessed: i64,
+}
+
+/// How many TTL windows a taint-ledger entry outlives the session it
+/// came from. Sessions expire after `session_ttl_secs`; their taint
+/// is remembered for this multiple of that window so an identity that
+/// reconnects shortly after expiry cannot launder its label, while
+/// churny keys (e.g. per-connection anonymous nonces) are eventually
+/// swept and memory stays bounded.
+const TAINT_LEDGER_TTL_MULTIPLIER: u64 = 24;
+
+/// Hard cap on taint-ledger entries. When reached, the stalest entry
+/// is evicted — a bound against unbounded growth from key churn.
+const MAX_TAINT_LEDGER_ENTRIES: usize = 8192;
+
 /// Thread-safe session store wrapping a pluggable backend.
 #[derive(Clone)]
 pub struct SessionStore {
     backend: Arc<dyn SessionBackend>,
+    /// IFC context labels persisted past session expiry, keyed by
+    /// session key (identity). Labels only ever escalate (join);
+    /// the one exception is an explicit gateway-authority
+    /// declassification, which steps the entry down with the session.
+    taint_ledger: Arc<RwLock<HashMap<String, TaintLedgerEntry>>>,
 }
 
 impl std::fmt::Debug for SessionStore {
@@ -77,6 +106,7 @@ impl Default for SessionStore {
     fn default() -> Self {
         Self {
             backend: Arc::new(InMemorySessionBackend::new()),
+            taint_ledger: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -88,10 +118,70 @@ impl SessionStore {
 
     /// Create a store with a custom backend (e.g. SQLite).
     pub fn with_backend(backend: Arc<dyn SessionBackend>) -> Self {
-        Self { backend }
+        Self {
+            backend,
+            taint_ledger: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
 
-    pub fn create(&self, session: Session) {
+    /// Absorb `label` into the taint ledger for `id` (monotone join).
+    fn ledger_absorb(&self, id: &str, label: DataLabel) {
+        if label == DataLabel::TRUSTED_PUBLIC {
+            // Bottom: nothing to persist.
+            return;
+        }
+        let now = now_epoch();
+        let mut ledger = self.taint_ledger.write().unwrap_or_else(|e| e.into_inner());
+        if ledger.len() >= MAX_TAINT_LEDGER_ENTRIES && !ledger.contains_key(id) {
+            // Cap reached for a new key: evict the stalest entry.
+            let victim = ledger
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_accessed)
+                .map(|(key, _)| key.clone());
+            if let Some(victim) = victim {
+                ledger.remove(&victim);
+            }
+        }
+        let entry = ledger.entry(id.to_string()).or_insert(TaintLedgerEntry {
+            label: DataLabel::TRUSTED_PUBLIC,
+            last_accessed: now,
+        });
+        entry.label = entry.label.join(label);
+        entry.last_accessed = now;
+    }
+
+    /// The persisted taint for `id` (bottom when none).
+    pub fn ledger_label(&self, id: &str) -> DataLabel {
+        self.taint_ledger
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(id)
+            .map(|entry| entry.label)
+            .unwrap_or(DataLabel::TRUSTED_PUBLIC)
+    }
+
+    /// Drop the persisted taint for `id`.
+    ///
+    /// The anonymous dev-mode clean-slate re-init path: anonymous
+    /// identities share one process-wide session and must not carry
+    /// taint across re-initializations.
+    pub fn clear_taint_ledger(&self, id: &str) {
+        self.taint_ledger
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
+    }
+
+    /// Create a session, re-absorbing any taint persisted for the
+    /// same key. TTL expiry (or removal) of a session must not
+    /// launder the IFC context label of the identity that re-creates
+    /// it — a fresh session object starts from the ledger label, not
+    /// from bottom.
+    pub fn create(&self, mut session: Session) {
+        let persisted = self.ledger_label(&session.id);
+        if persisted != DataLabel::TRUSTED_PUBLIC {
+            session.context_label = session.context_label.join(persisted);
+        }
         self.backend.create(session);
     }
 
@@ -108,6 +198,10 @@ impl SessionStore {
     }
 
     pub fn update_context_label(&self, id: &str, label: DataLabel) {
+        // Persist past expiry: the ledger absorbs every update so a
+        // session recreated under the same key cannot outlive its
+        // taint.
+        self.ledger_absorb(id, label);
         self.backend.update_context_label(id, label);
     }
 
@@ -130,7 +224,17 @@ impl SessionStore {
         if new_confidentiality < current.confidentiality {
             self.backend
                 .declassify_context_label(id, new_confidentiality);
-            self.context_label(id)
+            let after = self.context_label(id);
+            // The ledger must follow the declassification, otherwise
+            // a session recreated under this key would re-absorb the
+            // pre-declassification label and undo the gateway
+            // authority's decision.
+            let mut ledger = self.taint_ledger.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(entry) = ledger.get_mut(id) {
+                entry.label = after;
+                entry.last_accessed = now_epoch();
+            }
+            after
         } else {
             current
         }
@@ -141,7 +245,25 @@ impl SessionStore {
     }
 
     pub fn expire(&self, max_age_secs: u64) {
+        // Before the backend drops stale sessions, persist their
+        // taint into the ledger: expiry must not launder the IFC
+        // context label of an identity that reconnects later.
+        let now = now_epoch();
+        let stale_cutoff = now - max_age_secs as i64;
+        for session in self.backend.list_all() {
+            if session.last_accessed <= stale_cutoff {
+                self.ledger_absorb(&session.id, session.context_label);
+            }
+        }
         self.backend.expire(max_age_secs);
+        // Sweep ledger entries that outlived the retention window
+        // (TAINT_LEDGER_TTL_MULTIPLIER TTL windows since their last
+        // update) so churny keys do not accumulate forever.
+        let ledger_cutoff = now - (max_age_secs.saturating_mul(TAINT_LEDGER_TTL_MULTIPLIER)) as i64;
+        self.taint_ledger
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|_, entry| entry.last_accessed > ledger_cutoff);
     }
 
     pub fn list_all(&self) -> Vec<Session> {
@@ -375,6 +497,76 @@ mod tests {
         let removed = store.remove("s1").unwrap();
         assert_eq!(removed.id, "s1");
         assert_eq!(store.count(), 0);
+    }
+
+    #[test]
+    fn taint_survives_session_expiry() {
+        // TTL expiry must not launder the IFC context label: a
+        // session recreated under the same key (the same identity)
+        // re-absorbs its persisted taint instead of starting clean.
+        let store = SessionStore::new();
+        let mut stale = test_session("t1");
+        stale.last_accessed -= 7200;
+        store.create(stale);
+        store.update_context_label("t1", DataLabel::UNTRUSTED_PUBLIC);
+        store.expire(3600);
+        assert!(store.get("t1").is_none(), "stale session must be expired");
+
+        // The identity re-ensures its session (ensure_session path):
+        // the fresh session inherits the tainted label.
+        store.create(test_session("t1"));
+        assert_eq!(
+            store.context_label("t1"),
+            DataLabel::UNTRUSTED_PUBLIC,
+            "taint must survive TTL expiry via the ledger"
+        );
+    }
+
+    #[test]
+    fn taint_ledger_declassify_still_works_after_expiry() {
+        // Gateway-authority declassification must not be undone by
+        // expiry + re-creation: the ledger follows the declassified
+        // label instead of re-absorbing the old confidentiality.
+        let store = SessionStore::new();
+        let mut stale = test_session("t2");
+        stale.last_accessed -= 7200;
+        store.create(stale);
+        store.update_context_label("t2", DataLabel::UNTRUSTED_SENSITIVE);
+        store.expire(3600);
+        store.create(test_session("t2"));
+        assert_eq!(store.context_label("t2"), DataLabel::UNTRUSTED_SENSITIVE);
+
+        let after = store.declassify_context_label("t2", Confidentiality::Public);
+        assert_eq!(after.confidentiality, Confidentiality::Public);
+
+        // Expire + re-create once more: the declassification holds.
+        let mut stale = store.remove("t2").unwrap();
+        stale.last_accessed -= 7200;
+        store.create(stale);
+        let label = store.context_label("t2");
+        assert_eq!(label.confidentiality, Confidentiality::Public);
+        assert_eq!(
+            label.integrity,
+            DataLabel::UNTRUSTED_SENSITIVE.integrity,
+            "declassification steps confidentiality down only — integrity taint stays"
+        );
+    }
+
+    #[test]
+    fn taint_ledger_clear_gives_clean_slate() {
+        // The anonymous dev-mode re-init path drops the persisted
+        // taint explicitly: clear_taint_ledger + create starts clean.
+        let store = SessionStore::new();
+        store.create(test_session("t3"));
+        store.update_context_label("t3", DataLabel::UNTRUSTED_PUBLIC);
+        store.remove("t3");
+        store.clear_taint_ledger("t3");
+        store.create(test_session("t3"));
+        assert_eq!(
+            store.context_label("t3"),
+            DataLabel::TRUSTED_PUBLIC,
+            "cleared ledger must not taint a re-created session"
+        );
     }
 
     #[test]

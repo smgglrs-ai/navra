@@ -2698,7 +2698,17 @@ impl McpServer {
             for name in &previous {
                 ops.remove(name);
             }
-            ops.extend(operations);
+            // Only the ACCEPTED tool set (`new_names`) may update the
+            // operation map: entries for refused registrations
+            // (spoofed prefix or collision) must never overwrite an
+            // existing tool's classification — a colliding tool's
+            // Read entry would otherwise downgrade the victim tool's
+            // Write.
+            for (name, op) in operations {
+                if new_names.contains(&name) {
+                    ops.insert(name, op);
+                }
+            }
         }
         {
             let mut classes = self
@@ -2708,7 +2718,12 @@ impl McpServer {
             for name in &previous {
                 classes.remove(name);
             }
-            classes.extend(classifications);
+            // Same accepted-set filter as the operation map above.
+            for (name, class) in classifications {
+                if new_names.contains(&name) {
+                    classes.insert(name, class);
+                }
+            }
         }
         {
             let mut index = self
@@ -2966,7 +2981,15 @@ impl McpServer {
     /// be able to downgrade a write tool to a read for ACL
     /// evaluation. `Deny`-classified tools are treated as writes
     /// (strictest ACL branch) when they reach this site. Falls back
-    /// to the annotation-aware heuristic only when unclassified.
+    /// to the annotation-aware heuristic only when unclassified —
+    /// which for upstream tools cannot happen: discovery
+    /// (`upstream_module::classify_tool`) classifies every accepted
+    /// upstream tool into `tool_operations` up front, under one-way
+    /// annotation trust (an upstream `readOnlyHint` never downgrades
+    /// a heuristic write; only the operator, via `tool_overrides`,
+    /// may classify a heuristic write as Read). The annotation-aware
+    /// fallback therefore only ever serves first-party gateway tools
+    /// whose annotations the operator controls.
     fn classify_tool_write(
         &self,
         tool_name: &str,
