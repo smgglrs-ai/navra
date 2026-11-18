@@ -6,36 +6,49 @@ agents, and team members.
 
 ## 0. Build Machine Rules (ABSOLUTE — no exceptions)
 
-The primary development machine is the user's daily-driver laptop
-(32 GB RAM). Violating these rules disrupts the user's desktop and
-is treated as a critical process failure.
+Building and testing this workspace is HEAVY: full builds take
+gigabytes of RAM per rustc/linker process, and the navra-server
+test binaries each spawn real server processes. The primary
+development machine is the user's daily-driver workstation —
+running heavy jobs there disrupts the user's desktop and is
+treated as a critical process failure.
 
-1. **No heavy builds on the laptop.** `cargo build`, `cargo test`,
-   `cargo clippy`, and `cargo check` must NEVER run on the laptop.
-   The only permitted cargo commands there are `cargo fmt` /
-   `cargo fmt --check`. Run all compilation and tests on the remote
-   build machine `build-machine` (32 cores, 125 GB RAM):
-   push your branch to the `lab` remote, clone or checkout in
-   your own directory there (e.g. `~/gate-<name>` — one per agent,
-   never share), and iterate fix → commit → push → re-test over
-   SSH. Never edit files directly on lab; it is a build
-   machine, git is the only transport.
-2. **navra-server tests are serialized, EVERYWHERE.** Plain
+1. **No heavy builds on the user's workstation.** `cargo build`,
+   `cargo test`, `cargo clippy`, and `cargo check` must NEVER run
+   on the machine you develop on. The only permitted cargo
+   commands there are `cargo fmt` / `cargo fmt --check`. Run all
+   compilation and tests on the designated build machine (ask the
+   lead/operator which host that is — it is reached over SSH and
+   configured as a git remote). Workflow: push your branch to that
+   remote, clone or check out into your OWN directory there (one
+   per agent, never shared), and iterate fix → commit → push →
+   re-test over SSH. Never edit files on the build machine
+   directly; git is the only transport.
+2. **Check resources before and during.** Before starting work on
+   the build machine, check `free -g`, `df -h`, current load
+   (`uptime`), and that no stray processes from earlier runs are
+   alive (`pgrep -f 'target/debug/navra'` — kill any you find,
+   report them). If memory or disk are tight, or load is already
+   high, stop and coordinate instead of piling on. While your jobs
+   run, they must stay within the resource envelope below.
+3. **navra-server tests are serialized, EVERYWHERE.** Plain
    `cargo test -p navra-server` runs every integration binary in
    parallel and each spawns multiple navra server processes —
    dozens of navra instances at once, on any machine. This is why
    `just test-crate navra-server` is blocked. The rule applies on
-   the laptop, on lab, and on any other machine:
+   every machine, including the build machine:
    - Use `just test-server-guarded` (serialized + a watchdog that
      aborts if more than 10 navra processes are alive at once) —
      preferred, or plain `just test-server`, or
    - Run ONE filtered test at a time:
      `cargo test -p navra-server --test <binary> <name> -- --test-threads=1`
-   `cargo test -p <other-crate>` is fine in parallel on lab.
-   Never run two test-server invocations concurrently.
-3. **Clean up after yourself on lab**: kill any navra test
-   processes you started (`pkill -f 'target/debug/navra'`) and tell
-   the lead which `~/gate-*` directory you used.
+   `cargo test -p <other-crate>` may run in parallel on the build
+   machine, but never more than one cargo invocation at a time per
+   agent. Never run two test-server invocations concurrently.
+4. **Clean up after yourself**: kill any navra test processes you
+   started (`pkill -f 'target/debug/navra'`), tell the lead which
+   directory you used on the build machine, and leave no stray
+   processes behind.
 
 ## 1. Path Precision
 
@@ -67,10 +80,12 @@ When referencing files, use exact paths relative to the project root.
 
 Before claiming any work is complete:
 
-1. **Tests pass**: run on lab per rule 0 — `cargo test -p <crate>`
-   for non-server crates, `just test-server` (or one filtered test at
-   a time) for navra-server
-2. **Clippy clean**: `cargo clippy -p <crate> -- -D warnings` on lab
+1. **Tests pass**: run on the designated build machine per rule 0 —
+   `cargo test -p <crate>` for non-server crates, `just
+   test-server-guarded` (or one filtered test at a time) for
+   navra-server
+2. **Clippy clean**: `cargo clippy -p <crate> -- -D warnings` on the
+   designated build machine
 3. **No new warnings**: read the full build output, not just the exit code
 4. **Security warnings are fatal**: if clippy or your own review flags
    a security concern, fix it or escalate — never defer
