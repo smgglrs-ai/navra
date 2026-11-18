@@ -15,6 +15,60 @@ pub struct KubernetesAgentConfig {
     pub warm_pool: Option<String>,
 }
 
+/// TTL for warm-pool bootstrap tokens. Short on purpose: the token
+/// is zero-capability (only authenticates the task poll; the real
+/// per-teammate token is minted at adoption), but it is shared by
+/// every pod in the pool, so a leaked one must expire quickly.
+const POOL_BOOTSTRAP_TOKEN_TTL_SECS: u64 = 24 * 3600;
+
+/// Mint a warm-pool bootstrap token for `pool_did`.
+///
+/// Zero-capability by construction: no operations, no tools. The
+/// flat path carries a dedicated marker (`paths:
+/// ["pool/bootstrap"]`) instead of the blanket `**` so downstream
+/// policy can distinguish bootstrap tokens from real capabilities.
+///
+/// NOTE: the task endpoint (`agent_task_api::task_for`) currently
+/// receives only the decoded DID from the route (ui.rs), so it
+/// cannot yet *require* the marker — enforcement needs the route to
+/// forward the decoded payload. The adoption path is instead
+/// protected by the pool binding (see `agent_task_api` module docs).
+pub(crate) fn mint_pool_bootstrap_token(
+    root_payload: Option<&navra_core::auth::capability::CapabilityPayload>,
+    signer: &navra_core::identity::Ed25519Signer,
+    pool_did: &str,
+) -> Result<String, String> {
+    if let Some(root) = root_payload {
+        let payload = navra_core::auth::capability::build_delegated_payload(
+            root,
+            pool_did,
+            Vec::new(),
+            Vec::new(),
+            2,
+            POOL_BOOTSTRAP_TOKEN_TTL_SECS,
+        )
+        .map_err(|e| format!("Token delegation error: {e}"))?;
+        navra_core::auth::capability::encode_token(&payload, signer)
+            .map_err(|e| format!("Token error: {e}"))
+    } else {
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["pool/bootstrap".to_string()],
+            operations: Vec::new(),
+            tools: Vec::new(),
+            credentials: vec![],
+        };
+        let payload = navra_core::auth::capability::build_payload(
+            signer.did(),
+            pool_did,
+            cap,
+            2,
+            POOL_BOOTSTRAP_TOKEN_TTL_SECS,
+        );
+        navra_core::auth::capability::encode_token(&payload, signer)
+            .map_err(|e| format!("Token error: {e}"))
+    }
+}
+
 /// Mint a delegated capability token for a teammate.
 ///
 /// Shared by the spawn paths (env-baked delivery) and the task
@@ -953,10 +1007,11 @@ async fn kubectl_apply_manifest(
     Ok(())
 }
 
-/// Ensure the pool bootstrap-token Secret exists. Long-lived (90d)
+/// Ensure the pool bootstrap-token Secret exists. Short-lived (24h)
 /// low-privilege identity: no operations, no tools — it only
 /// authenticates the task poll; the fresh per-teammate token is
-/// minted at adoption.
+/// minted at adoption. Re-applied on every claim, so the effective
+/// lifetime rolls forward while the pool is in use.
 ///
 /// Called at gateway startup (so the pool's SandboxTemplate can
 /// start pods before any claim) and re-applied on every claim.
@@ -967,14 +1022,7 @@ pub(crate) async fn ensure_pool_bootstrap_secret(
     root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
 ) -> Result<(), String> {
     let pool_did = format!("did:pool:{pool}");
-    let bootstrap_token = mint_teammate_token(
-        root_payload.as_ref(),
-        signer,
-        &pool_did,
-        Vec::new(),
-        Vec::new(),
-        90 * 24 * 3600,
-    )?;
+    let bootstrap_token = mint_pool_bootstrap_token(root_payload.as_ref(), signer, &pool_did)?;
     let secret_name = format!("{pool}-bootstrap-token");
     kubectl_apply_manifest(
         k8s,
@@ -1131,6 +1179,15 @@ fn build_agent_sandbox_manifest(
                     // capability token — it must not see the
                     // namespace's ServiceAccount.
                     "automountServiceAccountToken": false,
+                    // Mirrors the warm template's hardening
+                    // (warm-pool.yaml): no root, default seccomp.
+                    "securityContext": {
+                        "runAsNonRoot": true,
+                        "seccompProfile": { "type": "RuntimeDefault" }
+                    },
+                    // Writable scratch for the read-only root
+                    // filesystem below.
+                    "volumes": [{ "name": "tmp", "emptyDir": {} }],
                     "containers": [{
                         "name": "agent",
                         "image": agent_image,
@@ -1139,6 +1196,15 @@ fn build_agent_sandbox_manifest(
                         // image the operator last published.
                         "imagePullPolicy": "Always",
                         "env": env_array,
+                        // Mirrors the warm template's hardening
+                        // (warm-pool.yaml): no privilege escalation,
+                        // no Linux capabilities, read-only root fs.
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "capabilities": { "drop": ["ALL"] }
+                        },
+                        "volumeMounts": [{ "name": "tmp", "mountPath": "/tmp" }],
                         "resources": {
                             "limits": {
                                 "memory": normalize_k8s_memory(container_memory),
@@ -1281,11 +1347,20 @@ fn spawn_kubernetes_agent(
             if let Some(ref pool) = k8s.warm_pool {
                 match claim_warm_sandbox(&k8s, pool, &sandbox_name, &signer, &root_payload).await {
                     Ok(adopted) => {
-                        // Register the sandbox → teammate mapping
-                        // before the pod's next task poll resolves
-                        // it (the poll loop tolerates 404 in the
-                        // window before this runs).
-                        reg.set_k8s_sandbox(&team_id, &teammate_id, adopted.clone());
+                        // Register the sandbox → teammate mapping —
+                        // bound to THIS pool's DID — before the pod's
+                        // next task poll resolves it (the poll loop
+                        // tolerates 404 in the window before this
+                        // runs). The binding is what the task
+                        // endpoint verifies on adoption: only this
+                        // pool's bootstrap token may resolve the
+                        // sandbox (see agent_task_api module docs).
+                        reg.set_k8s_sandbox_with_pool(
+                            &team_id,
+                            &teammate_id,
+                            adopted.clone(),
+                            format!("did:pool:{pool}"),
+                        );
                         sandbox_name = adopted;
                         claimed_warm = true;
                         tracing::info!(
@@ -1317,6 +1392,15 @@ fn spawn_kubernetes_agent(
             let mut env = std::collections::HashMap::new();
             if !claimed_warm {
                 env.insert("NAVRA_ENDPOINT".to_string(), gateway_url);
+                // SECURITY NOTE: the teammate token is delivered as a
+                // plain env value, which means it is visible in the
+                // Sandbox CR spec to anyone who can read Sandboxes.
+                // The proper fix is a per-teammate Secret mounted as a
+                // projected volume with the agent reading the token
+                // from a file at startup (navra-agent currently reads
+                // NAVRA_TOKEN from env only, and RBAC restricts Secret
+                // creation to the pool bootstrap-token — both need
+                // coordinated changes; tracked for the lead).
                 env.insert("NAVRA_TOKEN".to_string(), token);
                 env.insert("NAVRA_MODEL_ENDPOINT".to_string(), model_endpoint);
                 env.insert("NAVRA_MODEL_NAME".to_string(), model.clone());
@@ -2148,6 +2232,31 @@ mod tests {
             manifest["spec"]["podTemplate"]["spec"]["automountServiceAccountToken"],
             false
         );
+        // Hardening mirrors the warm template (warm-pool.yaml).
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["securityContext"]["runAsNonRoot"],
+            true
+        );
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["securityContext"]["seccompProfile"]["type"],
+            "RuntimeDefault"
+        );
+        let container = &manifest["spec"]["podTemplate"]["spec"]["containers"][0];
+        assert_eq!(
+            container["securityContext"]["allowPrivilegeEscalation"],
+            false
+        );
+        assert_eq!(container["securityContext"]["readOnlyRootFilesystem"], true);
+        assert_eq!(
+            container["securityContext"]["capabilities"]["drop"][0],
+            "ALL"
+        );
+        // Writable scratch for the read-only root filesystem.
+        assert_eq!(container["volumeMounts"][0]["mountPath"], "/tmp");
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["volumes"][0]["emptyDir"],
+            serde_json::json!({})
+        );
 
         let env_array = manifest["spec"]["podTemplate"]["spec"]["containers"][0]["env"]
             .as_array()
@@ -2187,6 +2296,23 @@ mod tests {
             manifest["spec"]["podTemplate"]["spec"]["containers"][0]["resources"]["limits"]["cpu"],
             "4"
         );
+    }
+
+    #[test]
+    fn pool_bootstrap_token_is_short_lived_and_zero_capability() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let token =
+            mint_pool_bootstrap_token(None, &signer, "did:pool:navra-agents").expect("minted");
+        let payload = navra_core::auth::capability::decode_token(&token, &signer).expect("decodes");
+
+        assert_eq!(payload.sub, "did:pool:navra-agents");
+        // Zero capability: nothing to invoke.
+        assert!(payload.cap.operations.is_empty());
+        assert!(payload.cap.tools.is_empty());
+        // Short-lived: 24h, not the old 90 days.
+        assert!(payload.exp - payload.iat <= 24 * 3600);
+        // Marker path instead of the blanket "**".
+        assert_eq!(payload.cap.paths, vec!["pool/bootstrap".to_string()]);
     }
 
     #[test]

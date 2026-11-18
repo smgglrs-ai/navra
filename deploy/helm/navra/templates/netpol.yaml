@@ -8,13 +8,19 @@
 #     task/result API)
 #   - cluster DNS
 #
-# CRITICAL — no `ports` restriction on the DNS rule: under
+# The DNS rule is scoped with a podSelector to the DNS daemon pods
+# (netpol.dnsPodSelector) instead of every pod in the DNS namespace
+# — without it the rule allows egress to ANY port on ANY pod there.
+# The selector differs per platform (OpenShift vs kube-dns); it is
+# a value for exactly that reason.
+#
+# PORTS WORKAROUND (netpol.dnsRestrictPorts, default false): under
 # OVN-Kubernetes, port-restricted egress rules never match the
 # DNS punt path, so `ports: [53]` silently drops all DNS
 # regardless of the destination allow (verified by bisection on
 # OpenShift 4.22: any egress rule WITH a ports restriction breaks
-# DNS; destination-based allows without ports work). The
-# DNS namespace is a value because it differs per platform
+# DNS; destination-based allows without ports work). The DNS
+# namespace is a value because it differs per platform
 # (openshift-dns on OpenShift, kube-system on vanilla Kubernetes).
 #
 # Ingress is intentionally unrestricted: sandbox pods run as
@@ -52,4 +58,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.netpol.dnsNamespace }}
+          {{- with .Values.netpol.dnsPodSelector }}
+          podSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.netpol.dnsRestrictPorts }}
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+      {{- end }}
 {{ end }}

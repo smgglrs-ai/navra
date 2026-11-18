@@ -19,9 +19,19 @@ rules:
     verbs: ["create", "get", "list", "watch", "delete", "patch"]
   # The gateway maintains the {pool}-bootstrap-token Secret that the
   # pool's SandboxTemplate pulls the warm-pod bootstrap token from.
+  # resourceNames pins Secret access to exactly the secrets the
+  # gateway legitimately touches: the pool bootstrap-token (patched
+  # in by the gateway at startup and on every claim) and the root
+  # identity secret. Note Kubernetes denies `create` when
+  # resourceNames is set, so the chart pre-creates the
+  # bootstrap-token Secret as a stub (warm-pool.yaml) and the
+  # gateway only ever patches it.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["create", "get", "patch"]
+    verbs: ["get", "patch"]
+    resourceNames:
+      - {{ include "navra.warmPoolName" . }}-bootstrap-token
+      - {{ if .Values.identity.create }}{{ include "navra.fullname" . }}-identity{{ else }}{{ .Values.identity.existingSecret }}{{ end }}
   # Backing Pods of teammate Sandboxes: status polling and logs.
   - apiGroups: [""]
     resources: ["pods"]

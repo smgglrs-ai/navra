@@ -32,8 +32,11 @@ replicas: 2
 image:
   registry: ""
   repository: ghcr.io/smgglrs-ai/navra-server
-  tag: latest
-  # The tag is mutable (CI re-pushes it) — always pull.
+  # Pinned to the chart appVersion by default ("" = use
+  # .Chart.AppVersion). Set to "latest" for development only — the
+  # tag is mutable and CI re-pushes it, so a pinned release tag is
+  # the reproducible default.
+  tag: ""
   pullPolicy: Always
   pullSecrets: []
 
@@ -76,8 +79,19 @@ identity:
 #   coordinator (mutual TLS); agents keep delegated-token auth.
 #   Requires ZTWIM installed with the same trust domain.
 tls:
-  enabled: false
+  # On by default: in-transit encryption should not be opt-in. The
+  # internal source auto-issues a chart CA + certs (preserved across
+  # upgrades); set false only for isolated/dev clusters.
+  enabled: true
   source: internal
+  # Strict client-certificate verification on the TCP listener
+  # (NAVRA_TLS_REQUIRE_CLIENT_CERT). Requires source=spire's
+  # trust bundle as the client CA. Default false: warm-pool agent
+  # pods authenticate with delegated capability tokens and present
+  # no client certificate, so requiring one would break the task
+  # poll. Enable when every caller presents an SVID (e.g. worker
+  # replicas only, no warm pool).
+  requireClientCert: false
   spire:
     # Must match the ZeroTrustWorkloadIdentityManager trustDomain.
     trustDomain: ""
@@ -92,6 +106,22 @@ tls:
 # disable the policy entirely.
 netpol:
   dnsNamespace: openshift-dns
+  # Label selector matching the DNS daemon pods inside
+  # dnsNamespace — the DNS egress rule is scoped to them instead of
+  # every pod in the namespace. Defaults are OpenShift's; on
+  # vanilla Kubernetes use:
+  #   dnsPodSelector:
+  #     matchLabels:
+  #       k8s-app: kube-dns
+  dnsPodSelector:
+    matchLabels:
+      dns.operator.openshift.io/daemonset-dns: default
+  # Restrict the DNS egress rule to ports 53 UDP/TCP. Disabled by
+  # default: under OVN-Kubernetes, port-restricted egress rules
+  # never match the DNS punt path, so `ports: [53]` silently drops
+  # all DNS (see netpol.yaml). Enable on CNIs where port
+  # restrictions work as documented (Calico, Cilium, ...).
+  dnsRestrictPorts: false
 
 # Pre-warmed teammate agent pool (NAVRA-195). The gateway claims
 # from it on teammate spawn (kubernetes_warm_pool is wired
@@ -104,7 +134,9 @@ warmPool:
   image:
     registry: ""
     repository: ghcr.io/smgglrs-ai/navra-agent
-    tag: latest
+    # Pinned to the chart appVersion by default ("" = use
+    # .Chart.AppVersion); "latest" is a development override only.
+    tag: ""
     pullPolicy: Always
   resources:
     requests:

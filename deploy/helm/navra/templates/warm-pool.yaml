@@ -4,9 +4,11 @@
 # teammate spawn the gateway creates a SandboxClaim that adopts the
 # next warm Sandbox, and the adopted pod polls GET /api/agent/task
 # for its task, model assignment, and a fresh per-teammate token.
-# The {pool}-bootstrap-token Secret is created by the gateway
-# itself (at startup and on every claim) — do not create it
-# manually.
+# The {pool}-bootstrap-token Secret is created here as an EMPTY stub
+# (RBAC restricts the gateway to get/patch on exactly this name —
+# Kubernetes denies create when resourceNames is set); the gateway
+# patches the real short-lived token in at startup and on every
+# claim. Do not delete it: the gateway cannot recreate it.
 #
 # networkPolicyManagement: Unmanaged — the controller's Managed
 # policy isolates sandbox pods from all private address space,
@@ -15,6 +17,20 @@
 # Isolation is provided by the chart's own NetworkPolicy
 # (netpol.yaml), which allows egress to the gateway and DNS only.
 {{- if .Values.warmPool.enabled }}
+# Stub for the pool bootstrap-token Secret the gateway patches
+# (see above — RBAC resourceNames require chart-side creation).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "navra.warmPoolName" . }}-bootstrap-token
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  # Overwritten by the gateway with the real token; the empty
+  # default just satisfies the Secret schema.
+  token: ""
+---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxTemplate
 metadata:

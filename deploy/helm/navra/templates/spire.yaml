@@ -6,10 +6,23 @@
 {{- $ns := .Release.Namespace }}
 {{- $td := required "tls.spire.trustDomain is required when tls.source=spire" .Values.tls.spire.trustDomain }}
 ---
-# Workload registration: every pod in this release's namespace gets
-# an SVID named by namespace + service account. DNS names cover the
-# client-facing Service, the headless Service, and the per-pod
-# coordinator DNS so standard hostname-verifying clients work.
+# Workload registration, scoped per workload class:
+#
+# - Gateway pods (the release selector labels) get SVIDs WITH the
+#   Service DNS SANs (client-facing Service, headless Service,
+#   per-pod coordinator DNS) so standard hostname-verifying clients
+#   work. This is the only class that may carry those SANs: an SVID
+#   with the gateway Service DNS name can impersonate the gateway
+#   server, so handing one to every pod in the namespace (the old
+#   namespace-wide selector) made agent sandboxes gateway
+#   impersonators.
+# - Agent sandbox pods (app.kubernetes.io/managed-by: navra — both
+#   warm-pool and cold-created Sandboxes; the gateway pods are
+#   managed-by Helm, so they never match) get SVIDs WITHOUT any DNS
+#   SAN. They still need registration: the warm template mounts the
+#   csi.spiffe.io Workload API socket and the SPIFFE Helper sidecar
+#   writes the trust bundle the agent's clients trust — an
+#   unregistered pod's CSI mount would never become ready.
 apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterSPIFFEID
 metadata:
@@ -29,6 +42,26 @@ spec:
   namespaceSelector:
     matchLabels:
       kubernetes.io/metadata.name: {{ $ns }}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "navra.name" . }}
+---
+# Agent sandbox SVIDs: same trust domain, NO DNS SANs (see above).
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: {{ $fullname }}-agent
+  labels:
+    {{- include "navra.labels" . | nindent 4 }}
+spec:
+  className: {{ .Values.tls.spire.className }}
+  spiffeIDTemplate: {{ printf "spiffe://%s/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}" $td | quote }}
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: {{ $ns }}
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/managed-by: navra
 ---
 # SPIFFE Helper configuration: fetch the workload's X509-SVID over
 # the Workload API (CSI-mounted agent socket) and write the cert,

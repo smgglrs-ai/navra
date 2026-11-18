@@ -13,8 +13,8 @@ Warm pool: {{ include "navra.warmPoolName" . }} ({{ .Values.warmPool.replicas }}
 
 Connect:
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "navra.fullname" . }} 9315:{{ include "navra.gatewayPort" . }}
-  # MCP endpoint: http://localhost:9315/mcp
-  # Model proxy:   http://localhost:9315/v1/chat/completions
+  # MCP endpoint: {{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://localhost:9315/mcp
+  # Model proxy:   {{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://localhost:9315/v1/chat/completions
 
 Verify teammate spawning end-to-end:
   python3 examples/kubernetes/e2e-driver.py \
