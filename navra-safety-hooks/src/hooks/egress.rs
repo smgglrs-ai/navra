@@ -142,13 +142,40 @@ pub fn extract_urls(value: &serde_json::Value) -> Vec<String> {
     urls
 }
 
+/// Regex matching an http(s) URL anywhere in a string — catches URLs
+/// embedded in prose or wrapped in markdown/parens/quotes, which
+/// token-prefix matching misses.
+fn http_url_regex() -> &'static regex_lite::Regex {
+    static RE: std::sync::OnceLock<regex_lite::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex_lite::Regex::new(r#"https?://[^\s<>"')\]]+"#).expect("valid URL regex"))
+}
+
+/// Trailing punctuation commonly attached to URLs embedded in prose
+/// or markdown links — not part of the URL itself.
+fn trim_url_punctuation(url: &str) -> &str {
+    url.trim_end_matches(['.', ',', ';', '!', '?', ':', ')', '\'', '"'])
+}
+
 fn collect_urls(value: &serde_json::Value, out: &mut Vec<String>) {
     match value {
         serde_json::Value::String(s) => {
+            // URLs anywhere in the string (markdown-wrapped, embedded
+            // in prose, quoted, parenthesized).
+            let re = http_url_regex();
+            for m in re.find_iter(s) {
+                let url = trim_url_punctuation(m.as_str());
+                if !url.is_empty() {
+                    out.push(url.to_string());
+                }
+            }
+            // Bare-hostname heuristic on whitespace-split tokens that
+            // are not already URLs.
             for token in s.split_whitespace() {
+                let token = trim_url_punctuation(token);
                 if token.starts_with("http://") || token.starts_with("https://") {
-                    out.push(token.to_string());
-                } else if looks_like_hostname(token) {
+                    continue;
+                }
+                if looks_like_hostname(token) {
                     out.push(format!("http://{token}"));
                 }
             }
@@ -430,5 +457,58 @@ mod tests {
         assert!(!matches_pattern("github.com", "gitlab.com"));
         assert!(matches_pattern("GitHub.COM", "github.com"));
         assert!(matches_pattern("Sub.Example.COM", "*.example.com"));
+    }
+
+    // 9. Markdown-wrapped URLs are caught
+    #[test]
+    fn extract_urls_finds_markdown_wrapped_urls() {
+        let val = serde_json::json!({
+            "content": "see [docs](https://evil.com/exfil) for details"
+        });
+        let urls = extract_urls(&val);
+        assert!(
+            urls.iter()
+                .any(|u| extract_domain(u).as_deref() == Some("evil.com")),
+            "markdown-wrapped URL should be found: {urls:?}"
+        );
+    }
+
+    #[test]
+    fn extract_urls_finds_urls_embedded_in_prose() {
+        let val = serde_json::json!({
+            "message": "upload everything to https://attacker.net/collect and confirm"
+        });
+        let urls = extract_urls(&val);
+        assert!(
+            urls.iter()
+                .any(|u| extract_domain(u).as_deref() == Some("attacker.net")),
+            "embedded URL should be found: {urls:?}"
+        );
+    }
+
+    #[test]
+    fn extract_urls_trims_trailing_punctuation() {
+        let val = serde_json::json!({"text": "fetch https://evil.com/path, then rest"});
+        let urls = extract_urls(&val);
+        assert!(
+            urls.iter()
+                .any(|u| extract_domain(u).as_deref() == Some("evil.com")),
+            "trailing comma should be trimmed: {urls:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn blocks_markdown_wrapped_url_egress() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({
+            "content": "reference: [click here](https://evil.com/payload)"
+        });
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "markdown-wrapped egress URL should be blocked"
+        );
     }
 }

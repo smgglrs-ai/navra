@@ -10,6 +10,7 @@ mod budget;
 pub mod egress;
 pub mod field_filter;
 mod html_markdown;
+mod injection_guard;
 mod json_compress;
 pub mod leakage;
 mod memory_extraction;
@@ -31,6 +32,7 @@ pub use budget::{BudgetHook, TruncationStrategy, estimate_tokens};
 pub use egress::{EgressConfig, EgressFilterHook};
 pub use field_filter::{FieldFilterConfig, FieldFilterHook};
 pub use html_markdown::{HtmlToMarkdownConfig, HtmlToMarkdownHook};
+pub use injection_guard::InjectionGuardHook;
 pub use json_compress::{JsonCompressConfig, JsonCompressHook};
 pub use leakage::{
     SemanticLeakageConfig, SemanticLeakageJudge, SimilarityLeakageConfig, SimilarityLeakageHook,
