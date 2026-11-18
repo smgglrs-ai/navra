@@ -217,47 +217,6 @@ impl NavraHandler {
             server.sessions().create(session);
         }
     }
-}
-
-// ========================================================================
-// subscriptions/listen (MCP 2026-07-28)
-// ========================================================================
-
-/// Map a broadcaster event's serialized JSON-RPC notification to its
-/// (method, uri) pair; `None` for unparsable events.
-fn notification_method_uri(data: &str) -> Option<(String, Option<String>)> {
-    let value: serde_json::Value = serde_json::from_str(data).ok()?;
-    let method = value.get("method")?.as_str()?.to_string();
-    let uri = value
-        .pointer("/params/uri")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    Some((method, uri))
-}
-
-impl ServerHandler for NavraHandler {
-    fn get_info(&self) -> rmcp::model::ServerConfig {
-        let navra_caps = self.server.capabilities();
-        let mut rmcp_caps = rmcp::model::ServerCapabilities::default();
-        rmcp_caps.tools = navra_caps.tools;
-        rmcp_caps.resources = navra_caps.resources;
-        rmcp_caps.prompts = navra_caps.prompts;
-
-        let mut result =
-            InitializeResult::new(rmcp_caps).with_server_info(self.server.server_info());
-        result.protocol_version = rmcp::model::ProtocolVersion::V_2026_07_28;
-        result
-    }
-
-    async fn initialize(
-        &self,
-        request: rmcp::model::InitializeRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<InitializeResult, ErrorData> {
-        let agent =
-            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
-        self.initialize_authenticated(request, agent).await
-    }
 
     /// Handshake body after authentication: drops the prior session
     /// for this identity, runs the server-side initialize, discards
@@ -304,6 +263,47 @@ impl ServerHandler for NavraHandler {
                 Err(ErrorData::invalid_params(msg, None))
             }
         }
+    }
+}
+
+// ========================================================================
+// subscriptions/listen (MCP 2026-07-28)
+// ========================================================================
+
+/// Map a broadcaster event's serialized JSON-RPC notification to its
+/// (method, uri) pair; `None` for unparsable events.
+fn notification_method_uri(data: &str) -> Option<(String, Option<String>)> {
+    let value: serde_json::Value = serde_json::from_str(data).ok()?;
+    let method = value.get("method")?.as_str()?.to_string();
+    let uri = value
+        .pointer("/params/uri")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Some((method, uri))
+}
+
+impl ServerHandler for NavraHandler {
+    fn get_info(&self) -> rmcp::model::ServerConfig {
+        let navra_caps = self.server.capabilities();
+        let mut rmcp_caps = rmcp::model::ServerCapabilities::default();
+        rmcp_caps.tools = navra_caps.tools;
+        rmcp_caps.resources = navra_caps.resources;
+        rmcp_caps.prompts = navra_caps.prompts;
+
+        let mut result =
+            InitializeResult::new(rmcp_caps).with_server_info(self.server.server_info());
+        result.protocol_version = rmcp::model::ProtocolVersion::V_2026_07_28;
+        result
+    }
+
+    async fn initialize(
+        &self,
+        request: rmcp::model::InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        let agent =
+            Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
+        self.initialize_authenticated(request, agent).await
     }
 
     async fn call_tool(
