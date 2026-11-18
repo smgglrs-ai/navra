@@ -28,6 +28,29 @@ test-server:
     echo "=== navra-server: unit tests ==="
     cargo test -p navra-server --bin navra -- --test-threads=1
 
+# Run navra-server tests with a process-count watchdog: if more than
+# 10 navra processes are alive at once (leak, accidental parallel run,
+# stuck cleanup), kill everything and abort. Serialized tests run 1-2.
+test-server-guarded:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (
+      while sleep 5; do
+        n=$(pgrep -fc "target/debug/navra" 2>/dev/null || true)
+        if [ "${n:-0}" -gt 10 ]; then
+          echo "WATCHDOG: $n navra processes — aborting" >&2
+          pkill -9 -f 'cargo' 2>/dev/null || true
+          pkill -9 -f 'target/debug/navra' 2>/dev/null || true
+          exit 9
+        fi
+      done
+    ) &
+    WD=$!
+    just test-server
+    RC=$?
+    kill $WD 2>/dev/null || true
+    exit $RC
+
 # Run tests for a single crate (navra-server blocked — use test-server)
 test-crate crate:
     #!/usr/bin/env bash

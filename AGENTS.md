@@ -26,11 +26,13 @@ is treated as a critical process failure.
    dozens of navra instances at once, on any machine. This is why
    `just test-crate navra-server` is blocked. The rule applies on
    the laptop, on lab, and on any other machine:
-   - Use `just test-server` (serialized, one binary at a time with
-     process cleanup), or
+   - Use `just test-server-guarded` (serialized + a watchdog that
+     aborts if more than 10 navra processes are alive at once) —
+     preferred, or plain `just test-server`, or
    - Run ONE filtered test at a time:
      `cargo test -p navra-server --test <binary> <name> -- --test-threads=1`
    `cargo test -p <other-crate>` is fine in parallel on lab.
+   Never run two test-server invocations concurrently.
 3. **Clean up after yourself on lab**: kill any navra test
    processes you started (`pkill -f 'target/debug/navra'`) and tell
    the lead which `~/gate-*` directory you used.
