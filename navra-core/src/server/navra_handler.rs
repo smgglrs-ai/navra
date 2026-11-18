@@ -37,7 +37,7 @@ pub struct NavraHandler {
     /// session key incorporates this nonce: two anonymous clients on
     /// separate connections must never share sessions, dynamic
     /// grants, or IFC taint state.
-    connection_nonce: String,
+    connection_nonce: std::sync::Arc<str>,
 }
 
 impl NavraHandler {
@@ -45,7 +45,18 @@ impl NavraHandler {
         Self {
             server,
             default_identity: None,
-            connection_nonce: uuid::Uuid::new_v4().to_string(),
+            connection_nonce: uuid::Uuid::new_v4().to_string().into(),
+        }
+    }
+
+    /// Build with a caller-supplied anonymous-session nonce, shared
+    /// across every handler instance a transport factory creates (see
+    /// `build_mcp_service`).
+    pub fn with_shared_nonce(server: Arc<McpServer>, nonce: std::sync::Arc<str>) -> Self {
+        Self {
+            server,
+            default_identity: None,
+            connection_nonce: nonce,
         }
     }
 
@@ -56,7 +67,7 @@ impl NavraHandler {
         Self {
             server,
             default_identity: Some(identity),
-            connection_nonce: uuid::Uuid::new_v4().to_string(),
+            connection_nonce: uuid::Uuid::new_v4().to_string().into(),
         }
     }
 

@@ -32,6 +32,15 @@ fn build_mcp_service(
     rmcp::transport::streamable_http_server::session::local::LocalSessionManager,
 > {
     let server_for_factory = server.clone();
+    // One shared connection nonce per server process: the factory
+    // below constructs a fresh NavraHandler per rmcp connection, so a
+    // per-handler nonce would give every streamable-HTTP request a
+    // different anonymous session key (breaking stateful tools for
+    // dev-mode anonymous clients). Sharing the nonce keeps the
+    // anonymous session stable within the process; per-CLIENT
+    // isolation for anonymous identities is provided by requiring
+    // authentication on any non-dev deployment.
+    let anon_nonce: std::sync::Arc<str> = uuid::Uuid::new_v4().to_string().into();
     let mut config = rmcp::transport::StreamableHttpServerConfig::default()
         .with_legacy_session_mode(false)
         .with_json_response(true);
@@ -43,7 +52,12 @@ fn build_mcp_service(
         config = config.with_allowed_hosts(server.allowed_http_hosts.clone());
     }
     StreamableHttpService::new(
-        move || Ok(NavraHandler::new(server_for_factory.clone())),
+        move || {
+            Ok(NavraHandler::with_shared_nonce(
+                server_for_factory.clone(),
+                anon_nonce.clone(),
+            ))
+        },
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()
             .into(),
         config,
