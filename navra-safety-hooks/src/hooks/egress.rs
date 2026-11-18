@@ -270,7 +270,56 @@ fn collect_urls(value: &serde_json::Value, out: &mut Vec<String>) {
     }
 }
 
+/// Strip a single trailing `:port` suffix from a bare host token.
+///
+/// Returns `None` when the port is malformed (non-numeric, empty, or
+/// more than one colon outside brackets) — such tokens are not
+/// hostnames and must not be collected. Bracketed IPv6 literals
+/// (`[::1]:8080`) keep their brackets; the port is what follows the
+/// closing `]`.
+fn strip_trailing_port(s: &str) -> Option<&str> {
+    // Bracketed IPv6 literal: the port (if any) follows the `]`.
+    if let Some(close) = s.find(']') {
+        if s[..close].contains('[') {
+            let rest = &s[close + 1..];
+            if rest.is_empty() {
+                return Some(s);
+            }
+            let port = rest.strip_prefix(':')?;
+            if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            return Some(&s[..=close]);
+        }
+    }
+    let mut colons = s.match_indices(':');
+    match (colons.next(), colons.next()) {
+        // No colon: the whole token is the host.
+        (None, _) => Some(s),
+        // Exactly one colon: numeric port or not a hostname.
+        (Some((i, _)), None) => {
+            let port = &s[i + 1..];
+            if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
+                None
+            } else {
+                Some(&s[..i])
+            }
+        }
+        // Multiple colons outside brackets: bare IPv6-ish, not a
+        // bare host:port token.
+        (Some(_), Some(_)) => None,
+    }
+}
+
 fn looks_like_hostname(s: &str) -> bool {
+    // Split off a single trailing `:port` first — plain tool args
+    // like `"evil.com:8443"` or `"10.0.0.5:6379"` carry no scheme,
+    // and without this the dot-segment/TLD checks never fire and
+    // the host is invisible to the filter.
+    let s = match strip_trailing_port(s) {
+        Some(host) => host,
+        None => return false,
+    };
     if !s.contains('.') {
         return false;
     }
@@ -304,7 +353,12 @@ fn looks_like_hostname(s: &str) -> bool {
 /// - userinfo confusion (`https://good.com@evil.com/` — the host is
 ///   the part after the last `@`, i.e. `evil.com`, not `good.com`),
 /// - bracketed IPv6 literals (`http://[::1]:8080/` — the host is the
-///   bracketed content `::1`),
+///   bracketed content `::1`), including zone-ID forms
+///   (`http://[::1%25eth0]/` — the `%zone` suffix is stripped so the
+///   host matches its bare address),
+/// - query/fragment terminators (`https://evil.com?x=@allowed.com` —
+///   the authority ends at `?`/`#`, so query text cannot smuggle a
+///   fake host past the lists),
 /// - bare IPv6-ish authorities (multiple colons, no brackets) are
 ///   treated conservatively: no host is extracted, so callers fail
 ///   closed,
@@ -326,7 +380,14 @@ pub fn extract_domain(url: &str) -> Option<String> {
         .or_else(|| normalized.strip_prefix("http://"))
         // Protocol-relative URL: the authority follows the slashes.
         .or_else(|| normalized.strip_prefix("//"))?;
-    let authority = s.split('/').next()?;
+    // The authority ends at the first '/', '?', or '#' — everything
+    // after is path/query/fragment, never host material. Splitting on
+    // all three closes two bypasses:
+    // - `https://evil.com?x=@allowed.com` used to extract
+    //   `allowed.com` from the query (allowlist bypass);
+    // - `https://evil.com?x` used to extract `evil.com?x`, which
+    //   never matched a `evil.com` blocklist entry.
+    let authority = s.split(['/', '?', '#']).next()?;
     // Strip userinfo before host extraction: in
     // `https://good.com@evil.com/`, everything up to and including
     // the last `@` is userinfo and the host is what follows.
@@ -340,6 +401,17 @@ pub fn extract_domain(url: &str) -> Option<String> {
     // Bracketed IPv6 literal: the host is the bracketed content.
     if let Some(rest) = authority.strip_prefix('[') {
         let host = rest.split(']').next()?;
+        if host.is_empty() {
+            return None;
+        }
+        // Strip an IPv6 zone-ID suffix (`%eth0`, or its %-encoded
+        // form `%25eth0`): `[::1%eth0]` and `[::1]` reach the same
+        // host on the same link, so the zone-ID form must match a
+        // blocked bare address. We strip rather than reject because
+        // the forms are resolve-equivalent — a blocked `::1` should
+        // catch `[::1%eth0]`, and an allowed `::1` should let it
+        // through.
+        let host = host.split('%').next().unwrap_or(host);
         if host.is_empty() {
             return None;
         }
@@ -915,6 +987,168 @@ mod tests {
         assert!(
             matches!(decision, HookDecision::Block(_)),
             "bare IPv6-ish authority must fail closed under a blocklist: {decision:?}"
+        );
+    }
+
+    // --- Query/fragment authority terminators ---
+
+    #[test]
+    fn extract_domain_terminates_authority_at_query() {
+        // The query is not host material: `?x=@allowed.com` used to
+        // extract `allowed.com` (allowlist bypass).
+        assert_eq!(
+            extract_domain("https://evil.com?x=@allowed.com"),
+            Some("evil.com".to_string())
+        );
+        // `?x` used to glue onto the host so it never matched a
+        // blocklist entry for the bare host.
+        assert_eq!(
+            extract_domain("https://evil.com?x"),
+            Some("evil.com".to_string())
+        );
+        assert_eq!(
+            extract_domain("https://evil.com#fragment"),
+            Some("evil.com".to_string())
+        );
+        // Userinfo inside the query must not be taken as the host.
+        assert_eq!(
+            extract_domain("https://allowed.com/path?next=https://evil.com"),
+            Some("allowed.com".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn query_userinfo_allowlist_bypass_blocked() {
+        // Walkthrough from the finding: the query string carries
+        // `@allowed.com`, which the old parser mistook for the host.
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec!["allowed.com".to_string()],
+            blocked_domains: vec![],
+            deny_all_external: true,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https://evil.com?x=@allowed.com"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "query-embedded allowed.com must not bypass the allowlist: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn query_appended_host_matches_blocklist() {
+        // Walkthrough from the finding: `https://evil.com?x` never
+        // matched the `evil.com` blocklist entry.
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec!["evil.com".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https://evil.com?x"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "query-appended host must match the blocklist: {decision:?}"
+        );
+    }
+
+    // --- Bare host:port tokens ---
+
+    #[test]
+    fn looks_like_hostname_accepts_bare_host_port() {
+        assert!(looks_like_hostname("evil.com:8443"));
+        assert!(looks_like_hostname("10.0.0.5:6379"));
+        // Malformed or ambiguous ports are not hostnames.
+        assert!(!looks_like_hostname("evil.com:https"));
+        assert!(!looks_like_hostname("evil.com:"));
+        assert!(!looks_like_hostname("evil.com:80:90"));
+        // Plain hostnames unchanged.
+        assert!(looks_like_hostname("evil.com"));
+        assert!(looks_like_hostname("192.168.1.1"));
+    }
+
+    #[test]
+    fn extract_urls_collects_bare_host_port() {
+        let val = serde_json::json!({"host": "evil.com:8443"});
+        let urls = extract_urls(&val);
+        assert!(
+            urls.iter()
+                .any(|u| extract_domain(u).as_deref() == Some("evil.com")),
+            "bare host:port must be collected: {urls:?}"
+        );
+
+        let val = serde_json::json!({"host": "10.0.0.5:6379"});
+        let urls = extract_urls(&val);
+        assert!(
+            urls.iter()
+                .any(|u| extract_domain(u).as_deref() == Some("10.0.0.5")),
+            "bare IPv4:port must be collected: {urls:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bare_host_port_blocked_under_blocklist() {
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec!["evil.com".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"host": "evil.com:8443"});
+        let decision = hook
+            .pre_tool_use("redis_connect", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "bare host:port must not be invisible to the blocklist: {decision:?}"
+        );
+    }
+
+    // --- IPv6 zone-ID evasion ---
+
+    #[test]
+    fn extract_domain_strips_ipv6_zone_id() {
+        // %-encoded zone form (as browsers send it: %25 is an encoded %)
+        assert_eq!(
+            extract_domain("http://[::1%25eth0]:8080/"),
+            Some("::1".to_string())
+        );
+        // Raw zone form
+        assert_eq!(
+            extract_domain("https://[::1%eth0]/path"),
+            Some("::1".to_string())
+        );
+        // Non-zone hosts are unchanged.
+        assert_eq!(
+            extract_domain("https://[2001:db8::1]/path"),
+            Some("2001:db8::1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn ipv6_zone_id_form_of_blocked_address_blocked() {
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec!["::1".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "http://[::1%25eth0]:8080/"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("::1")),
+            "zone-ID form of a blocked IPv6 must be blocked: {decision:?}"
         );
     }
 }

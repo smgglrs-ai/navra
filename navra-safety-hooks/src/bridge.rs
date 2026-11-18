@@ -73,4 +73,15 @@ impl navra_safety::Classifier for ClassifierBridge {
             }
         })
     }
+
+    /// Forward the backend's measured character budget so the ML
+    /// filters size their sub-windows to what the tokenizer actually
+    /// accepts (a 3-chars/token heuristic undercounts CJK-dense
+    /// text). Falls back to the `Classifier` default heuristic when
+    /// the backend does not report one.
+    fn max_input_chars(&self) -> usize {
+        self.backend
+            .max_input_chars()
+            .unwrap_or_else(|| self.max_input_tokens().saturating_mul(3))
+    }
 }

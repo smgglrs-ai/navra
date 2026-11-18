@@ -51,6 +51,24 @@ fn cap_input(text: &str) -> String {
     text.chars().take(MAX_INPUT_CHARS).collect()
 }
 
+/// Probe the tokenizer's chars-per-token ratio on dense CJK text.
+///
+/// CJK scripts are the worst case for subword tokenizers (many emit
+/// ~1 token per char, vs ~3-4 chars/token for English BPE), so this
+/// ratio is the safe bound for sizing character windows against a
+/// token budget. Returns 1.0 (most conservative) if the probe fails.
+fn cjk_chars_per_token(tok: &tokenizers::Tokenizer) -> f64 {
+    const SAMPLE_CHARS: usize = 64;
+    let sample = "字".repeat(SAMPLE_CHARS);
+    match tok.encode(&sample, false) {
+        Ok(encoding) => {
+            let tokens = encoding.get_ids().len().max(1);
+            SAMPLE_CHARS as f64 / tokens as f64
+        }
+        Err(_) => 1.0,
+    }
+}
+
 /// Execution device for ONNX models.
 #[derive(Debug, Clone, Default)]
 pub enum Device {
@@ -388,9 +406,39 @@ impl OnnxBackend {
         MAX_SEQ_TOKENS
     }
 
+    /// Maximum input length (in chars) fed to the model per inference
+    /// call, measured from the actual tokenizer.
+    ///
+    /// - No tokenizer (character-level fallback): exactly one char per
+    ///   token, so the budget is [`MAX_SEQ_TOKENS`] chars.
+    /// - HuggingFace tokenizer: probed with a dense CJK sample
+    ///   (`字` × 64). CJK is the worst case for subword tokenizers
+    ///   (~1 token per char), so the measured chars-per-token ratio,
+    ///   clamped to `[1, 3]` (3 being the conservative ASCII BPE
+    ///   default), yields a budget that never over-reports what the
+    ///   tokenizer actually accepts.
+    pub fn max_input_chars(&self) -> usize {
+        max_input_chars_for(self.tokenizer.as_ref())
+    }
+
     /// Returns the execution device this model was loaded with.
     pub fn device(&self) -> &Device {
         &self.device
+    }
+}
+
+/// Compute the per-call character budget for a tokenizer option.
+///
+/// Split from [`OnnxBackend::max_input_chars`] so both paths (with
+/// and without a tokenizer) are testable without a model file.
+fn max_input_chars_for(tokenizer: Option<&tokenizers::Tokenizer>) -> usize {
+    match tokenizer {
+        // Character-level fallback: 1 char per token.
+        None => MAX_SEQ_TOKENS,
+        Some(tok) => {
+            let chars_per_token = cjk_chars_per_token(tok).clamp(1.0, 3.0);
+            (MAX_SEQ_TOKENS as f64 * chars_per_token) as usize
+        }
     }
 }
 
@@ -540,6 +588,11 @@ impl ModelBackend for OnnxBackend {
             })
         })
     }
+
+    fn max_input_chars(&self) -> Option<usize> {
+        // Disambiguate from the inherent method of the same name.
+        Some(OnnxBackend::max_input_chars(self))
+    }
 }
 
 /// Simple character-level tokenization fallback.
@@ -625,6 +678,90 @@ mod tests {
         let tok = apply_truncation(test_tokenizer());
         let encoding = tok.encode("a b a", true).expect("encode succeeds");
         assert_eq!(encoding.get_ids().len(), 3);
+    }
+
+    #[test]
+    fn cjk_probe_measures_chars_per_token() {
+        // The test tokenizer's vocab has no CJK, so the dense sample
+        // collapses to a single [UNK] token — ratio 64 chars/token,
+        // i.e. the tokenizer accepts far more chars than tokens.
+        let ratio = cjk_chars_per_token(&test_tokenizer());
+        assert!(
+            ratio > 3.0,
+            "UNK-collapsing tokenizer must report a high ratio"
+        );
+    }
+
+    #[test]
+    fn cjk_probe_one_char_per_token() {
+        // A tokenizer whose vocab covers the sample char emits one
+        // token per char: ratio 1.0.
+        let json = r###"{
+            "version": "1.0",
+            "truncation": null,
+            "padding": null,
+            "added_tokens": [],
+            "normalizer": null,
+            "pre_tokenizer": { "type": "Whitespace" },
+            "post_processor": null,
+            "decoder": null,
+            "model": {
+                "type": "WordPiece",
+                "vocab": { "[UNK]": 0, "字": 1 },
+                "unk_token": "[UNK]",
+                "continuing_subword_prefix": "##",
+                "max_input_chars_per_word": 100
+            }
+        }"###;
+        let tok: tokenizers::Tokenizer = serde_json::from_str(json).expect("valid tokenizer json");
+        // Whitespace pre-tokenization leaves the unspaced sample as
+        // one word; WordPiece with the char in vocab splits it into
+        // one token per char.
+        let ratio = cjk_chars_per_token(&tok);
+        assert!(
+            (ratio - 1.0).abs() < 1e-9,
+            "1-char-per-token expected, got {ratio}"
+        );
+    }
+
+    #[test]
+    fn max_input_chars_fallback_is_one_char_per_token() {
+        // No tokenizer: the character-level fallback tokenizes
+        // exactly 1 char per token, so the char budget equals the
+        // token budget.
+        assert_eq!(max_input_chars_for(None), MAX_SEQ_TOKENS);
+    }
+
+    #[test]
+    fn max_input_chars_from_tokenizer_clamped() {
+        // UNK-collapsing tokenizer: ratio 64 clamps to 3 chars/token
+        // (the conservative ASCII default).
+        assert_eq!(
+            max_input_chars_for(Some(&test_tokenizer())),
+            MAX_SEQ_TOKENS * 3
+        );
+        // 1-char-per-token CJK tokenizer: budget equals the token
+        // budget — a 3-chars/token heuristic would have over-reported
+        // by 3x and left two thirds of each window unclassified.
+        let json = r###"{
+            "version": "1.0",
+            "truncation": null,
+            "padding": null,
+            "added_tokens": [],
+            "normalizer": null,
+            "pre_tokenizer": { "type": "Whitespace" },
+            "post_processor": null,
+            "decoder": null,
+            "model": {
+                "type": "WordPiece",
+                "vocab": { "[UNK]": 0, "字": 1 },
+                "unk_token": "[UNK]",
+                "continuing_subword_prefix": "##",
+                "max_input_chars_per_word": 100
+            }
+        }"###;
+        let tok: tokenizers::Tokenizer = serde_json::from_str(json).expect("valid tokenizer json");
+        assert_eq!(max_input_chars_for(Some(&tok)), MAX_SEQ_TOKENS);
     }
 
     #[test]

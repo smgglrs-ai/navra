@@ -286,6 +286,21 @@ pub trait ModelBackend: Send + Sync + 'static {
         Box::pin(async { Err(ModelError::NotLoaded("classify not supported".into())) })
     }
 
+    /// Maximum input length (in chars) this backend feeds to the
+    /// model in a single inference call, when known from the actual
+    /// tokenizer.
+    ///
+    /// Backends that truncate inputs before inference (e.g. the ONNX
+    /// backend caps at 512 tokens) should report the character
+    /// budget measured from their tokenizer, so windowing callers
+    /// (navra-safety's ML filters) can size sub-windows correctly —
+    /// a fixed 3-chars-per-token heuristic undercounts CJK-dense
+    /// text (~1 char/token) and leaves window tails unclassified.
+    /// `None` (the default) means "unknown — use a heuristic".
+    fn max_input_chars(&self) -> Option<usize> {
+        None
+    }
+
     /// Generate text from a prompt (simple, single-turn).
     fn generate(
         &self,
