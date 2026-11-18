@@ -604,7 +604,8 @@ mod tests {
             &[],
         )
         .await
-        .unwrap_err();
+        .err()
+        .expect("from_spec must fail");
         let msg = err.to_string();
         assert!(
             msg.contains("allow_insecure_spec"),
@@ -663,7 +664,8 @@ mod tests {
             policy,
         )
         .await
-        .unwrap_err();
+        .err()
+        .expect("from_spec must fail");
 
         let msg = err.to_string();
         assert!(
@@ -773,7 +775,8 @@ mod tests {
         let err =
             OpenApiModule::from_spec("api", tmpfile.to_str().unwrap(), AuthConfig::default(), &[])
                 .await
-                .unwrap_err();
+                .err()
+                .expect("from_spec must fail");
         assert!(
             err.to_string().contains("base_url_override"),
             "error should point at the override escape hatch: {err}"

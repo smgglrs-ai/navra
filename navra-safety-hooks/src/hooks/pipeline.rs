@@ -545,6 +545,7 @@ mod tests {
     /// drifts from the model, this test fails.
     #[tokio::test]
     async fn kani_pre_dispatch_model_matches_run_pre_timeout_mapping() {
+        use std::sync::Arc;
         use std::sync::atomic::{AtomicBool, Ordering};
 
         /// Records whether it ran (models the hook after the slow one
