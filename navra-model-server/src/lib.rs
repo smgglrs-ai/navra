@@ -85,6 +85,18 @@ impl ModelServer {
     }
 
     /// Return the axum Router (for embedding in another server).
+    ///
+    /// # Embedder contract
+    ///
+    /// The returned router is **unauthenticated** — every inference
+    /// route (`/v1/*`, `/hardware`) is open. This is safe only when
+    /// the embedding server binds a loopback interface or layers its
+    /// own authentication in front. Embedders binding a
+    /// non-loopback address MUST either wrap these routes with an
+    /// authenticating middleware or use
+    /// [`api::router_with_auth`] / [`Self::serve_with_token`]
+    /// instead. (Standalone mode enforces this: `serve_with_token`
+    /// refuses to start unauthenticated on a non-loopback bind.)
     pub fn router(&self) -> axum::Router {
         let state = api::ServerState {
             registry: Arc::clone(&self.registry),
