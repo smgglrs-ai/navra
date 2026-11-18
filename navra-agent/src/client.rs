@@ -43,8 +43,17 @@ impl McpClient {
     }
 
     /// List available tools from the MCP server.
+    ///
+    /// A server that does not implement tools at all answers
+    /// `tools/list` with JSON-RPC method-not-found (-32601); per the
+    /// MCP spec that means "no tools", not a hard failure, so it maps
+    /// to an empty list here.
     pub async fn list_tools(&self) -> Result<Vec<ToolDefinition>, AgentError> {
-        Ok(self.peer.list_all_tools().await?)
+        match self.peer.list_all_tools().await {
+            Ok(tools) => Ok(tools),
+            Err(rmcp::ServiceError::McpError(e)) if e.code.0 == -32601 => Ok(Vec::new()),
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Call a tool and track IFC labels from the result.
