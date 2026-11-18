@@ -178,8 +178,8 @@ reference, or `examples/config.toml` for a commented example.
 - Never use `pkill` — find and kill specific PIDs
 - Ollama IS available — don't exclude Ollama-dependent tests
 - **Kani proof runs: never on this machine — it will OOM. Run them
-  on build-machine (125GB RAM, passwordless SSH; see
-  NAVRA-193 notes for the access pattern)**
+  on the designated build machine (large-RAM host, passwordless
+  SSH; see NAVRA-193 notes for the access pattern)**
 
 ## Work Tracking
 

@@ -38,7 +38,7 @@ notes: |
     confirmed Ready wait, Pod-named-after-Sandbox logs, and the
     Finished condition. The dry-run is what caught the memory
     quantity bug.
-  - The operator install on lab: kubectl apply of the pinned
+  - The operator install on the lab cluster: kubectl apply of the pinned
     v1.0.11 sandbox.yaml. CRD serves v1beta1 only.
   - The v1alpha1 path was never usable against a real cluster with
     current operator releases, so removing kubernetes_agent_template
@@ -91,10 +91,10 @@ notes: |
     before theorizing about runner resources.
   - Deployment notes for the record: images pushed to the SNO
     internal registry (default route; SNI routing means podman
-    pushes must run ON lab — ClusterIPs are not node-routable
+    pushes must run ON the lab cluster — ClusterIPs are not node-routable
     under OVN-K); ollama runs as a StatefulSet in the navra
     namespace (HOME/.ollama on the PVC, self-pull at startup — the
-    image has no curl); 192.0.2.10 is the API VIP (HAProxy,
+    image has no curl); the lab cluster API VIP is (HAProxy,
     only cluster service ports), not a general node address.
   - CI first-run fixes (2026-11-15, commits 4f238b91..6fd00bd4):
     setup-oras v5 does not exist (current major: v2); oras layer
