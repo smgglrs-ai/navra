@@ -4062,6 +4062,8 @@ mod tests {
         let cfg = config_api_test_config();
         let (server, _admin, worker) = config_api_server();
         let path = unique_config_path("agent-self-perm");
+        // Seed the config file so "unchanged" is checkable on disk.
+        cfg.save(std::path::Path::new(&path)).unwrap();
         let router = build_config_api_router(&cfg, server, &path, test_approvals());
 
         // Self-elevation attempt: worker PUTs itself with the
@@ -4139,6 +4141,8 @@ mod tests {
         let cfg = config_api_test_config();
         let (server, _admin, worker) = config_api_server();
         let path = unique_config_path("agent-self-create");
+        // Seed the config file so the absence check is meaningful.
+        cfg.save(std::path::Path::new(&path)).unwrap();
         let router = build_config_api_router(&cfg, server, &path, test_approvals());
 
         // A non-elevated caller cannot mint a new agent entry —
