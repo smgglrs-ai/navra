@@ -321,20 +321,6 @@ pub async fn handle_memory_store(
     }
 }
 
-/// Handle memory_query tool call.
-///
-/// Legacy unscoped entry point: performs a caller-supplied (or
-/// global) search with no CallContext. Kept for existing wiring;
-/// prefer [`handle_memory_query_scoped`], which defaults the scope
-/// to the caller's session and requires an explicit privilege for
-/// global queries.
-pub async fn handle_memory_query(
-    args: serde_json::Value,
-    ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
-) -> navra_core::protocol::CallToolResult {
-    handle_memory_query_inner(args, ks, None).await
-}
-
 /// Permission sets allowed to query memory globally (across all
 /// sessions/teams). Any other caller is scoped to their session.
 const GLOBAL_MEMORY_QUERY_PERMISSIONS: &[&str] = &["admin", "root"];
@@ -348,10 +334,6 @@ const GLOBAL_MEMORY_QUERY_PERMISSIONS: &[&str] = &["admin", "root"];
 /// - A global query (no scope, explicit `"global": true`) requires
 ///   the caller's permission set to be in
 ///   [`GLOBAL_MEMORY_QUERY_PERMISSIONS`].
-// Not wired yet: the memory_query tool closure lives in
-// setup/tools.rs (lead-owned file). Once wired to pass its `_ctx`
-// here, global memory reads become session-scoped by default.
-#[allow(dead_code)]
 pub async fn handle_memory_query_scoped(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,

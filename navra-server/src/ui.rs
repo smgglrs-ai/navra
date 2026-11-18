@@ -3161,7 +3161,8 @@ mod tests {
         auth.register(
             "test-token-0123456789abcdef0123456789abcdef",
             navra_core::auth::AgentIdentity::new("ui", "dev"),
-        );
+        )
+        .unwrap();
         let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
         build_router_with(&test_config(), server)
     }

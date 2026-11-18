@@ -411,7 +411,8 @@ mod tests {
     /// right bearer token are rejected.
     fn token_server(token: &str) -> Arc<navra_core::McpServer> {
         let mut auth = navra_core::auth::TokenAuthenticator::new();
-        auth.register(token, navra_core::auth::AgentIdentity::new("ui", "dev"));
+        auth.register(token, navra_core::auth::AgentIdentity::new("ui", "dev"))
+            .unwrap();
         Arc::new(navra_core::McpServer::builder().authenticator(auth).build())
     }
 

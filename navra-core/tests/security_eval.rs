@@ -789,7 +789,8 @@ mod auth_chain {
         auth.register(
             "test-token-0123456789abcdef0123456789abcdef",
             AgentIdentity::new("agent", "dev"),
-        );
+        )
+        .unwrap();
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -839,10 +840,12 @@ mod auth_chain {
         let root = Ed25519Signer::generate();
 
         let mut blake3 = TokenAuthenticator::new();
-        blake3.register(
-            "legacy-token-0123456789abcdef012345",
-            AgentIdentity::new("legacy", "dev"),
-        );
+        blake3
+            .register(
+                "legacy-token-0123456789abcdef012345",
+                AgentIdentity::new("legacy", "dev"),
+            )
+            .unwrap();
 
         let cap_payload = build_payload(
             root.did(),
