@@ -947,21 +947,25 @@ pub(crate) fn wire_memory_tools(
 
     let ks_forget = Arc::clone(&ks);
     let cs_forget = shared_chunk_store.clone();
-    builder = builder.tool(memory_tools::memory_forget_def(), move |args, _ctx| {
+    builder = builder.tool(memory_tools::memory_forget_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_forget);
         let cs = cs_forget.clone();
-        Box::pin(memory_tools::handle_memory_forget(args, ks, cs))
+        Box::pin(memory_tools::handle_memory_forget(args, ks, cs, Some(&ctx)))
     });
 
     let ks_purge = Arc::clone(&ks);
     let sanitizer_for_purge = pii_sanitizer.clone();
     let cs_purge = shared_chunk_store.clone();
-    builder = builder.tool(memory_tools::memory_purge_pii_def(), move |args, _ctx| {
+    builder = builder.tool(memory_tools::memory_purge_pii_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_purge);
         let sanitizer = sanitizer_for_purge.clone();
         let cs = cs_purge.clone();
         Box::pin(memory_tools::handle_memory_purge_pii(
-            args, ks, sanitizer, cs,
+            args,
+            ks,
+            sanitizer,
+            cs,
+            Some(&ctx),
         ))
     });
 
@@ -969,10 +973,15 @@ pub(crate) fn wire_memory_tools(
     let cs_forget_content = shared_chunk_store.clone();
     builder = builder.tool(
         memory_tools::memory_forget_by_content_def(),
-        move |args, _ctx| {
+        move |args, ctx| {
             let ks = Arc::clone(&ks_forget_content);
             let cs = cs_forget_content.clone();
-            Box::pin(memory_tools::handle_memory_forget_by_content(args, ks, cs))
+            Box::pin(memory_tools::handle_memory_forget_by_content(
+                args,
+                ks,
+                cs,
+                Some(&ctx),
+            ))
         },
     );
 
@@ -997,9 +1006,9 @@ pub(crate) fn wire_memory_tools(
 
     // memory_consent
     let ks_consent = Arc::clone(&ks);
-    builder = builder.tool(memory_tools::memory_consent_def(), move |args, _ctx| {
+    builder = builder.tool(memory_tools::memory_consent_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_consent);
-        Box::pin(memory_tools::handle_memory_consent(args, ks))
+        Box::pin(memory_tools::handle_memory_consent(args, ks, Some(&ctx)))
     });
 
     // --- Data retention sweep at startup ---

@@ -20,17 +20,45 @@ const MAX_SCAN_CHARS: usize = 4_000;
 /// Character overlap between windows, so payloads spanning a window
 /// boundary are still visible to the model.
 const SCAN_OVERLAP: usize = 200;
+/// Approximate characters per tokenizer token used to convert the
+/// backend's token budget ([`Classifier::max_input_tokens`]) into a
+/// sub-window size in chars.
+///
+/// Backends truncate inputs to their token budget before inference
+/// (the ONNX backend caps at 512 tokens, i.e. the last ~3500 chars
+/// of a 4k-char window were never classified). English BPE
+/// tokenizers average ~3-4 chars/token; 3 is the conservative
+/// choice (smaller sub-windows, more calls, nothing skipped).
+const CHARS_PER_TOKEN: usize = 3;
+/// Floor for the derived sub-window size, so a backend reporting a
+/// very small token budget cannot degenerate into one-char windows.
+const MIN_SUB_WINDOW_CHARS: usize = 600;
+
+/// Derive the sub-window size (chars) for a classifier from its
+/// token budget.
+///
+/// `max_tokens * CHARS_PER_TOKEN` clamped to
+/// `[MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS]`.
+fn sub_window_chars(max_tokens: usize) -> usize {
+    max_tokens
+        .saturating_mul(CHARS_PER_TOKEN)
+        .clamp(MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS)
+}
 
 /// Split content into overlapping windows of at most
-/// [`MAX_SCAN_CHARS`] characters, each on a char boundary.
-fn scan_windows(content: &str) -> Vec<&str> {
-    if content.len() <= MAX_SCAN_CHARS {
+/// `window_chars` characters, each on a char boundary.
+///
+/// Windows are sized to the classifier's token budget (see
+/// [`sub_window_chars`]) so the backend's pre-inference truncation
+/// cannot silently drop the tail of each window.
+fn scan_windows(content: &str, window_chars: usize) -> Vec<&str> {
+    if content.len() <= window_chars {
         return vec![content];
     }
     let mut windows = Vec::new();
     let mut start = 0usize;
     while start < content.len() {
-        let mut end = (start + MAX_SCAN_CHARS).min(content.len());
+        let mut end = (start + window_chars).min(content.len());
         while end < content.len() && !content.is_char_boundary(end) {
             end += 1;
         }
@@ -96,10 +124,13 @@ impl ModelFilter for MlFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            // Scan in bounded windows so oversized content cannot turn
-            // into a single unbounded model call.
+            // Scan in bounded windows sized to the model's token
+            // budget so oversized content cannot turn into a single
+            // unbounded model call, and the backend's pre-inference
+            // truncation cannot skip the tail of a window.
+            let window_chars = sub_window_chars(self.model.max_input_tokens());
             let mut best: Option<f32> = None;
-            for window in scan_windows(content) {
+            for window in scan_windows(content, window_chars) {
                 match self.model.classify(window).await {
                     Ok(output) => {
                         if output.is_unsafe(self.threshold) {
@@ -246,9 +277,12 @@ impl ModelFilter for MultiLabelFilter {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
             let mut findings = Vec::new();
-            // Scan in bounded windows so oversized content cannot turn
-            // into a single unbounded model call.
-            for window in scan_windows(content) {
+            // Scan in bounded windows sized to the model's token
+            // budget so oversized content cannot turn into a single
+            // unbounded model call, and the backend's pre-inference
+            // truncation cannot skip the tail of a window.
+            let window_chars = sub_window_chars(self.model.max_input_tokens());
+            for window in scan_windows(content, window_chars) {
                 let output = match self.model.classify(window).await {
                     Ok(output) => output,
                     Err(e) => {
@@ -496,14 +530,14 @@ mod tests {
 
     #[test]
     fn scan_windows_short_input_single_window() {
-        let windows = scan_windows("hello world");
+        let windows = scan_windows("hello world", MAX_SCAN_CHARS);
         assert_eq!(windows, vec!["hello world"]);
     }
 
     #[test]
     fn scan_windows_bounded_and_covering() {
         let text = "ä".repeat(MAX_SCAN_CHARS * 2 + 10); // multi-byte chars
-        let windows = scan_windows(&text);
+        let windows = scan_windows(&text, MAX_SCAN_CHARS);
         assert!(windows.len() >= 3);
         for w in &windows {
             assert!(w.len() <= MAX_SCAN_CHARS);
@@ -517,6 +551,89 @@ mod tests {
         let w1_end = windows[0].as_ptr() as usize + windows[0].len();
         let w2_start = windows[1].as_ptr() as usize;
         assert!(w2_start < w1_end, "windows must overlap");
+    }
+
+    #[test]
+    fn sub_window_chars_derives_from_token_budget() {
+        // Default ONNX-class budget: 512 tokens -> ~1536 chars.
+        assert_eq!(sub_window_chars(512), 512 * CHARS_PER_TOKEN);
+        // Clamped to MAX_SCAN_CHARS for large budgets.
+        assert_eq!(sub_window_chars(10_000), MAX_SCAN_CHARS);
+        // Floored for degenerate small budgets.
+        assert_eq!(sub_window_chars(1), MIN_SUB_WINDOW_CHARS);
+        assert_eq!(sub_window_chars(0), MIN_SUB_WINDOW_CHARS);
+    }
+
+    #[tokio::test]
+    async fn ml_filter_detects_payload_past_token_truncation_point() {
+        // Regression: the 4k-char windows used to be handed to the
+        // classifier whole, but the backend truncates each inference
+        // to its token budget (512 tokens ~ first ~1500 chars for
+        // BPE English) — payloads placed in the tail of a window
+        // were never classified. The filter must sub-window to the
+        // model's token budget so the tail is seen.
+        //
+        // This mock emulates the backend's truncation: it only
+        // "reads" the first max_input_tokens * CHARS_PER_TOKEN
+        // chars of the text it receives.
+        struct TruncatingClassifier;
+
+        impl Classifier for TruncatingClassifier {
+            fn classify<'a>(
+                &'a self,
+                text: &'a str,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                let visible = &text[..text
+                    .char_indices()
+                    .nth(self.max_input_tokens() * CHARS_PER_TOKEN)
+                    .map(|(i, _)| i)
+                    .unwrap_or(text.len())];
+                Box::pin(async move {
+                    if visible.contains("HARMFUL-PIPELINE-PAYLOAD") {
+                        Ok(ClassifyOutput {
+                            labels: vec![
+                                ClassifyLabel {
+                                    label: "hap".into(),
+                                    score: 0.9,
+                                },
+                                ClassifyLabel {
+                                    label: "safe".into(),
+                                    score: 0.1,
+                                },
+                            ],
+                        })
+                    } else {
+                        Ok(ClassifyOutput {
+                            labels: vec![ClassifyLabel {
+                                label: "safe".into(),
+                                score: 0.99,
+                            }],
+                        })
+                    }
+                })
+            }
+        }
+
+        let filter = MlFilter::new(Arc::new(TruncatingClassifier), 0.5, "ml-unsafe");
+        // 4k-char input with the injection payload at chars
+        // 2500-3700 — past the ~1536-char truncation point of a
+        // single whole-window call.
+        let mut input = "x".repeat(2_500);
+        input.push_str("HARMFUL-PIPELINE-PAYLOAD ");
+        input.push_str(&"y".repeat(4_000 - input.len()));
+        assert_eq!(input.len(), 4_000);
+
+        let findings = filter.scan(&input, &test_ctx()).await;
+        assert!(
+            findings.iter().any(|f| f.category == "ml-unsafe"),
+            "payload at chars 2500-3700 must be classified despite token truncation"
+        );
     }
 
     #[tokio::test]

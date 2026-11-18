@@ -375,6 +375,19 @@ impl OnnxBackend {
         self.tokenizer.is_some()
     }
 
+    /// Maximum input length (in tokens) fed to the model per
+    /// inference call.
+    ///
+    /// Inputs longer than this are truncated (by the tokenizer or
+    /// the hard cap in [`OnnxBackend::tokenize`]) before inference,
+    /// so windowing callers must slice inputs into sub-windows
+    /// aligned to this budget. Exposed so safety-filter windowing
+    /// (navra-safety's ML filters) can size its sub-windows without
+    /// guessing.
+    pub fn max_input_tokens(&self) -> usize {
+        MAX_SEQ_TOKENS
+    }
+
     /// Returns the execution device this model was loaded with.
     pub fn device(&self) -> &Device {
         &self.device

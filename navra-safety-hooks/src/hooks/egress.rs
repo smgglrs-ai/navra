@@ -73,9 +73,10 @@ impl Hook for EgressFilterHook {
         }
 
         // Degenerate/unresolvable URLs (e.g. "https:///" or
-        // "https://:") produce no domain. Fail closed: they still
-        // count as external egress for the tainted-session check
-        // and as non-allowlisted for deny_all_external.
+        // "https://:") produce no domain. Fail closed: they count as
+        // a taint match for the tainted-session check, and as
+        // non-allowlisted whenever any domain list (or
+        // deny_all_external) is configured.
         let mut saw_unresolvable = false;
         let domains: Vec<String> = urls
             .iter()
@@ -90,6 +91,13 @@ impl Hook for EgressFilterHook {
         if domains.is_empty() && !saw_unresolvable {
             return HookDecision::Continue;
         }
+
+        // Any list configured at all (blocklist, allowlist, or
+        // deny-all): unparseable authorities are treated as a taint
+        // match and blocked rather than passed through unmatched.
+        let lists_configured = self.config.deny_all_external
+            || !self.config.blocked_domains.is_empty()
+            || !self.config.allowed_domains.is_empty();
 
         // Tainted session check
         if self.config.block_tainted_egress
@@ -111,7 +119,7 @@ impl Hook for EgressFilterHook {
             ));
         }
 
-        if saw_unresolvable && self.config.deny_all_external {
+        if saw_unresolvable && lists_configured {
             tracing::warn!(
                 tool = %tool_name,
                 session = %ctx.session_id,
@@ -124,6 +132,23 @@ impl Hook for EgressFilterHook {
         }
 
         for domain in &domains {
+            // Punycode hosts (xn-- labels) are not decoded here:
+            // without decoding, an allowlist/blocklist match against
+            // the punycode form is unreliable (the same Unicode host
+            // has many encodings). Fail closed whenever any list is
+            // configured.
+            if lists_configured && domain.split('.').any(|label| label.starts_with("xn--")) {
+                tracing::warn!(
+                    tool = %tool_name,
+                    session = %ctx.session_id,
+                    domain = %domain,
+                    "egress-filter: blocked punycode host (fail closed, no punycode decoding)"
+                );
+                return HookDecision::Block(format!(
+                    "egress-filter: punycode domain '{domain}' cannot be verified against the configured domain lists"
+                ));
+            }
+
             // Blocked domains checked first (deny wins)
             if self
                 .config
@@ -276,6 +301,13 @@ fn looks_like_hostname(s: &str) -> bool {
 /// - protocol-relative URLs (`//evil.com`),
 /// - backslash separators (`https:\\evil.com`), which browsers
 ///   normalize to forward slashes,
+/// - userinfo confusion (`https://good.com@evil.com/` — the host is
+///   the part after the last `@`, i.e. `evil.com`, not `good.com`),
+/// - bracketed IPv6 literals (`http://[::1]:8080/` — the host is the
+///   bracketed content `::1`),
+/// - bare IPv6-ish authorities (multiple colons, no brackets) are
+///   treated conservatively: no host is extracted, so callers fail
+///   closed,
 /// - homoglyph hosts (Cyrillic/Greek lookalikes, fullwidth forms),
 ///   folded with navra-safety's scan-time table so `еvil.com`
 ///   (Cyrillic е) resolves to `evil.com`.
@@ -294,8 +326,32 @@ pub fn extract_domain(url: &str) -> Option<String> {
         .or_else(|| normalized.strip_prefix("http://"))
         // Protocol-relative URL: the authority follows the slashes.
         .or_else(|| normalized.strip_prefix("//"))?;
-    let host_port = s.split('/').next()?;
-    let host = host_port.split(':').next()?;
+    let authority = s.split('/').next()?;
+    // Strip userinfo before host extraction: in
+    // `https://good.com@evil.com/`, everything up to and including
+    // the last `@` is userinfo and the host is what follows.
+    let authority = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    if authority.is_empty() {
+        return None;
+    }
+    // Bracketed IPv6 literal: the host is the bracketed content.
+    if let Some(rest) = authority.strip_prefix('[') {
+        let host = rest.split(']').next()?;
+        if host.is_empty() {
+            return None;
+        }
+        return Some(host.to_string());
+    }
+    // Bare IPv6-ish authority (multiple colons, no brackets, e.g.
+    // `2001:db8::1`): extracting the first colon-separated fragment
+    // would yield a bogus hostname fragment. Fail closed — no host.
+    if authority.matches(':').count() > 1 {
+        return None;
+    }
+    let host = authority.split(':').next()?;
     if host.is_empty() {
         return None;
     }
@@ -726,5 +782,139 @@ mod tests {
             .pre_tool_use("http_request", &args, &test_ctx(), None)
             .await;
         assert!(matches!(decision, HookDecision::Continue));
+    }
+
+    // --- Userinfo / IPv6 / punycode bypasses ---
+
+    #[test]
+    fn extract_domain_strips_userinfo() {
+        // The host is the part after the last '@' — userinfo must
+        // not be mistaken for the host.
+        assert_eq!(
+            extract_domain("https://good.com@evil.com/"),
+            Some("evil.com".to_string())
+        );
+        assert_eq!(
+            extract_domain("http://user:pass@evil.com:8080/path"),
+            Some("evil.com".to_string())
+        );
+        // No userinfo: unchanged behavior.
+        assert_eq!(
+            extract_domain("https://good.com/path"),
+            Some("good.com".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn userinfo_confusion_blocked_by_blocklist() {
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec!["good.com".to_string()],
+            blocked_domains: vec!["evil.com".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https://good.com@evil.com/exfil"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "userinfo confusion must resolve to the real host: {decision:?}"
+        );
+    }
+
+    #[test]
+    fn extract_domain_bracketed_ipv6() {
+        assert_eq!(
+            extract_domain("http://[::1]:8080/"),
+            Some("::1".to_string())
+        );
+        assert_eq!(
+            extract_domain("https://[2001:db8::1]/path"),
+            Some("2001:db8::1".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_domain_bare_ipv6_fails_closed() {
+        // Bare (unbracketed) IPv6-ish authorities extract no host so
+        // callers fail closed instead of matching a colon fragment.
+        assert_eq!(extract_domain("http://::1:8080/"), None);
+        assert_eq!(extract_domain("http://2001:db8::1/path"), None);
+    }
+
+    #[tokio::test]
+    async fn bracketed_ipv6_handled_and_blocked_under_deny_all() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"url": "http://[::1]:8080/"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "IPv6 literal must not bypass the allowlist: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn punycode_host_rejected_under_blocklist_mode() {
+        // xn-- hosts are not punycode-decoded; with any list
+        // configured they are rejected outright (fail closed).
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec!["evil.com".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https://xn--e1afmkfd.xn--p1ai/"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("xn--")),
+            "punycode host must be rejected when lists are configured: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn punycode_host_rejected_under_allowlist_mode() {
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec!["good.com".to_string()],
+            blocked_domains: vec![],
+            deny_all_external: true,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https://xn--e1afmkfd.xn--p1ai/"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "punycode host must not match an ASCII allowlist: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unresolvable_url_blocked_when_blocklist_configured() {
+        // With any list configured, an unparseable authority is
+        // treated as a taint match (fail closed).
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec!["evil.com".to_string()],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "http://::1:8080/"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "bare IPv6-ish authority must fail closed under a blocklist: {decision:?}"
+        );
     }
 }
