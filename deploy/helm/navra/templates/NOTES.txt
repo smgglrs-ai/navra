@@ -1,5 +1,17 @@
 navra gateway {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
 
+{{- if .Values.tls.enabled }}
+
+UPGRADE NOTE (chart 0.2.0 — breaking): TLS is now ON by default and
+the gateway Service presents port 443 (was 80 without TLS). Clients
+must switch to https and trust this chart's CA:
+  kubectl -n {{ .Release.Namespace }} get secret {{ include "navra.fullname" . }}-tls-ca \
+    -o jsonpath='{.data.ca\.crt}' | base64 -d > navra-ca.crt
+Point clients at https://...:443 (or set gatewayPort to keep the old
+port) with the CA above in their trust store, or set tls.enabled=false
+to restore plaintext (not recommended).
+{{- end }}
+
 {{- if gt (int .Values.replicas) 1 }}
 
 Multi-replica topology ({{ .Values.replicas }} pods):
@@ -18,15 +30,15 @@ Connect:
 
 Verify teammate spawning end-to-end:
   python3 examples/kubernetes/e2e-driver.py \
-    --endpoint http://localhost:9315/mcp \
+    --endpoint {{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://localhost:9315/mcp \
     --token <agent-token-from-extraConfig>
 {{- if gt (int .Values.replicas) 1 }}
   # Two-replica scenario (create on the coordinator, work on a worker):
   kubectl -n {{ .Release.Namespace }} port-forward pod/{{ include "navra.fullname" . }}-0 19315:9315 &
   kubectl -n {{ .Release.Namespace }} port-forward pod/{{ include "navra.fullname" . }}-1 19316:9315 &
   python3 examples/kubernetes/e2e-driver.py \
-    --endpoint http://localhost:19315/mcp \
-    --second-endpoint http://localhost:19316/mcp \
+    --endpoint {{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://localhost:19315/mcp \
+    --second-endpoint {{ if .Values.tls.enabled }}https{{ else }}http{{ end }}://localhost:19316/mcp \
     --token <agent-token>
 {{- end }}
 

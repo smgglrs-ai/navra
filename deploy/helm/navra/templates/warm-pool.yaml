@@ -10,6 +10,18 @@
 # patches the real short-lived token in at startup and on every
 # claim. Do not delete it: the gateway cannot recreate it.
 #
+# RESIDUAL RISK (documented, accepted for now): the bootstrap token
+# in this Secret is readable by anything with namespace-wide Secret
+# read (the RBAC only constrains the GATEWAY's writes, not other
+# readers). It is zero-capability (no operations/tools) and
+# short-lived (24h, rolled forward on each claim), and pool
+# adoption is bound at claim time — but a reader can still poll the
+# task endpoint as this pool. End-state: replace the shared secret
+# with per-pod SVIDs (tls.source=spire already mounts the SPIFFE
+# Workload API; the task endpoint would authenticate the pod's
+# X509-SVID instead of the pooled token), at which point this
+# Secret goes away entirely.
+#
 # networkPolicyManagement: Unmanaged — the controller's Managed
 # policy isolates sandbox pods from all private address space,
 # which breaks cluster DNS under OVN-Kubernetes (see NAVRA-196:
@@ -50,7 +62,19 @@ spec:
         app.kubernetes.io/managed-by: navra
     spec:
       automountServiceAccountToken: false
+      # Dedicated agent ServiceAccount (serviceaccount.yaml): keeps
+      # sandbox SVIDs class-scoped — SPIFFE IDs embed the SA name,
+      # so agents don't share the gateway's (or default) SA identity
+      # space. The cold-create path (agent_spawn.rs) derives the
+      # same name from the gateway Service.
+      serviceAccountName: {{ include "navra.fullname" . }}-agent
       restartPolicy: OnFailure  # task redelivery on crash via the poll endpoint
+      # Pod-level seccomp (mirrors the cold-create manifest): the
+      # container-level profiles below cover per-container, this
+      # covers anything injected alongside (sidecars, init).
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -112,8 +136,16 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          {{- if .Values.tls.enabled }}
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
+            # Writable scratch — required by readOnlyRootFilesystem
+            # (the agent's tempfile use lands in /tmp; mirrors the
+            # cold-create manifest in agent_spawn.rs).
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.tls.enabled }}
             {{- if eq .Values.tls.source "spire" }}
             - name: svid
               mountPath: /svid
@@ -149,8 +181,12 @@ spec:
             seccompProfile:
               type: RuntimeDefault
         {{- end }}
-      {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
       volumes:
+        # Writable scratch for the agent's read-only root filesystem
+        # (see volumeMounts above).
+        - name: tmp
+          emptyDir: {}
+        {{- if and .Values.tls.enabled (eq .Values.tls.source "spire") }}
         - name: spiffe-workload-api
           csi:
             driver: csi.spiffe.io
@@ -160,8 +196,7 @@ spec:
         - name: spiffe-helper-config
           configMap:
             name: {{ include "navra.fullname" . }}-spiffe-helper
-      {{- else if .Values.tls.enabled }}
-      volumes:
+        {{- else if .Values.tls.enabled }}
         - name: tls-ca
           secret:
             secretName: {{ include "navra.fullname" . }}-tls-ca

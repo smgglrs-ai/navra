@@ -21,6 +21,56 @@ pub struct KubernetesAgentConfig {
 /// every pod in the pool, so a leaked one must expire quickly.
 const POOL_BOOTSTRAP_TOKEN_TTL_SECS: u64 = 24 * 3600;
 
+/// Minimum remaining lifetime a delegated child token must have for
+/// minting to be worthwhile. `build_delegated_payload` clamps the
+/// child expiry to `min(now + ttl, parent.exp)`, so once the root
+/// capability (built once at gateway startup with a 24h TTL) nears
+/// its own expiry, every delegated mint is born nearly dead. Rather
+/// than silently handing out dead tokens, refuse with a clear error.
+///
+/// The real fix is refreshing the root payload at startup/periodic
+/// in `setup/tools.rs` (see the report to the lead); this guard just
+/// makes the failure loud and explicit.
+const MIN_DELEGATED_TTL_SECS: u64 = 60;
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Refuse to delegate from a parent whose remaining lifetime would
+/// leave the child born expired or with less than
+/// [`MIN_DELEGATED_TTL_SECS`] seconds to live.
+fn ensure_parent_fresh(
+    parent: &navra_core::auth::capability::CapabilityPayload,
+    ttl_secs: u64,
+) -> Result<(), String> {
+    let now = now_unix();
+    let effective_exp = now.saturating_add(ttl_secs).min(parent.exp);
+    if effective_exp < now.saturating_add(MIN_DELEGATED_TTL_SECS) {
+        return Err(format!(
+            "cannot mint delegated token: the root capability is stale \
+             (parent expires at {}, now is {}), so the child would be born \
+             with under {MIN_DELEGATED_TTL_SECS}s remaining. Restart the \
+             gateway to mint a fresh root capability.",
+            parent.exp, now
+        ));
+    }
+    if effective_exp < now.saturating_add(ttl_secs) {
+        // Mintable, but the child's TTL is being cut short by the
+        // parent's remaining lifetime — worth surfacing.
+        tracing::warn!(
+            parent_exp = parent.exp,
+            requested_ttl_secs = ttl_secs,
+            effective_exp,
+            "delegated token TTL clamped to the parent's remaining lifetime"
+        );
+    }
+    Ok(())
+}
+
 /// Mint a warm-pool bootstrap token for `pool_did`.
 ///
 /// Zero-capability by construction: no operations, no tools. The
@@ -39,7 +89,8 @@ pub(crate) fn mint_pool_bootstrap_token(
     pool_did: &str,
 ) -> Result<String, String> {
     if let Some(root) = root_payload {
-        let payload = navra_core::auth::capability::build_delegated_payload(
+        ensure_parent_fresh(root, POOL_BOOTSTRAP_TOKEN_TTL_SECS)?;
+        let mut payload = navra_core::auth::capability::build_delegated_payload(
             root,
             pool_did,
             Vec::new(),
@@ -48,6 +99,13 @@ pub(crate) fn mint_pool_bootstrap_token(
             POOL_BOOTSTRAP_TOKEN_TTL_SECS,
         )
         .map_err(|e| format!("Token delegation error: {e}"))?;
+        // `build_delegated_payload` clones the parent's paths (the
+        // root's blanket `**`). Bootstrap tokens must instead carry
+        // the dedicated `pool/bootstrap` marker so downstream policy
+        // can distinguish them from real capabilities. The marker is
+        // a strict subset of the parent's `**` grant, so this is an
+        // attenuation, not an escalation.
+        payload.cap.paths = vec!["pool/bootstrap".to_string()];
         navra_core::auth::capability::encode_token(&payload, signer)
             .map_err(|e| format!("Token error: {e}"))
     } else {
@@ -85,6 +143,7 @@ pub(crate) fn mint_teammate_token(
     ttl_secs: u64,
 ) -> Result<String, String> {
     if let Some(root) = root_payload {
+        ensure_parent_fresh(root, ttl_secs)?;
         let payload = navra_core::auth::capability::build_delegated_payload(
             root, did, operations, tools, 2, ttl_secs,
         )
@@ -1175,6 +1234,15 @@ fn build_agent_sandbox_manifest(
                     // Teammates run to completion and report via the
                     // gateway; never restart a finished agent.
                     "restartPolicy": "Never",
+                    // Dedicated per-release agent ServiceAccount
+                    // (created by the Helm chart as
+                    // `<fullname>-agent`, derived here from the
+                    // gateway Service name the chart sets). Keeps
+                    // sandbox SVIDs class-scoped — SPIFFE IDs embed
+                    // the ServiceAccount name, so agents no longer
+                    // share `sa/default` (or the gateway's SA)
+                    // identity space.
+                    "serviceAccountName": format!("{}-agent", k8s.gateway_service),
                     // The agent authenticates with a delegated navra
                     // capability token — it must not see the
                     // namespace's ServiceAccount.
@@ -2232,6 +2300,12 @@ mod tests {
             manifest["spec"]["podTemplate"]["spec"]["automountServiceAccountToken"],
             false
         );
+        // Dedicated agent ServiceAccount, derived from the gateway
+        // Service name (chart creates `<fullname>-agent`).
+        assert_eq!(
+            manifest["spec"]["podTemplate"]["spec"]["serviceAccountName"],
+            format!("{}-agent", k8s.gateway_service)
+        );
         // Hardening mirrors the warm template (warm-pool.yaml).
         assert_eq!(
             manifest["spec"]["podTemplate"]["spec"]["securityContext"]["runAsNonRoot"],
@@ -2313,6 +2387,103 @@ mod tests {
         assert!(payload.exp - payload.iat <= 24 * 3600);
         // Marker path instead of the blanket "**".
         assert_eq!(payload.cap.paths, vec!["pool/bootstrap".to_string()]);
+    }
+
+    /// Root-equivalent parent payload for delegated-mint tests:
+    /// mirrors the one built at startup in setup/tools.rs (ring 1,
+    /// blanket paths and tools, 24h TTL by default).
+    fn root_cap_payload(
+        signer: &navra_core::identity::Ed25519Signer,
+        ttl_secs: u64,
+    ) -> navra_core::auth::capability::CapabilityPayload {
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: vec!["read".to_string(), "write".to_string()],
+            tools: vec!["*".to_string()],
+            credentials: vec![],
+        };
+        navra_core::auth::capability::build_payload(signer.did(), signer.did(), cap, 1, ttl_secs)
+    }
+
+    #[test]
+    fn delegated_pool_bootstrap_token_carries_marker_path() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let root = root_cap_payload(&signer, 24 * 3600);
+        let token = mint_pool_bootstrap_token(Some(&root), &signer, "did:pool:navra-agents")
+            .expect("delegated mint succeeds");
+        let payload = navra_core::auth::capability::decode_token(&token, &signer).expect("decodes");
+
+        // The signed payload carries the marker, not the parent's "**".
+        assert_eq!(payload.cap.paths, vec!["pool/bootstrap".to_string()]);
+        assert!(payload.cap.operations.is_empty());
+        assert!(payload.cap.tools.is_empty());
+        // Proper delegation chain: parent nonce linked, ring
+        // attenuated, expiry clamped to the parent's.
+        assert_eq!(payload.parent, Some(root.nonce));
+        assert_eq!(payload.ring, 2);
+        assert!(payload.exp <= root.exp);
+    }
+
+    #[test]
+    fn delegated_teammate_token_expires_within_parent() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let root = root_cap_payload(&signer, 24 * 3600);
+        let token = mint_teammate_token(
+            Some(&root),
+            &signer,
+            "did:teammate:t1:w1",
+            vec!["read".to_string()],
+            vec!["file_read".to_string()],
+            600,
+        )
+        .expect("delegated mint succeeds");
+        let payload = navra_core::auth::capability::decode_token(&token, &signer).expect("decodes");
+
+        assert_eq!(payload.sub, "did:teammate:t1:w1");
+        assert_eq!(payload.parent, Some(root.nonce));
+        assert!(payload.exp <= root.exp);
+        // The child lives its full TTL (parent is fresh).
+        assert!(payload.exp - payload.iat >= 600);
+    }
+
+    #[test]
+    fn mint_with_stale_parent_returns_explicit_error() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        // Parent with less than the minimum remaining lifetime: any
+        // child clamped to it is born dead.
+        let stale = root_cap_payload(&signer, 30);
+        let err = mint_teammate_token(
+            Some(&stale),
+            &signer,
+            "did:teammate:t1:w1",
+            vec!["read".to_string()],
+            vec![],
+            600,
+        )
+        .expect_err("stale parent must refuse to mint");
+        assert!(err.contains("stale"), "error should say stale: {err}");
+
+        let err = mint_pool_bootstrap_token(Some(&stale), &signer, "did:pool:navra-agents")
+            .expect_err("stale parent must refuse to mint");
+        assert!(err.contains("stale"), "error should say stale: {err}");
+    }
+
+    #[test]
+    fn mint_with_expired_parent_returns_explicit_error() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        // Already-expired parent (negative TTL clamps to a past exp).
+        let mut expired = root_cap_payload(&signer, 3600);
+        expired.exp = now_unix().saturating_sub(10);
+        let err = mint_teammate_token(
+            Some(&expired),
+            &signer,
+            "did:teammate:t1:w1",
+            vec!["read".to_string()],
+            vec![],
+            600,
+        )
+        .expect_err("expired parent must refuse to mint");
+        assert!(err.contains("stale"), "error should say stale: {err}");
     }
 
     #[test]

@@ -6,7 +6,7 @@ description: |
   with an optional SandboxWarmPool of pre-warmed teammate agent
   Sandboxes (NAVRA-195).
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.5.0"
 home: https://github.com/smgglrs-ai/navra
 sources:

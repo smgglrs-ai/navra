@@ -101,21 +101,23 @@ tls:
 
 # Network isolation for spawned agent Sandbox pods
 # (NAVRA-196). Egress is restricted to this release's gateway and
-# cluster DNS. dnsNamespace differs per platform: openshift-dns on
-# OpenShift, kube-system on vanilla Kubernetes. Set to "" to
-# disable the policy entirely.
+# cluster DNS. Defaults are PORTABLE: kube-system + the kube-dns
+# selector works on vanilla Kubernetes (kubeadm and most managed
+# distros running CoreDNS behind k8s-app: kube-dns). OpenShift
+# override (the label is a single SCALAR so it replaces cleanly —
+# a matchLabels map would deep-merge with the default and linger):
+#   netpol:
+#     dnsNamespace: openshift-dns
+#     dnsPodLabel: "dns.operator.openshift.io/daemonset-dns=default"
+# Set dnsPodLabel to "" to select the whole DNS namespace, or
+# dnsNamespace to "" to disable the policy entirely.
 netpol:
-  dnsNamespace: openshift-dns
-  # Label selector matching the DNS daemon pods inside
-  # dnsNamespace — the DNS egress rule is scoped to them instead of
-  # every pod in the namespace. Defaults are OpenShift's; on
-  # vanilla Kubernetes use:
-  #   dnsPodSelector:
-  #     matchLabels:
-  #       k8s-app: kube-dns
-  dnsPodSelector:
-    matchLabels:
-      dns.operator.openshift.io/daemonset-dns: default
+  dnsNamespace: kube-system
+  # DNS daemon pods inside dnsNamespace, as key=value — the DNS
+  # egress rule is scoped to them instead of every pod in the
+  # namespace. Defaults target CoreDNS on vanilla Kubernetes;
+  # OpenShift needs the override above.
+  dnsPodLabel: "k8s-app=kube-dns"
   # Restrict the DNS egress rule to ports 53 UDP/TCP. Disabled by
   # default: under OVN-Kubernetes, port-restricted egress rules
   # never match the DNS punt path, so `ports: [53]` silently drops

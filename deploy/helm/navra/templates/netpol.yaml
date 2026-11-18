@@ -9,10 +9,11 @@
 #   - cluster DNS
 #
 # The DNS rule is scoped with a podSelector to the DNS daemon pods
-# (netpol.dnsPodSelector) instead of every pod in the DNS namespace
-# — without it the rule allows egress to ANY port on ANY pod there.
-# The selector differs per platform (OpenShift vs kube-dns); it is
-# a value for exactly that reason.
+# (netpol.dnsPodLabel, a key=value scalar chosen over a matchLabels
+# map because Helm deep-merges maps — an OpenShift override would
+# silently keep the default k8s-app: kube-dns key and select
+# nothing) instead of every pod in the DNS namespace — without it
+# the rule allows egress to ANY port on ANY pod there.
 #
 # PORTS WORKAROUND (netpol.dnsRestrictPorts, default false): under
 # OVN-Kubernetes, port-restricted egress rules never match the
@@ -58,10 +59,12 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.netpol.dnsNamespace }}
-          {{- with .Values.netpol.dnsPodSelector }}
+        {{- if .Values.netpol.dnsPodLabel }}
+        {{- $kv := splitList "=" .Values.netpol.dnsPodLabel }}
           podSelector:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            matchLabels:
+              {{ index $kv 0 }}: {{ join "=" (slice $kv 1 (len $kv)) | quote }}
+        {{- end }}
       {{- if .Values.netpol.dnsRestrictPorts }}
       ports:
         - port: 53
