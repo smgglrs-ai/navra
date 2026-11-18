@@ -303,7 +303,10 @@ mod tests {
         let signer = Arc::new(Ed25519Signer::generate());
         let cap = navra_core::auth::capability::CapabilitySet {
             paths: vec!["**".to_string()],
-            operations: Vec::new(),
+            // The teammate being adopted holds `read`: delegation
+            // refuses operation escalation, so the root template must
+            // grant it (an empty-grant root cannot mint children).
+            operations: vec!["read".to_string()],
             tools: Vec::new(),
             credentials: vec![],
         };

@@ -3948,7 +3948,7 @@ mod tests {
         assert!(valid_token_hash(VALID_HASH));
         assert!(!valid_token_hash(""));
         assert!(!valid_token_hash(&VALID_HASH[..63]));
-        assert!(!valid_token_hash(&VALID_HASH[..65]));
+        assert!(!valid_token_hash(&format!("{}x", VALID_HASH)));
         assert!(!valid_token_hash(&"A".repeat(64)));
         assert!(!valid_token_hash(&format!("{}g", "0".repeat(63))));
     }
