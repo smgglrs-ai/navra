@@ -148,6 +148,7 @@ impl AgentTaskApi {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use navra_core::identity::CapSigner as _;
 
     fn api_with_registry(reg: Arc<TeamRegistry>) -> AgentTaskApi {
         AgentTaskApi {
