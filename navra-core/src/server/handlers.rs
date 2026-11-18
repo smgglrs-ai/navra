@@ -2651,8 +2651,7 @@ impl McpServer {
         let spoofed_prefix = |tool_name: &str| -> Option<String> {
             modules.iter().find_map(|m| {
                 let prefix = format!("{m}_");
-                (m != module_name && tool_name.starts_with(&prefix))
-                    .then(|| m.clone())
+                (m != module_name && tool_name.starts_with(&prefix)).then(|| m.clone())
             })
         };
         let mut new_names: Vec<String> = Vec::new();
