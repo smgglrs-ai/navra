@@ -942,7 +942,7 @@ pub(crate) fn attach_ui_routes(
                             })
                         })
                         .collect();
-                    axum::Json(serde_json::json!({ "pending": pending }))
+                    axum::Json(serde_json::json!({ "pending": pending })).into_response()
                 }
             })
         })

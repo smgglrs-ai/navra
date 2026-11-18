@@ -962,7 +962,7 @@ pub(crate) fn wire_memory_tools(
     builder = builder.tool(memory_tools::memory_forget_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_forget);
         let cs = cs_forget.clone();
-        Box::pin(memory_tools::handle_memory_forget(args, ks, cs, Some(&ctx)))
+        Box::pin(async move { memory_tools::handle_memory_forget(args, ks, cs, Some(&ctx)).await })
     });
 
     let ks_purge = Arc::clone(&ks);
@@ -972,13 +972,9 @@ pub(crate) fn wire_memory_tools(
         let ks = Arc::clone(&ks_purge);
         let sanitizer = sanitizer_for_purge.clone();
         let cs = cs_purge.clone();
-        Box::pin(memory_tools::handle_memory_purge_pii(
-            args,
-            ks,
-            sanitizer,
-            cs,
-            Some(&ctx),
-        ))
+        Box::pin(async move {
+            memory_tools::handle_memory_purge_pii(args, ks, sanitizer, cs, Some(&ctx)).await
+        })
     });
 
     let ks_forget_content = Arc::clone(&ks);
@@ -988,12 +984,9 @@ pub(crate) fn wire_memory_tools(
         move |args, ctx| {
             let ks = Arc::clone(&ks_forget_content);
             let cs = cs_forget_content.clone();
-            Box::pin(memory_tools::handle_memory_forget_by_content(
-                args,
-                ks,
-                cs,
-                Some(&ctx),
-            ))
+            Box::pin(async move {
+                memory_tools::handle_memory_forget_by_content(args, ks, cs, Some(&ctx)).await
+            })
         },
     );
 
@@ -1020,7 +1013,7 @@ pub(crate) fn wire_memory_tools(
     let ks_consent = Arc::clone(&ks);
     builder = builder.tool(memory_tools::memory_consent_def(), move |args, ctx| {
         let ks = Arc::clone(&ks_consent);
-        Box::pin(memory_tools::handle_memory_consent(args, ks, Some(&ctx)))
+        Box::pin(async move { memory_tools::handle_memory_consent(args, ks, Some(&ctx)).await })
     });
 
     // --- Data retention sweep at startup ---
