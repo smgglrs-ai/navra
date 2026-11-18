@@ -3523,7 +3523,7 @@ mod tests {
             initialized: true,
             context_label: label,
             created_at: 0,
-            last_accessed_at: 0,
+            last_accessed: 0,
         });
 
         let cfg = test_config();
@@ -3919,7 +3919,7 @@ mod tests {
         let (server, admin, worker) = config_api_server();
         let path = unique_config_path("reload");
         // Persist a loadable config at the reload path first.
-        cfg.save(&path).unwrap();
+        cfg.save(std::path::Path::new(&path)).unwrap();
         let router = build_config_api_router(&cfg, server, &path, test_approvals());
 
         // Non-elevated authenticated caller: 403.
