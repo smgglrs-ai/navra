@@ -8,6 +8,47 @@ use crate::config;
 use crate::setup::safety::{SafetyFilterState, build_safety_pipeline};
 use std::sync::Arc;
 
+/// Storage backend for `MemoryExtractionHook`.
+///
+/// Persists extracted knowledge scoped to the session it came from.
+/// Title and content are run through the PII/secret sanitizer before
+/// being written, so persistence is safe regardless of hook ordering
+/// (the SafetyHook's redaction should already have run, but this
+/// guarantees no pre-redaction tool output reaches knowledge.db).
+struct KnowledgeExtractionStore {
+    store: Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
+    sanitizer: crate::memory_tools::PiiSanitizer,
+}
+
+impl navra_core::hooks::ExtractionStore for KnowledgeExtractionStore {
+    fn store_extraction(&self, title: &str, content: &str, session_id: &str, tags: &[String]) {
+        if let Ok(store) = self.store.lock() {
+            let sanitized_title =
+                crate::memory_tools::sanitize_for_storage_sync(title, &self.sanitizer);
+            let sanitized_content =
+                crate::memory_tools::sanitize_for_storage_sync(content, &self.sanitizer);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            let entry = navra_memory::MemoryEntry {
+                id: uuid::Uuid::new_v4().to_string(),
+                memory_type: navra_memory::MemoryType::Fact,
+                title: sanitized_title,
+                content: sanitized_content,
+                tags: tags.to_vec(),
+                created_at: now,
+                updated_at: None,
+            };
+            let scope = navra_memory::MemoryScope {
+                session_id: Some(session_id.to_string()),
+                ..Default::default()
+            };
+            let _ = store.store_scoped(&entry, &scope, None);
+        }
+    }
+}
+
 /// Wire all hooks onto the server builder.
 ///
 /// Returns the builder and the usage tracker (needed externally).
@@ -23,6 +64,25 @@ pub(crate) fn wire_hooks(
     // TaintTracker::declassify under the gateway's signing authority.
     let declass_ledger = Arc::new(navra_core::safety::DeclassificationLedger::new());
     builder = builder.declassification_ledger(Arc::clone(&declass_ledger));
+
+    // --- Memory extraction hook ---
+    //
+    // Registered BEFORE the SafetyHook: post-tool-use hooks run in
+    // reverse registration order, so the SafetyHook (registered
+    // below) redacts tool output first and this hook only ever sees
+    // the redacted result. The store additionally re-sanitizes before
+    // persisting (defense-in-depth against ordering regressions).
+    if let Some(ks) = knowledge_store {
+        let hook = navra_core::hooks::MemoryExtractionHook::new(
+            Arc::new(KnowledgeExtractionStore {
+                store: Arc::clone(ks),
+                sanitizer: crate::memory_tools::build_pii_sanitizer(cfg.memory_pii_filter()),
+            }),
+            navra_core::hooks::MemoryExtractionConfig::default(),
+        );
+        builder = builder.hook(hook);
+        tracing::info!("Memory extraction hook enabled");
+    }
 
     // --- SafetyHook ---
     // Registered unconditionally: the safety pipelines configured for
@@ -152,47 +212,6 @@ pub(crate) fn wire_hooks(
         ));
     }
 
-    // --- Memory extraction hook ---
-    if let Some(ks) = knowledge_store {
-        struct KnowledgeExtractionStore(Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>);
-        impl navra_core::hooks::ExtractionStore for KnowledgeExtractionStore {
-            fn store_extraction(
-                &self,
-                title: &str,
-                content: &str,
-                session_id: &str,
-                tags: &[String],
-            ) {
-                if let Ok(store) = self.0.lock() {
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-                    let entry = navra_memory::MemoryEntry {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        memory_type: navra_memory::MemoryType::Fact,
-                        title: title.to_string(),
-                        content: content.to_string(),
-                        tags: tags.to_vec(),
-                        created_at: now,
-                        updated_at: None,
-                    };
-                    let scope = navra_memory::MemoryScope {
-                        session_id: Some(session_id.to_string()),
-                        ..Default::default()
-                    };
-                    let _ = store.store_scoped(&entry, &scope, None);
-                }
-            }
-        }
-        let hook = navra_core::hooks::MemoryExtractionHook::new(
-            Arc::new(KnowledgeExtractionStore(Arc::clone(ks))),
-            navra_core::hooks::MemoryExtractionConfig::default(),
-        );
-        builder = builder.hook(hook);
-        tracing::info!("Memory extraction hook enabled");
-    }
-
     // --- Causal provenance hook ---
     {
         let causal_db_path = dirs::data_dir()
@@ -303,4 +322,66 @@ pub(crate) fn wire_hooks(
     }
 
     builder
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use navra_core::hooks::ExtractionStore as _;
+
+    #[test]
+    fn extraction_store_sanitizes_pii_before_persisting() {
+        let ks = Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        let store = KnowledgeExtractionStore {
+            store: Arc::clone(&ks),
+            sanitizer: crate::memory_tools::build_pii_sanitizer("standard"),
+        };
+
+        // Pre-redaction tool output containing PII
+        store.store_extraction(
+            "Contact info",
+            "Email: john.doe@example.com, AWS key AKIAIOSFODNN7EXAMPLE",
+            "session-1",
+            &["tool:file_read".to_string()],
+        );
+
+        let ks = ks.lock().unwrap();
+        let entries = ks.list(None).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert!(
+            entries[0].content.contains("[REDACTED:"),
+            "extraction must sanitize before persisting: {}",
+            entries[0].content
+        );
+        assert!(!entries[0].content.contains("john.doe@example.com"));
+        assert!(!entries[0].content.contains("AKIAIOSFODNN7EXAMPLE"));
+    }
+
+    #[test]
+    fn extraction_store_scopes_to_session() {
+        let ks = Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        let store = KnowledgeExtractionStore {
+            store: Arc::clone(&ks),
+            sanitizer: crate::memory_tools::build_pii_sanitizer("none"),
+        };
+
+        store.store_extraction("T", "clean content", "session-A", &[]);
+
+        let scope = navra_memory::MemoryScope {
+            session_id: Some("session-A".to_string()),
+            ..Default::default()
+        };
+        let ks = ks.lock().unwrap();
+        let mine = ks.search_scoped("clean", &scope, 10).unwrap();
+        assert_eq!(mine.len(), 1);
+        let other = navra_memory::MemoryScope {
+            session_id: Some("session-B".to_string()),
+            ..Default::default()
+        };
+        assert!(ks.search_scoped("clean", &other, 10).unwrap().is_empty());
+    }
 }

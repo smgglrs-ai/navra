@@ -96,6 +96,18 @@ struct MessageInfo {
 
 use crate::direct_transport::DirectTransport;
 
+/// Build the model-call hook pipeline for the in-process agent loops.
+///
+/// Runs the injection guard around every model call so that
+/// high-confidence prompt injection — including via retrieved RAG
+/// context or tool output fed back into the conversation — is
+/// blocked instead of reaching the model unfiltered.
+pub(crate) fn model_hook_pipeline() -> Arc<navra_core::hooks::HookPipeline> {
+    let mut pipeline = navra_core::hooks::HookPipeline::new(std::time::Duration::from_secs(5));
+    pipeline.add(navra_core::hooks::InjectionGuardHook::new());
+    Arc::new(pipeline)
+}
+
 // ---------------------------------------------------------------------------
 // Streaming audit sink
 // ---------------------------------------------------------------------------
@@ -274,6 +286,7 @@ pub(crate) async fn handle_agentic_chat(
             temperature: Some(0.7),
             audit_sink: Some(audit_sink),
             context_retriever,
+            hook_pipeline: Some(crate::ui_agent::model_hook_pipeline()),
             ..Default::default()
         };
 
