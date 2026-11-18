@@ -47,16 +47,19 @@ use std::sync::Arc;
 
 use navra_core::identity::Ed25519Signer;
 
-use crate::agent_spawn::mint_teammate_token;
+use crate::agent_spawn::{RootPayloadRefresher, mint_teammate_token};
 use crate::team_tools::TeamRegistry;
 
 /// Gateway state for the task-delivery API.
 pub(crate) struct AgentTaskApi {
     pub(crate) registry: Arc<TeamRegistry>,
     pub(crate) signer: Arc<Ed25519Signer>,
-    /// Root capability payload for delegation chains; `None` falls
-    /// back to flat token minting (same as the spawn paths).
-    pub(crate) root_payload: Option<navra_core::auth::capability::CapabilityPayload>,
+    /// Shared, self-refreshing root capability template for
+    /// delegation chains. The SAME instance is shared with the spawn
+    /// paths (setup/tools.rs wires one refresher everywhere), so a
+    /// refresh performed at any mint site is observed here too;
+    /// `None` falls back to flat token minting.
+    pub(crate) root_payload: Option<RootPayloadRefresher>,
 }
 
 /// Why a task fetch was rejected.
@@ -115,8 +118,13 @@ impl AgentTaskApi {
                 .ok_or(TaskFetchError::NotFound)?;
 
             let teammate_did = format!("did:teammate:{team}:{mate}");
+            // Pull the root template through the shared refresher
+            // (NOT a startup snapshot): a template that has gone
+            // stale since gateway start is re-minted here, so
+            // adoption mints never delegate from a dead root.
+            let fresh_root = self.root_payload.as_ref().map(|r| r.get());
             let token = mint_teammate_token(
-                self.root_payload.as_ref(),
+                fresh_root.as_ref(),
                 &self.signer,
                 &teammate_did,
                 ops,
@@ -281,6 +289,53 @@ mod tests {
         assert_eq!(
             api.task_for(Some("did:pool:navra-agents"), None),
             Err(TaskFetchError::MissingSandboxHeader)
+        );
+    }
+
+    #[test]
+    fn adoption_mints_from_stale_root_via_refresher() {
+        // Regression (audit F1/F3): the adoption mint used a startup
+        // snapshot of the root payload, so an adoption after the root
+        // expired delegated from a dead parent. The refresher must
+        // re-mint the template before delegating.
+        let reg = registry_with_claimed_teammate();
+        let signer = Arc::new(Ed25519Signer::generate());
+        let cap = navra_core::auth::capability::CapabilitySet {
+            paths: vec!["**".to_string()],
+            operations: Vec::new(),
+            tools: Vec::new(),
+            credentials: vec![],
+        };
+        let mut root =
+            navra_core::auth::capability::build_payload(signer.did(), signer.did(), cap, 1, 3600);
+        // Age the template: a 1h window with only 10 minutes left is
+        // below the refresh threshold (a quarter of the window), so
+        // the refresher re-mints at adoption-mint time.
+        root.iat = crate::agent_spawn::now_unix().saturating_sub(3000);
+        root.exp = crate::agent_spawn::now_unix().saturating_add(600);
+        let api = AgentTaskApi {
+            registry: reg,
+            signer: Arc::clone(&signer),
+            root_payload: Some(crate::agent_spawn::RootPayloadRefresher::new(root)),
+        };
+
+        let spec = api
+            .task_for(Some("did:pool:navra-agents"), Some("navra-agents-abc12"))
+            .expect("adoption mints from the refreshed root");
+        let token = spec["token"].as_str().expect("fresh token in spec");
+        let payload =
+            navra_core::auth::capability::decode_token(token, signer.as_ref()).expect("decodes");
+        // The child outlives the stale template's 600s remaining
+        // window: it was minted from a re-minted root (fresh ~1h).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        assert!(
+            payload.exp > now + 600,
+            "child exp {} should outlive the stale root (now + 600 = {})",
+            payload.exp,
+            now + 600
         );
     }
 

@@ -3,16 +3,39 @@
 # the stored PEMs (the CA key is never persisted — only the issued
 # certificates, which is all verification needs). helm template
 # (no cluster access) always generates fresh values.
+#
+# LIFECYCLE NOTES (also in NOTES.txt):
+# - SANs are FROZEN at first install: upgrades reuse the stored
+#   certificates, so changing fullname/namespace later does not
+#   re-issue them. Delete the three secrets (see NOTES.txt) to
+#   rotate.
+# - The server and client certificates expire after 825 days
+#   (browser-grade maximum); the CA lasts 3650 days. When the leaf
+#   certs approach expiry, rotate by deleting the tls secrets and
+#   re-running helm upgrade.
 {{- if .Values.tls.enabled }}
 {{- $fullname := include "navra.fullname" . }}
 {{- $ns := .Release.Namespace }}
 {{- $caSecret := lookup "v1" "Secret" $ns (printf "%s-tls-ca" $fullname) }}
 {{- $serverSecret := lookup "v1" "Secret" $ns (printf "%s-tls-server" $fullname) }}
 {{- $clientSecret := lookup "v1" "Secret" $ns (printf "%s-tls-client" $fullname) }}
+{{- /* A PARTIAL secret set (some but not all of the three TLS
+       secrets exist — e.g. a manually deleted server secret, or an
+       upgrade that applied only some of the documents) cannot be
+       completed: the CA key is never persisted, so the missing
+       members cannot be issued from the stored CA. Reusing the
+       survivors would serve a mix of certificates that verify
+       against nothing. Detect it here and regenerate ALL THREE
+       from the fresh CA below, atomically in this one upgrade. */}}
+{{- $caExists := hasKey $caSecret "data" }}
+{{- $srvExists := hasKey $serverSecret "data" }}
+{{- $cliExists := hasKey $clientSecret "data" }}
+{{- $complete := and $caExists $srvExists $cliExists }}
+{{- $partial := and (not $complete) (or $caExists $srvExists $cliExists) }}
 {{- /* Distinct CA common name: a leaf whose issuer DN equals its
-       own subject DN is treated as self-signed by OpenSSL chain
-       building (check_issued compares names, not keys) — the CA
-       and the server certificate must not share a CN. */}}
+        own subject DN is treated as self-signed by OpenSSL chain
+        building (check_issued compares names, not keys) — the CA
+        and the server certificate must not share a CN. */}}
 {{- $ca := genCA (printf "%s-tls-ca" $fullname) 3650 }}
 {{- $sans := list
       $fullname
@@ -27,22 +50,24 @@
 {{- $client := genSignedCert (printf "%s-client" $fullname) nil nil 825 $ca }}
 
 {{- /* Reuse stored PEMs across upgrades (lookup returns an empty
-       map when the secret does not exist — check .data presence,
-       not truthiness). */}}
+        map when the secret does not exist — check .data presence,
+        not truthiness). Only a COMPLETE set is reused; a partial
+        set falls through to the freshly generated values above so
+        all three secrets rotate together from one CA. */}}
 {{- $caCrt := $ca.Cert }}
-{{- if hasKey $caSecret "data" }}
+{{- if $complete }}
   {{- $caCrt = index $caSecret.data "ca.crt" | b64dec }}
 {{- end }}
 {{- $srvCrt := $server.Cert }}
 {{- $srvKey := $server.Key }}
-{{- if hasKey $serverSecret "data" }}
+{{- if $complete }}
   {{- $srvCrt = index $serverSecret.data "tls.crt" | b64dec }}
   {{- $srvKey = index $serverSecret.data "tls.key" | b64dec }}
 {{- end }}
 {{- $cliCrt := $client.Cert }}
 {{- $cliKey := $client.Key }}
 {{- $cliPem := cat $client.Cert $client.Key }}
-{{- if hasKey $clientSecret "data" }}
+{{- if $complete }}
   {{- $cliCrt = index $clientSecret.data "tls.crt" | b64dec }}
   {{- $cliKey = index $clientSecret.data "tls.key" | b64dec }}
   {{- $cliPem = index $clientSecret.data "tls.pem" | b64dec }}
@@ -56,6 +81,13 @@ metadata:
   name: {{ $fullname }}-tls-ca
   labels:
     {{- include "navra.labels" . | nindent 4 }}
+  {{- if $partial }}
+  # Marker for operators auditing an unexpected CA change: this
+  # upgrade found an incomplete TLS secret set and rotated all
+  # three secrets from a fresh CA (see NOTES.txt).
+  annotations:
+    navra.io/tls-rotated-from-partial-set: "true"
+  {{- end }}
 type: Opaque
 stringData:
   ca.crt: {{ $caCrt | quote }}
@@ -67,6 +99,10 @@ metadata:
   name: {{ $fullname }}-tls-server
   labels:
     {{- include "navra.labels" . | nindent 4 }}
+  {{- if $partial }}
+  annotations:
+    navra.io/tls-rotated-from-partial-set: "true"
+  {{- end }}
 type: kubernetes.io/tls
 stringData:
   tls.crt: {{ $srvCrt | quote }}
@@ -81,6 +117,10 @@ metadata:
   name: {{ $fullname }}-tls-client
   labels:
     {{- include "navra.labels" . | nindent 4 }}
+  {{- if $partial }}
+  annotations:
+    navra.io/tls-rotated-from-partial-set: "true"
+  {{- end }}
 type: Opaque
 stringData:
   tls.crt: {{ $cliCrt | quote }}

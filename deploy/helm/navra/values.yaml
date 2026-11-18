@@ -57,8 +57,9 @@ storage:
 
 # Root identity for delegated capability tokens. All replicas of
 # THIS deployment share the seed (mounted at /identity). Each
-# deployment gets its own — tokens do not verify across
-# deployments.
+# deployment gets its own — tokens do not verify across deployments.
+# Renaming the release mints a fresh seed and orphans the old
+# <name>-identity Secret (see NOTES.txt — delete it).
 identity:
   # Generate a random 32-byte seed in a Secret on first install.
   # Set false + existingSecret to bring your own.
@@ -116,7 +117,11 @@ netpol:
   # DNS daemon pods inside dnsNamespace, as key=value — the DNS
   # egress rule is scoped to them instead of every pod in the
   # namespace. Defaults target CoreDNS on vanilla Kubernetes;
-  # OpenShift needs the override above.
+  # OpenShift needs the override above. The value is VALIDATED at
+  # chart render time: it must be exactly one key=value pair whose
+  # value is a valid Kubernetes label value (alphanumerics, '-',
+  # '_', '.'), so a typo fails the install immediately instead of
+  # rendering a policy whose DNS rule selects nothing.
   dnsPodLabel: "k8s-app=kube-dns"
   # Restrict the DNS egress rule to ports 53 UDP/TCP. Disabled by
   # default: under OVN-Kubernetes, port-restricted egress rules

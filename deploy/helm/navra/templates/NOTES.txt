@@ -10,6 +10,33 @@ must switch to https and trust this chart's CA:
 Point clients at https://...:443 (or set gatewayPort to keep the old
 port) with the CA above in their trust store, or set tls.enabled=false
 to restore plaintext (not recommended).
+
+TLS lifecycle:
+  - SANs are FROZEN at first install: upgrades reuse the stored
+    certificates, so they do not follow later fullname/namespace
+    changes. Rotation procedure (also for SAN changes):
+      kubectl -n {{ .Release.Namespace }} delete secret \
+        {{ include "navra.fullname" . }}-tls-ca \
+        {{ include "navra.fullname" . }}-tls-server \
+        {{ include "navra.fullname" . }}-tls-client
+      helm upgrade {{ .Release.Name }} <chart>   # re-issues all three
+  - The server and client certificates expire after 825 days (the
+    CA lasts 3650). Before that cliff, rotate with the same
+    procedure — clients must then re-fetch the new CA secret.
+  - If only SOME of the three TLS secrets exist (partial set, e.g.
+    one was deleted), the chart regenerates ALL of them from a new
+    CA on the next upgrade (marked with the annotation
+    navra.io/tls-rotated-from-partial-set).
+{{- end }}
+
+{{- if .Values.identity.create }}
+
+Identity rename note: the root identity Secret is named after this
+release ({{ include "navra.fullname" . }}-identity). Renaming the
+release installs a FRESH identity seed — old delegated tokens stop
+verifying, and the previous release's {{ "<old-release>" }}-navra-identity
+Secret is orphaned. Delete it (it still holds a live root key):
+  kubectl -n {{ .Release.Namespace }} delete secret <old-release>-navra-identity
 {{- end }}
 
 {{- if gt (int .Values.replicas) 1 }}

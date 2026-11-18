@@ -23,17 +23,16 @@ const POOL_BOOTSTRAP_TOKEN_TTL_SECS: u64 = 24 * 3600;
 
 /// Minimum remaining lifetime a delegated child token must have for
 /// minting to be worthwhile. `build_delegated_payload` clamps the
-/// child expiry to `min(now + ttl, parent.exp)`, so once the root
-/// capability (built once at gateway startup with a 24h TTL) nears
-/// its own expiry, every delegated mint is born nearly dead. Rather
-/// than silently handing out dead tokens, refuse with a clear error.
-///
-/// The real fix is refreshing the root payload at startup/periodic
-/// in `setup/tools.rs` (see the report to the lead); this guard just
-/// makes the failure loud and explicit.
+/// child expiry to `min(now + ttl, parent.exp)`. All mint sites now
+/// pull the root template through [`RootPayloadRefresher::get`],
+/// which re-mints near expiry — this guard is the loud-failure
+/// backstop for anything that still slips past it (e.g. a mint
+/// racing a refresh, or a manually constructed stale parent in
+/// tests): it refuses to hand out dead tokens with a clear error
+/// instead of failing silently at verification time.
 const MIN_DELEGATED_TTL_SECS: u64 = 60;
 
-fn now_unix() -> u64 {
+pub(crate) fn now_unix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -83,37 +82,71 @@ fn ensure_parent_fresh(
 /// cannot yet *require* the marker — enforcement needs the route to
 /// forward the decoded payload. The adoption path is instead
 /// protected by the pool binding (see `agent_task_api` module docs).
-/// Remaining root-payload seconds below which the template is
-/// re-minted with a fresh TTL before delegation. Children clamp
-/// their expiry to the parent's, so without this a coordinator that
-/// has been up longer than the root TTL would mint dead tokens (the
-/// mint-path `ensure_parent_fresh` guard turns that into a loud
-/// error instead).
-const ROOT_REFRESH_THRESHOLD_SECS: u64 = 6 * 3600;
+/// Shared, self-refreshing root capability template.
+///
+/// Every mint site (the four teammate spawn paths, the warm-pool
+/// bootstrap secret, and the task endpoint's adoption mint) reads
+/// the root payload through ONE live instance of this type, so
+/// divergent root templates cannot coexist: a refresh performed by
+/// any reader is observed by every subsequent reader.
+///
+/// Children clamp their expiry to the parent's, so without
+/// refreshing, a coordinator that has been up longer than the root
+/// TTL would mint dead tokens (the mint-path `ensure_parent_fresh`
+/// guard turns that into a loud error instead). The refresh TTL is
+/// derived from the template's own `exp - iat` (not a hardcoded
+/// constant): when the remaining lifetime drops below a quarter of
+/// the template TTL, the payload is re-minted under the write lock
+/// with the same issuer, subject, capabilities, and ring — only the
+/// expiry window rolls forward. A quarter matches the previous
+/// behavior (refresh inside the last 6h of a 24h template).
+#[derive(Clone)]
+pub struct RootPayloadRefresher {
+    payload: std::sync::Arc<std::sync::RwLock<navra_core::auth::capability::CapabilityPayload>>,
+}
 
-/// Clone the root payload template, re-minting it with a fresh TTL
-/// when its remaining validity drops below
-/// [`ROOT_REFRESH_THRESHOLD_SECS`]. Same capabilities, ring, and
-/// subject — only the expiry window rolls forward.
-pub(crate) fn fresh_root_payload(
-    root: Option<&navra_core::auth::capability::CapabilityPayload>,
-) -> Option<navra_core::auth::capability::CapabilityPayload> {
-    let root = root?;
-    let remaining = root.exp.saturating_sub(now_unix());
-    if remaining >= ROOT_REFRESH_THRESHOLD_SECS {
-        return Some(root.clone());
+impl RootPayloadRefresher {
+    /// Wrap an initial root payload template. Clones share the same
+    /// underlying template (refreshes are visible to all of them).
+    pub fn new(payload: navra_core::auth::capability::CapabilityPayload) -> Self {
+        Self {
+            payload: std::sync::Arc::new(std::sync::RwLock::new(payload)),
+        }
     }
-    tracing::warn!(
-        remaining,
-        "root capability template is near expiry; re-minting with a fresh TTL"
-    );
-    Some(navra_core::auth::capability::build_payload(
-        &root.iss,
-        &root.sub,
-        root.cap.clone(),
-        root.ring,
-        86400,
-    ))
+
+    /// Get the current root payload, re-minting it with a fresh TTL
+    /// (same capabilities, ring, and subject) when its remaining
+    /// validity drops below a quarter of the template TTL.
+    pub fn get(&self) -> navra_core::auth::capability::CapabilityPayload {
+        self.get_at(now_unix())
+    }
+
+    /// Test seam for [`get`] with an explicit clock.
+    pub(crate) fn get_at(&self, now: u64) -> navra_core::auth::capability::CapabilityPayload {
+        let mut guard = self.payload.write().unwrap_or_else(|e| e.into_inner());
+        let root = &*guard;
+        let ttl = root.exp.saturating_sub(root.iat);
+        let remaining = root.exp.saturating_sub(now);
+        // remaining >= ttl / 4, without relying on u64 division
+        // rounding for tiny TTLs.
+        if remaining.saturating_mul(4) >= ttl {
+            return root.clone();
+        }
+        tracing::warn!(
+            remaining,
+            ttl,
+            "root capability template is near expiry; re-minting with a fresh TTL"
+        );
+        let fresh = navra_core::auth::capability::build_payload(
+            &root.iss,
+            &root.sub,
+            root.cap.clone(),
+            root.ring,
+            ttl,
+        );
+        *guard = fresh.clone();
+        fresh
+    }
 }
 
 pub(crate) fn mint_pool_bootstrap_token(
@@ -203,11 +236,14 @@ pub struct TeammateSpawnContext {
     pub navra_addr: String,
     pub signer: std::sync::Arc<navra_core::identity::Ed25519Signer>,
     pub forge: Option<std::sync::Arc<navra_cognitive::ForgeService>>,
-    /// Root capability payload used as the parent for delegated teammate tokens.
-    /// When `Some`, teammate tokens are minted via `build_delegated_payload`
-    /// with proper delegation chain (parent nonce, attenuation validation).
-    /// When `None`, falls back to flat `build_payload` (backward compatible).
-    pub root_payload: Option<navra_core::auth::capability::CapabilityPayload>,
+    /// Shared, self-refreshing root capability template used as the
+    /// parent for delegated teammate tokens. When `Some`, teammate
+    /// tokens are minted via `build_delegated_payload` with proper
+    /// delegation chain (parent nonce, attenuation validation), and
+    /// every mint first pulls a live template from
+    /// [`RootPayloadRefresher::get`]. When `None`, falls back to
+    /// flat `build_payload` (backward compatible).
+    pub root_payload: Option<RootPayloadRefresher>,
     /// Optional PII filter applied to model-generated reasoning text.
     /// When set, teammate agents filter their text output to prevent
     /// PII leaking through model reasoning even after tool results
@@ -294,7 +330,7 @@ fn spawn_containerized_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
+    let root_refresher = ctx.root_payload.clone();
     let navra_addr = ctx.navra_addr.clone();
     let model_server_url = ctx.model_server_url.clone();
     let agent_image = ctx.agent_image.clone();
@@ -341,6 +377,9 @@ fn spawn_containerized_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            // Pull the root template at mint time so a refresh by
+            // any other mint site is observed here.
+            let root_payload = root_refresher.as_ref().map(|r| r.get());
             let token = match mint_teammate_token(
                 root_payload.as_ref(),
                 signer.as_ref(),
@@ -634,7 +673,7 @@ fn spawn_openshell_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
+    let root_refresher = ctx.root_payload.clone();
     let navra_addr = ctx.navra_addr.clone();
     let gateway_url = ctx.openshell_gateway.clone().unwrap();
     let agent_image = ctx.agent_image.clone();
@@ -679,6 +718,9 @@ fn spawn_openshell_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            // Pull the root template at mint time (see the Podman
+            // path note).
+            let root_payload = root_refresher.as_ref().map(|r| r.get());
             let token = match mint_teammate_token(
                 root_payload.as_ref(),
                 signer.as_ref(),
@@ -1111,10 +1153,13 @@ pub(crate) async fn ensure_pool_bootstrap_secret(
     k8s: &KubernetesAgentConfig,
     pool: &str,
     signer: &std::sync::Arc<navra_core::identity::Ed25519Signer>,
-    root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
+    root_payload: &Option<RootPayloadRefresher>,
 ) -> Result<(), String> {
     let pool_did = format!("did:pool:{pool}");
-    let bootstrap_token = mint_pool_bootstrap_token(root_payload.as_ref(), signer, &pool_did)?;
+    // Mint from the live root template: a refresh performed by any
+    // mint site (spawn paths, task endpoint) is observed here.
+    let fresh_root = root_payload.as_ref().map(|r| r.get());
+    let bootstrap_token = mint_pool_bootstrap_token(fresh_root.as_ref(), signer, &pool_did)?;
     let secret_name = format!("{pool}-bootstrap-token");
     kubectl_apply_manifest(
         k8s,
@@ -1133,7 +1178,7 @@ async fn claim_warm_sandbox(
     pool: &str,
     claim_name: &str,
     signer: &std::sync::Arc<navra_core::identity::Ed25519Signer>,
-    root_payload: &Option<navra_core::auth::capability::CapabilityPayload>,
+    root_payload: &Option<RootPayloadRefresher>,
 ) -> Result<String, String> {
     // 1. Keep the pool bootstrap token secret current.
     ensure_pool_bootstrap_secret(k8s, pool, signer, root_payload).await?;
@@ -1339,7 +1384,7 @@ fn spawn_kubernetes_agent(
 ) -> tokio::task::JoinHandle<()> {
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
-    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
+    let root_refresher = ctx.root_payload.clone();
     let model_server_url = ctx.model_server_url.clone();
     let agent_image = ctx.agent_image.clone();
     let container_memory = ctx.container_memory.clone();
@@ -1384,6 +1429,9 @@ fn spawn_kubernetes_agent(
             };
 
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            // Pull the root template at mint time (see the Podman
+            // path note).
+            let root_payload = root_refresher.as_ref().map(|r| r.get());
             let token = match mint_teammate_token(
                 root_payload.as_ref(),
                 signer.as_ref(),
@@ -1446,7 +1494,8 @@ fn spawn_kubernetes_agent(
             // pool is drained or the extensions are not installed.
             let mut claimed_warm = false;
             if let Some(ref pool) = k8s.warm_pool {
-                match claim_warm_sandbox(&k8s, pool, &sandbox_name, &signer, &root_payload).await {
+                match claim_warm_sandbox(&k8s, pool, &sandbox_name, &signer, &root_refresher).await
+                {
                     Ok(adopted) => {
                         // Register the sandbox → teammate mapping —
                         // bound to THIS pool's DID — before the pod's
@@ -1849,7 +1898,7 @@ pub fn spawn_teammate_agent(
     let reg = std::sync::Arc::clone(&ctx.team_registry);
     let signer = std::sync::Arc::clone(&ctx.signer);
     let forge = ctx.forge.clone();
-    let root_payload = crate::agent_spawn::fresh_root_payload(ctx.root_payload.as_ref());
+    let root_refresher = ctx.root_payload.clone();
     let pii_filter = ctx.pii_filter.clone();
     let audit_log = ctx.audit_log.clone();
     let embedding_model = ctx.embedding_model.clone();
@@ -1884,6 +1933,9 @@ pub fn spawn_teammate_agent(
             };
             let tm_tools_desc = tm_tools.join(", ");
             let did = format!("did:teammate:{}:{}", team_id, teammate_id);
+            // Pull the root template at mint time (see the Podman
+            // path note).
+            let root_payload = root_refresher.as_ref().map(|r| r.get());
             let token = if let Some(ref root) = root_payload {
                 // Delegated token: scoped to teammate's operations/tools,
                 // chained from the server's root capability payload.
@@ -2517,6 +2569,60 @@ mod tests {
         )
         .expect_err("expired parent must refuse to mint");
         assert!(err.contains("stale"), "error should say stale: {err}");
+    }
+
+    #[test]
+    fn refresher_returns_template_while_fresh() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let root = root_cap_payload(&signer, 24 * 3600);
+        let refresher = RootPayloadRefresher::new(root.clone());
+        let got = refresher.get();
+        // Fresh template: identical payload, no re-mint.
+        assert_eq!(got.nonce, root.nonce);
+        assert_eq!(got.exp, root.exp);
+    }
+
+    #[test]
+    fn refresher_remints_with_template_derived_ttl_near_expiry() {
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let root = root_cap_payload(&signer, 24 * 3600);
+        let original_nonce = root.nonce;
+        let original_iss = root.iss.clone();
+        let refresher = RootPayloadRefresher::new(root);
+        // 23h elapsed: remaining (1h) is below a quarter of the
+        // template TTL (6h) → re-mint. The fresh TTL is derived from
+        // the template's exp - iat, not a hardcoded constant.
+        let later = now_unix() + 23 * 3600;
+        let got = refresher.get_at(later);
+        assert_ne!(
+            got.nonce, original_nonce,
+            "near-expiry template must re-mint"
+        );
+        // TTL derived from the template window, not a constant.
+        assert_eq!(got.exp.saturating_sub(got.iat), 24 * 3600);
+        // Same issuer, subject, ring, and capabilities.
+        assert_eq!(got.iss, original_iss);
+        assert_eq!(got.ring, 1);
+        assert_eq!(
+            got.cap.operations,
+            vec!["read".to_string(), "write".to_string()]
+        );
+    }
+
+    #[test]
+    fn refresher_refresh_is_shared_across_clones() {
+        // Clones share one live template: a refresh performed
+        // through one handle is observed by the others — divergent
+        // root payloads cannot coexist.
+        let signer = navra_core::identity::Ed25519Signer::generate();
+        let root = root_cap_payload(&signer, 24 * 3600);
+        let refresher = RootPayloadRefresher::new(root);
+        let clone = refresher.clone();
+        // Force a re-mint through the original handle.
+        let later = now_unix() + 23 * 3600;
+        let refreshed = refresher.get_at(later);
+        // The clone observes the refreshed template (same nonce).
+        assert_eq!(clone.get().nonce, refreshed.nonce);
     }
 
     #[test]
