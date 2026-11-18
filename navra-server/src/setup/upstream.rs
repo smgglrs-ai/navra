@@ -367,7 +367,12 @@ async fn wire_openapi_upstream(
                 }
             }
 
-            builder = builder.module(module);
+            // Mark the module in `upstream_modules` so OpenAPI-bridged
+            // tools are treated as upstream-hosted, matching MCP
+            // upstream wiring (parity with setup/modules.rs discovery).
+            builder = builder
+                .upstream_module(upstream_cfg.name.clone())
+                .module(module);
         }
         Err(e) => {
             tracing::error!(

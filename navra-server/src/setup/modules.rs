@@ -357,7 +357,13 @@ pub(crate) async fn wire_modules(
                             );
                         }
                     }
-                    builder = builder.module(module);
+                    // Mark the module in `upstream_modules` so IFC /
+                    // tool-prefix logic treats these tools as
+                    // upstream-hosted (parity with [[upstream]]
+                    // wiring in setup/upstream.rs).
+                    builder = builder
+                        .upstream_module(endpoint.domain.clone())
+                        .module(module);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -470,7 +476,9 @@ pub(crate) async fn wire_modules(
                             );
                         }
                     }
-                    builder = builder.module(module);
+                    // Mark the module in `upstream_modules` (see the
+                    // AID discovery block above for rationale).
+                    builder = builder.upstream_module(server.name.clone()).module(module);
                 }
                 Err(e) => {
                     tracing::debug!(

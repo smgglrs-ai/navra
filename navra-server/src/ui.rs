@@ -105,6 +105,49 @@ pub(crate) async fn auth_middleware(
     next.run(request).await
 }
 
+/// Permission-set names that only config.toml may define. The
+/// config API rejects upserts with these names so no API caller —
+/// elevated or not — can mint or reshape the elevation boundary
+/// itself at runtime.
+const RESERVED_PERMISSION_SETS: &[&str] = &["admin", "root"];
+
+/// Authenticate the caller and require an elevated (admin/root)
+/// permission set for mutating config-API routes.
+///
+/// The route-level `auth_middleware` only checks token validity;
+/// this re-authenticates and authorizes (fail closed), mirroring
+/// the approval-resolution route. Any authenticated agent can
+/// otherwise mint a permission set named "admin" or overwrite
+/// another agent's config wholesale, bypassing every
+/// `is_elevated` gate.
+fn require_elevated(
+    server: &navra_core::McpServer,
+    headers: &axum::http::HeaderMap,
+) -> Result<navra_core::auth::AgentIdentity, axum::http::StatusCode> {
+    let agent = server
+        .authenticator()
+        .authenticate(headers)
+        .map_err(|_| axum::http::StatusCode::UNAUTHORIZED)?;
+    if !crate::memory_tools::is_elevated(agent.permissions.as_str()) {
+        tracing::warn!(
+            caller = %agent.name,
+            permissions = %agent.permissions,
+            "Config API mutation denied: caller is not elevated"
+        );
+        return Err(axum::http::StatusCode::FORBIDDEN);
+    }
+    Ok(agent)
+}
+
+/// Agent token hashes are hex digests (BLAKE3): exactly 64
+/// lowercase hex characters. Rejects malformed hashes before they
+/// reach the config file.
+fn valid_token_hash(s: &str) -> bool {
+    s.len() == 64
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 /// Build the web UI routes and attach them to the given router.
 ///
 /// This adds static asset routes (`/`, `/ui/style.css`, `/ui/app.js`)
@@ -651,18 +694,46 @@ pub(crate) fn attach_ui_routes(
         })
 
         // --- API: Upsert permission set ---
+        // Mutating config via the API requires an elevated caller
+        // (admin/root): without this, ANY authenticated agent could
+        // mint a permission set named "admin" and bypass every
+        // is_elevated gate.
         .route("/permissions/{name}", {
             let cs_put = Arc::clone(&config_state);
             let cp_put = config_path.clone();
+            let auth_put = Arc::clone(server);
             let cs_del = Arc::clone(&config_state);
             let cp_del = config_path.clone();
+            let auth_del = Arc::clone(server);
             axum::routing::put(move |
                 axum::extract::Path(name): axum::extract::Path<String>,
+                headers: axum::http::HeaderMap,
                 axum::Json(body): axum::Json<config::PermissionSet>,
             | {
                 let cs = cs_put.clone();
                 let cp = cp_put.clone();
+                let auth = Arc::clone(&auth_put);
                 async move {
+                    if let Err(status) = require_elevated(&auth, &headers) {
+                        return (
+                            status,
+                            "Mutating permission sets requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
+                    // "admin"/"root" may only come from config.toml —
+                    // an API upsert of these names would let even an
+                    // elevated caller reshape the elevation boundary.
+                    if RESERVED_PERMISSION_SETS.contains(&name.as_str()) {
+                        return (
+                            axum::http::StatusCode::CONFLICT,
+                            format!(
+                                "Permission set '{name}' is reserved and can only be \
+                                 defined in config.toml"
+                            ),
+                        )
+                            .into_response();
+                    }
                     let mut cfg = cs.write().await;
                     cfg.permissions.insert(name.clone(), body);
                     match cfg.save(&cp) {
@@ -676,10 +747,19 @@ pub(crate) fn attach_ui_routes(
             })
             .delete(move |
                 axum::extract::Path(name): axum::extract::Path<String>,
+                headers: axum::http::HeaderMap,
             | {
                 let cs = cs_del.clone();
                 let cp = cp_del.clone();
+                let auth = Arc::clone(&auth_del);
                 async move {
+                    if let Err(status) = require_elevated(&auth, &headers) {
+                        return (
+                            status,
+                            "Mutating permission sets requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
                     let mut cfg = cs.write().await;
                     if cfg.permissions.remove(&name).is_some() {
                         match cfg.save(&cp) {
@@ -697,18 +777,64 @@ pub(crate) fn attach_ui_routes(
         })
 
         // --- API: Upsert agent ---
+        // Agents may edit ONLY their own config; any other agent
+        // (or a new one) requires an elevated caller. Without this,
+        // any authenticated agent could overwrite another agent's
+        // config — token hash, permission set, upstreams — wholesale.
         .route("/agents/{name}", {
             let cs_put = Arc::clone(&config_state);
             let cp_put = config_path.clone();
+            let auth_put = Arc::clone(server);
             let cs_del = Arc::clone(&config_state);
             let cp_del = config_path.clone();
+            let auth_del = Arc::clone(server);
             axum::routing::put(move |
                 axum::extract::Path(name): axum::extract::Path<String>,
+                headers: axum::http::HeaderMap,
                 axum::Json(mut body): axum::Json<config::AgentConfig>,
             | {
                 let cs = cs_put.clone();
                 let cp = cp_put.clone();
+                let auth = Arc::clone(&auth_put);
                 async move {
+                    // Re-authenticate (fail closed) and authorize:
+                    // elevated callers may edit any agent, everyone
+                    // else only themselves.
+                    let caller = match auth.authenticator().authenticate(&headers) {
+                        Ok(a) => a,
+                        Err(_) => {
+                            return (
+                                axum::http::StatusCode::UNAUTHORIZED,
+                                "invalid or missing token",
+                            )
+                                .into_response();
+                        }
+                    };
+                    if caller.name != name
+                        && !crate::memory_tools::is_elevated(caller.permissions.as_str())
+                    {
+                        tracing::warn!(
+                            caller = %caller.name,
+                            target = %name,
+                            "Agent upsert denied: caller is not elevated and not the target agent"
+                        );
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            "Agents may only edit their own config; editing other \
+                             agents requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
+                    // Reject malformed token hashes before they reach
+                    // the config file (a corrupt hash would silently
+                    // brick the agent's authentication).
+                    if !valid_token_hash(&body.token_hash) {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            "token_hash must be a 64-character lowercase hex digest",
+                        )
+                            .into_response();
+                    }
                     body.name = name.clone();
                     let mut cfg = cs.write().await;
                     if let Some(existing) = cfg.agents.iter_mut().find(|a| a.name == name) {
@@ -727,10 +853,22 @@ pub(crate) fn attach_ui_routes(
             })
             .delete(move |
                 axum::extract::Path(name): axum::extract::Path<String>,
+                headers: axum::http::HeaderMap,
             | {
                 let cs = cs_del.clone();
                 let cp = cp_del.clone();
+                let auth = Arc::clone(&auth_del);
                 async move {
+                    // Deleting an agent (even yourself — an agent
+                    // should not be able to remove its own audit
+                    // identity) requires elevation.
+                    if let Err(status) = require_elevated(&auth, &headers) {
+                        return (
+                            status,
+                            "Deleting agents requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
                     let mut cfg = cs.write().await;
                     let before = cfg.agents.len();
                     cfg.agents.retain(|a| a.name != name);
@@ -774,11 +912,24 @@ pub(crate) fn attach_ui_routes(
         // --- API: Approval resolution (admin) ---
         // GET /api/approvals lists pending requests so operators (and
         // the `navra approve` CLI) can discover what awaits resolution.
+        // The listing includes pending request details (agent,
+        // operation, path) and is restricted to elevated callers —
+        // any authenticated agent must not be able to enumerate
+        // other agents' pending operations.
         .route("/approvals", {
             let approvals = Arc::clone(&approvals);
-            axum::routing::get(move || {
+            let auth_server = Arc::clone(server);
+            axum::routing::get(move |headers: axum::http::HeaderMap| {
                 let approvals = Arc::clone(&approvals);
+                let auth = Arc::clone(&auth_server);
                 async move {
+                    if let Err(status) = require_elevated(&auth, &headers) {
+                        return (
+                            status,
+                            "Listing approval requests requires an elevated permission set",
+                        )
+                            .into_response();
+                    }
                     let pending: Vec<serde_json::Value> = approvals
                         .pending_requests()
                         .into_iter()
@@ -973,19 +1124,30 @@ pub(crate) fn attach_ui_routes(
                             .into_response();
                         };
 
-                        // Identify the caller for safety/audit
-                        let agent = srv.authenticator().authenticate(&headers).ok();
-                        let agent_name = agent.as_ref().map(|a| a.name.as_str()).unwrap_or("anonymous");
-                        let permissions = agent.as_ref().map(|a| a.permissions.as_str()).unwrap_or("dev");
+                        // Identify the caller for safety/audit. Agents
+                        // hold delegated tokens; there is deliberately
+                        // NO anonymous fallback — requests that do not
+                        // authenticate are rejected outright.
+                        let agent = match srv.authenticator().authenticate(&headers) {
+                            Ok(a) => a,
+                            Err(_) => {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    "invalid or missing token",
+                                )
+                                    .into_response();
+                            }
+                        };
+                        let agent_name = agent.name.as_str();
+                        let permissions = agent.permissions.as_str();
 
                         // Concurrency limit for model requests (same semaphore as tool calls)
-                        let _concurrency_permit = if let Some(ref a) = agent
-                            && let Some(max) = a.max_concurrent {
-                                match srv.acquire_concurrency_permit(&a.name, max) {
+                        let _concurrency_permit = if let Some(max) = agent.max_concurrent {
+                                match srv.acquire_concurrency_permit(&agent.name, max) {
                                     Ok(permit) => Some(permit),
                                     Err(_) => {
                                         return axum::Json(serde_json::json!({
-                                            "error": {"message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name), "type": "rate_limit_error"}
+                                            "error": {"message": format!("Concurrency limit ({max}) reached for agent '{}'", agent.name), "type": "rate_limit_error"}
                                         })).into_response();
                                     }
                                 }
@@ -1174,8 +1336,8 @@ pub(crate) fn attach_ui_routes(
                             model_entries.get(model_name)
                         } else {
                             agent
+                                .model
                                 .as_ref()
-                                .and_then(|a| a.model.as_ref())
                                 .and_then(|name| model_entries.get(name))
                                 .or_else(|| model_entries.get(model_name))
                         };
@@ -1355,6 +1517,12 @@ pub(crate) fn attach_ui_routes(
                                     "error": {"message": "No Vertex AI credentials", "type": "authentication_error"}
                                 })).into_response();
                             }
+                        } else if let Some(key) =
+                            model_entry.and_then(|e| e.api_key.as_deref())
+                        {
+                            // Generic OpenAI-compatible upstream: attach
+                            // the configured api_key as a bearer token.
+                            req = req.header("Authorization", format!("Bearer {key}"));
                         }
 
                         let resp = match req.send().await {
@@ -1549,20 +1717,31 @@ pub(crate) fn attach_ui_routes(
                         async move {
                             let start = std::time::Instant::now();
 
-                            // Authenticate caller
-                            let agent = srv.authenticator().authenticate(&headers).ok();
-                            let agent_name = agent.as_ref().map(|a| a.name.as_str()).unwrap_or("anonymous");
-                            let permissions = agent.as_ref().map(|a| a.permissions.as_str()).unwrap_or("dev");
+                            // Authenticate caller. Agents hold
+                            // delegated tokens; there is deliberately
+                            // NO anonymous fallback — unauthenticated
+                            // requests are rejected outright.
+                            let agent = match srv.authenticator().authenticate(&headers) {
+                                Ok(a) => a,
+                                Err(_) => {
+                                    return (
+                                        axum::http::StatusCode::UNAUTHORIZED,
+                                        "invalid or missing token",
+                                    )
+                                        .into_response();
+                                }
+                            };
+                            let agent_name = agent.name.as_str();
+                            let permissions = agent.permissions.as_str();
 
                             // Concurrency limit
-                            let _concurrency_permit = if let Some(ref a) = agent
-                                && let Some(max) = a.max_concurrent {
-                                    match srv.acquire_concurrency_permit(&a.name, max) {
+                            let _concurrency_permit = if let Some(max) = agent.max_concurrent {
+                                    match srv.acquire_concurrency_permit(&agent.name, max) {
                                         Ok(permit) => Some(permit),
                                         Err(_) => {
                                             return axum::Json(serde_json::json!({
                                                 "type": "error",
-                                                "error": {"type": "rate_limit_error", "message": format!("Concurrency limit ({max}) reached for agent '{}'", a.name)}
+                                                "error": {"type": "rate_limit_error", "message": format!("Concurrency limit ({max}) reached for agent '{}'", agent.name)}
                                             })).into_response();
                                         }
                                     }
@@ -1698,8 +1877,8 @@ pub(crate) fn attach_ui_routes(
                             // the model name in the request body — matching the Anthropic
                             // Vertex SDK's URL construction.
                             let model_entry = agent
+                                .model
                                 .as_ref()
-                                .and_then(|a| a.model.as_ref())
                                 .and_then(|name| model_entries.get(name));
 
                             let is_vertex;
@@ -2562,8 +2741,11 @@ mod tests {
         assert_eq!(json["model"], "front");
     }
 
-    /// Server with a PII-detecting safety pipeline on the anonymous
-    /// ("dev") permission set, for IFC model-routing tests.
+    /// Server with a PII-detecting safety pipeline, for IFC
+    /// model-routing tests. Uses allow_anonymous, whose default
+    /// identity is ("anonymous", "readonly") — the pipeline is
+    /// registered under the "readonly" permission set the anonymous
+    /// identity carries.
     fn ifc_test_server() -> Arc<navra_core::McpServer> {
         let mut pipeline =
             navra_core::safety::FilterPipeline::new(navra_core::safety::FilterAction::Redact);
@@ -3369,6 +3551,406 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    // --- Config API authorization (self-elevation remediation) ---
+
+    /// Server with two registered agents: an elevated admin and a
+    /// plain worker. Returns (server, admin_token, worker_token).
+    fn config_api_server() -> (Arc<navra_core::McpServer>, String, String) {
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        let admin_token =
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a39281706f5e4d3c2b1a0".to_string();
+        let worker_token =
+            "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9".to_string();
+        auth.register(
+            admin_token.as_str(),
+            navra_core::auth::AgentIdentity::new("admin-agent", "admin"),
+        )
+        .unwrap();
+        auth.register(
+            worker_token.as_str(),
+            navra_core::auth::AgentIdentity::new("worker", "dev"),
+        )
+        .unwrap();
+        (
+            Arc::new(navra_core::McpServer::builder().authenticator(auth).build()),
+            admin_token,
+            worker_token,
+        )
+    }
+
+    fn build_config_api_router(
+        cfg: &config::Config,
+        server: Arc<navra_core::McpServer>,
+        path: &str,
+        approvals: Arc<navra_core::permissions::ApprovalStore>,
+    ) -> axum::Router {
+        let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
+        attach_ui_routes(
+            axum::Router::new(),
+            cfg,
+            &server,
+            test_agent_api(),
+            None,
+            &test_models(),
+            Some("stub"),
+            None,
+            None,
+            None,
+            config_state,
+            std::path::PathBuf::from(path),
+            approvals,
+        )
+    }
+
+    /// Config seeded with a deletable permission set and agent.
+    fn config_api_test_config() -> config::Config {
+        let mut cfg = test_config();
+        cfg.permissions.insert(
+            "legacy".into(),
+            serde_json::from_value(serde_json::json!({
+                "operations": ["read"],
+            }))
+            .unwrap(),
+        );
+        cfg.agents.push(config::AgentConfig {
+            name: "victim".into(),
+            token_hash: "3".repeat(64),
+            permissions: "dev".into(),
+            signing_key: None,
+            pubkey: None,
+            did: None,
+            capability_token: false,
+            token_ttl: None,
+            model: None,
+            upstream: Vec::new(),
+            max_concurrent: None,
+            max_context: None,
+        });
+        cfg
+    }
+
+    fn unique_config_path(tag: &str) -> String {
+        format!("/tmp/navra-wp3b-config-{}-{tag}.json", std::process::id())
+    }
+
+    const VALID_HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[tokio::test]
+    async fn config_api_permission_upsert_requires_elevation() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("perm-up-elev"),
+            test_approvals(),
+        );
+
+        // Non-elevated authenticated caller: 403, no self-elevation.
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/permissions/grabbed",
+            Some(&worker),
+            Some(serde_json::json!({"operations": ["**"]})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // Unauthenticated caller: 401 from the route middleware.
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/permissions/grabbed",
+            None,
+            Some(serde_json::json!({"operations": ["**"]})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn config_api_permission_upsert_reserved_names_rejected() {
+        let cfg = config_api_test_config();
+        let (server, admin, _worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("perm-up-reserved"),
+            test_approvals(),
+        );
+
+        // Even an elevated caller cannot mint/overwrite "admin" or
+        // "root" via the API — they can only come from config.toml.
+        for name in ["admin", "root"] {
+            let (status, _) = request_with_token(
+                &router,
+                "PUT",
+                &format!("/api/permissions/{name}"),
+                Some(&admin),
+                Some(serde_json::json!({"operations": ["**"]})),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CONFLICT);
+        }
+    }
+
+    #[tokio::test]
+    async fn config_api_permission_upsert_elevated_succeeds() {
+        let cfg = config_api_test_config();
+        let (server, admin, _worker) = config_api_server();
+        let path = unique_config_path("perm-up-ok");
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        let (status, json) = request_with_token(
+            &router,
+            "PUT",
+            "/api/permissions/custom-set",
+            Some(&admin),
+            Some(serde_json::json!({"operations": ["read"]})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["name"], "custom-set");
+        // The set was actually persisted.
+        let saved = config::Config::load(Some(path.as_str())).unwrap();
+        assert!(saved.permissions.contains_key("custom-set"));
+    }
+
+    #[tokio::test]
+    async fn config_api_permission_delete_requires_elevation() {
+        let cfg = config_api_test_config();
+        let (server, admin, worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("perm-del"),
+            test_approvals(),
+        );
+
+        let (status, _) = request_with_token(
+            &router,
+            "DELETE",
+            "/api/permissions/legacy",
+            Some(&worker),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let (status, json) = request_with_token(
+            &router,
+            "DELETE",
+            "/api/permissions/legacy",
+            Some(&admin),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["deleted"], "legacy");
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_upsert_rejects_cross_agent_edit() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("agent-x"),
+            test_approvals(),
+        );
+
+        // worker cannot overwrite victim's config (token hash,
+        // permission set, upstreams — wholesale).
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/victim",
+            Some(&worker),
+            Some(serde_json::json!({
+                "name": "victim",
+                "token_hash": VALID_HASH,
+                "permissions": "admin",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_upsert_allows_self_edit() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let path = unique_config_path("agent-self");
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        // Non-elevated agents may still edit their own entry.
+        let (status, json) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/worker",
+            Some(&worker),
+            Some(serde_json::json!({
+                "name": "worker",
+                "token_hash": VALID_HASH,
+                "permissions": "dev",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["name"], "worker");
+        let saved = config::Config::load(Some(path.as_str())).unwrap();
+        assert!(saved.agents.iter().any(|a| a.name == "worker"));
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_upsert_elevated_edits_any_agent() {
+        let cfg = config_api_test_config();
+        let (server, admin, _worker) = config_api_server();
+        let path = unique_config_path("agent-admin");
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        let (status, _) = request_with_token(
+            &router,
+            "PUT",
+            "/api/agents/victim",
+            Some(&admin),
+            Some(serde_json::json!({
+                "name": "victim",
+                "token_hash": VALID_HASH,
+                "permissions": "dev",
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let saved = config::Config::load(Some(path.as_str())).unwrap();
+        assert!(saved.agents.iter().any(|a| a.name == "victim"));
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_upsert_rejects_malformed_token_hash() {
+        let cfg = config_api_test_config();
+        let (server, _admin, worker) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("agent-hash"),
+            test_approvals(),
+        );
+
+        let bad_hashes = [
+            "short".to_string(),
+            "A".repeat(64),
+            "g".repeat(64),
+            String::new(),
+        ];
+        for bad in &bad_hashes {
+            let (status, _) = request_with_token(
+                &router,
+                "PUT",
+                "/api/agents/worker",
+                Some(&worker),
+                Some(serde_json::json!({
+                    "name": "worker",
+                    "token_hash": bad,
+                    "permissions": "dev",
+                })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "hash {bad:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn config_api_agent_delete_requires_elevation() {
+        let cfg = config_api_test_config();
+        let (server, admin, worker) = config_api_server();
+        let path = unique_config_path("agent-del");
+        let router = build_config_api_router(&cfg, server, &path, test_approvals());
+
+        // Even self-deletion is elevated-only.
+        let (status, _) =
+            request_with_token(&router, "DELETE", "/api/agents/worker", Some(&worker), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let (status, json) =
+            request_with_token(&router, "DELETE", "/api/agents/victim", Some(&admin), None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["deleted"], "victim");
+    }
+
+    #[tokio::test]
+    async fn config_api_approvals_listing_requires_elevation() {
+        let approvals = test_approvals();
+        let (_req, _rx) = approvals.request("claude", "write", "/home/user/doc.md");
+        let cfg = config_api_test_config();
+        let (server, admin_token, worker_token) = config_api_server();
+        let router = build_config_api_router(
+            &cfg,
+            server,
+            &unique_config_path("appr"),
+            Arc::clone(&approvals),
+        );
+
+        // Non-elevated caller cannot enumerate pending requests.
+        let (status, _) =
+            request_with_token(&router, "GET", "/api/approvals", Some(&worker_token), None).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        // Elevated caller sees the pending list.
+        let (status, json) =
+            request_with_token(&router, "GET", "/api/approvals", Some(&admin_token), None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["pending"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn v1_routes_reject_unauthenticated_callers() {
+        // A server with a real authenticator (no allow_anonymous):
+        // the /v1 model proxy must not fall back to an anonymous
+        // "dev" identity.
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register(
+            "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9",
+            navra_core::auth::AgentIdentity::new("worker", "dev"),
+        )
+        .unwrap();
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let router = build_config_api_router(
+            &test_config(),
+            server,
+            &unique_config_path("v1-auth"),
+            test_approvals(),
+        );
+
+        for path in ["/v1/chat/completions", "/v1/messages"] {
+            let (status, _) = request_with_token(
+                &router,
+                "POST",
+                path,
+                None,
+                Some(serde_json::json!({
+                    "model": "stub",
+                    "messages": [{"role": "user", "content": "hi"}]
+                })),
+            )
+            .await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "path {path}");
+        }
+    }
+
+    #[test]
+    fn valid_token_hash_shape() {
+        assert!(valid_token_hash(VALID_HASH));
+        assert!(!valid_token_hash(""));
+        assert!(!valid_token_hash(&VALID_HASH[..63]));
+        assert!(!valid_token_hash(&VALID_HASH[..65]));
+        assert!(!valid_token_hash(&"A".repeat(64)));
+        assert!(!valid_token_hash(&format!("{}g", "0".repeat(63))));
     }
 
     // --- WebSocket /ws/ui authentication ---
