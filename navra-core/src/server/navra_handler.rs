@@ -181,9 +181,16 @@ impl NavraHandler {
     ///
     /// A protocol-level re-init is NOT a declassification: taint is
     /// monotone (INV-1) and must survive, otherwise a tainted client
-    /// launders its label simply by re-initializing. Anonymous
-    /// identities are keyed per connection (see [`Self::session_id_for`]),
-    /// so each new connection still starts clean.
+    /// launders its label simply by re-initializing. This applies to
+    /// AUTHENTICATED identities — the multi-client case where
+    /// taint-laundering via re-init is an attack.
+    ///
+    /// Anonymous (dev-mode) identities are exempt: they share one
+    /// process-wide session (see [`Self::session_id_for`]), so
+    /// persisting taint across their re-inits would poison every
+    /// subsequent local client forever. Dev-mode anonymous is a
+    /// single trusted local user on a loopback bind — a clean slate
+    /// on re-init is the correct semantics there.
     fn restore_prior_session(server: &McpServer, prior: Option<crate::session::Session>) {
         if let Some(mut session) = prior {
             session.initialized = true;
@@ -236,8 +243,14 @@ impl ServerHandler for NavraHandler {
         let session_id = self.session_id_for(&agent);
         // Drop the prior session object for this agent, then restore
         // it after the handshake with its IFC taint intact (see
-        // `restore_prior_session`).
+        // `restore_prior_session`) — but only for authenticated
+        // identities; anonymous dev-mode clients start clean.
         let prior_session = self.server.sessions().remove(&session_id);
+        let prior_session = if Self::is_anonymous_identity(&self.server, &agent) {
+            None
+        } else {
+            prior_session
+        };
         match self.server.handle_initialize(request, agent) {
             Ok((result, _navra_sid)) => {
                 Self::restore_prior_session(&self.server, prior_session);
