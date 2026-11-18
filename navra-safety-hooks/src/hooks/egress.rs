@@ -279,18 +279,16 @@ fn collect_urls(value: &serde_json::Value, out: &mut Vec<String>) {
 /// closing `]`.
 fn strip_trailing_port(s: &str) -> Option<&str> {
     // Bracketed IPv6 literal: the port (if any) follows the `]`.
-    if let Some(close) = s.find(']') {
-        if s[..close].contains('[') {
-            let rest = &s[close + 1..];
-            if rest.is_empty() {
-                return Some(s);
-            }
-            let port = rest.strip_prefix(':')?;
-            if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
-                return None;
-            }
-            return Some(&s[..=close]);
+    if let Some(close) = s.find(']').filter(|&c| s[..c].contains('[')) {
+        let rest = &s[close + 1..];
+        if rest.is_empty() {
+            return Some(s);
         }
+        let port = rest.strip_prefix(':')?;
+        if port.is_empty() || !port.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        return Some(&s[..=close]);
     }
     let mut colons = s.match_indices(':');
     match (colons.next(), colons.next()) {
