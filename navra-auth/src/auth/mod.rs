@@ -187,6 +187,39 @@ fn check_token_entropy(token: &str) -> Result<(), WeakTokenError> {
     Ok(())
 }
 
+/// Error returned when a `token_hash` value passed to
+/// [`TokenAuthenticator::register_hash`] is not a well-formed
+/// BLAKE3 digest.
+///
+/// The most common cause is an operator pasting the raw bearer
+/// token into the config's `token_hash` field: the agent then
+/// silently never authenticates (its lookup key is the hash of the
+/// token, not the token) and the plaintext secret sits in config.
+/// BLAKE3 digests are exactly 64 lowercase hex characters — anything
+/// else is rejected up front with a descriptive error.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum TokenHashError {
+    #[error(
+        "token_hash must be exactly 64 lowercase hex characters \
+         (the BLAKE3 digest of the bearer token); got {len} \
+         characters — if this is the raw token, run \
+         `navra token generate` and store the printed Hash value"
+    )]
+    WrongLength { len: usize },
+    #[error(
+        "token_hash contains non-hexadecimal characters — this \
+         looks like a raw bearer token pasted instead of its BLAKE3 \
+         hash; run `navra token generate` and store the printed \
+         Hash value in token_hash"
+    )]
+    NotHex,
+    #[error(
+        "token_hash must be lowercase hex (blake3 emits lowercase \
+         digests); lowercase the value and retry"
+    )]
+    Uppercase,
+}
+
 /// Token-based authenticator using BLAKE3-hashed bearer tokens.
 pub struct TokenAuthenticator {
     /// Map from BLAKE3 hash of token → AgentIdentity.
@@ -232,14 +265,44 @@ impl TokenAuthenticator {
 
     /// Register an agent by pre-computed BLAKE3 hash (from config).
     ///
+    /// The value must be exactly 64 lowercase hex characters — the
+    /// output format of [`TokenAuthenticator::hash_token`]. Anything
+    /// else (notably a raw bearer token pasted into the config's
+    /// `token_hash` field) is rejected with
+    /// [`TokenHashError`]: a malformed value would otherwise never
+    /// match any incoming token, silently locking the agent out
+    /// while leaving a plaintext secret in the config file.
+    ///
     /// The entropy policy cannot be enforced here: a hash carries no
     /// recoverable entropy signal (every hash looks random). Operators
     /// supplying `token_hash` values from config are responsible for
     /// generating them from high-entropy tokens; use
     /// [`TokenAuthenticator::hash_token`] on a machine-generated
     /// 256-bit token.
-    pub fn register_hash(&mut self, hash: &str, identity: AgentIdentity) {
+    pub fn register_hash(
+        &mut self,
+        hash: &str,
+        identity: AgentIdentity,
+    ) -> Result<(), TokenHashError> {
+        if hash.chars().count() != 64 {
+            return Err(TokenHashError::WrongLength {
+                len: hash.chars().count(),
+            });
+        }
+        let bytes = hash.as_bytes();
+        if !bytes
+            .iter()
+            .all(|&b| b.is_ascii_digit() || b.is_ascii_lowercase() && b.is_ascii_hexdigit())
+        {
+            if bytes.iter().all(|&b| b.is_ascii_hexdigit()) {
+                // Right alphabet and length, but some characters are
+                // uppercase: blake3 never emits uppercase hex.
+                return Err(TokenHashError::Uppercase);
+            }
+            return Err(TokenHashError::NotHex);
+        }
         self.agents.insert(hash.to_string(), identity);
+        Ok(())
     }
 
     /// Compute the BLAKE3 hash of a token, returned as a hex string.
@@ -493,7 +556,7 @@ mod tests {
     fn register_hash_authenticates() {
         let hash = TokenAuthenticator::hash_token(STRONG_TOKEN);
         let mut auth = TokenAuthenticator::new();
-        auth.register_hash(&hash, test_identity());
+        auth.register_hash(&hash, test_identity()).unwrap();
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -503,6 +566,89 @@ mod tests {
 
         let identity = auth.authenticate(&headers).unwrap();
         assert_eq!(identity.name, "test-agent");
+    }
+
+    // --- register_hash format validation tests ---
+
+    #[test]
+    fn register_hash_accepts_valid_64_hex() {
+        let mut auth = TokenAuthenticator::new();
+        let hash = TokenAuthenticator::hash_token(STRONG_TOKEN);
+        assert!(auth.register_hash(&hash, test_identity()).is_ok());
+
+        // Hand-built 64-lowercase-hex value is accepted (any
+        // well-formed digest shape is; matching a real token is the
+        // operator's responsibility).
+        let other = "0123456789abcdef".repeat(4);
+        assert!(auth.register_hash(&other, test_identity()).is_ok());
+    }
+
+    #[test]
+    fn register_hash_rejects_raw_token() {
+        // An operator pasted the raw bearer token into token_hash:
+        // 'mcd_' + 64 hex = 68 chars — the length check fires first,
+        // with an error that names the raw-token mistake. Must be
+        // rejected, not silently stored as a never-matching key.
+        let mut auth = TokenAuthenticator::new();
+        let raw = format!("mcd_{}", "0123456789abcdef".repeat(4));
+        let err = auth.register_hash(&raw, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::WrongLength { len: 68 }));
+
+        // A 64-char raw token (no mcd_ prefix) trips the hex check.
+        let raw64 = format!("{}1", "z".repeat(63));
+        assert_eq!(raw64.chars().count(), 64);
+        let err = auth.register_hash(&raw64, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::NotHex));
+
+        // Nothing was registered by the failed attempt.
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", format!("Bearer {raw}").parse().unwrap());
+        assert!(auth.authenticate(&headers).is_err());
+    }
+
+    #[test]
+    fn register_hash_rejects_wrong_length() {
+        let mut auth = TokenAuthenticator::new();
+        // 63 chars (one short)
+        let short = "a".repeat(63);
+        let err = auth.register_hash(&short, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::WrongLength { len: 63 }));
+
+        // 65 chars (one long)
+        let long = "a".repeat(65);
+        let err = auth.register_hash(&long, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::WrongLength { len: 65 }));
+
+        // Empty
+        let err = auth.register_hash("", test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::WrongLength { len: 0 }));
+    }
+
+    #[test]
+    fn register_hash_rejects_uppercase_hex() {
+        // Uppercase is rejected, not normalized: blake3 digests are
+        // lowercase, and accepting both would double the stored-key
+        // space. The operator lowercases the config value instead.
+        let mut auth = TokenAuthenticator::new();
+        let hash = TokenAuthenticator::hash_token(STRONG_TOKEN);
+        let upper = hash.to_uppercase();
+        let err = auth.register_hash(&upper, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::Uppercase));
+    }
+
+    #[test]
+    fn register_hash_rejects_non_hex_chars() {
+        // Right length, but 'g'-'z' are not hex digits.
+        let mut auth = TokenAuthenticator::new();
+        let bad = "g".repeat(64);
+        let err = auth.register_hash(&bad, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::NotHex));
+
+        // Mixed: mostly hex with one non-hex char.
+        let mut mixed = "0123456789abcdef".repeat(4);
+        mixed.replace_range(7..8, "z");
+        let err = auth.register_hash(&mixed, test_identity()).unwrap_err();
+        assert!(matches!(err, TokenHashError::NotHex));
     }
 
     // --- Entropy guard tests ---

@@ -68,30 +68,34 @@ pub(crate) fn wire_auth(
         let mut blake3_auth = navra_core::auth::TokenAuthenticator::new();
         for agent in &cfg.agents {
             let perm_set = cfg.permissions.get(&agent.permissions);
-            blake3_auth.register_hash(
-                &agent.token_hash,
-                AgentIdentity {
-                    name: agent.name.clone(),
-                    permissions: agent.permissions.clone(),
-                    signing_key: agent.signing_key.clone(),
-                    did: agent.did.clone(),
-                    capabilities: None,
-                    model: agent
-                        .model
-                        .clone()
-                        .or_else(|| perm_set.and_then(|p| p.model.clone())),
-                    allowed_upstreams: if !agent.upstream.is_empty() {
-                        agent.upstream.clone()
-                    } else {
-                        perm_set.map(|p| p.upstream.clone()).unwrap_or_default()
+            blake3_auth
+                .register_hash(
+                    &agent.token_hash,
+                    AgentIdentity {
+                        name: agent.name.clone(),
+                        permissions: agent.permissions.clone(),
+                        signing_key: agent.signing_key.clone(),
+                        did: agent.did.clone(),
+                        capabilities: None,
+                        model: agent
+                            .model
+                            .clone()
+                            .or_else(|| perm_set.and_then(|p| p.model.clone())),
+                        allowed_upstreams: if !agent.upstream.is_empty() {
+                            agent.upstream.clone()
+                        } else {
+                            perm_set.map(|p| p.upstream.clone()).unwrap_or_default()
+                        },
+                        max_concurrent: agent
+                            .max_concurrent
+                            .or(perm_set.and_then(|p| p.max_concurrent)),
+                        max_context: agent.max_context.or(perm_set.and_then(|p| p.max_context)),
+                        wimse: None,
                     },
-                    max_concurrent: agent
-                        .max_concurrent
-                        .or(perm_set.and_then(|p| p.max_concurrent)),
-                    max_context: agent.max_context.or(perm_set.and_then(|p| p.max_context)),
-                    wimse: None,
-                },
-            );
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!("invalid token_hash for agent '{}': {e}", agent.name)
+                })?;
             if agent.pubkey.is_some() {
                 tracing::debug!(agent = %agent.name, "Agent has pubkey configured");
             }
