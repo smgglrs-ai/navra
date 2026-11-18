@@ -93,7 +93,7 @@ const MAX_TAINT_LEDGER_ENTRIES: usize = 8192;
 /// the raw key can embed agent names / DIDs, so evictions (and any
 /// other ledger diagnostics) log only this hash.
 fn redacted_key_hash(key: &str) -> u64 {
-    use std::hash::Hash;
+    use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut hasher);
     hasher.finish()
