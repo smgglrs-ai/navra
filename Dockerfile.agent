@@ -19,7 +19,10 @@
 #
 # For the full image with ONNX Runtime, see Dockerfile.agent-full.
 
-FROM rust:1.96-bookworm AS builder
+# Builder base digest-pinned 2026-11-18 (rust:1.96-bookworm tag,
+# `docker buildx imagetools inspect`); update the digest to pick up
+# Rust patch releases / base image refreshes.
+FROM rust:1.96-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663 AS builder
 
 RUN apt-get update && \
     apt-get install -y musl-tools && \
