@@ -12,16 +12,30 @@ use navra_mcp::{Module, PromptHandler, ResourceHandler, ToolHandler, ToolOperati
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Classify a tool as Read or Write for the permission engine.
+///
+/// Trust model (one-way): upstream-provided annotations may UPGRADE
+/// scrutiny but may never DOWNGRADE it. The deny-by-default name
+/// heuristic is computed first and an upstream `readOnlyHint` is
+/// honored only when the heuristic already agrees the tool reads; a
+/// `destructiveHint` always upgrades to Write. Without this ordering,
+/// a hostile upstream could mark a write tool `readOnly` and have the
+/// gateway classify it Read. The only authority that can classify a
+/// heuristic-write tool as Read is the operator, via a
+/// `tool_overrides` entry applied by the caller in `discover_tools`.
 fn classify_tool(def: &ToolDefinition) -> ToolOperation {
+    // Name/behavior heuristic first, with annotations withheld: this
+    // is the floor the upstream cannot talk its way below.
+    let heuristic_write = navra_auth::ifc::is_write_tool(&def.name, None);
     if let Some(ref ann) = def.annotations {
-        if ann.read_only_hint == Some(true) {
-            return ToolOperation::Read;
-        }
         if ann.destructive_hint == Some(true) {
             return ToolOperation::Write;
         }
+        if ann.read_only_hint == Some(true) && !heuristic_write {
+            return ToolOperation::Read;
+        }
     }
-    if navra_auth::ifc::is_write_tool(&def.name, def.annotations.as_ref()) {
+    if heuristic_write {
         return ToolOperation::Write;
     }
     ToolOperation::Read
@@ -1103,12 +1117,29 @@ mod tests {
 
     #[test]
     fn classify_tool_read_only_annotation_returns_read() {
+        // Annotation and name heuristic agree the tool reads: Read.
         let ann = navra_protocol::ToolAnnotations::new().read_only(true);
-        // Even a tool with a write-like name should be classified Read
-        // when the read_only_hint annotation is true.
+        assert_eq!(
+            classify_tool(&tool_def("list_items", Some(ann))),
+            ToolOperation::Read
+        );
+    }
+
+    #[test]
+    fn classify_tool_read_only_hint_cannot_downgrade_write_name() {
+        // An upstream-provided read_only_hint on a write-sounding
+        // name must NOT downgrade the heuristic write — annotation
+        // trust is one-way (upgrade only).
+        let ann = navra_protocol::ToolAnnotations::new().read_only(true);
         assert_eq!(
             classify_tool(&tool_def("write_something", Some(ann))),
-            ToolOperation::Read
+            ToolOperation::Write
+        );
+        // Deny-by-default: an unrecognized (non-obvious-read) name
+        // with a read_only_hint stays Write too.
+        assert_eq!(
+            classify_tool(&tool_def("ambiguous_tool", Some(ann))),
+            ToolOperation::Write
         );
     }
 
@@ -1124,15 +1155,15 @@ mod tests {
     }
 
     #[test]
-    fn classify_tool_read_only_takes_priority_over_destructive() {
-        // When both read_only and destructive are set, read_only wins
-        // because we check it first.
+    fn classify_tool_destructive_takes_priority_over_read_only() {
+        // When both read_only and destructive are set, destructive
+        // wins: upgrades are always honored, downgrades never.
         let ann = navra_protocol::ToolAnnotations::new()
             .read_only(true)
             .destructive(true);
         assert_eq!(
-            classify_tool(&tool_def("ambiguous_tool", Some(ann))),
-            ToolOperation::Read
+            classify_tool(&tool_def("get_items", Some(ann))),
+            ToolOperation::Write
         );
     }
 

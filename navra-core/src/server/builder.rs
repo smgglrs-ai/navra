@@ -173,6 +173,25 @@ impl McpServerBuilder {
         self
     }
 
+    /// Register all tools, prompts, and resources from a module that
+    /// is an upstream (foreign, untrusted) source, marking its name
+    /// in the upstream set at the same time.
+    ///
+    /// Identical to [`Self::module`], plus the upstream marking that
+    /// [`Self::upstream_module`] does separately — registering a
+    /// discovered upstream through this single call means the
+    /// upstream set can never diverge from the module index (a
+    /// forgotten `.upstream_module(name)` would silently leave the
+    /// module outside the builder-time cross-module spoofing check in
+    /// [`Self::build`] and outside runtime attribution in
+    /// `McpServer::upstream_module_for_tool`). Use this for anything
+    /// backed by an external MCP server: configured upstreams, and
+    /// modules discovered via mDNS, AID, or OpenAPI bridges.
+    pub fn module_upstream(mut self, module: impl Module) -> Self {
+        self.upstream_modules.insert(module.name().to_string());
+        self.module(module)
+    }
+
     pub fn path_acl(
         mut self,
         permission_set: impl Into<String>,
@@ -272,6 +291,14 @@ impl McpServerBuilder {
     /// Panics if a tool or prompt name conflicts with an already-registered one.
     /// Tool names should be prefixed with the module name (e.g. `file_read`,
     /// `git_status`) to avoid collisions.
+    ///
+    /// For modules backed by a foreign server (an upstream MCP server
+    /// discovered via mDNS, AID, or an OpenAPI bridge), use
+    /// [`Self::module_upstream`] instead: it additionally marks the
+    /// module in the upstream set so the anti-spoofing and
+    /// attribution machinery covers it. The generic [`Module`] trait
+    /// cannot distinguish first-party from upstream modules, so this
+    /// plain `module()` path never touches the upstream set.
     pub fn module(mut self, module: impl Module) -> Self {
         let mod_name = module.name().to_string();
         let mut mod_tools = Vec::new();

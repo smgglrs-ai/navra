@@ -125,9 +125,15 @@ impl NavraHandler {
     ///
     /// - DID-bearing identities key on the DID.
     /// - Anonymous identities (the NoAuthenticator default — every
-    ///   anonymous client resolves to the same agent) get a
-    ///   per-connection nonce so separate connections never share
-    ///   sessions, grants, or taint.
+    ///   anonymous client resolves to the same agent) get a nonce so
+    ///   separate connections never share sessions, grants, or taint.
+    ///   By default the nonce is per-connection (each `NavraHandler`
+    ///   mints a fresh one). The streamable HTTP transport
+    ///   (stateless mode) instead shares one process-wide nonce via
+    ///   [`Self::with_shared_nonce`]: every anonymous HTTP request
+    ///   then maps to the SAME process-wide anonymous session —
+    ///   intentional for stateless HTTP, where per-connection keys
+    ///   would give every request a clean slate.
     /// - Everything else keys on the (permission set, name) pair,
     ///   JSON-encoded so the pair is collision-free.
     fn session_id_for(&self, agent: &AgentIdentity) -> String {
@@ -247,6 +253,11 @@ impl ServerHandler for NavraHandler {
         // identities; anonymous dev-mode clients start clean.
         let prior_session = self.server.sessions().remove(&session_id);
         let prior_session = if Self::is_anonymous_identity(&self.server, &agent) {
+            // Anonymous dev-mode re-init keeps its clean-slate
+            // semantics: drop any taint persisted for this
+            // connection's key in the session-store taint ledger as
+            // well, not just the session object.
+            self.server.sessions().clear_taint_ledger(&session_id);
             None
         } else {
             prior_session
@@ -489,6 +500,30 @@ mod tests {
         assert_ne!(k1, k2, "separate connections must not share session keys");
         // Stable within one connection.
         assert_eq!(k1, h1.session_id_for(&agent));
+    }
+
+    #[test]
+    fn shared_nonce_maps_anonymous_clients_to_one_session_key() {
+        // The streamable HTTP transport shares one process-wide nonce
+        // so stateless anonymous requests map to the SAME session
+        // (grants, taint). Two handlers built with the same nonce
+        // derive the same anonymous key; different nonces differ.
+        let server = anon_server();
+        let nonce: std::sync::Arc<str> = "shared-nonce".into();
+        let h1 = NavraHandler::with_shared_nonce(Arc::clone(&server), Arc::clone(&nonce));
+        let h2 = NavraHandler::with_shared_nonce(Arc::clone(&server), nonce);
+        let agent = AgentIdentity::new("anonymous", "readonly");
+        assert_eq!(
+            h1.session_id_for(&agent),
+            h2.session_id_for(&agent),
+            "handlers sharing a nonce must derive the same anonymous session key"
+        );
+        let h3 = NavraHandler::new(Arc::clone(&server));
+        assert_ne!(
+            h1.session_id_for(&agent),
+            h3.session_id_for(&agent),
+            "a fresh per-connection nonce must differ from the shared one"
+        );
     }
 
     #[test]
