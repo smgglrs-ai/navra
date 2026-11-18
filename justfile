@@ -77,11 +77,10 @@ check-laptop:
     #!/usr/bin/env bash
     set -euo pipefail
     just fmt-check
-    for crate in $(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]'); do
-        name=$(basename "$crate")
-        if [ "$name" = "navra-server" ]; then continue; fi
-        echo "=== clippy: $name ==="
-        just clippy-crate "$name"
+    for crate in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name'); do
+        if [ "$crate" = "navra-server" ]; then continue; fi
+        echo "=== clippy: $crate ==="
+        just clippy-crate "$crate"
     done
     just clippy-crate-server
     just test-workspace
