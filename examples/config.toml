@@ -79,29 +79,45 @@ permissions = "dev"
 # ---------------------------------------------------------------------------
 # Permission sets
 # ---------------------------------------------------------------------------
+# The primary set is read-only: read tools pass, writes, commits,
+# pushes, and exec are denied. Start here — widen only after you
+# understand the blast radius.
 
 [permissions.dev]
 ring = 1
-allow = ["file_*", "git_*", "github_*", "rag_*", "memory_*"]
-deny = ["exec_run"]
+allow = ["file_read", "file_list", "file_tree", "git_status", "git_log", "git_diff", "rag_*", "memory_*"]
+deny = ["file_write", "file_delete", "git_commit", "git_push", "exec_*"]
 safety = "standard"
-default_tool_policy = "allow"
 can_delegate = true
-
-# Require approval for destructive operations
-[[permissions.dev.tool_rules]]
-tool = "exec_*"
-policy = "approve"
-
-[[permissions.dev.tool_rules]]
-tool = "git_push"
-policy = "approve"
 
 [permissions.readonly]
 ring = 2
 allow = ["file_read", "file_list", "file_tree", "git_status", "git_log", "git_diff", "rag_*"]
 deny = ["file_write", "file_delete", "git_commit", "git_push", "exec_*"]
 safety = "standard"
+
+# ⚠️  FAIL-OPEN — permissive set, for isolated development ONLY.
+# `default_tool_policy = "allow"` lets the agent call any registered
+# tool that is not explicitly denied, including future tools you add
+# or upstream servers expose. Never use this on a machine with
+# secrets, SSH keys, or production access.
+#
+# [permissions.dev-full]
+# ring = 1
+# allow = ["file_*", "git_*", "github_*", "rag_*", "memory_*"]
+# deny = ["exec_run"]
+# safety = "standard"
+# default_tool_policy = "allow"
+# can_delegate = true
+#
+# Require approval for the destructive operations that remain:
+# [[permissions.dev-full.tool_rules]]
+# tool = "exec_*"
+# policy = "approve"
+#
+# [[permissions.dev-full.tool_rules]]
+# tool = "git_push"
+# policy = "approve"
 
 # ---------------------------------------------------------------------------
 # Upstream MCP servers
@@ -190,6 +206,12 @@ notify = "dbus"
 # ---------------------------------------------------------------------------
 # Triggers (event-driven flow execution)
 # ---------------------------------------------------------------------------
+
+# [[triggers]]
+# type = "webhook"
+# path = "/hook/deploy"
+# secret = "REPLACE_WITH_RANDOM_HMAC_SECRET"   # required — webhooks without a secret fail config load
+# flow_name = "deploy-review"
 
 # [[triggers]]
 # type = "cron"

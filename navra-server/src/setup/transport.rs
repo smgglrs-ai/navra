@@ -32,23 +32,39 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
     let mut _mdns_daemon: Option<mdns_sd::ServiceDaemon> = None;
 
     // --- mDNS advertising ---
+    // Opt-in via `discovery.mdns`, and only ever advertised for a
+    // loopback TCP bind: announcing a non-loopback listener on the
+    // LAN would invite unauthenticated connections from other
+    // machines regardless of the server's auth posture.
     if state.mdns_enabled {
-        let tcp_port = state
-            .cfg
-            .server
-            .tcp
-            .as_ref()
-            .and_then(|addr| addr.rsplit(':').next())
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(9315);
+        match state.cfg.server.tcp.as_deref() {
+            Some(addr) if navra_model_server::is_loopback_bind(addr) => {
+                let tcp_port = addr
+                    .rsplit(':')
+                    .next()
+                    .and_then(|p| p.parse::<u16>().ok())
+                    .unwrap_or(9315);
 
-        match mdns::advertise(&state.server.server_info().name, tcp_port, "/mcp") {
-            Ok(daemon) => {
-                tracing::info!(port = tcp_port, "Advertising via mDNS on _mcp._tcp.local.");
-                _mdns_daemon = Some(daemon);
+                match mdns::advertise(&state.server.server_info().name, tcp_port, "/mcp") {
+                    Ok(daemon) => {
+                        tracing::info!(port = tcp_port, "Advertising via mDNS on _mcp._tcp.local.");
+                        _mdns_daemon = Some(daemon);
+                    }
+                    Err(e) => {
+                        tracing::warn!("mDNS advertising failed: {e}");
+                    }
+                }
             }
-            Err(e) => {
-                tracing::warn!("mDNS advertising failed: {e}");
+            Some(addr) => {
+                tracing::warn!(
+                    bind = addr,
+                    "mDNS advertising skipped: refusing to advertise a non-loopback bind on the LAN"
+                );
+            }
+            None => {
+                tracing::warn!(
+                    "mDNS advertising skipped: no TCP listener configured (Unix socket only)"
+                );
             }
         }
     }
@@ -271,6 +287,7 @@ pub(crate) async fn run_http_transport(state: TransportState, no_tray: bool) -> 
         state.pii_metrics.clone(),
         Arc::clone(&config_state),
         config_path,
+        Arc::clone(&state.approvals),
     );
 
     // Worker replicas: intercept coordinator-owned traffic and

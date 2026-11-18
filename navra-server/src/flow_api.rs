@@ -4,6 +4,10 @@
 //! - `GET /flows/{id}/graph` — JSON graph for React Flow
 //! - `GET /flows/{id}/graph/dot` — Graphviz DOT representation
 //! - `GET /flows/{id}/events` — SSE stream of FlowEvent
+//!
+//! All routes require authentication (same `auth_middleware` as the
+//! `/api` nest). Flow execution (`POST /api/flows/{name}/run`) runs
+//! under the authenticated caller's identity, never a forged one.
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -11,8 +15,16 @@ use axum::response::IntoResponse;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::flow_tools::FlowRegistry;
+
+/// Maximum concurrent SSE event-stream connections per server.
+///
+/// Each connection polls the event log every 2 seconds; without a
+/// cap an unauthenticated (or buggy) client could hold thousands
+/// open and exhaust the runtime.
+const MAX_SSE_CONNECTIONS: usize = 32;
 
 /// Shared state for flow API handlers.
 #[derive(Clone)]
@@ -20,6 +32,19 @@ pub(crate) struct FlowApiState {
     pub registry: Arc<FlowRegistry>,
     pub event_log: Option<Arc<navra_flow::event_log::EventLog>>,
     pub server: Option<Arc<navra_core::McpServer>>,
+    /// Active SSE connections across all flows (server-wide cap).
+    sse_connections: Arc<AtomicUsize>,
+}
+
+/// Releases one SSE connection slot when dropped.
+struct SseConnectionGuard {
+    counter: Arc<AtomicUsize>,
+}
+
+impl Drop for SseConnectionGuard {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 /// `GET /flows` — returns a list of all flow runs.
@@ -180,8 +205,25 @@ async fn handle_flow_events(
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
+    // Connection cap: each stream holds a polling task open, so a
+    // client that opens many streams can exhaust the runtime. Fail
+    // closed with 503 once the server-wide cap is reached.
+    let active = state.sse_connections.fetch_add(1, Ordering::AcqRel);
+    if active >= MAX_SSE_CONNECTIONS {
+        state.sse_connections.fetch_sub(1, Ordering::AcqRel);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Too many concurrent SSE connections",
+        )
+            .into_response();
+    }
+    let _guard = SseConnectionGuard {
+        counter: Arc::clone(&state.sse_connections),
+    };
+
     let flow_id_owned = flow_id.clone();
     let stream = async_stream::stream! {
+        let _guard = _guard;
         let mut cursor = last_event_id;
 
         loop {
@@ -229,9 +271,15 @@ async fn handle_flow_events(
 
 /// Build an axum Router for the flow graph API.
 /// `POST /api/flows/{name}/run` — start a flow by name.
+///
+/// Runs the flow under the authenticated caller's identity. The
+/// route is gated by `auth_middleware`, but authentication is
+/// re-checked here (fail closed) so the tool call can never run
+/// under a forged identity.
 async fn handle_run_flow(
     State(state): State<FlowApiState>,
     Path(name): Path<String>,
+    headers: axum::http::HeaderMap,
     axum::Json(body): axum::Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let Some(server) = &state.server else {
@@ -240,6 +288,17 @@ async fn handle_run_flow(
             "Flow execution not available",
         )
             .into_response();
+    };
+
+    let identity = match server.authenticator().authenticate(&headers) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
     };
 
     let prompt = body
@@ -261,10 +320,7 @@ async fn handle_run_flow(
 
     let mut params = navra_protocol::CallToolParams::new("flow_start");
     params.arguments = args.as_object().cloned();
-    let ctx = navra_core::auth::CallContext::new(
-        navra_core::auth::AgentIdentity::new("ui-flow", "dev"),
-        uuid::Uuid::new_v4().to_string(),
-    );
+    let ctx = navra_core::auth::CallContext::new(identity, uuid::Uuid::new_v4().to_string());
 
     let result = navra_core::flatten_tool_response(server.handle_call_tool(params, ctx).await);
     let text: String = result
@@ -286,6 +342,20 @@ async fn handle_run_flow(
     }
 }
 
+/// Reject all flow API requests when no authentication backend is
+/// wired (fail closed — the graph and event streams expose tool
+/// output metadata and must never be served unauthenticated).
+async fn no_auth_available(
+    _request: axum::extract::Request,
+    _next: axum::middleware::Next,
+) -> axum::response::Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Flow API unavailable: no authentication backend configured",
+    )
+        .into_response()
+}
+
 pub(crate) fn flow_api_router(
     registry: Arc<FlowRegistry>,
     event_log: Option<Arc<navra_flow::event_log::EventLog>>,
@@ -294,10 +364,11 @@ pub(crate) fn flow_api_router(
     let state = FlowApiState {
         registry,
         event_log,
-        server,
+        server: server.clone(),
+        sse_connections: Arc::new(AtomicUsize::new(0)),
     };
 
-    axum::Router::new()
+    let router = axum::Router::new()
         .route("/api/flow-runs", axum::routing::get(handle_list_flows))
         .route(
             "/api/flows/{name}/run",
@@ -313,13 +384,36 @@ pub(crate) fn flow_api_router(
             "/flows/{id}/graph/bpmn",
             axum::routing::get(handle_flow_graph_bpmn),
         )
-        .with_state(state)
+        .with_state(state);
+
+    // Every flow route (including the SSE stream, the graph
+    // endpoints, and /api/flow-runs) requires authentication via the
+    // same middleware as the /api nest.
+    match server {
+        Some(server) => router.route_layer(axum::middleware::from_fn_with_state(
+            server,
+            crate::ui::auth_middleware,
+        )),
+        None => router.route_layer(axum::middleware::from_fn(no_auth_available)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::flow_tools::{FlowRegistry, NodeStatus};
+
+    fn anon_server() -> Arc<navra_core::McpServer> {
+        Arc::new(navra_core::McpServer::builder().allow_anonymous().build())
+    }
+
+    /// Server with a real token authenticator: requests without the
+    /// right bearer token are rejected.
+    fn token_server(token: &str) -> Arc<navra_core::McpServer> {
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register(token, navra_core::auth::AgentIdentity::new("ui", "dev"));
+        Arc::new(navra_core::McpServer::builder().authenticator(auth).build())
+    }
 
     #[test]
     fn flow_graph_json_returns_correct_structure() {
@@ -423,7 +517,7 @@ mod tests {
             }],
         );
 
-        let app = flow_api_router(reg, None, None);
+        let app = flow_api_router(reg, None, Some(anon_server()));
 
         let resp = app
             .oneshot(
@@ -452,7 +546,7 @@ mod tests {
         use tower::ServiceExt;
 
         let reg = Arc::new(FlowRegistry::new());
-        let app = flow_api_router(reg, None, None);
+        let app = flow_api_router(reg, None, Some(anon_server()));
 
         let resp = app
             .oneshot(
@@ -487,7 +581,7 @@ mod tests {
             }],
         );
 
-        let app = flow_api_router(reg, None, None);
+        let app = flow_api_router(reg, None, Some(anon_server()));
 
         let resp = app
             .oneshot(
@@ -525,7 +619,7 @@ mod tests {
         let reg = Arc::new(FlowRegistry::new());
         let _id = reg.register("evt-test");
 
-        let app = flow_api_router(reg, None, None);
+        let app = flow_api_router(reg, None, Some(anon_server()));
 
         let resp = app
             .oneshot(
@@ -539,5 +633,118 @@ mod tests {
 
         // Without event_log configured, should return 503
         assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    // --- Authentication (all flow routes require a token) ---
+
+    fn graph_request(uri: &str, token: Option<&str>) -> axum::http::Request<axum::body::Body> {
+        let mut builder = axum::http::Request::builder().uri(uri);
+        if let Some(t) = token {
+            builder = builder.header("authorization", format!("Bearer {t}"));
+        }
+        builder.body(axum::body::Body::empty()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn flow_api_rejects_missing_token() {
+        use tower::ServiceExt;
+
+        let reg = Arc::new(FlowRegistry::new());
+        let _id = reg.register("auth-test");
+        let app = flow_api_router(reg, None, Some(token_server("sekrit")));
+
+        for uri in [
+            "/api/flow-runs",
+            "/flows/auth-test/graph",
+            "/flows/auth-test/graph/dot",
+            "/flows/auth-test/events",
+        ] {
+            let resp = app.clone().oneshot(graph_request(uri, None)).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "uri: {uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn flow_api_rejects_wrong_token() {
+        use tower::ServiceExt;
+
+        let reg = Arc::new(FlowRegistry::new());
+        let _id = reg.register("auth-test");
+        let app = flow_api_router(reg, None, Some(token_server("sekrit")));
+
+        let resp = app
+            .oneshot(graph_request("/api/flow-runs", Some("wrong")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn flow_api_accepts_valid_token() {
+        use tower::ServiceExt;
+
+        let reg = Arc::new(FlowRegistry::new());
+        let id = reg.register("auth-ok");
+        reg.update_nodes(
+            &id,
+            vec![NodeStatus {
+                id: "t1".to_string(),
+                specialist: "dev".to_string(),
+                status: "pending".to_string(),
+                output: None,
+                started_at: None,
+                completed_at: None,
+            }],
+        );
+        let app = flow_api_router(reg, None, Some(token_server("sekrit")));
+
+        let resp = app
+            .oneshot(graph_request(&format!("/flows/{id}/graph"), Some("sekrit")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn flow_api_fails_closed_without_auth_backend() {
+        use tower::ServiceExt;
+
+        let reg = Arc::new(FlowRegistry::new());
+        let _id = reg.register("no-auth");
+        // No server wired: routes must fail closed, not serve openly.
+        let app = flow_api_router(reg, None, None);
+
+        let resp = app
+            .oneshot(graph_request("/api/flow-runs", None))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    // --- SSE connection cap ---
+
+    #[tokio::test]
+    async fn sse_connection_cap_rejects_beyond_limit() {
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        // Fill all slots.
+        let mut guards: Vec<SseConnectionGuard> = Vec::new();
+        for _ in 0..MAX_SSE_CONNECTIONS {
+            assert!(counter.fetch_add(1, Ordering::AcqRel) < MAX_SSE_CONNECTIONS);
+            guards.push(SseConnectionGuard {
+                counter: Arc::clone(&counter),
+            });
+        }
+        assert_eq!(counter.load(Ordering::Acquire), MAX_SSE_CONNECTIONS);
+
+        // The next acquisition attempt would exceed the cap — the
+        // handler checks before keeping the slot.
+        let active = counter.fetch_add(1, Ordering::AcqRel);
+        assert!(active >= MAX_SSE_CONNECTIONS);
+        counter.fetch_sub(1, Ordering::AcqRel);
+
+        // Dropping guards releases slots.
+        guards.clear();
+        assert_eq!(counter.load(Ordering::Acquire), 0);
     }
 }

@@ -87,8 +87,9 @@ fn teammate_from_did(did: Option<&str>) -> Option<(&str, &str)> {
 }
 
 /// Axum middleware that authenticates requests against the MCP server's
-/// authenticator. Applied as a route layer on all `/api/*` routes.
-async fn auth_middleware(
+/// authenticator. Applied as a route layer on all `/api/*` routes and
+/// on the flow graph API router.
+pub(crate) async fn auth_middleware(
     axum::extract::State(server): axum::extract::State<Arc<navra_core::McpServer>>,
     headers: axum::http::HeaderMap,
     request: axum::extract::Request,
@@ -108,7 +109,7 @@ async fn auth_middleware(
 ///
 /// This adds static asset routes (`/`, `/ui/style.css`, `/ui/app.js`)
 /// and authenticated API routes (`/api/status`, `/api/models`, `/api/agents`,
-/// `/api/flows`, `/api/chat`).
+/// `/api/flows`, `/api/chat`, `/api/approvals/{id}`).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn attach_ui_routes(
     router: axum::Router,
@@ -123,6 +124,7 @@ pub(crate) fn attach_ui_routes(
     pii_metrics: Option<Arc<navra_core::safety::PiiMetrics>>,
     config_state: Arc<tokio::sync::RwLock<config::Config>>,
     config_path: std::path::PathBuf,
+    approvals: Arc<navra_core::permissions::ApprovalStore>,
 ) -> axum::Router {
     // Load cognitive core if configured
     let forge = if let Some(ref path) = cfg.cognitive_core {
@@ -749,6 +751,47 @@ pub(crate) fn attach_ui_routes(
                     }
                 }
             })
+        })
+
+        // --- API: Approval resolution (admin) ---
+        // Resolves a pending human-approval request. Authenticated
+        // like every other /api route; consumed by `navra approve` /
+        // `navra deny` (which send a bearer token from NAVRA_TOKEN).
+        // There is deliberately NO agent-callable self-approval
+        // tool — only out-of-band human channels resolve approvals.
+        .route("/approvals/{id}", {
+            let approvals = Arc::clone(&approvals);
+            axum::routing::post(
+                move |axum::extract::Path(id): axum::extract::Path<String>,
+                      axum::Json(body): axum::Json<serde_json::Value>| {
+                    let approvals = Arc::clone(&approvals);
+                    async move {
+                        let approve = body
+                            .get("approve")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let resolved = if approve {
+                            approvals.approve(&id)
+                        } else {
+                            approvals.deny(&id)
+                        };
+                        if resolved {
+                            axum::Json(serde_json::json!({
+                                "ok": true,
+                                "id": id,
+                                "approved": approve,
+                            }))
+                            .into_response()
+                        } else {
+                            (
+                                axum::http::StatusCode::NOT_FOUND,
+                                "Unknown or already-resolved approval request",
+                            )
+                                .into_response()
+                        }
+                    }
+                },
+            )
         })
 
         .route_layer(axum::middleware::from_fn_with_state(
@@ -1767,14 +1810,44 @@ pub(crate) fn attach_ui_routes(
 
     r = r.route("/ws/ui", {
         let broadcaster = ui_broadcaster;
+        let server = Arc::clone(server);
         axum::routing::get(move |
                 ws: axum::extract::WebSocketUpgrade,
+                headers: axum::http::HeaderMap,
                 query: axum::extract::Query<std::collections::HashMap<String, String>>,
             | {
                 let broadcaster = broadcaster.clone();
+                let server = server.clone();
                 async move {
-                    let _token = query.get("token").cloned().unwrap_or_default();
+                    // Origin check: browsers always send Origin on WS
+                    // upgrades; a mismatch means cross-site hijacking.
+                    if !ws_origin_matches_host(&headers) {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            "Origin not allowed",
+                        )
+                            .into_response();
+                    }
+
+                    // Browsers cannot set headers on a WebSocket
+                    // upgrade, so the query string is the token
+                    // channel. Validate it against the server's
+                    // authenticator and reject the upgrade on failure.
+                    let token = query.get("token").map(String::as_str).unwrap_or("");
+                    let mut auth_headers = axum::http::HeaderMap::new();
+                    if let Ok(value) = format!("Bearer {token}").parse() {
+                        auth_headers.insert(axum::http::header::AUTHORIZATION, value);
+                    }
+                    if server.authenticator().authenticate(&auth_headers).is_err() {
+                        return (
+                            axum::http::StatusCode::UNAUTHORIZED,
+                            "invalid or missing token",
+                        )
+                            .into_response();
+                    }
+
                     ws.on_upgrade(move |socket| handle_ui_ws(socket, broadcaster))
+                        .into_response()
                 }
             })
     });
@@ -1828,6 +1901,31 @@ pub(crate) fn attach_ui_routes(
     }
 
     r
+}
+
+/// Check that a WebSocket upgrade's `Origin` (when present) matches
+/// the request's `Host`. Non-browser clients may omit `Origin` and
+/// are allowed; browsers always send it on cross-site requests, so a
+/// mismatch blocks cross-site WebSocket hijacking (CSWSH).
+fn ws_origin_matches_host(headers: &axum::http::HeaderMap) -> bool {
+    let Some(origin) = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|o| o.to_str().ok())
+    else {
+        return true;
+    };
+    let Some(host) = headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+    else {
+        return false;
+    };
+    let origin_host = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"))
+        .unwrap_or(origin)
+        .trim_end_matches('/');
+    origin_host == host
 }
 
 fn serve_ui_asset(path: &str) -> axum::response::Response {
@@ -1977,7 +2075,12 @@ mod tests {
             None,
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
+            test_approvals(),
         )
+    }
+
+    fn test_approvals() -> Arc<navra_core::permissions::ApprovalStore> {
+        Arc::new(navra_core::permissions::ApprovalStore::new(300))
     }
 
     fn test_agent_api() -> Arc<crate::agent_task_api::AgentTaskApi> {
@@ -2125,6 +2228,14 @@ mod tests {
     }
 
     fn build_router_with(cfg: &config::Config, server: Arc<navra_core::McpServer>) -> axum::Router {
+        build_router_with_approvals(cfg, server, test_approvals())
+    }
+
+    fn build_router_with_approvals(
+        cfg: &config::Config,
+        server: Arc<navra_core::McpServer>,
+        approvals: Arc<navra_core::permissions::ApprovalStore>,
+    ) -> axum::Router {
         let models = test_models();
         let config_state = Arc::new(tokio::sync::RwLock::new(cfg.clone()));
         attach_ui_routes(
@@ -2140,6 +2251,7 @@ mod tests {
             None,
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
+            approvals,
         )
     }
 
@@ -2659,6 +2771,7 @@ mod tests {
             None,
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
+            test_approvals(),
         );
         (router, teammate_token, root_token, pool_token)
     }
@@ -2834,6 +2947,7 @@ mod tests {
             None,
             config_state,
             std::path::PathBuf::from("/tmp/navra-test-config.json"),
+            test_approvals(),
         );
 
         // Mint a token so the internal endpoint authorizes the query.
@@ -2940,5 +3054,164 @@ mod tests {
             reg.get_teammate_status("team-1", "researcher").as_deref(),
             Some("failed")
         );
+    }
+
+    // --- Approval resolution endpoint ---
+
+    #[tokio::test]
+    async fn api_approvals_resolves_request() {
+        let approvals = test_approvals();
+        let (req, rx) = approvals.request("claude", "write", "/home/user/doc.md");
+        let router = build_router_with_approvals(&test_config(), test_server(), approvals);
+
+        let (status, json) = post_json(
+            &router,
+            &format!("/api/approvals/{}", req.id),
+            serde_json::json!({"approve": true}),
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["approved"], true);
+        // The pending request was resolved as approved.
+        assert_eq!(
+            rx.await.unwrap(),
+            navra_core::permissions::ApprovalStatus::Approved
+        );
+    }
+
+    #[tokio::test]
+    async fn api_approvals_unknown_id_is_not_found() {
+        let router = build_test_router();
+        let (status, _) = post_json(
+            &router,
+            "/api/approvals/nonexistent",
+            serde_json::json!({"approve": true}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn api_approvals_requires_auth() {
+        let signer = Arc::new(navra_core::identity::Ed25519Signer::generate());
+        let auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
+            Box::new(Arc::clone(&signer)),
+            std::time::Duration::from_secs(3600),
+        );
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        let router = build_router_with(&test_config(), server);
+
+        let (status, _) = post_json(
+            &router,
+            "/api/approvals/some-id",
+            serde_json::json!({"approve": true}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    // --- WebSocket /ws/ui authentication ---
+    //
+    // The WebSocketUpgrade extractor needs a real hyper upgrade
+    // request (tower oneshot requests lack the on-upgrade
+    // extension), so these tests run the router on a real TCP
+    // listener and speak the handshake over a raw socket.
+
+    async fn serve_router(router: axum::Router) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        format!("http://{addr}")
+    }
+
+    /// Send a raw WebSocket upgrade request; return the HTTP status.
+    async fn raw_ws_status(base: &str, path: &str, origin: Option<&str>) -> u16 {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let host = base.trim_start_matches("http://");
+        let mut stream = tokio::net::TcpStream::connect(host).await.unwrap();
+        let mut req = format!(
+            "GET {path} HTTP/1.1\r\n\
+             Host: {host}\r\n\
+             Connection: Upgrade\r\n\
+             Upgrade: websocket\r\n\
+             Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+             Sec-WebSocket-Version: 13\r\n"
+        );
+        if let Some(o) = origin {
+            req.push_str(&format!("Origin: {o}\r\n"));
+        }
+        req.push_str("\r\n");
+        stream.write_all(req.as_bytes()).await.unwrap();
+
+        let mut buf = vec![0u8; 1024];
+        let n = stream.read(&mut buf).await.unwrap();
+        let head = String::from_utf8_lossy(&buf[..n]).to_string();
+        head.split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    }
+
+    fn ws_token_router() -> axum::Router {
+        let mut auth = navra_core::auth::TokenAuthenticator::new();
+        auth.register("sekrit", navra_core::auth::AgentIdentity::new("ui", "dev"));
+        let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
+        build_router_with(&test_config(), server)
+    }
+
+    #[tokio::test]
+    async fn ws_ui_rejects_missing_token() {
+        let base = serve_router(ws_token_router()).await;
+        assert_eq!(raw_ws_status(&base, "/ws/ui", None).await, 401);
+    }
+
+    #[tokio::test]
+    async fn ws_ui_rejects_wrong_token() {
+        let base = serve_router(ws_token_router()).await;
+        assert_eq!(raw_ws_status(&base, "/ws/ui?token=wrong", None).await, 401);
+    }
+
+    #[tokio::test]
+    async fn ws_ui_rejects_cross_origin_upgrade() {
+        let base = serve_router(ws_token_router()).await;
+        assert_eq!(
+            raw_ws_status(&base, "/ws/ui?token=sekrit", Some("http://evil.example")).await,
+            403
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_ui_accepts_valid_token() {
+        let base = serve_router(ws_token_router()).await;
+        // Valid token, no Origin (non-browser client): the upgrade
+        // proceeds (101 Switching Protocols).
+        assert_eq!(raw_ws_status(&base, "/ws/ui?token=sekrit", None).await, 101);
+    }
+
+    #[test]
+    fn ws_origin_matching_logic() {
+        let mk = |origin: Option<&str>, host: Option<&str>| {
+            let mut h = axum::http::HeaderMap::new();
+            if let Some(o) = origin {
+                h.insert(axum::http::header::ORIGIN, o.parse().unwrap());
+            }
+            if let Some(hv) = host {
+                h.insert(axum::http::header::HOST, hv.parse().unwrap());
+            }
+            ws_origin_matches_host(&h)
+        };
+        // No origin (non-browser client): allowed.
+        assert!(mk(None, Some("localhost:9315")));
+        // Matching origin/host.
+        assert!(mk(Some("http://localhost:9315"), Some("localhost:9315")));
+        assert!(mk(Some("https://localhost:9315"), Some("localhost:9315")));
+        // Mismatched host: rejected.
+        assert!(!mk(Some("http://evil.example"), Some("localhost:9315")));
+        // Origin without Host header: rejected.
+        assert!(!mk(Some("http://localhost:9315"), None));
     }
 }

@@ -19,14 +19,19 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Configuration for a single trigger, deserialized from TOML.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+///
+/// Deserialization is manual so a webhook without a `secret` fails
+/// config load with a clear error: an unauthenticated webhook would
+/// let anyone on the network start flows.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(tag = "type")]
 pub enum TriggerConfig {
     #[serde(rename = "webhook")]
     Webhook {
         /// URL path suffix, e.g. "/hook/deploy" becomes POST /hook/deploy
         path: String,
-        /// Optional HMAC-SHA256 secret for request verification
+        /// HMAC-SHA256 secret for request verification (required —
+        /// webhooks without a secret are rejected at config load)
         secret: Option<String>,
         /// Name of the flow to start when triggered
         flow_name: String,
@@ -49,6 +54,74 @@ pub enum TriggerConfig {
         /// Debounce interval in milliseconds (default: 500)
         debounce_ms: Option<u64>,
     },
+}
+
+/// Untagged-shaped intermediate used to validate webhooks before
+/// constructing a [`TriggerConfig`].
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum TriggerConfigRaw {
+    #[serde(rename = "webhook")]
+    Webhook {
+        path: String,
+        secret: Option<String>,
+        flow_name: String,
+    },
+    #[serde(rename = "cron")]
+    Cron { schedule: String, flow_name: String },
+    #[serde(rename = "file_watch")]
+    FileWatch {
+        path: String,
+        pattern: Option<String>,
+        flow_name: String,
+        debounce_ms: Option<u64>,
+    },
+}
+
+impl<'de> Deserialize<'de> for TriggerConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = TriggerConfigRaw::deserialize(deserializer)?;
+        match raw {
+            TriggerConfigRaw::Webhook {
+                path,
+                secret,
+                flow_name,
+            } => {
+                if secret.as_deref().is_none_or(str::is_empty) {
+                    return Err(serde::de::Error::custom(format!(
+                        "webhook trigger '{path}' requires a non-empty `secret` \
+                         (HMAC-SHA256); unauthenticated webhooks are not allowed"
+                    )));
+                }
+                Ok(TriggerConfig::Webhook {
+                    path,
+                    secret,
+                    flow_name,
+                })
+            }
+            TriggerConfigRaw::Cron {
+                schedule,
+                flow_name,
+            } => Ok(TriggerConfig::Cron {
+                schedule,
+                flow_name,
+            }),
+            TriggerConfigRaw::FileWatch {
+                path,
+                pattern,
+                flow_name,
+                debounce_ms,
+            } => Ok(TriggerConfig::FileWatch {
+                path,
+                pattern,
+                flow_name,
+                debounce_ms,
+            }),
+        }
+    }
 }
 
 /// Registry of active triggers with their background task handles.
@@ -898,6 +971,7 @@ debounce_ms = 1000
 [[triggers]]
 type = "webhook"
 path = "/hook/deploy"
+secret = "deploy-hmac-secret"
 flow_name = "deploy"
 
 [[triggers]]
@@ -916,6 +990,46 @@ flow_name = "ingest"
         }
         let w: Wrapper = toml::from_str(toml).unwrap();
         assert_eq!(w.triggers.len(), 3);
+    }
+
+    // --- Webhook secret enforcement ---
+
+    #[test]
+    fn deserialize_webhook_without_secret_fails() {
+        let toml = r#"
+[[triggers]]
+type = "webhook"
+path = "/hook/deploy"
+flow_name = "deploy"
+"#;
+        #[derive(Deserialize, Debug)]
+        struct Wrapper {
+            #[allow(dead_code)]
+            triggers: Vec<TriggerConfig>,
+        }
+        let err = toml::from_str::<Wrapper>(toml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("secret"),
+            "error should mention the missing secret: {msg}"
+        );
+    }
+
+    #[test]
+    fn deserialize_webhook_with_empty_secret_fails() {
+        let toml = r#"
+[[triggers]]
+type = "webhook"
+path = "/hook/deploy"
+secret = ""
+flow_name = "deploy"
+"#;
+        #[derive(Deserialize)]
+        struct Wrapper {
+            #[allow(dead_code)]
+            triggers: Vec<TriggerConfig>,
+        }
+        assert!(toml::from_str::<Wrapper>(toml).is_err());
     }
 
     // --- File watch debounce (unit-level) ---
