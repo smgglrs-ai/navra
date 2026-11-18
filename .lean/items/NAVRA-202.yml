@@ -1,0 +1,40 @@
+id: NAVRA-202
+title: "Security remediation follow-ups from the 2026-11-18 full audit"
+status: todo
+priority: high
+effort: 3-5d
+tags: [security, hardening, follow-up]
+depends_on: []
+source: security audit + remediation wave, 2026-11-18 (6 audit agents, 5
+  verification agents, 6 remediation agents; findings merged as wp/a-f)
+description: |
+  Residual items from the security remediation that could not land in
+  the same change either because files were cross-owned or the fix
+  needs design work:
+
+  1. Persist the capability TokenRevocationList (currently in-memory,
+     lost on restart). Back it with the SQLite/blackbox store so
+     revocations survive gateway restarts, and expose `navra revoke
+     <token-id>` in the CLI.
+  2. Warm-pool adoption: enforce the bootstrap-token marker claim in
+     `task_for` (the marker is minted but not required — the route in
+     ui.rs forwards only the decoded DID). Full fix: derive sandbox
+     identity from the caller's SPIFFE SVID client cert instead of the
+     self-asserted X-Navra-Sandbox header, then delete the shared
+     bootstrap token entirely.
+  3. IFC taint persistence on session re-initialize: needs a
+     per-client session key (e.g. Mcp-Session-Id-scoped taint) plus
+     ifc_benchmark_e2e updates; see NOTE comment in navra_handler.rs.
+  4. Stdio transport with real agents configured now fails closed (no
+     header channel to present a token) — ship a release note and add
+     an env-var token channel for stdio if operators need it.
+  5. Remote model clients (gateway -> standalone model server) do not
+     send the bearer token when NAVRA_MODEL_TOKEN is set on the server.
+  6. Security docs pass: token entropy policy, cap:token default set,
+     [permissions.capability] override, ring allow clamping, revocation
+     API (docs/content/docs/security/), plus stragglers:
+     docs/openshell/navra-sandbox.toml:72 (file_approve mention),
+     configuration _index.md webhook example (now requires secret),
+     security-gateway.md:269 (/oauth/register now opt-in).
+  7. 0.0.0.0 binds fall back to a localhost-only Host allowlist —
+     operators must set a specific hostname in server.tcp; document.
