@@ -46,7 +46,11 @@ async fn agent_cannot_reach_unauthorized_endpoint() {
             let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
             // Accept one connection then stop
             if let Ok((mut stream, _)) = listener.accept().await {
-                use tokio::io::AsyncWriteExt;
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                // Read the request first: newer hyper rejects servers
+                // that answer before the request has been consumed.
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf).await;
                 let response = "HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\nexfiltrated";
                 let _ = stream.write_all(response.as_bytes()).await;
             }
@@ -79,7 +83,7 @@ async fn agent_cannot_reach_unauthorized_endpoint() {
 
     assert!(
         result.is_ok(),
-        "unauthorized server should be reachable from host (no sandbox)"
+        "unauthorized server should be reachable from host (no sandbox): {result:?}"
     );
 
     server.abort();
