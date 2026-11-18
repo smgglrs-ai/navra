@@ -3700,6 +3700,7 @@ dependencies = [
  "navra-responses",
  "navra-safety-hooks",
  "regex-lite",
+ "reqwest 0.13.4",
  "rmcp",
  "rusqlite",
  "serde",
@@ -4015,6 +4016,7 @@ dependencies = [
  "axum",
  "dirs",
  "futures-util",
+ "http-body-util",
  "navra-model",
  "navra-model-hub",
  "navra-model-runtime",
@@ -4194,9 +4196,12 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "rand 0.8.8",
+ "rcgen",
  "reqwest 0.13.4",
  "rmcp",
  "rusqlite",
+ "rustls",
+ "rustls-pemfile",
  "schemars 1.2.2",
  "serde",
  "serde_json",
@@ -4204,6 +4209,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "toml 0.8.23",
  "tonic 0.14.6",
@@ -5471,6 +5477,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rcgen"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
+dependencies = [
+ "pem",
+ "ring",
+ "rustls-pki-types",
+ "time",
+ "yasna",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5879,6 +5898,15 @@ dependencies = [
  "rustls-pki-types",
  "schannel",
  "security-framework",
+]
+
+[[package]]
+name = "rustls-pemfile"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
+dependencies = [
+ "rustls-pki-types",
 ]
 
 [[package]]
@@ -8248,6 +8276,15 @@ dependencies = [
  "log",
  "mac",
  "markup5ever",
+]
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
 ]
 
 [[package]]
