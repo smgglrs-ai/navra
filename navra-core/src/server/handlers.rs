@@ -49,6 +49,27 @@ impl ToolFilter for IFCToolFilter {
     }
 }
 
+/// Outcome of resolving a path for ACL evaluation.
+#[derive(Debug, PartialEq, Eq)]
+enum AclPathResolution {
+    /// Fully resolved (existing path canonicalized, or a not-yet
+    /// existing path resolved through its deepest existing ancestor
+    /// with the remainder reattached lexically).
+    Resolved(std::path::PathBuf),
+    /// The path traverses a dangling symlink — a symlink whose
+    /// target does not exist. The value is the best-effort resolved
+    /// target (symlinks followed via `read_link`), suitable for
+    /// read-side ACL evaluation and logging. Writes through such a
+    /// path are denied outright by the caller.
+    DanglingSymlink(std::path::PathBuf),
+    /// An absolute path with no resolvable anchor at all.
+    Unresolvable,
+}
+
+/// Cap on iterative symlink resolution (matches the kernel's own
+/// ELOOP limit) so a symlink cycle cannot spin the resolver.
+const ACL_SYMLINK_LIMIT: usize = 40;
+
 /// Canonicalize a path for ACL evaluation, following symlinks.
 ///
 /// When the full path does not exist (a write creating a new file, or
@@ -56,31 +77,100 @@ impl ToolFilter for IFCToolFilter {
 /// existing ancestor and reattach the not-yet-existing remainder —
 /// every symlink that exists is followed, so a link inside an
 /// allowed tree pointing at a denied location is checked at its real
-/// location. Relative paths are returned unchanged (the ACL engine
-/// normalizes them lexically). Returns `None` when an absolute path
-/// cannot be resolved at all.
-fn canonicalize_for_acl(path: &std::path::Path) -> Option<std::path::PathBuf> {
+/// location.
+///
+/// Dangling symlinks (link exists, target does not) are detected via
+/// `symlink_metadata` on the tail components and resolved
+/// iteratively with `fs::read_link`, reporting
+/// [`AclPathResolution::DanglingSymlink`]. Without this, the lexical
+/// name of the missing final component would be reattached unchecked
+/// and a write tool could create the file at the symlink's target —
+/// an ACL bypass. Relative paths are returned unchanged (the ACL
+/// engine normalizes them lexically).
+fn resolve_for_acl(path: &std::path::Path) -> AclPathResolution {
     if !path.is_absolute() {
-        return Some(path.to_path_buf());
+        return AclPathResolution::Resolved(path.to_path_buf());
     }
     if let Ok(canon) = path.canonicalize() {
-        return Some(canon);
+        return AclPathResolution::Resolved(canon);
     }
+    // Find the deepest existing ancestor, collecting the missing
+    // tail components (deepest first).
     let mut tail: Vec<std::ffi::OsString> = Vec::new();
     let mut probe = path.to_path_buf();
-    while let Some(name) = probe.file_name() {
+    let anchor = loop {
+        let Some(name) = probe.file_name() else {
+            return AclPathResolution::Unresolvable;
+        };
         tail.push(name.to_os_string());
-        let parent = probe.parent()?.to_path_buf();
+        let Some(parent) = probe.parent() else {
+            return AclPathResolution::Unresolvable;
+        };
         if let Ok(canon) = parent.canonicalize() {
-            let mut full = canon;
-            for name in tail.iter().rev() {
-                full = full.join(name);
-            }
-            return Some(full);
+            break canon;
         }
-        probe = parent;
+        probe = parent.to_path_buf();
+    };
+    // Walk the tail top-down from the canonical anchor. A component
+    // that exists as a symlink but whose target is missing is a
+    // dangling symlink: resolve it with read_link (iteratively, to
+    // follow chained links) and keep walking from the target.
+    let mut dangled = false;
+    let mut current = anchor;
+    let mut links_followed = 0usize;
+    for comp in tail.iter().rev() {
+        let candidate = current.join(comp);
+        let is_symlink = std::fs::symlink_metadata(&candidate)
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false);
+        if is_symlink {
+            links_followed += 1;
+            if links_followed > ACL_SYMLINK_LIMIT {
+                return AclPathResolution::Unresolvable;
+            }
+            let Ok(target) = std::fs::read_link(&candidate) else {
+                return AclPathResolution::Unresolvable;
+            };
+            // The full path failed to canonicalize, so following
+            // this link leads to a missing target (possibly through
+            // further links).
+            dangled = true;
+            current = if target.is_absolute() {
+                // Restart resolution from the absolute target so any
+                // existing prefix of it is canonicalized too.
+                match resolve_for_acl(&target) {
+                    AclPathResolution::Resolved(p) => p,
+                    AclPathResolution::DanglingSymlink(p) => p,
+                    AclPathResolution::Unresolvable => target,
+                }
+            } else {
+                // Relative target: resolve against the link's
+                // directory (current already holds it).
+                current.join(target)
+            };
+        } else {
+            // Not a symlink (either it doesn't exist at all, or it
+            // is the tail's only existing component as a plain
+            // file): continue lexically.
+            current = candidate;
+        }
     }
-    None
+    if dangled {
+        AclPathResolution::DanglingSymlink(current)
+    } else {
+        AclPathResolution::Resolved(current)
+    }
+}
+
+/// Collision-free encoding of a (permission set, agent name) identity
+/// pair, used for session keys and rate-limit buckets.
+///
+/// JSON array encoding: a `':'` inside either field cannot forge a
+/// different pair that flattens to the same key (the legacy
+/// `"{perms}:{name}"` format let `("a:b", "c")` and `("a", "b:c")`
+/// collide, merging two agents' sessions and quotas).
+pub(crate) fn identity_key(permissions: &str, name: &str) -> String {
+    serde_json::json!([permissions, name]).to_string()
 }
 
 /// Usage-based tool pruning filter.
@@ -350,10 +440,17 @@ impl McpServer {
     /// Does a static `Deny` in the permission set's tool_rules block
     /// this tool? (Dynamic session grants cannot override a static
     /// deny, so a denied tool is never callable.)
+    ///
+    /// Unknown permission sets fail closed when
+    /// `hide_denied_tools` is on and the server runs with a real
+    /// authenticator: the call path denies such sets, so the listing
+    /// must not advertise tools the agent cannot call. The
+    /// dev/test carve-out (unknown set ⇒ visible) survives only in
+    /// allow-anonymous mode.
     fn tool_denied_by_rules(&self, permission_set: &str, tool_name: &str) -> bool {
         match self.tool_permissions.get(permission_set) {
             Some(tp) => tp.check(tool_name) == crate::permissions::tool_rules::ToolPolicy::Deny,
-            None => false,
+            None => self.hide_denied_tools && !self.allows_unauthenticated,
         }
     }
 
@@ -384,12 +481,15 @@ impl McpServer {
             let permission_set = &agent.permissions;
             visible.retain(|t| !self.tool_denied_by_rules(permission_set, &t.name));
         }
-        // Filter by allowed upstreams (per-agent scoping)
+        // Filter by allowed upstreams (per-agent scoping). Attribution
+        // comes from the upstream tool index (reverse lookup), not the
+        // tool-name prefix — an upstream serving `github_exfil` must
+        // not leak into a github-only agent's listing.
         if !agent.allowed_upstreams.is_empty() {
             let allowed = &agent.allowed_upstreams;
             visible.retain(|t| {
-                let module = t.name.split('_').next().unwrap_or("");
-                !self.upstream_modules.contains(module) || allowed.iter().any(|a| a == module)
+                self.upstream_module_for_tool(&t.name)
+                    .is_none_or(|module| allowed.contains(&module))
             });
         }
         // Apply dynamic filters
@@ -499,11 +599,11 @@ impl McpServer {
         }
 
         // Rate limit check (kernel-enforced). Buckets are keyed on the
-        // derived identity (permission set + agent name) so two agents
-        // sharing a name across permission sets — or a client spoofing
-        // another agent's name — do not share or exhaust each other's
-        // quota.
-        let identity_key = format!("{}:{}", ctx.agent.permissions, ctx.agent.name);
+        // derived identity (permission set + agent name, JSON-encoded
+        // so the pair is collision-free) so two agents sharing a name
+        // across permission sets — or a client spoofing another
+        // agent's name — do not share or exhaust each other's quota.
+        let identity_key = identity_key(&ctx.agent.permissions, &ctx.agent.name);
         if self.quota_engine.has_limits()
             && !self
                 .quota_engine
@@ -576,10 +676,14 @@ impl McpServer {
                 ))
                 .into();
             }
-        } else if self.tool_permissions.is_empty() {
-            // No tool-level rules configured anywhere (dev/test
-            // servers without [permissions.*.tool_rules]): nothing
-            // to enforce.
+        } else if self.tool_permissions.is_empty() && self.allows_unauthenticated {
+            // No tool-level rules configured anywhere AND the server
+            // runs unauthenticated (dev/test servers via
+            // allow_anonymous / NoAuthenticator): nothing to enforce.
+            // With a real authenticator this carve-out is disabled —
+            // the `else` branch below fails closed for the unknown
+            // set (an authenticated deployment with no tool rules
+            // must not silently allow everything).
         } else {
             // Fail closed: tool rules exist for other permission
             // sets but this agent's set is unknown.
@@ -660,10 +764,15 @@ impl McpServer {
         // Upstream scoping: `allowed_upstreams` restricts which upstream
         // MCP servers the agent may use. Enforced on the tools/call path
         // (not only tools/list) so a directly-named upstream tool is
-        // blocked even when it never appears in a listing.
-        if !ctx.agent.allowed_upstreams.is_empty() && self.is_upstream_tool(&params.name) {
-            let module = params.name.split('_').next().unwrap_or("");
-            let allowed = ctx.agent.allowed_upstreams.iter().any(|a| a == module);
+        // blocked even when it never appears in a listing. Module
+        // attribution comes from the upstream tool index (which module
+        // registered this exact tool name) — never from the tool's name
+        // prefix, which is upstream-controlled text an evil upstream
+        // can choose freely (e.g. serving `github_exfil`).
+        if !ctx.agent.allowed_upstreams.is_empty()
+            && let Some(module) = self.upstream_module_for_tool(&params.name)
+        {
+            let allowed = ctx.agent.allowed_upstreams.contains(&module);
             if !allowed {
                 self.process_table.record_denied(
                     &ctx.agent.name,
@@ -988,25 +1097,59 @@ impl McpServer {
             }
         {
             let path = std::path::Path::new(path_str);
+            // Classification: operator/heuristic classification in
+            // `tool_operations` wins over upstream-controlled
+            // annotations (a lying `readOnlyHint` must not downgrade
+            // a write to a read for ACL purposes). Fall back to the
+            // annotation-aware heuristic only when unclassified.
             let annotations = self
                 .tools
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .get(params.name.as_ref())
                 .and_then(|t| t.definition.annotations.clone());
-            let is_write = crate::ifc::is_write_tool(&params.name, annotations.as_ref());
+            let is_write = self.classify_tool_write(&params.name, annotations.as_ref());
             // Canonicalize (symlink-following) so ACL patterns match
             // the real target: every symlink component that exists is
             // resolved, so a link inside an allowed tree pointing
             // outside is checked at its real location. Paths that do
             // not fully exist yet (a write creating a new file, or an
             // upstream tool's virtual path) resolve via their deepest
-            // existing ancestor. Write tools deny when even that
-            // fails; read tools fall back to the raw path.
-            let checked_path: Option<std::path::PathBuf> = canonicalize_for_acl(path);
-            let checked_path = match checked_path {
-                Some(p) => p,
-                None if is_write => {
+            // existing ancestor. A path that traverses a DANGLING
+            // symlink (link exists, target missing) is denied for
+            // write tools outright — the write would create the file
+            // at the link's target, outside what the lexical name
+            // was checked against. Read tools fall back to checking
+            // the resolved target (the read itself will fail on the
+            // missing file, so no information leaks either way).
+            let checked_path: std::path::PathBuf = match resolve_for_acl(path) {
+                AclPathResolution::Resolved(p) => p,
+                AclPathResolution::DanglingSymlink(resolved) if is_write => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tools
+                        .calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::info!(
+                        tool = %params.name,
+                        path = %path_str,
+                        resolved = %resolved.display(),
+                        "Path ACL denied: write through a dangling symlink (default-deny)"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Access denied: path '{}' traverses a dangling symlink — \
+                         writes through dangling symlinks are not permitted",
+                        path_str
+                    ))
+                    .into();
+                }
+                AclPathResolution::DanglingSymlink(resolved) => resolved,
+                AclPathResolution::Unresolvable if is_write => {
                     self.process_table.record_denied(
                         &ctx.agent.name,
                         &ctx.agent.permissions,
@@ -1028,7 +1171,7 @@ impl McpServer {
                     ))
                     .into();
                 }
-                None => path.to_path_buf(),
+                AclPathResolution::Unresolvable => path.to_path_buf(),
             };
             let tool_op = if is_write { "write" } else { "read" };
             match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, &checked_path)
@@ -2496,8 +2639,14 @@ impl McpServer {
             index.get(module_name).cloned().unwrap_or_default()
         };
 
-        let new_names: Vec<String> = tools.iter().map(|(def, _)| def.name.to_string()).collect();
-
+        // Anti-spoofing: an upstream's tools must be named
+        // `{module}_*`. A tool whose name claims a different module's
+        // prefix (e.g. module `evil` serving `github_exfil`) is
+        // refused — logged loudly and skipped, never registered —
+        // so name-prefix-based attribution can never be forged. The
+        // rest of the upstream is unaffected.
+        let prefix = format!("{module_name}_");
+        let mut new_names: Vec<String> = Vec::new();
         {
             let mut tools_map = self.tools.write().unwrap_or_else(|e| e.into_inner());
             for name in &previous {
@@ -2505,6 +2654,16 @@ impl McpServer {
             }
             for (definition, handler) in tools {
                 let name = definition.name.to_string();
+                if !name.starts_with(&prefix) {
+                    tracing::error!(
+                        module = %module_name,
+                        tool = %name,
+                        "Refusing upstream tool whose name does not start with the \
+                         registering module's prefix (possible cross-module spoofing) \
+                         — skipping the tool"
+                    );
+                    continue;
+                }
                 if tools_map.contains_key(&name) {
                     tracing::error!(
                         module = %module_name,
@@ -2514,12 +2673,13 @@ impl McpServer {
                     continue;
                 }
                 tools_map.insert(
-                    name,
+                    name.clone(),
                     RegisteredTool {
                         definition,
                         handler,
                     },
                 );
+                new_names.push(name);
             }
         }
         {
@@ -2764,16 +2924,56 @@ impl McpServer {
     }
 
     /// Is this tool registered by an upstream module? (Used by the
-    /// v2 Cedar action dispatch to namespace upstream tool calls, and
-    /// by allowed-upstreams enforcement on the call path.)
+    /// v2 Cedar action dispatch to namespace upstream tool calls.)
+    #[cfg_attr(not(feature = "cedar"), allow(dead_code))]
     pub(crate) fn is_upstream_tool(&self, tool_name: &str) -> bool {
+        self.upstream_module_for_tool(tool_name).is_some()
+    }
+
+    /// Which upstream module owns this exact tool name?
+    ///
+    /// Reverse lookup into the upstream tool index — the ONLY source
+    /// of truth for module attribution. A tool's name prefix is
+    /// upstream-controlled text: an upstream named `evil` serving a
+    /// tool called `github_exfil` must never be attributed to the
+    /// `github` module just because of the name it chose.
+    pub(crate) fn upstream_module_for_tool(&self, tool_name: &str) -> Option<String> {
         let index = self
             .upstream_tool_index
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        index.iter().any(|(module, tools)| {
-            self.upstream_modules.contains(module) && tools.iter().any(|t| t == tool_name)
-        })
+        index
+            .iter()
+            .find(|(module, tools)| {
+                self.upstream_modules.contains(module.as_str())
+                    && tools.iter().any(|t| t == tool_name)
+            })
+            .map(|(module, _)| module.clone())
+    }
+
+    /// Classify a tool as write for path-ACL purposes.
+    ///
+    /// The operator/heuristic classification in `tool_operations`
+    /// wins — upstream-controlled `readOnlyHint` annotations must not
+    /// be able to downgrade a write tool to a read for ACL
+    /// evaluation. `Deny`-classified tools are treated as writes
+    /// (strictest ACL branch) when they reach this site. Falls back
+    /// to the annotation-aware heuristic only when unclassified.
+    fn classify_tool_write(
+        &self,
+        tool_name: &str,
+        annotations: Option<&navra_protocol::ToolAnnotations>,
+    ) -> bool {
+        match self
+            .tool_operations
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(tool_name)
+        {
+            Some(navra_mcp::ToolOperation::Read) => false,
+            Some(navra_mcp::ToolOperation::Write | navra_mcp::ToolOperation::Deny) => true,
+            None => crate::ifc::is_write_tool(tool_name, annotations),
+        }
     }
 
     /// Candidate argument keys that carry filesystem paths for a tool.
@@ -2785,6 +2985,11 @@ impl McpServer {
     /// that triple plus common variants when the tool declares no
     /// usable schema.
     pub(crate) fn path_argument_keys(&self, tool_name: &str) -> Vec<String> {
+        // `url`/`uri` are deliberately NOT in this list: they are not
+        // filesystem paths, and routing them through the path ACL
+        // would let a path-pattern allowlist accidentally authorize
+        // network egress. URL-bearing arguments are covered by the
+        // SSRF/egress controls instead.
         const FALLBACK: &[&str] = &[
             "path",
             "file_path",
@@ -2798,6 +3003,8 @@ impl McpServer {
             "target",
             "destination",
             "dest",
+            "source",
+            "cwd",
         ];
         let fallback = || FALLBACK.iter().map(|s| s.to_string()).collect();
         let tools = self.tools.read().unwrap_or_else(|e| e.into_inner());

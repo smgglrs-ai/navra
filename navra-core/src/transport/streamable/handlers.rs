@@ -73,11 +73,16 @@ pub(super) async fn handle_registry(
 
     let limit = query.limit.min(100);
 
+    // The cursor must be bounded by the FILTERED set, not the full
+    // entry list — otherwise a search whose matches end before the
+    // unfiltered list does would emit a phantom next_cursor pointing
+    // past the last (already-returned) match.
+    let total = filtered.len();
     let page: Vec<&serde_json::Value> = filtered.into_iter().skip(start).take(limit).collect();
 
     let next_cursor = start
         .checked_add(limit)
-        .filter(|&next| next < entries.len())
+        .filter(|&next| next < total)
         .map(|next| next.to_string());
 
     Json(serde_json::json!({

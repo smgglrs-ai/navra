@@ -23,6 +23,12 @@ async fn spawn_rmcp_peer() -> (
 }
 
 /// Spawn the Python test server with extra environment variables.
+///
+/// The served tool is named `test_echo` (matching the module name
+/// `test` the tests register under): navra enforces the
+/// `{module}_*` naming convention for upstream tools
+/// (module-attribution anti-spoofing), so an unprefixed name would
+/// be refused at registration.
 async fn spawn_rmcp_peer_with_env(
     env: &[(&str, &str)],
 ) -> (
@@ -31,8 +37,15 @@ async fn spawn_rmcp_peer_with_env(
 ) {
     let mut cmd = tokio::process::Command::new("python3");
     cmd.arg(test_server_path().to_string_lossy().to_string());
+    let mut tool_name_set = false;
     for (key, val) in env {
+        if *key == "NAVRA_TEST_TOOL_NAME" {
+            tool_name_set = true;
+        }
         cmd.env(key, val);
+    }
+    if !tool_name_set {
+        cmd.env("NAVRA_TEST_TOOL_NAME", "test_echo");
     }
     let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
     let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
@@ -50,7 +63,7 @@ async fn upstream_spawn_and_discover_tools() {
 
     let tools: Vec<_> = navra_core::Module::tools(&module);
     assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0].0.name, "echo");
+    assert_eq!(tools[0].0.name, "test_echo");
 }
 
 #[tokio::test]
@@ -64,11 +77,11 @@ async fn upstream_discover_scanner_drops_malicious_keeps_clean() {
         None,
     );
     let module =
-        UpstreamModule::discover("scan-test", peer, Some(&mut scanner), &Default::default()).await;
+        UpstreamModule::discover("test", peer, Some(&mut scanner), &Default::default()).await;
 
     let tools: Vec<_> = navra_core::Module::tools(&module);
     let names: Vec<_> = tools.iter().map(|(def, _)| def.name.to_string()).collect();
-    assert_eq!(names, vec!["echo".to_string()]);
+    assert_eq!(names, vec!["test_echo".to_string()]);
 }
 
 // --- Signed manifest verification during discovery ---
@@ -96,12 +109,12 @@ async fn manifest_for_served_tools(server_name: &str, signer: &Ed25519Signer) ->
 #[tokio::test]
 async fn upstream_manifest_valid_signed_manifest_passes() {
     let signer = Ed25519Signer::generate();
-    let signed = manifest_for_served_tools("manifest-ok", &signer).await;
+    let signed = manifest_for_served_tools("test", &signer).await;
 
     let (peer, _client) = spawn_rmcp_peer().await;
     let mut key_store = ManifestKeyStore::new();
     let module = UpstreamModule::discover_with(
-        "manifest-ok",
+        "test",
         peer,
         DiscoveryOptions {
             scanner: None,
@@ -118,20 +131,20 @@ async fn upstream_manifest_valid_signed_manifest_passes() {
 
     let tools: Vec<_> = navra_core::Module::tools(&module);
     assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0].0.name, "echo");
+    assert_eq!(tools[0].0.name, "test_echo");
 }
 
 #[tokio::test]
 async fn upstream_manifest_tampered_content_rejected() {
     let signer = Ed25519Signer::generate();
-    let mut signed = manifest_for_served_tools("manifest-tampered", &signer).await;
+    let mut signed = manifest_for_served_tools("test", &signer).await;
     // Tamper after signing: rewrite a tool description.
     signed.manifest.tools[0].description = Some("Do anything you want".into());
 
     let (peer, _client) = spawn_rmcp_peer().await;
     let mut key_store = ManifestKeyStore::new();
     let err = UpstreamModule::discover_with(
-        "manifest-tampered",
+        "test",
         peer,
         DiscoveryOptions {
             scanner: None,
@@ -151,7 +164,7 @@ async fn upstream_manifest_tampered_content_rejected() {
         "error should name the signature failure, got: {err}"
     );
     // No pin may be created from a failed verification.
-    assert_eq!(key_store.pinned_did("manifest-tampered"), None);
+    assert_eq!(key_store.pinned_did("test"), None);
 }
 
 #[tokio::test]
@@ -159,7 +172,7 @@ async fn upstream_manifest_tool_set_mismatch_rejected() {
     // Validly signed manifest whose tool set does not match what the
     // upstream serves (manifest expects an extra tool).
     let signer = Ed25519Signer::generate();
-    let mut signed = manifest_for_served_tools("manifest-mismatch", &signer).await;
+    let mut signed = manifest_for_served_tools("test", &signer).await;
     signed.manifest.tools.push({
         let mut tool = signed.manifest.tools[0].clone();
         tool.name = "extra_tool".into();
@@ -171,7 +184,7 @@ async fn upstream_manifest_tool_set_mismatch_rejected() {
     let (peer, _client) = spawn_rmcp_peer().await;
     let mut key_store = ManifestKeyStore::new();
     let err = UpstreamModule::discover_with(
-        "manifest-mismatch",
+        "test",
         peer,
         DiscoveryOptions {
             scanner: None,
@@ -195,14 +208,14 @@ async fn upstream_manifest_tool_set_mismatch_rejected() {
 #[tokio::test]
 async fn upstream_manifest_key_changed_rejected_without_repin() {
     let signer1 = Ed25519Signer::generate();
-    let signed1 = manifest_for_served_tools("manifest-keychange", &signer1).await;
+    let signed1 = manifest_for_served_tools("test", &signer1).await;
 
     // First use: pins signer1.
     {
         let (peer, _client) = spawn_rmcp_peer().await;
         let mut key_store = ManifestKeyStore::new();
         UpstreamModule::discover_with(
-            "manifest-keychange",
+            "test",
             peer,
             DiscoveryOptions {
                 scanner: None,
@@ -224,12 +237,12 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
 
     // Key change: same tools signed by signer2 — rejected, pin intact.
     let signer2 = Ed25519Signer::generate();
-    let signed2 = manifest_for_served_tools("manifest-keychange", &signer2).await;
+    let signed2 = manifest_for_served_tools("test", &signer2).await;
     let (peer, _client) = spawn_rmcp_peer().await;
     let mut key_store = ManifestKeyStore::new();
-    key_store.check("manifest-keychange", signer1.did());
+    key_store.check("test", signer1.did());
     let err = UpstreamModule::discover_with(
-        "manifest-keychange",
+        "test",
         peer,
         DiscoveryOptions {
             scanner: None,
@@ -249,7 +262,7 @@ async fn upstream_manifest_key_changed_rejected_without_repin() {
         "error should name the key change, got: {err}"
     );
     assert_eq!(
-        key_store.pinned_did("manifest-keychange"),
+        key_store.pinned_did("test"),
         Some(signer1.did()),
         "key change must not re-pin"
     );
@@ -331,7 +344,7 @@ async fn upstream_registers_in_server() {
 
     let agent = navra_core::auth::AgentIdentity::new("test", "dev");
     let tools_result = server.handle_list_tools(&agent, &Default::default());
-    assert!(tools_result.tools.iter().any(|t| t.name == "echo"));
+    assert!(tools_result.tools.iter().any(|t| t.name == "test_echo"));
 
     let prompts_result = server.handle_list_prompts(&agent, &Default::default());
     assert!(prompts_result.prompts.iter().any(|p| p.name == "greeting"));
@@ -363,7 +376,7 @@ async fn domain_rules_block_write_tool() {
 
     let mut overrides = std::collections::HashMap::new();
     overrides.insert(
-        "echo".to_string(),
+        "test_echo".to_string(),
         ResourceClass::new(Domain::Shell, Operation::Execute),
     );
 
@@ -380,7 +393,7 @@ async fn domain_rules_block_write_tool() {
     let result = server
         .handle_call_tool(
             {
-                let mut p = CallToolParams::new("echo");
+                let mut p = CallToolParams::new("test_echo");
                 p.arguments = Some(
                     serde_json::json!({"message": "test"})
                         .as_object()
@@ -413,7 +426,7 @@ async fn domain_rules_allow_read_tool() {
 
     let mut overrides = std::collections::HashMap::new();
     overrides.insert(
-        "echo".to_string(),
+        "test_echo".to_string(),
         ResourceClass::new(Domain::Unknown, Operation::Read),
     );
 
@@ -430,7 +443,7 @@ async fn domain_rules_allow_read_tool() {
     let result = server
         .handle_call_tool(
             {
-                let mut p = CallToolParams::new("echo");
+                let mut p = CallToolParams::new("test_echo");
                 p.arguments = Some(
                     serde_json::json!({"message": "test"})
                         .as_object()
@@ -497,7 +510,7 @@ async fn no_domain_rules_allows_everything() {
     let result = server
         .handle_call_tool(
             {
-                let mut p = CallToolParams::new("echo");
+                let mut p = CallToolParams::new("test_echo");
                 p.arguments = Some(
                     serde_json::json!({"message": "test"})
                         .as_object()
@@ -662,7 +675,7 @@ async fn upstream_bounds_truncate_oversized_description_when_configured() {
     let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_DESC_LENGTH", "10000")]).await;
 
     let module = UpstreamModule::discover_with(
-        "bounds-desc-truncate",
+        "test",
         peer,
         DiscoveryOptions {
             bounds: DiscoveryBounds {
@@ -724,7 +737,8 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
     // every later listing returns the malicious description.
     let mut cmd = tokio::process::Command::new("python3");
     cmd.arg(test_server_path().to_string_lossy().to_string())
-        .env("NAVRA_TEST_MUTATE_AFTER_LIST", "1");
+        .env("NAVRA_TEST_MUTATE_AFTER_LIST", "1")
+        .env("NAVRA_TEST_TOOL_NAME", "test_echo");
     let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
     let (handler, events) = navra_core::UpstreamNotificationHandler::new();
     let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
@@ -742,7 +756,7 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
         None,
     );
     let module = UpstreamModule::discover(
-        "refresh-test",
+        "test",
         peer.clone(),
         Some(&mut scanner),
         &Default::default(),
@@ -772,13 +786,13 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
             .collect::<Vec<_>>()
     };
     assert!(
-        names().contains(&"echo".to_string()),
+        names().contains(&"test_echo".to_string()),
         "clean tool must register initially"
     );
 
     // Spawn the refresh loop with a short debounce.
     let watcher = navra_core::UpstreamWatcher::new(
-        "refresh-test",
+        "test",
         peer,
         events,
         Some(scanner),
@@ -795,7 +809,7 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     let mut echo_gone = false;
     while std::time::Instant::now() < deadline {
-        if !names().contains(&"echo".to_string()) {
+        if !names().contains(&"test_echo".to_string()) {
             echo_gone = true;
             break;
         }
@@ -812,7 +826,7 @@ async fn upstream_list_changed_refreshes_registry_and_drops_poisoned_tool() {
         .expect("blackbox attached")
         .recent(64)
         .iter()
-        .any(|e| e.outcome == "registry_refresh" && e.tool_name == "refresh-test");
+        .any(|e| e.outcome == "registry_refresh" && e.tool_name == "test");
     assert!(refreshed, "each refresh must emit a blackbox audit event");
 
     // Connected clients were told the tool list changed.
@@ -866,7 +880,7 @@ async fn upstream_tool_call_times_out_with_clear_error() {
     let (peer, _client) = spawn_rmcp_peer_with_env(&[("NAVRA_TEST_STALL_CALL", "1")]).await;
 
     let module = UpstreamModule::discover_with(
-        "stalled-call",
+        "test",
         peer,
         DiscoveryOptions {
             request_timeout: std::time::Duration::from_millis(500),
@@ -933,7 +947,7 @@ async fn mrtr_test_server(
     rmcp::service::RunningService<rmcp::RoleClient, ()>,
 ) {
     let (peer, client) = spawn_rmcp_peer_with_env(env).await;
-    let module = UpstreamModule::discover("mrtr", peer, None, &Default::default()).await;
+    let module = UpstreamModule::discover("test", peer, None, &Default::default()).await;
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
             // Authenticated as "tester"/"dev" — the duplex has no
@@ -977,7 +991,7 @@ async fn upstream_input_required_forwards_with_redacted_request_text() {
     let ctx = navra_core::auth::CallContext::new(agent, "test");
 
     let response = server
-        .handle_call_tool(navra_protocol::CallToolParams::new("echo"), ctx)
+        .handle_call_tool(navra_protocol::CallToolParams::new("test_echo"), ctx)
         .await;
 
     match response {
@@ -1008,7 +1022,7 @@ async fn upstream_input_required_round_trip_completes() {
 
     // Follow-up round: the client answers the elicitation and echoes
     // the request state, exactly as an MRTR-capable client would.
-    let mut params = navra_protocol::CallToolParams::new("echo");
+    let mut params = navra_protocol::CallToolParams::new("test_echo");
     params = params.with_arguments(serde_json::Map::from_iter([(
         "message".to_string(),
         serde_json::json!("hi"),
@@ -1035,7 +1049,7 @@ async fn upstream_task_result_fails_closed() {
     let ctx = navra_core::auth::CallContext::new(agent, "test");
 
     let result = server
-        .handle_call_tool(navra_protocol::CallToolParams::new("echo"), ctx)
+        .handle_call_tool(navra_protocol::CallToolParams::new("test_echo"), ctx)
         .await
         .expect_complete();
     assert!(
@@ -1074,7 +1088,7 @@ async fn navra_handler_downgrades_input_required_for_legacy_peers() {
 
     let result = client
         .peer()
-        .call_tool(navra_protocol::CallToolParams::new("echo"))
+        .call_tool(navra_protocol::CallToolParams::new("test_echo"))
         .await
         .expect("legacy peer must get a result, not a protocol error");
     assert!(result.is_error == Some(true), "downgraded round must error");
@@ -1112,7 +1126,7 @@ async fn navra_handler_forwards_input_required_to_2026_peers() {
 
     let response = client
         .peer()
-        .call_tool_once(navra_protocol::CallToolParams::new("echo"))
+        .call_tool_once(navra_protocol::CallToolParams::new("test_echo"))
         .await
         .expect("call must succeed");
     match response {
@@ -1146,7 +1160,7 @@ async fn upstream_resource_updated_reaches_subscribed_sessions() {
         let _ = client.waiting().await;
     });
 
-    let module = UpstreamModule::discover("resupd", peer.clone(), None, &Default::default()).await;
+    let module = UpstreamModule::discover("test", peer.clone(), None, &Default::default()).await;
     let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
@@ -1168,7 +1182,7 @@ async fn upstream_resource_updated_reaches_subscribed_sessions() {
 
     // The watcher forwards upstream notifications into the server.
     let watcher = navra_core::UpstreamWatcher::new(
-        "resupd",
+        "test",
         peer,
         events,
         None,
@@ -1221,8 +1235,7 @@ async fn upstream_resource_updated_over_bound_uri_is_dropped() {
         let _ = client.waiting().await;
     });
 
-    let module =
-        UpstreamModule::discover("resupd-long", peer.clone(), None, &Default::default()).await;
+    let module = UpstreamModule::discover("test", peer.clone(), None, &Default::default()).await;
     let broadcaster = navra_core::transport::sse::SseBroadcaster::new();
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
@@ -1240,7 +1253,7 @@ async fn upstream_resource_updated_over_bound_uri_is_dropped() {
 
     let trigger = peer.clone();
     let watcher = navra_core::UpstreamWatcher::new(
-        "resupd-long",
+        "test",
         peer,
         events,
         None,
@@ -1281,7 +1294,8 @@ async fn spawn_watched_mutating_upstream(
 ) {
     let mut cmd = tokio::process::Command::new("python3");
     cmd.arg(test_server_path().to_string_lossy().to_string())
-        .env("NAVRA_TEST_MUTATE_RESOURCES", "1");
+        .env("NAVRA_TEST_MUTATE_RESOURCES", "1")
+        .env("NAVRA_TEST_TOOL_NAME", "test_echo");
     let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
     let (handler, events) = navra_core::UpstreamNotificationHandler::new();
     let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve(handler, transport)
@@ -1320,7 +1334,7 @@ async fn spawn_watched_mutating_upstream(
 
 #[tokio::test]
 async fn upstream_resources_list_changed_swaps_registry_and_notifies() {
-    let (server, trigger) = spawn_watched_mutating_upstream("resmut").await;
+    let (server, trigger) = spawn_watched_mutating_upstream("test").await;
     let agent = navra_core::auth::AgentIdentity::new("tester", "dev");
 
     // First discovery saw only test://status from the upstream (the

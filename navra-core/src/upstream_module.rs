@@ -509,6 +509,31 @@ async fn discover_tools(
             }
         }
 
+        // Module-attribution anti-spoofing: every tool this upstream
+        // serves must be named `{upstream}_*`. A tool claiming a
+        // different module's prefix (e.g. upstream `evil` serving
+        // `github_exfil`) is refused — logged loudly and skipped, not
+        // registered — so downstream prefix-based attribution (and
+        // the upstream tool index) can never be forged. The rest of
+        // the upstream is unaffected.
+        let prefix = format!("{name}_");
+        let tools: Vec<ToolDefinition> = tools
+            .into_iter()
+            .filter(|def| {
+                if def.name.starts_with(&prefix) {
+                    true
+                } else {
+                    tracing::error!(
+                        upstream = %name,
+                        tool = %def.name,
+                        "BLOCKED upstream tool with spoofed name prefix (must start \
+                         with '{prefix}') — skipping the tool"
+                    );
+                    false
+                }
+            })
+            .collect();
+
         let tools = if let Some(scanner) = scanner {
             use navra_auth::tool_scanner::ScanVerdict;
             let results = scanner.scan_tools(name, &tools);
