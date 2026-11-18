@@ -24,6 +24,39 @@ pub(crate) fn wire_auth(
     root_signer: &Arc<Ed25519Signer>,
     dev_mode: bool,
 ) -> anyhow::Result<navra_core::McpServerBuilder> {
+    // Defense-in-depth: always register a deny-all "default"
+    // permission set (tools, paths, safety) so agents whose
+    // permission set is missing from the config hit explicit
+    // deny-all enforcement instead of fail-open gates. Mirrors the
+    // dev-mode "readonly" fallback below.
+    if !cfg.permissions.contains_key("default") {
+        tracing::warn!(
+            "No [permissions.default] configured — registering a \
+             deny-all fallback permission set named \"default\"."
+        );
+        cfg.permissions.insert(
+            "default".to_string(),
+            config::PermissionSet {
+                default_tool_policy: "deny".to_string(),
+                ..Default::default()
+            },
+        );
+    }
+    builder = builder.path_acl(
+        "default",
+        navra_auth::permissions::PathAcl {
+            ring: None,
+            allow: vec![],
+            deny: vec![],
+            operations: std::collections::HashSet::new(),
+            requires_approval: std::collections::HashSet::new(),
+        },
+    );
+
+    // DNS-rebinding defense: the streamable HTTP transport validates
+    // the Host header against an allowlist (bind host + localhost).
+    builder = builder.allowed_http_hosts(allowed_http_hosts(cfg));
+
     if !cfg.agents.is_empty() {
         let has_cap_agents = cfg.agents.iter().any(|a| a.capability_token);
 
@@ -201,8 +234,10 @@ fn issue_capability_tokens(cfg: &config::Config, root_signer: &Arc<Ed25519Signer
                         .map(|r| r.tool.clone())
                         .collect::<Vec<_>>()
                 })
-                .filter(|v: &Vec<String>| !v.is_empty())
-                .unwrap_or_else(|| vec!["*".to_string()]),
+                .unwrap_or_default(),
+            // Fail closed: a permission set with no allow rules
+            // yields an empty tool list (nothing callable), never a
+            // wildcard grant.
             credentials: creds,
         };
 
@@ -239,6 +274,35 @@ fn issue_capability_tokens(cfg: &config::Config, root_signer: &Arc<Ed25519Signer
             }
         }
     }
+}
+
+/// Compute the HTTP Host-header allowlist: the configured bind host
+/// plus localhost variants. Wildcard binds (0.0.0.0, ::) are not
+/// hostnames a client may send, so they fall back to the localhost
+/// set — operators binding publicly should set `tcp` to a specific
+/// hostname.
+fn allowed_http_hosts(cfg: &config::Config) -> Vec<String> {
+    let mut hosts: Vec<String> = vec![
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    let bind_host = cfg
+        .server
+        .tcp
+        .as_deref()
+        .and_then(|addr| addr.rsplit_once(':'))
+        .map(|(host, _)| host.trim_start_matches('[').trim_end_matches(']'))
+        .unwrap_or("127.0.0.1");
+    if !bind_host.is_empty()
+        && bind_host != "0.0.0.0"
+        && bind_host != "::"
+        && bind_host != "*"
+        && !hosts.iter().any(|h| h == bind_host)
+    {
+        hosts.push(bind_host.to_string());
+    }
+    hosts
 }
 
 /// Compute the nonce cache TTL from config.
