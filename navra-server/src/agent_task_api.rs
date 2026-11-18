@@ -307,7 +307,7 @@ mod tests {
             // refuses operation escalation, so the root template must
             // grant it (an empty-grant root cannot mint children).
             operations: vec!["read".to_string()],
-            tools: Vec::new(),
+            tools: vec!["*".to_string()],
             credentials: vec![],
         };
         let mut root =
