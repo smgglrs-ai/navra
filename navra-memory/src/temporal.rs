@@ -480,11 +480,11 @@ impl TemporalTree {
         limit: usize,
     ) -> Result<Vec<TreeNode>, MemoryError> {
         let tt = tree_type.to_string();
-        let pattern = format!("%{query}%");
+        let pattern = format!("%{}%", escape_like(query));
         let mut stmt = self.db.prepare(
             "SELECT id, tree_type, tree_name, parent_id, depth, time_start, time_end, content, dirty
              FROM memory_tree
-             WHERE tree_type = ?1 AND depth = 0 AND content LIKE ?2
+             WHERE tree_type = ?1 AND depth = 0 AND content LIKE ?2 ESCAPE '\\'
              ORDER BY time_end DESC
              LIMIT ?3",
         )?;
@@ -587,6 +587,20 @@ fn row_to_node(row: &rusqlite::Row<'_>) -> rusqlite::Result<TreeNode> {
         content: row.get(7)?,
         dirty: dirty_int != 0,
     })
+}
+
+/// Escape SQLite LIKE wildcards (`%`, `_`) and the escape character
+/// itself in a user-supplied value so it is matched literally.
+/// Use together with an `ESCAPE '\'` clause.
+fn escape_like(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        if c == '%' || c == '_' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -723,6 +737,35 @@ mod tests {
             .search_roots(TreeType::Entity, "JavaScript", 10)
             .unwrap();
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn search_roots_like_wildcards_are_literal() {
+        let tree = TemporalTree::open_memory().unwrap();
+        tree.insert_fact(TreeType::Entity, "battery", "full charge", 1000)
+            .unwrap();
+        tree.insert_fact(TreeType::Entity, "other", "unrelated summary", 2000)
+            .unwrap();
+        let dirty = tree.dirty_nodes(TreeType::Entity, "battery").unwrap();
+        tree.update_summary(dirty[0].id, "battery at 100% charge")
+            .unwrap();
+        let dirty = tree.dirty_nodes(TreeType::Entity, "other").unwrap();
+        tree.update_summary(dirty[0].id, "unrelated summary")
+            .unwrap();
+
+        // "%" matches only roots containing a literal '%', not every root
+        let results = tree.search_roots(TreeType::Entity, "%", 10).unwrap();
+        assert_eq!(results.len(), 1, "'%' must match only literal '%' content");
+        assert_eq!(results[0].tree_name, "battery");
+
+        // An underscore run is matched literally, not as a wildcard
+        let results = tree.search_roots(TreeType::Entity, "_______", 10).unwrap();
+        assert!(results.is_empty(), "'_' must not act as a wildcard");
+
+        // A literal '%' inside the query still matches
+        let results = tree.search_roots(TreeType::Entity, "100%", 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].tree_name, "battery");
     }
 
     #[test]

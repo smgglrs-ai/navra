@@ -642,8 +642,8 @@ impl ChunkStore {
             param_values.push(Box::new(ts));
         }
         if let Some(ref tag) = filter.tag {
-            conditions.push("c.tags_json LIKE ?");
-            param_values.push(Box::new(format!("%{tag}%")));
+            conditions.push("c.tags_json LIKE ? ESCAPE '\\'");
+            param_values.push(Box::new(format!("%{}%", escape_like(tag))));
         }
 
         let where_clause = if conditions.is_empty() {
@@ -824,19 +824,34 @@ impl ChunkStore {
     /// Returns the number of chunks deleted.
     pub fn delete_by_content_match(&self, query: &str) -> rusqlite::Result<usize> {
         let conn = self.conn.lock().unwrap();
+        let escaped = escape_like(query);
         if self.dimensions > 0 {
             conn.execute(
                 "DELETE FROM rag_chunk_vectors WHERE rowid IN \
-                 (SELECT id FROM rag_chunks WHERE content LIKE '%' || ?1 || '%')",
-                params![query],
+                 (SELECT id FROM rag_chunks WHERE content LIKE '%' || ?1 || '%' ESCAPE '\\')",
+                params![escaped],
             )?;
         }
         let deleted = conn.execute(
-            "DELETE FROM rag_chunks WHERE content LIKE '%' || ?1 || '%'",
-            params![query],
+            "DELETE FROM rag_chunks WHERE content LIKE '%' || ?1 || '%' ESCAPE '\\'",
+            params![escaped],
         )?;
         Ok(deleted)
     }
+}
+
+/// Escape SQLite LIKE wildcards (`%`, `_`) and the escape character
+/// itself in a user-supplied value. Use together with an
+/// `ESCAPE '\'` clause so user input is matched literally.
+fn escape_like(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for c in value.chars() {
+        if c == '%' || c == '_' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -886,6 +901,58 @@ mod tests {
         assert_eq!(stats.document_count, 1);
         assert_eq!(stats.chunk_count, 2);
         assert_eq!(stats.dimensions, 4);
+    }
+
+    #[test]
+    fn like_wildcards_in_content_match_are_literal() {
+        // A query containing LIKE wildcards must be matched literally,
+        // not treated as a pattern that matches everything.
+        let store = test_store();
+        let chunks = vec![
+            Chunk {
+                content: "battery at 100% charge".to_string(),
+                start_byte: 0,
+                end_byte: 22,
+                index: 0,
+                breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
+            },
+            Chunk {
+                content: "unrelated content".to_string(),
+                start_byte: 23,
+                end_byte: 40,
+                index: 1,
+                breadcrumb: None,
+                section_start_byte: None,
+                section_end_byte: None,
+            },
+        ];
+        store
+            .index_document("/doc.md", &chunks, &sample_embeddings())
+            .unwrap();
+
+        // "%" alone matches only chunks containing a literal '%',
+        // not every chunk
+        let deleted = store.delete_by_content_match("%").unwrap();
+        assert_eq!(
+            deleted, 1,
+            "bare wildcard must match only literal '%' content"
+        );
+        assert_eq!(store.stats().unwrap().chunk_count, 1);
+
+        // "_" alone matches only chunks containing a literal '_'
+        let deleted = store.delete_by_content_match("_").unwrap();
+        assert_eq!(deleted, 0, "bare '_' must not match everything");
+        assert_eq!(store.stats().unwrap().chunk_count, 1);
+    }
+
+    #[test]
+    fn escape_like_escapes_wildcards_and_backslash() {
+        assert_eq!(escape_like("plain"), "plain");
+        assert_eq!(escape_like("100%"), "100\\%");
+        assert_eq!(escape_like("a_b"), "a\\_b");
+        assert_eq!(escape_like("back\\slash"), "back\\\\slash");
     }
 
     #[test]
