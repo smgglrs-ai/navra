@@ -285,13 +285,13 @@ pub(crate) fn url_origin(url: &str) -> Option<String> {
     };
     let default_port = if scheme == "https" { "443" } else { "80" };
     let (host, port) = if let Some(rest) = authority.strip_prefix('[') {
-        // IPv6 literal: [::1] or [::1]:8080
+        // IPv6 literal: [::1] or [::1]:8080 — keep the brackets
         let (h, rest) = rest.split_once(']')?;
         let p = rest
             .strip_prefix(':')
             .filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
             .unwrap_or(default_port);
-        (h.to_string(), p.to_string())
+        (format!("[{h}]"), p.to_string())
     } else {
         match authority.rsplit_once(':') {
             Some((h, p)) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
