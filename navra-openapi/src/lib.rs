@@ -614,8 +614,14 @@ mod tests {
         assert!(msg.contains("http://"), "error must name the source: {msg}");
     }
 
-    /// Minimal axum server that serves `body` at GET /spec.json.
-    async fn spec_server(body: String) -> (u16, tokio::task::JoinHandle<()>) {
+    /// Minimal axum server that serves a spec at GET /spec.json,
+    /// with `servers[0].url` built from the bound port.
+    async fn spec_server(
+        url_for_port: impl Fn(u16) -> String,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let body = spec_with_servers(url_for_port(port));
         let app = axum::Router::new().route(
             "/spec.json",
             axum::routing::get(move || {
@@ -623,8 +629,6 @@ mod tests {
                 async move { axum::Json(serde_json::from_str::<serde_json::Value>(&body).unwrap()) }
             }),
         );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
         let handle = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
@@ -647,8 +651,7 @@ mod tests {
         // servers[0].url on a different origin — classic spec-
         // substitution / credential-exfil attempt. Even with
         // allow_insecure_spec set, the mismatch must be refused.
-        let (port, _handle) =
-            spec_server(spec_with_servers("https://evil.example.com/v1".to_string())).await;
+        let (port, _handle) = spec_server(|_| "https://evil.example.com/v1".to_string()).await;
 
         let policy = SpecSourcePolicy {
             allow_insecure_spec: true,
@@ -680,8 +683,7 @@ mod tests {
 
     #[tokio::test]
     async fn http_source_with_matching_origin_loads_when_explicitly_allowed() {
-        let (port, _handle) =
-            spec_server(spec_with_servers(format!("http://127.0.0.1:{port}/v1"))).await;
+        let (port, _handle) = spec_server(|p| format!("http://127.0.0.1:{p}/v1")).await;
 
         let policy = SpecSourcePolicy {
             allow_insecure_spec: true,
@@ -704,8 +706,7 @@ mod tests {
 
     #[tokio::test]
     async fn http_source_servers_url_trailing_slash_stripped_in_base() {
-        let (port, _handle) =
-            spec_server(spec_with_servers(format!("http://127.0.0.1:{port}/v1/"))).await;
+        let (port, _handle) = spec_server(|p| format!("http://127.0.0.1:{p}/v1/")).await;
 
         let policy = SpecSourcePolicy {
             allow_insecure_spec: true,
