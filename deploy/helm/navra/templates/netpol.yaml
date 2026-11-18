@@ -27,6 +27,37 @@
 # Ingress is intentionally unrestricted: sandbox pods run as
 # clients only (no listener), and denying ingress would also break
 # kubelet readiness probing from the node.
+{{- /* Validate dnsPodLabel at RENDER time: a malformed value would
+       otherwise render a NetworkPolicy whose DNS rule silently
+       selects nothing (or fails validation only at apply time, far
+       from the operator's values change). Go template variables are
+       block-scoped, so the parsed key/value are declared here and
+       assigned inside the guard for the podSelector below. */}}
+{{- $dnsLabelKey := "" }}
+{{- $dnsLabelValue := "" }}
+{{- if .Values.netpol.dnsPodLabel }}
+{{- $kv := splitList "=" .Values.netpol.dnsPodLabel }}
+{{- if ne (len $kv) 2 }}
+{{- fail (printf "netpol.dnsPodLabel must be exactly one key=value pair (got %q). Set it to \"\" to select the whole DNS namespace." .Values.netpol.dnsPodLabel) }}
+{{- end }}
+{{- $dnsLabelKey = index $kv 0 }}
+{{- $dnsLabelValue = index $kv 1 }}
+{{- if not $dnsLabelKey }}
+{{- fail (printf "netpol.dnsPodLabel has an empty key (got %q)" .Values.netpol.dnsPodLabel) }}
+{{- end }}
+{{- if not $dnsLabelValue }}
+{{- fail (printf "netpol.dnsPodLabel has an empty value (got %q); a key with an empty value selects almost nothing — set the whole value to \"\" to select the entire DNS namespace instead" .Values.netpol.dnsPodLabel) }}
+{{- end }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $dnsLabelValue) }}
+{{- fail (printf "netpol.dnsPodLabel value %q is not a valid Kubernetes label value (allowed: alphanumerics, '-', '_', '.')" $dnsLabelValue) }}
+{{- end }}
+{{- /* Key: optional DNS-subdomain prefix (dot-separated DNS labels,
+        no underscores) + '/', then the name part (alphanumerics,
+        '-', '_', '.'). */}}
+{{- if not (regexMatch "^(([A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?\\.)+[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?/)?[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$" $dnsLabelKey) }}
+{{- fail (printf "netpol.dnsPodLabel key %q is not a valid Kubernetes label key (optional DNS prefix like dns.operator.openshift.io/, then alphanumerics, '-', '_', '.')" $dnsLabelKey) }}
+{{- end }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -60,10 +91,9 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.netpol.dnsNamespace }}
         {{- if .Values.netpol.dnsPodLabel }}
-        {{- $kv := splitList "=" .Values.netpol.dnsPodLabel }}
           podSelector:
             matchLabels:
-              {{ index $kv 0 }}: {{ join "=" (slice $kv 1 (len $kv)) | quote }}
+              {{ $dnsLabelKey }}: {{ $dnsLabelValue | quote }}
         {{- end }}
       {{- if .Values.netpol.dnsRestrictPorts }}
       ports:
