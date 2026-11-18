@@ -339,17 +339,27 @@ impl Blackbox {
         let mut where_clauses = Vec::new();
         let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
+        // Escape LIKE wildcards in user-supplied filter values so a
+        // literal `%` or `_` in an agent/tool name cannot broaden the
+        // match (`%` matches everything, `_` any single character).
+        // The ESCAPE clause binds the escape character.
+        let escape_like = |value: &str| -> String {
+            value
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        };
         if let Some(agent) = agent_filter
             && !agent.is_empty()
         {
-            where_clauses.push("agent_name LIKE ?");
-            param_values.push(Box::new(format!("%{agent}%")));
+            where_clauses.push("agent_name LIKE ? ESCAPE '\\'");
+            param_values.push(Box::new(format!("%{}%", escape_like(agent))));
         }
         if let Some(tool) = tool_filter
             && !tool.is_empty()
         {
-            where_clauses.push("tool_name LIKE ?");
-            param_values.push(Box::new(format!("%{tool}%")));
+            where_clauses.push("tool_name LIKE ? ESCAPE '\\'");
+            param_values.push(Box::new(format!("%{}%", escape_like(tool))));
         }
 
         let where_sql = if where_clauses.is_empty() {
@@ -725,6 +735,37 @@ mod tests {
         let (valid, broken) = bb.verify_chain();
         assert_eq!(valid, 3);
         assert!(broken.is_none());
+    }
+
+    #[test]
+    fn query_escapes_like_wildcards() {
+        let dir = tempfile::tempdir().unwrap();
+        let bb = Blackbox::open(&dir.path().join("bb.db")).unwrap();
+
+        bb.record("agent_1", "dev", "s", "tool_a", "{}", "ok", "allowed", 1, "T:P", "");
+        bb.record("agentX", "dev", "s", "toolY", "{}", "ok", "allowed", 1, "T:P", "");
+
+        // A literal `%` must match nothing (it is not a wildcard in
+        // the bound value), not every agent.
+        let (entries, total) = bb.query(10, 0, Some("%"), None);
+        assert_eq!(total, 0, "literal % must not act as a wildcard");
+        assert!(entries.is_empty());
+
+        // A literal `_` matches only agents containing a literal
+        // underscore (`agent_1`), not any single character — without
+        // escaping it would match both agents.
+        let (entries, total) = bb.query(10, 0, Some("_"), None);
+        assert_eq!(total, 1, "literal _ must not act as a single-char wildcard");
+        assert_eq!(entries[0].agent_name, "agent_1");
+
+        // Substring match on a plain value still works.
+        let (entries, total) = bb.query(10, 0, Some("agent_1"), None);
+        assert_eq!(total, 1);
+        assert_eq!(entries[0].agent_name, "agent_1");
+
+        // Tool filter with a real substring still works.
+        let (_, total) = bb.query(10, 0, None, Some("tool_"));
+        assert_eq!(total, 1, "substring containing _ still matches literally");
     }
 
     #[test]

@@ -33,7 +33,7 @@ pub(crate) async fn handle_ws_upgrade(
 async fn handle_ws_connection(
     socket: WebSocket,
     state: AppState,
-    _agent: crate::auth::AgentIdentity,
+    agent: crate::auth::AgentIdentity,
 ) {
     state
         .metrics
@@ -92,8 +92,11 @@ async fn handle_ws_connection(
     // Create a duplex pair: one side for NavraHandler (rmcp), one for us to bridge
     let (server_io, bridge_io) = tokio::io::duplex(65536);
 
-    // Serve NavraHandler on the server side of the duplex
-    let handler = NavraHandler::new(state.server.clone());
+    // Serve NavraHandler on the server side of the duplex. The agent
+    // was authenticated at upgrade time; the duplex has no HTTP
+    // parts, so the identity is handed to the handler directly
+    // (fail-closed otherwise).
+    let handler = NavraHandler::with_default_identity(state.server.clone(), agent);
     let rmcp_handle = tokio::spawn(async move {
         match handler.serve(server_io).await {
             Ok(service) => {
@@ -325,6 +328,7 @@ mod tests {
             scopes: vec!["mcp".to_string()],
             exchange_cap: None,
             exchange_ring: 0,
+            dynamic_registration: false,
         };
         let oauth = Arc::new(navra_auth::auth::oauth::OAuthProvider::new(
             config,

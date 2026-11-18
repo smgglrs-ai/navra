@@ -1402,7 +1402,17 @@ async fn serve_inner(
     // --- Flow orchestration tools ---
     let flow_registry = Arc::new(flow_tools::FlowRegistry::new());
     let resolved_flow_dirs = setup::tools::resolve_flow_dirs(&cfg);
-    builder = setup::tools::wire_flow_tools(builder, &cfg, &flow_registry, &audit_log);
+    // Per-agent flow ownership: which agent started/escalated/resumed
+    // each flow. flow_status/flow_result deny cross-agent reads.
+    let flow_owners: setup::tools::FlowOwnerLedger =
+        Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    builder = setup::tools::wire_flow_tools(
+        builder,
+        &cfg,
+        &flow_registry,
+        &audit_log,
+        &flow_owners,
+    );
 
     // --- Team orchestration tools ---
     let reasoning_pii_filter = setup::models::build_reasoning_pii_filter(&cfg, &safety_state);
@@ -1422,6 +1432,7 @@ async fn serve_inner(
         &flow_registry,
         &audit_log,
         &resolved_flow_dirs,
+        &flow_owners,
         &reasoning_pii_filter,
         &mut running_endpoints,
         cluster_role.is_worker(),

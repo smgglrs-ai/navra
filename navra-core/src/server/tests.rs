@@ -3268,3 +3268,521 @@ async fn deny_wins_over_session_grant() {
         text.text
     );
 }
+
+fn args_1(key: &str, value: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    let mut m = serde_json::Map::new();
+    m.insert(key.to_string(), value);
+    m
+}
+
+// --- Default-deny gate tests (unknown permission sets fail closed) ---
+
+fn echo_server_agent_perms(perms: &str) -> crate::auth::CallContext {
+    crate::auth::CallContext::new(AgentIdentity::new("tester", perms), "test-session")
+}
+
+#[tokio::test]
+async fn tool_permissions_unknown_set_denied_by_default() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+
+    // Tool rules exist for "dev" but the agent's set is "other":
+    // the per-tool gate must fail closed instead of skipping.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Allow,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .await
+        .expect_complete();
+
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("unknown permission set"),
+        "unknown permission set must be denied, got: {}",
+        text.text
+    );
+
+    // The registered set still works.
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+#[tokio::test]
+async fn agent_operations_unknown_set_denies_write_tools() {
+    // Operations are configured for "dev" (write allowed) but the
+    // agent's set is "other": a Write-classified tool must be denied.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .agent_operations("dev", ["write".to_string()].into_iter().collect())
+        .merge_tool_operations(HashMap::from([(
+            "echo".to_string(),
+            navra_mcp::ToolOperation::Write,
+        )]))
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("Permission denied"),
+        "write tool must be denied for an unknown permission set, got: {}",
+        text.text
+    );
+
+    // The registered set allows write.
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+#[tokio::test]
+async fn domain_rules_unknown_set_denied_by_default() {
+    use navra_auth::permissions::{Domain, DomainRules, ResourceClass};
+
+    let mut rules_map = HashMap::new();
+    rules_map.insert(
+        Domain::Unknown,
+        ["read".parse().unwrap()].into_iter().collect(),
+    );
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .domain_rules("dev", DomainRules::new(rules_map))
+        .merge_tool_classifications(HashMap::from([(
+            "echo".to_string(),
+            ResourceClass::new(Domain::Unknown, "read".parse().unwrap()),
+        )]))
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+
+    // The registered set allows the read operation.
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+#[tokio::test]
+async fn safety_profile_unknown_set_blocks_result() {
+    // Safety profiles configured for "dev"; an agent with an unknown
+    // set must not receive unfiltered results.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .safety_profile("dev", crate::safety::build_pipeline("standard"))
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), echo_server_agent_perms("other"))
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("no safety profile"),
+        "unknown permission set must fail closed on safety, got: {}",
+        text.text
+    );
+
+    // The registered set passes through (standard pipeline has no
+    // findings for "pong").
+    let result = server
+        .handle_call_tool(CallToolParams::new("echo"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+// --- Path ACL canonicalization + schema-derived keys ---
+
+fn path_tool_def(param: &str) -> ToolDefinition {
+    let mut props = HashMap::new();
+    props.insert(
+        param.to_string(),
+        serde_json::json!({"type": "string", "description": "A path"}),
+    );
+    let mut def = ToolDefinition::new(
+        "echo",
+        "Echoes input",
+        navra_protocol::compat::tool_input_schema(Some(props), Some(vec![param.to_string()])),
+    );
+    // Mark read-only so the IFC write heuristic classifies the tool
+    // as a read for ACL purposes.
+    def.annotations = Some(navra_protocol::ToolAnnotations::new().read_only(true));
+    def
+}
+
+#[tokio::test]
+async fn path_acl_unknown_set_denied_by_default() {
+    let server = test_builder()
+        .tool(path_tool_def("path"), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec!["/tmp/**".to_string()],
+                deny: vec![],
+                operations: ["read".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("x.txt");
+    std::fs::write(&file, b"x").unwrap();
+    let params = CallToolParams::new("echo")
+        .with_arguments(args_1("path", serde_json::json!(file.to_str().unwrap())));
+    let result = server
+        .handle_call_tool(params, echo_server_agent_perms("other"))
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("blocked by ACL policy"),
+        "unknown permission set must hit the deny-all ACL, got: {}",
+        text.text
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn path_acl_checks_canonical_symlink_target() {
+    // A symlink outside the allowed tree pointing at an allowed file:
+    // the ACL must be checked against the canonical target.
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&allowed).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    let real = allowed.join("data.txt");
+    std::fs::write(&real, b"x").unwrap();
+    let link = outside.join("link.txt");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let server = test_builder()
+        .tool(path_tool_def("path"), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["read".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(link.to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error != Some(true),
+        "symlink to an allowed target must pass the canonicalized ACL check"
+    );
+}
+
+#[tokio::test]
+async fn path_acl_uses_schema_derived_path_keys() {
+    // The tool's path parameter is named `image_location` — not one
+    // of the legacy path/file_path/repo_path keys. The gateway ACL
+    // must still see it.
+    let server = test_builder()
+        .tool(path_tool_def("image_path"), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec!["/usr/**".to_string()],
+                deny: vec![],
+                operations: ["read".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "image_path",
+        serde_json::json!("/etc/passwd"),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("blocked by ACL policy"),
+        "schema-derived path keys must be ACL-checked, got: {}",
+        text.text
+    );
+}
+
+#[tokio::test]
+async fn path_acl_write_resolves_existing_symlinks() {
+    // Write-classified tool. A write targeting a NEW file inside the
+    // allowed directory must pass (deepest-existing-ancestor
+    // resolution), while a symlink inside the allowed tree pointing
+    // outside must be checked at its real (denied) location.
+    let dir = tempfile::tempdir().unwrap();
+    let allowed = dir.path().join("allowed");
+    let denied = dir.path().join("denied");
+    std::fs::create_dir(&allowed).unwrap();
+    std::fs::create_dir(&denied).unwrap();
+    let target = denied.join("data.txt");
+    std::fs::write(&target, b"x").unwrap();
+    let link = allowed.join("link.txt");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let server = test_builder()
+        .tool(
+            {
+                // Write-classified tool (destructive annotation).
+                let mut def = path_tool_def("path");
+                def.annotations = Some(navra_protocol::ToolAnnotations::new().destructive(true));
+                def
+            },
+            |_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+                })
+            },
+        )
+        .path_acl(
+            "dev",
+            navra_auth::permissions::PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["write".to_string()].into_iter().collect(),
+                requires_approval: Default::default(),
+            },
+        )
+        .build();
+
+    // New file in the allowed directory: the parent resolves, the
+    // remainder is lexical — allowed.
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(allowed.join("brand-new.txt").to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error != Some(true),
+        "new file inside the allowed directory must pass the ACL check"
+    );
+
+    // Symlink inside the allowed tree pointing at the denied tree:
+    // canonical resolution must see the real target and deny.
+    let params = CallToolParams::new("echo").with_arguments(args_1(
+        "path",
+        serde_json::json!(link.to_str().unwrap()),
+    ));
+    let result = server
+        .handle_call_tool(params, test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("blocked by ACL policy"),
+        "symlink escaping the allowed tree must be denied, got: {}",
+        text.text
+    );
+}
+
+// --- allowed_upstreams enforcement on the call path ---
+
+struct UpstreamTestModule;
+
+impl Module for UpstreamTestModule {
+    fn name(&self) -> &str {
+        "github"
+    }
+    fn tools(&self) -> Vec<(ToolDefinition, navra_mcp::ToolHandler)> {
+        vec![(
+            ToolDefinition::new("github_create_issue", "Create issue", empty_input_schema()),
+            std::sync::Arc::new(|_args, _ctx| {
+                Box::pin(async {
+                    navra_protocol::CallToolResponse::Complete(CallToolResult::text("created"))
+                })
+            }),
+        )]
+    }
+}
+
+#[tokio::test]
+async fn allowed_upstreams_enforced_on_call_path() {
+    let server = test_builder()
+        .module(UpstreamTestModule)
+        .upstream_module("github")
+        .build();
+
+    // No scoping: upstream tool callable.
+    let result = server
+        .handle_call_tool(CallToolParams::new("github_create_issue"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true), "unscoped agent must call upstream");
+
+    // Scoped to a different upstream: denied even though the tool
+    // never appeared in tools/list for this agent.
+    let mut agent = test_agent();
+    agent.allowed_upstreams = vec!["filesystem".to_string()];
+    let ctx = crate::auth::CallContext::new(agent, "test-session");
+    let result = server
+        .handle_call_tool(CallToolParams::new("github_create_issue"), ctx)
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("allowed upstreams"),
+        "upstream scoping must be enforced on the call path, got: {}",
+        text.text
+    );
+
+    // Scoped to the right upstream: allowed.
+    let mut agent = test_agent();
+    agent.allowed_upstreams = vec!["github".to_string()];
+    let ctx = crate::auth::CallContext::new(agent, "test-session");
+    let result = server
+        .handle_call_tool(CallToolParams::new("github_create_issue"), ctx)
+        .await
+        .expect_complete();
+    assert!(result.is_error != Some(true));
+}
+
+// --- Fuzzy routing re-auth ---
+
+#[tokio::test]
+async fn routed_tool_call_re_runs_permission_gates() {
+    use crate::permissions::tool_rules::{ToolPermissions, ToolPolicy, ToolRule};
+    use crate::server::routing::ToolRoutingConfig;
+
+    // Auto-routing enabled; "eco" fuzzy-matches "echo". The agent's
+    // permission set denies "echo": the routed call must be denied —
+    // routing may not bypass gates evaluated against the resolved
+    // tool name.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .tool_permissions(
+            "dev",
+            ToolPermissions::new(
+                vec![ToolRule {
+                    tool: "echo".to_string(),
+                    policy: ToolPolicy::Deny,
+                }],
+                ToolPolicy::Allow,
+            ),
+        )
+        .tool_routing(ToolRoutingConfig {
+            auto_route_threshold: 0.5,
+            suggestion_threshold: 0.3,
+            enabled: true,
+        })
+        .build();
+
+    let result = server
+        .handle_call_tool(CallToolParams::new("eco"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(result.is_error == Some(true));
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(
+        text.text.contains("Permission denied"),
+        "routed call must re-run the permission gates, got: {}",
+        text.text
+    );
+
+    // With the deny rule lifted, the same typo routes through and
+    // succeeds.
+    let server = test_builder()
+        .tool(echo_tool_def(), |_args, _ctx| {
+            Box::pin(async {
+                navra_protocol::CallToolResponse::Complete(CallToolResult::text("pong"))
+            })
+        })
+        .tool_routing(ToolRoutingConfig {
+            auto_route_threshold: 0.5,
+            suggestion_threshold: 0.3,
+            enabled: true,
+        })
+        .build();
+    let result = server
+        .handle_call_tool(CallToolParams::new("eco"), test_ctx())
+        .await
+        .expect_complete();
+    assert!(
+        result.is_error != Some(true),
+        "permitted typo must still auto-route"
+    );
+    let text = result.content[0].as_text().expect("expected text content");
+    assert!(text.text.contains("pong"), "routed call must run the tool");
+}

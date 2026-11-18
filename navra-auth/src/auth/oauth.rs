@@ -154,6 +154,11 @@ pub struct OAuthConfig {
     pub exchange_cap: Option<CapabilitySet>,
     /// Default ring level for tokens issued via token exchange.
     pub exchange_ring: u8,
+    /// Opt-in for RFC 7591 dynamic client registration on
+    /// `/oauth/register`. Defaults to false (disabled): an open
+    /// registration endpoint lets any network caller mint client
+    /// credentials. Enable only on trusted networks.
+    pub dynamic_registration: bool,
 }
 
 /// Registered OAuth client (in-memory).
@@ -189,6 +194,11 @@ impl OAuthProvider {
             clients: Mutex::new(HashMap::new()),
             scope_permissions: HashMap::new(),
         }
+    }
+
+    /// Whether RFC 7591 dynamic client registration is enabled.
+    pub fn dynamic_registration_enabled(&self) -> bool {
+        self.config.dynamic_registration
     }
 
     /// Register a scope-to-permission mapping.
@@ -252,7 +262,9 @@ impl OAuthProvider {
             issuer: self.config.issuer.clone(),
             authorization_endpoint: format!("{}/oauth/authorize", self.config.issuer),
             token_endpoint: format!("{}/oauth/token", self.config.issuer),
-            registration_endpoint: Some(format!("{}/oauth/register", self.config.issuer)),
+            registration_endpoint: self.config.dynamic_registration.then(|| {
+                format!("{}/oauth/register", self.config.issuer)
+            }),
             scopes_supported: Some(self.config.scopes.clone()),
             response_types_supported: vec!["code".to_string()],
             grant_types_supported: Some(vec![
@@ -605,6 +617,7 @@ mod tests {
             ],
             exchange_cap: None,
             exchange_ring: 2,
+            dynamic_registration: false,
         }
     }
 
@@ -625,7 +638,8 @@ mod tests {
 
         assert_eq!(meta.issuer, "http://localhost:9315");
         assert_eq!(meta.token_endpoint, "http://localhost:9315/oauth/token");
-        assert!(meta.registration_endpoint.is_some());
+        // Dynamic registration is opt-in (default off)
+        assert!(meta.registration_endpoint.is_none());
         assert_eq!(
             meta.grant_types_supported,
             Some(vec![
@@ -744,6 +758,7 @@ mod tests {
             scopes: vec!["tools:read".to_string()],
             exchange_cap: None,
             exchange_ring: 2,
+            dynamic_registration: false,
         };
         let provider = Arc::new(OAuthProvider::new(config, Box::new(signer)));
         provider.register_client("c", "s", None, "dev");
@@ -882,6 +897,17 @@ mod tests {
         let response = provider.issue_token(&token_req).unwrap();
         let (sub, _, _) = provider.validate_token(&response.access_token).unwrap();
         assert_eq!(sub, reg.client_id);
+    }
+
+    #[test]
+    fn dynamic_registration_opt_in() {
+        let signer = Ed25519Signer::generate();
+        let mut config = test_config();
+        assert!(!config.dynamic_registration);
+        config.dynamic_registration = true;
+        let provider = OAuthProvider::new(config, Box::new(signer));
+        assert!(provider.dynamic_registration_enabled());
+        assert!(provider.metadata().registration_endpoint.is_some());
     }
 
     #[test]
@@ -1029,6 +1055,7 @@ mod tests {
                 credentials: vec![],
             }),
             exchange_ring: 2,
+            dynamic_registration: false,
         };
         let provider = Arc::new(OAuthProvider::new(config, Box::new(signer)));
         provider.register_client("human-client", "human-secret", Some("Human"), "developer");

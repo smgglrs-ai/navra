@@ -11,13 +11,14 @@
 
 use crate::screenshot;
 use navra_auth::auth::CallContext;
-use navra_core::path_util::resolve_path;
+use navra_core::path_util::open_resolved;
 use navra_macros::tool;
 use navra_mcp::models::{GenerateRequest, ImageInput, ModelBackend};
 use navra_mcp::permissions::{PermissionEngine, PermissionResult};
 use navra_mcp::protocol::CallToolResult;
 use navra_mcp::{Module, ToolHandler};
 use navra_protocol::compat::CallToolResultExt;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -66,13 +67,17 @@ struct VisionState {
 
 const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024;
 
-fn load_image(path: &Path) -> Result<ImageInput, String> {
-    if !path.is_file() {
+/// Read an image from an ALREADY-OPEN file handle.
+///
+/// The handle (not a path re-read) is the source of truth: metadata
+/// and bytes both come from the open file, so a path swap between
+/// the permission check and the read has no effect (TOCTOU-safe).
+fn image_from_file(mut file: std::fs::File, path: &Path) -> Result<ImageInput, String> {
+    let meta =
+        file.metadata().map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
+    if !meta.is_file() {
         return Err(format!("Not a file: {}", path.display()));
     }
-
-    let meta =
-        std::fs::metadata(path).map_err(|e| format!("Cannot stat {}: {e}", path.display()))?;
     if meta.len() > MAX_IMAGE_SIZE {
         return Err(format!(
             "Image too large ({} MB, max {} MB)",
@@ -81,8 +86,9 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
         ));
     }
 
-    let data =
-        std::fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+    let mut data = Vec::with_capacity(meta.len() as usize);
+    file.read_to_end(&mut data)
+        .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
 
     let mime_type = match path.extension().and_then(|e| e.to_str()) {
         Some("png") => "image/png",
@@ -102,6 +108,16 @@ fn load_image(path: &Path) -> Result<ImageInput, String> {
         data: encoded,
         mime_type: mime_type.to_string(),
     })
+}
+
+/// Open a path and read it as an image (convenience wrapper for
+/// callers without a permission check in between). TOCTOU-sensitive
+/// callers must use [`open_resolved`] + [`image_from_file`] instead.
+#[cfg(test)]
+fn load_image(path: &Path) -> Result<ImageInput, String> {
+    let file =
+        std::fs::File::open(path).map_err(|_| format!("Not a file: {}", path.display()))?;
+    image_from_file(file, path)
 }
 
 // --- Permission check ---
@@ -142,8 +158,11 @@ async fn handle_describe(
     ctx: CallContext,
     #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
-    let resolved = match resolve_path(&path) {
-        Ok(p) => p,
+    // Open the file once, then permission-check the opened handle's
+    // resolved (symlink-following) path: the bytes that get read are
+    // the bytes that were checked (TOCTOU-safe).
+    let (file, resolved) = match open_resolved(&path) {
+        Ok(pair) => pair,
         Err(e) => return CallToolResult::error_msg(e),
     };
 
@@ -151,7 +170,7 @@ async fn handle_describe(
         return e;
     }
 
-    let image = match load_image(&resolved) {
+    let image = match image_from_file(file, &resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error_msg(e),
     };
@@ -179,8 +198,11 @@ async fn handle_ocr(
     ctx: CallContext,
     #[state] state: Arc<VisionState>,
 ) -> CallToolResult {
-    let resolved = match resolve_path(&path) {
-        Ok(p) => p,
+    // Open the file once, then permission-check the opened handle's
+    // resolved (symlink-following) path: the bytes that get read are
+    // the bytes that were checked (TOCTOU-safe).
+    let (file, resolved) = match open_resolved(&path) {
+        Ok(pair) => pair,
         Err(e) => return CallToolResult::error_msg(e),
     };
 
@@ -188,7 +210,7 @@ async fn handle_ocr(
         return e;
     }
 
-    let image = match load_image(&resolved) {
+    let image = match image_from_file(file, &resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error_msg(e),
     };
@@ -221,8 +243,11 @@ async fn handle_ask(
         return CallToolResult::error_msg("Missing required parameter: question");
     }
 
-    let resolved = match resolve_path(&path) {
-        Ok(p) => p,
+    // Open the file once, then permission-check the opened handle's
+    // resolved (symlink-following) path: the bytes that get read are
+    // the bytes that were checked (TOCTOU-safe).
+    let (file, resolved) = match open_resolved(&path) {
+        Ok(pair) => pair,
         Err(e) => return CallToolResult::error_msg(e),
     };
 
@@ -230,7 +255,7 @@ async fn handle_ask(
         return e;
     }
 
-    let image = match load_image(&resolved) {
+    let image = match image_from_file(file, &resolved) {
         Ok(img) => img,
         Err(e) => return CallToolResult::error_msg(e),
     };
@@ -274,17 +299,20 @@ async fn handle_screen(
         Err(e) => return CallToolResult::error_msg(format!("Screen capture failed: {e}")),
     };
 
-    let path = Path::new(&screenshot_path);
-    // Verify screenshot is in a temp directory (prevent path injection from backend)
-    let canonical = match path.canonicalize() {
-        Ok(p) => p,
+    // Verify screenshot is in a temp directory (prevent path injection
+    // from backend). Open first, then validate the resolved path, then
+    // read from the open handle (TOCTOU-safe).
+    let (file, canonical) = match open_resolved(&screenshot_path) {
+        Ok(pair) => pair,
         Err(e) => return CallToolResult::error_msg(format!("Cannot resolve screenshot path: {e}")),
     };
     let in_tmp = canonical.starts_with("/tmp") || canonical.starts_with(std::env::temp_dir());
     if !in_tmp {
+        // Clean up screenshot file
+        let _ = std::fs::remove_file(&canonical);
         return CallToolResult::error_msg("Screenshot path outside temp directory");
     }
-    let image = match load_image(&canonical) {
+    let image = match image_from_file(file, &canonical) {
         Ok(img) => img,
         Err(e) => {
             // Clean up screenshot file
@@ -321,6 +349,7 @@ async fn handle_screen(
 mod tests {
     use super::*;
     use navra_auth::auth::AgentIdentity;
+    use navra_core::path_util::resolve_path;
     use navra_mcp::models::{GenerateResponse, ModelBackend, ModelError};
     use navra_mcp::permissions::{PathAcl, PermissionEngine};
     use navra_protocol::compat::CallToolResponseExt;
@@ -779,6 +808,52 @@ mod tests {
     }
 
     // --- Permission check tests ---
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn describe_permission_checks_canonical_symlink_target() {
+        // A symlink outside the allowed tree pointing at an allowed
+        // file: the permission check must see the canonical (real)
+        // target, not the symlink's location.
+        let dir = tempfile::tempdir().unwrap();
+        let allowed = dir.path().join("allowed");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&allowed).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        let real = allowed.join("test.png");
+        std::fs::write(&real, tiny_png()).unwrap();
+        let link = outside.join("link.png");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "scoped".to_string(),
+            PathAcl {
+                ring: None,
+                allow: vec![format!("{}/**", allowed.display())],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        let state = Arc::new(VisionState {
+            vision_model: Arc::new(FakeVisionModel),
+            perm_engine: Arc::new(engine),
+        });
+        let ctx = CallContext::new(AgentIdentity::new("scoped-agent", "scoped"), "test");
+
+        let (_, handler) = handle_describe_handler(state);
+        let result = handler(
+            serde_json::json!({"path": link.to_str().unwrap()}),
+            ctx,
+        )
+        .await
+        .expect_complete();
+        assert!(
+            result.is_error != Some(true),
+            "symlink to an allowed target must be permitted (canonical resolution)"
+        );
+    }
 
     #[tokio::test]
     async fn permission_check_is_called() {

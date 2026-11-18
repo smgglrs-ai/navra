@@ -176,6 +176,7 @@ pub(crate) fn wire_safety_profiles(
 ) -> navra_core::McpServerBuilder {
     use navra_core::permissions::{ToolPermissions, ToolPolicy, ToolRule};
 
+    let mut default_tools_registered = false;
     for (name, pset) in &cfg.permissions {
         let pipeline = build_safety_pipeline(pset, name, &cfg.models, state, &cfg.canary_tokens);
 
@@ -195,8 +196,11 @@ pub(crate) fn wire_safety_profiles(
             );
         }
 
-        // Build per-tool permission rules if any are configured
-        if !pset.tool_rules.is_empty() {
+        // Per-tool permission rules. Registered for EVERY configured
+        // permission set — even with no rules — so the gateway's
+        // per-tool gate map covers all configured sets and an unknown
+        // set fails closed instead of skipping the gate.
+        {
             let rules: Vec<ToolRule> = pset
                 .tool_rules
                 .iter()
@@ -214,12 +218,17 @@ pub(crate) fn wire_safety_profiles(
                 "approve" => ToolPolicy::Approve,
                 _ => ToolPolicy::Allow,
             };
-            tracing::info!(
-                permission_set = %name,
-                rules = rules.len(),
-                "Tool permission rules"
-            );
+            if !rules.is_empty() {
+                tracing::info!(
+                    permission_set = %name,
+                    rules = rules.len(),
+                    "Tool permission rules"
+                );
+            }
             builder = builder.tool_permissions(name.clone(), ToolPermissions::new(rules, default));
+            if name == "default" {
+                default_tools_registered = true;
+            }
         }
 
         if !pset.operations.is_empty() {
@@ -297,7 +306,6 @@ pub(crate) fn wire_safety_profiles(
             navra_core::permissions::DomainRules::new(rules_map)
         };
         builder = builder.domain_rules(name.clone(), domain_rules);
-
         // Per-tool classification overrides from permission set config
         if !pset.tool_class.is_empty() {
             let mut classes = std::collections::HashMap::new();
@@ -327,6 +335,21 @@ pub(crate) fn wire_safety_profiles(
                 builder = builder.merge_tool_classifications(classes);
             }
         }
+    }
+
+    // Defense-in-depth: ensure the "default" permission set has an
+    // explicit deny-all tool policy even when it carries no tool
+    // rules (an empty rule set would otherwise leave the per-tool
+    // gate unregistered and fail-open for that set).
+    if !default_tools_registered {
+        tracing::warn!(
+            "Registering deny-all tool permissions for the \"default\" \
+             permission set (no tool rules configured for it)"
+        );
+        builder = builder.tool_permissions(
+            "default",
+            ToolPermissions::new(Vec::new(), ToolPolicy::Deny),
+        );
     }
 
     builder

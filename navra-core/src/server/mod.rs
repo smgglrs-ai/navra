@@ -66,6 +66,9 @@ pub struct McpServer {
     max_sessions: usize,
     /// Session idle TTL in seconds (configurable, default 3600).
     session_ttl_secs: u64,
+    /// HTTP `Host`-header allowlist for the streamable transport
+    /// (DNS-rebinding defense). Empty = rmcp's localhost default.
+    pub(crate) allowed_http_hosts: Vec<String>,
     /// A2A task store for tracking agent-to-agent tasks.
     task_store: TaskStore,
     /// Process table tracking active agent sessions.

@@ -7,6 +7,7 @@ use navra_protocol::compat::empty_input_schema;
 use rmcp::model::{CallToolRequestParams, GetPromptRequestParams, ReadResourceRequestParams};
 use rmcp::service::ServiceExt;
 use std::sync::Arc;
+use tower::ServiceExt as _;
 
 use crate::module::{Module, PromptHandler, ResourceHandler};
 
@@ -216,4 +217,137 @@ async fn unknown_method_returns_error() {
         .await;
     assert!(result.is_err());
     client.cancel().await.ok();
+}
+
+// --- HTTP-level security tests (router + auth + host allowlist) ---
+
+fn http_post(uri: &str, host: &str, body: String) -> axum::http::Request<axum::body::Body> {
+    axum::http::Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .header("host", host)
+        .body(axum::body::Body::from(body))
+        .unwrap()
+}
+
+async fn body_text(response: axum::http::Response<axum::body::Body>) -> String {
+    use http_body_util::BodyExt;
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn initialize_request() -> String {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "initialize",
+        "id": 1,
+        "params": {
+            "protocolVersion": "2026-07-28",
+            "capabilities": {},
+            "clientInfo": {"name": "http-test", "version": "0.1.0"}
+        }
+    })
+    .to_string()
+}
+
+/// Server with a real authenticator and no registered agents: every
+/// request fails authentication (no anonymous fallback).
+fn token_authed_server() -> Arc<McpServer> {
+    Arc::new(
+        McpServer::builder()
+            .name("auth-server")
+            .authenticator(crate::auth::TokenAuthenticator::new())
+            .build(),
+    )
+}
+
+#[tokio::test]
+async fn mcp_rejects_unauthenticated_request() {
+    let router = super::router::build_router(token_authed_server());
+    let response = router
+        .oneshot(http_post("/mcp", "localhost:9315", initialize_request()))
+        .await
+        .unwrap();
+    let text = body_text(response).await;
+    assert!(
+        text.contains("Authentication required"),
+        "unauthenticated /mcp request must be rejected, got: {text}"
+    );
+}
+
+#[tokio::test]
+async fn metrics_requires_authentication() {
+    let router = super::router::build_router(token_authed_server());
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/metrics")
+                .header("host", "localhost:9315")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn metrics_serves_authenticated_callers() {
+    let router = super::router::build_router(test_server());
+    let response = router
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/metrics")
+                .header("host", "localhost:9315")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn mcp_rejects_foreign_host_header() {
+    // DNS-rebinding defense: the Host header must be on the
+    // allowlist (localhost by default).
+    let router = super::router::build_router(test_server());
+    let response = router
+        .oneshot(http_post("/mcp", "evil.example.com", initialize_request()))
+        .await
+        .unwrap();
+    assert!(
+        !response.status().is_success(),
+        "requests with a foreign Host header must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn mcp_allows_configured_host() {
+    let server = Arc::new(
+        McpServer::builder()
+            .name("host-server")
+            .authenticator(NoAuthenticator {
+                default_identity: AgentIdentity::new("tester", "dev"),
+            })
+            .allowed_http_hosts(vec![
+                "localhost".to_string(),
+                "127.0.0.1".to_string(),
+                "::1".to_string(),
+                "navra.internal".to_string(),
+            ])
+            .build(),
+    );
+    let router = super::router::build_router(server);
+    let response = router
+        .oneshot(http_post("/mcp", "navra.internal:9315", initialize_request()))
+        .await
+        .unwrap();
+    let text = body_text(response).await;
+    assert!(
+        text.contains("host-server"),
+        "allowlisted host must complete the initialize handshake, got: {text}"
+    );
 }
