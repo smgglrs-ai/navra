@@ -707,7 +707,7 @@ mod tests {
             "decoder": null,
             "model": {
                 "type": "WordPiece",
-                "vocab": { "[UNK]": 0, "字": 1 },
+                "vocab": { "[UNK]": 0, "字": 1, "##字": 2 },
                 "unk_token": "[UNK]",
                 "continuing_subword_prefix": "##",
                 "max_input_chars_per_word": 100
@@ -754,7 +754,7 @@ mod tests {
             "decoder": null,
             "model": {
                 "type": "WordPiece",
-                "vocab": { "[UNK]": 0, "字": 1 },
+                "vocab": { "[UNK]": 0, "字": 1, "##字": 2 },
                 "unk_token": "[UNK]",
                 "continuing_subword_prefix": "##",
                 "max_input_chars_per_word": 100
