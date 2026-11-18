@@ -798,6 +798,11 @@ mod tests {
     async fn signed_manifest_for_test_server(server_name: &str, signer: &Ed25519Signer) -> String {
         let mut cmd = tokio::process::Command::new("python3");
         cmd.arg(test_server_path());
+        // Match the tool name the module-under-test actually serves
+        // (test_upstream_cfg sets the same env): the manifest must
+        // cover the module-prefixed tool, or verification rejects it
+        // as a rug pull.
+        cmd.env("NAVRA_TEST_TOOL_NAME", format!("{server_name}_echo"));
         let transport = rmcp::transport::TokioChildProcess::new(cmd).expect("spawn transport");
         let client = rmcp::service::ServiceExt::<rmcp::RoleClient>::serve((), transport)
             .await
