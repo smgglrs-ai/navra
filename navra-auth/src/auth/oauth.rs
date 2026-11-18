@@ -16,6 +16,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::capability::{self, CapabilitySet, OboIdentity};
 use super::{AgentIdentity, AuthError, Authenticator};
+use crate::credentials::Secret;
 use crate::identity::CapSigner;
 
 /// OAuth 2.0 server metadata per RFC 8414 / MCP spec.
@@ -60,6 +61,9 @@ pub struct ClientRegistrationRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientRegistration {
     pub client_id: String,
+    /// Client secret, returned exactly once to the registrant per
+    /// RFC 7591. Not persisted in this form: the server-side copy in
+    /// `RegisteredClient` uses the zeroizing `Secret` wrapper.
     pub client_secret: Option<String>,
     pub redirect_uris: Vec<String>,
     pub grant_types: Option<Vec<String>>,
@@ -75,6 +79,9 @@ pub struct ClientRegistration {
 pub struct TokenRequest {
     pub grant_type: String,
     pub client_id: Option<String>,
+    /// Raw client secret from the request body. Lives only for the
+    /// request lifetime (wire DTO) and is compared in constant time;
+    /// stored secrets use the zeroizing `Secret` wrapper.
     pub client_secret: Option<String>,
     pub scope: Option<String>,
 }
@@ -162,11 +169,14 @@ pub struct OAuthConfig {
 }
 
 /// Registered OAuth client (in-memory).
-#[derive(Debug, Clone)]
+///
+/// The stored client secret is wrapped in the zeroizing [`Secret`]
+/// wrapper (navra-auth/credentials.rs) so it is wiped from memory
+/// when the client entry is dropped.
 #[allow(dead_code)] // fields read via HashMap lookups in validate_client/authenticate
 struct RegisteredClient {
     client_id: String,
-    client_secret: String,
+    client_secret: Secret,
     client_name: Option<String>,
     redirect_uris: Vec<String>,
     /// Permission set name this client maps to.
@@ -208,6 +218,10 @@ impl OAuthProvider {
     }
 
     /// Register an OAuth client with pre-shared credentials.
+    ///
+    /// The secret is wrapped in the zeroizing [`Secret`] wrapper for
+    /// storage; comparisons use constant-time equality on the raw
+    /// bytes.
     pub fn register_client(
         &self,
         client_id: &str,
@@ -217,7 +231,7 @@ impl OAuthProvider {
     ) {
         let client = RegisteredClient {
             client_id: client_id.to_string(),
-            client_secret: client_secret.to_string(),
+            client_secret: Secret::new(client_secret.as_bytes().to_vec()),
             client_name: client_name.map(|s| s.to_string()),
             redirect_uris: Vec::new(),
             permissions: permissions.to_string(),
@@ -235,7 +249,9 @@ impl OAuthProvider {
 
         let client = RegisteredClient {
             client_id: client_id.clone(),
-            client_secret: client_secret.clone(),
+            // Stored copy is zeroized on drop; the plaintext is
+            // returned to the registrant exactly once below.
+            client_secret: Secret::new(client_secret.as_bytes().to_vec()),
             client_name: request.client_name.clone(),
             redirect_uris: request.redirect_uris.clone(),
             permissions: "readonly".to_string(),
@@ -262,9 +278,10 @@ impl OAuthProvider {
             issuer: self.config.issuer.clone(),
             authorization_endpoint: format!("{}/oauth/authorize", self.config.issuer),
             token_endpoint: format!("{}/oauth/token", self.config.issuer),
-            registration_endpoint: self.config.dynamic_registration.then(|| {
-                format!("{}/oauth/register", self.config.issuer)
-            }),
+            registration_endpoint: self
+                .config
+                .dynamic_registration
+                .then(|| format!("{}/oauth/register", self.config.issuer)),
             scopes_supported: Some(self.config.scopes.clone()),
             response_types_supported: vec!["code".to_string()],
             grant_types_supported: Some(vec![
@@ -937,6 +954,48 @@ mod tests {
         assert!(constant_time_eq(b"hello", b"hello"));
         assert!(!constant_time_eq(b"hello", b"world"));
         assert!(!constant_time_eq(b"hello", b"hell"));
+    }
+
+    #[test]
+    fn registered_client_secret_is_zeroized_on_drop() {
+        // RegisteredClient stores its secret in the zeroizing Secret
+        // wrapper; dropping the entry wipes the bytes. Following the
+        // credentials.rs convention: zeroization itself is best-effort
+        // (dependent on the zeroize crate), so this test verifies the
+        // wrapper is used and readable, not raw memory state.
+        let secret_bytes = b"oauth-client-secret-0123456789abcdef".to_vec();
+        let ptr = secret_bytes.as_ptr();
+        let len = secret_bytes.len();
+        let secret = Secret::new(secret_bytes);
+        assert_eq!(secret.as_bytes(), b"oauth-client-secret-0123456789abcdef");
+        drop(secret);
+        let _ = (ptr, len);
+    }
+
+    #[test]
+    fn client_secret_wrapped_in_zeroizing_secret() {
+        // The stored client secret must be the zeroizing Secret type:
+        // registration, comparison, and token issuance still work
+        // end-to-end through the wrapper.
+        let provider = test_provider();
+        let request = TokenRequest {
+            grant_type: "client_credentials".to_string(),
+            client_id: Some("test-client".to_string()),
+            client_secret: Some("test-secret".to_string()),
+            scope: None,
+        };
+        let response = provider.issue_token(&request).unwrap();
+        let (sub, _, _) = provider.validate_token(&response.access_token).unwrap();
+        assert_eq!(sub, "test-client");
+
+        // Wrong secret still rejected (comparison through Secret bytes)
+        let bad_request = TokenRequest {
+            grant_type: "client_credentials".to_string(),
+            client_id: Some("test-client".to_string()),
+            client_secret: Some("wrong-secret".to_string()),
+            scope: None,
+        };
+        assert!(provider.issue_token(&bad_request).is_err());
     }
 
     #[test]

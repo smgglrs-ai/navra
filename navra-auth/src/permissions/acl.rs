@@ -64,6 +64,13 @@ impl PermissionEngine {
     /// For each ring N > 0, accumulate deny rules and approval
     /// requirements from all rings 0..N, and intersect operations
     /// so that higher rings can only narrow privileges.
+    ///
+    /// Allow globs must also narrow: a higher ring's allow globs must
+    /// be covered by the effective allow set of the lower rings (the
+    /// documented invariant that higher rings are strictly less
+    /// privileged). Globs that would broaden access beyond the parent
+    /// ring are **clamped away** (removed) with a loud warning — the
+    /// server still boots, but the offending grant is not honored.
     pub fn apply_ring_inheritance(&mut self) {
         // Collect ring assignments: (ring, name)
         let mut ringed: Vec<(u8, String)> = self
@@ -84,14 +91,20 @@ impl PermissionEngine {
         let mut accumulated_deny: Vec<String> = Vec::new();
         let mut accumulated_approval: HashSet<String> = HashSet::new();
         let mut accumulated_ops: Option<HashSet<String>> = None;
+        // Effective allow globs of the rings processed so far. Higher
+        // rings must narrow this set, not broaden it.
+        let mut accumulated_allow: Vec<String> = Vec::new();
 
         for (_, name) in &ringed {
             let acl = self.permission_sets.get(name).unwrap();
 
-            // First ring sets the baseline operations; subsequent rings intersect.
+            // First ring sets the baseline operations and allow set;
+            // subsequent rings intersect operations and must narrow
+            // the allow globs.
             match &accumulated_ops {
                 None => {
                     accumulated_ops = Some(acl.operations.clone());
+                    accumulated_allow = acl.allow.clone();
                 }
                 Some(prev_ops) => {
                     // This ring's effective operations = intersection of
@@ -100,7 +113,23 @@ impl PermissionEngine {
                         acl.operations.intersection(prev_ops).cloned().collect();
                     accumulated_ops = Some(intersected.clone());
 
-                    // Merge inherited deny rules and approval requirements.
+                    // Clamp allow globs to those covered by the
+                    // parent rings' effective allow set.
+                    let mut narrowed_allow = Vec::new();
+                    for glob in &acl.allow {
+                        if allow_glob_covered_by(glob, &accumulated_allow) {
+                            narrowed_allow.push(glob.clone());
+                        } else {
+                            tracing::warn!(
+                                permission_set = %name,
+                                glob = %glob,
+                                "Ring inheritance: allow glob exceeds parent ring's \
+                                 allow set — clamping it away. Higher rings must \
+                                 narrow, never broaden, path grants."
+                            );
+                        }
+                    }
+
                     let acl = self.permission_sets.get_mut(name).unwrap();
                     for d in &accumulated_deny {
                         if !acl.deny.contains(d) {
@@ -111,6 +140,8 @@ impl PermissionEngine {
                         acl.requires_approval.insert(a.clone());
                     }
                     acl.operations = intersected;
+                    acl.allow = narrowed_allow.clone();
+                    accumulated_allow = narrowed_allow;
                 }
             }
 
@@ -369,6 +400,55 @@ impl PermissionEngine {
         }
         false
     }
+}
+
+/// Check if a higher ring's allow glob is covered by the effective
+/// allow set of the lower rings.
+///
+/// A child glob is covered when every path it matches would also be
+/// matched by at least one parent glob:
+/// - Exact match with a parent glob
+/// - `dir/**` hierarchy: `dir/sub/**` and `dir/sub/file` are covered
+///   by `dir/**`
+/// - Parent globs containing `*` wildcards matched literally against
+///   the child glob
+///
+/// Mirrors the delegation coverage logic in
+/// `crate::auth::capability::is_glob_covered_by`, with tilde expansion
+/// applied to both sides.
+fn allow_glob_covered_by(child: &str, parents: &[String]) -> bool {
+    let child = PermissionEngine::expand_tilde(child);
+    for parent in parents {
+        let parent = PermissionEngine::expand_tilde(parent);
+        if child == parent {
+            return true;
+        }
+        // "dir/**" covers "dir/sub/**" and "dir/sub/file"
+        if let Some(parent_prefix) = parent.strip_suffix("/**") {
+            if let Some(child_prefix) = child.strip_suffix("/**")
+                && child_prefix.starts_with(parent_prefix)
+                && (child_prefix.len() == parent_prefix.len()
+                    || child_prefix.as_bytes()[parent_prefix.len()] == b'/')
+            {
+                return true;
+            }
+            // Literal child path under parent's glob tree
+            if child.starts_with(parent_prefix)
+                && (child.len() == parent_prefix.len()
+                    || child.as_bytes().get(parent_prefix.len()) == Some(&b'/'))
+            {
+                return true;
+            }
+        }
+        // Parent with * wildcard: check if it matches the child literally
+        if parent.contains('*')
+            && let Ok(pat) = glob::Pattern::new(&parent)
+            && pat.matches(&child)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 verus! {
@@ -705,6 +785,130 @@ mod tests {
         assert!(engine.has_operation("readonly", "search"));
         assert!(!engine.has_operation("readonly", "write"));
         assert!(!engine.has_operation("readonly", "git.status"));
+    }
+
+    #[test]
+    fn ring_broader_allow_clamped_to_parent() {
+        // Ring 1 declares an allow glob OUTSIDE ring 0's allow set —
+        // contradicting the narrowing invariant. It must be clamped.
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "ring0".to_string(),
+            PathAcl {
+                ring: Some(0),
+                allow: vec!["/home/user/**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.add_permission_set(
+            "ring1".to_string(),
+            PathAcl {
+                ring: Some(1),
+                allow: vec![
+                    "/etc/**".to_string(),          // broader: outside parent
+                    "/home/user/projects/**".to_string(), // narrowed: fine
+                ],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.apply_ring_inheritance();
+
+        // Narrowed glob kept
+        let result = engine.check(
+            "ring1",
+            "read",
+            Path::new("/home/user/projects/app/main.rs"),
+        );
+        assert_eq!(result, PermissionResult::Allowed);
+
+        // Broadened glob clamped away — /etc is not reachable from ring 1
+        let result = engine.check("ring1", "read", Path::new("/etc/passwd"));
+        assert_eq!(result, PermissionResult::DeniedPath);
+
+        // Ring 0 unaffected
+        let result = engine.check("ring0", "read", Path::new("/home/user/notes.txt"));
+        assert_eq!(result, PermissionResult::Allowed);
+        let result = engine.check("ring0", "read", Path::new("/etc/passwd"));
+        assert_eq!(result, PermissionResult::DeniedPath);
+    }
+
+    #[test]
+    fn ring_wildcard_parent_covers_child_globs() {
+        // A "**" parent allow covers everything; child globs survive.
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "root".to_string(),
+            PathAcl {
+                ring: Some(0),
+                allow: vec!["**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.add_permission_set(
+            "child".to_string(),
+            PathAcl {
+                ring: Some(1),
+                allow: vec!["/var/log/**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.apply_ring_inheritance();
+
+        let result = engine.check("child", "read", Path::new("/var/log/syslog"));
+        assert_eq!(result, PermissionResult::Allowed);
+    }
+
+    #[test]
+    fn ring_allow_narrowing_is_transitive() {
+        // Ring 2 must narrow against ring 1's *effective* (already
+        // narrowed) allow set, not its declared one.
+        let mut engine = PermissionEngine::new();
+        engine.add_permission_set(
+            "r0".to_string(),
+            PathAcl {
+                ring: Some(0),
+                allow: vec!["/home/**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.add_permission_set(
+            "r1".to_string(),
+            PathAcl {
+                ring: Some(1),
+                // declared broader than ring 0 — clamped to /home/**
+                allow: vec!["/home/**".to_string(), "/tmp/**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.add_permission_set(
+            "r2".to_string(),
+            PathAcl {
+                ring: Some(2),
+                // /tmp/** is not in ring 1's effective allow — clamped
+                allow: vec!["/tmp/**".to_string(), "/home/user/**".to_string()],
+                deny: vec![],
+                operations: ["read"].into_iter().map(String::from).collect(),
+                requires_approval: HashSet::new(),
+            },
+        );
+        engine.apply_ring_inheritance();
+
+        let result = engine.check("r2", "read", Path::new("/tmp/scratch"));
+        assert_eq!(result, PermissionResult::DeniedPath);
+        let result = engine.check("r2", "read", Path::new("/home/user/file"));
+        assert_eq!(result, PermissionResult::Allowed);
     }
 
     #[test]

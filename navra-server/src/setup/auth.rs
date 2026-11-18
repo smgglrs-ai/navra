@@ -108,7 +108,8 @@ pub(crate) fn wire_auth(
         let cap_auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
             Box::new(Arc::clone(root_signer)),
             nonce_cache_ttl,
-        );
+        )
+        .with_permission_set(capability_default_permission_set(cfg));
         let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
         if let Some(wimse_config) = cfg.server.wimse_auth.clone()
@@ -137,7 +138,8 @@ pub(crate) fn wire_auth(
         let cap_auth = navra_core::auth::chain::CapabilityAuthenticator::with_nonce_ttl(
             Box::new(Arc::clone(root_signer)),
             nonce_cache_ttl,
-        );
+        )
+        .with_permission_set(capability_default_permission_set(cfg));
         let mut chain = navra_core::auth::chain::ChainAuthenticator::new().add(cap_auth);
 
         if let Some(wimse_config) = cfg.server.wimse_auth.clone()
@@ -314,4 +316,30 @@ fn nonce_ttl(cfg: &config::Config) -> std::time::Duration {
             .map(|i| i.nonce_cache_ttl_secs)
             .unwrap_or(7200),
     )
+}
+
+/// Resolve the permission set assigned to capability-token identities.
+///
+/// Resolution order:
+/// 1. An operator-registered `[permissions.capability]` set takes
+///    precedence — capability-token identities are then routed through
+///    that registered ACL (which can be the deny-all `default` set if
+///    the operator wants capability tokens fully path-restricted).
+/// 2. Otherwise the reserved name `cap:token` is used. It is never a
+///    registered permission set, so the token's own embedded
+///    capabilities are enforced (least privilege: only the operations,
+///    tools, and paths granted in the token itself), with the deny-all
+///    "default" set's deny rules layered on top by
+///    `PermissionEngine::check_with_capabilities`.
+///
+/// This replaces the former hard-coded `"dev"` default, which silently
+/// granted capability-token agents whatever the (potentially
+/// permissive) `[permissions.dev]` set allowed.
+fn capability_default_permission_set(cfg: &config::Config) -> String {
+    if cfg.permissions.contains_key("capability") {
+        tracing::info!("Capability-token identities use registered [permissions.capability] set");
+        "capability".to_string()
+    } else {
+        navra_core::auth::chain::DEFAULT_CAP_PERMISSION_SET.to_string()
+    }
 }
