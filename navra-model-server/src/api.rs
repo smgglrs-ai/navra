@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
-    extract::State,
-    http::StatusCode,
+    extract::{Request, State},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
 };
@@ -19,15 +19,69 @@ pub struct ServerState {
     pub router: Arc<SessionRouter>,
 }
 
-pub fn router(state: ServerState) -> Router {
+/// Routes that require a token when auth is enabled.
+fn core_routes(state: ServerState) -> Router {
     Router::new()
-        .route("/health", get(health))
         .route("/hardware", get(hardware))
         .route("/v1/models", get(list_models))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/embeddings", post(embeddings))
         .route("/v1/classify", post(classify))
         .with_state(state)
+}
+
+pub fn router(state: ServerState) -> Router {
+    Router::new()
+        // Unauthenticated health probe (container orchestrators).
+        .route("/health", get(health))
+        .merge(core_routes(state))
+}
+
+/// Router with bearer-token auth on all inference routes.
+///
+/// `/health` stays open for readiness/liveness probes; everything
+/// else requires `Authorization: Bearer <token>`.
+pub fn router_with_auth(state: ServerState, token: &str) -> Router {
+    Router::new()
+        .route("/health", get(health))
+        .merge(
+            core_routes(state).route_layer(axum::middleware::from_fn_with_state(
+                Arc::new(token.to_string()),
+                token_auth_middleware,
+            )),
+        )
+}
+
+/// Constant-time byte comparison (CWE-208): no early exit on the
+/// first differing byte.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+async fn token_auth_middleware(
+    State(expected): State<Arc<String>>,
+    headers: HeaderMap,
+    request: Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let provided = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+    let authorized = provided.is_some_and(|p| constant_time_eq(p.as_bytes(), expected.as_bytes()));
+    if !authorized {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiError {
+                error: "unauthorized".to_string(),
+            }),
+        )
+            .into_response();
+    }
+    next.run(request).await
 }
 
 async fn health() -> impl IntoResponse {
@@ -520,5 +574,60 @@ mod tests {
             .unwrap();
         let resp = tower::ServiceExt::oneshot(app, req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // --- Token auth ---
+
+    async fn get_status(app: axum::Router, uri: &str, token: Option<&str>) -> StatusCode {
+        let mut builder = axum::http::Request::builder().uri(uri);
+        if let Some(t) = token {
+            builder = builder.header("authorization", format!("Bearer {t}"));
+        }
+        let resp =
+            tower::ServiceExt::oneshot(app, builder.body(axum::body::Body::empty()).unwrap())
+                .await
+                .unwrap();
+        resp.status()
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_missing_token() {
+        let app = router_with_auth(test_state().await, "sekrit");
+        assert_eq!(
+            get_status(app, "/v1/models", None).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_wrong_token() {
+        let app = router_with_auth(test_state().await, "sekrit");
+        assert_eq!(
+            get_status(app, "/v1/models", Some("wrong")).await,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_accepts_valid_token() {
+        let app = router_with_auth(test_state().await, "sekrit");
+        assert_eq!(
+            get_status(app, "/v1/models", Some("sekrit")).await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_keeps_health_open() {
+        let app = router_with_auth(test_state().await, "sekrit");
+        assert_eq!(get_status(app, "/health", None).await, StatusCode::OK);
+    }
+
+    #[test]
+    fn constant_time_compare() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+        assert!(constant_time_eq(b"", b""));
     }
 }

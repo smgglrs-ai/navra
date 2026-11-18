@@ -3,54 +3,61 @@
 use crate::config;
 use navra_protocol::truncate_str;
 
-/// Send an approve or deny request to the running server via JSON-RPC.
+/// Resolve an approval request on the running server via the
+/// authenticated admin endpoint `POST /api/approvals/{id}`.
+///
+/// Requires a bearer token: set `NAVRA_TOKEN` to an agent token
+/// (see `navra token generate`). The old path (an unauthenticated
+/// `tools/call file_approve` JSON-RPC on `/mcp`) is gone —
+/// `file_approve` is not a registered tool, and an agent-callable
+/// self-approval channel would defeat the approval gate entirely.
 pub(crate) async fn approve_or_deny(
     addr: &str,
     request_id: &str,
     approve: bool,
 ) -> anyhow::Result<()> {
-    let tool_name = if approve { "file_approve" } else { "file_deny" };
+    let token = std::env::var("NAVRA_TOKEN")
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "navra approve/deny requires an authentication token.\n\
+                 Generate one with `navra token generate --name <name> \
+                 --permissions <set>` and export it as NAVRA_TOKEN."
+            )
+        })?
+        .trim()
+        .to_string();
+    if token.is_empty() {
+        anyhow::bail!("NAVRA_TOKEN is set but empty");
+    }
+
     let action = if approve { "Approved" } else { "Denied" };
+    let url = format!("http://{addr}/api/approvals/{request_id}");
 
     let client = reqwest::Client::new();
-    let url = format!("http://{addr}/mcp");
-
-    let body = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "id": 1,
-        "params": {
-            "name": tool_name,
-            "arguments": {
-                "request_id": request_id
-            }
-        }
-    });
-
     let resp = client
         .post(&url)
-        .header("Content-Type", "application/json")
-        .json(&body)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {token}"))
+        .json(&serde_json::json!({"approve": approve}))
         .send()
         .await?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Server returned {status}: {text}");
+    let status = resp.status();
+    match status {
+        reqwest::StatusCode::OK => {
+            println!("{action} request {request_id}");
+            Ok(())
+        }
+        reqwest::StatusCode::UNAUTHORIZED => {
+            anyhow::bail!("unauthorized: the server rejected NAVRA_TOKEN")
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            anyhow::bail!("no pending approval request with id {request_id}")
+        }
+        _ => {
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Server returned {status}: {text}")
+        }
     }
-
-    let result: serde_json::Value = resp.json().await?;
-    if let Some(error) = result.get("error") {
-        let msg = error
-            .get("message")
-            .and_then(|m| m.as_str())
-            .unwrap_or("unknown");
-        anyhow::bail!("Server error: {msg}");
-    }
-
-    println!("{action} request {request_id}");
-    Ok(())
 }
 
 /// Query the running server for status via the initialize endpoint.

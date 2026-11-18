@@ -626,7 +626,10 @@ McpServer::builder()
 
 When a tool requires approval, the server returns immediately with an
 approval-needed response (not blocking the HTTP connection) and sends
-a D-Bus notification in parallel. Four resolution channels:
+a D-Bus notification in parallel. Three resolution channels — all
+human-driven; there is deliberately no agent-callable self-approval
+tool, since an agent that could approve its own gated actions would
+bypass the gate entirely:
 
 ```
 Agent: file_write(path, content)
@@ -635,10 +638,11 @@ Server: "Approval required. Request ID: abc-123."
         (+ tray icon shows pending approval)
 
 Resolution via ANY channel:
-  1. Agent calls file_approve(request_id=abc-123)     ← MCP-native
-  2. User clicks D-Bus notification "Approve" button  ← Desktop
-  3. User clicks tray menu Approve                    ← Tray icon
-  4. CLI: navra approve abc-123                        ← Terminal
+  1. User clicks D-Bus notification "Approve" button  ← Desktop
+  2. User clicks tray menu Approve                    ← Tray icon
+  3. CLI: navra approve abc-123                        ← Terminal
+     (authenticated POST /api/approvals/{id}, bearer
+      token from NAVRA_TOKEN)
 
 Agent: file_write(path, content)  # retry
 Server: "Written 42 bytes to /path"  # grant consumed

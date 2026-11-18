@@ -59,10 +59,10 @@ approve = ["write"]
 Any tool classified as a `write` operation triggers the approval
 flow when called by an agent using this permission set.
 
-## The four resolution channels
+## The three resolution channels
 
 Once a pending approval exists, the human can resolve it through any
-of four channels. All four call the same `ApprovalStore::approve()`
+of three channels. All three call the same `ApprovalStore::approve()`
 or `deny()` method, so the first response wins.
 
 ```
@@ -72,20 +72,17 @@ Server: "Approval required. Request ID: abc-123."
         (+ system tray icon shows pending approval)
 
 Resolution via ANY channel:
-  1. Agent calls file_approve(request_id=abc-123)     -- MCP-native
-  2. User clicks D-Bus notification "Approve" button  -- Desktop
-  3. User clicks tray menu "Approve"                  -- System tray
-  4. CLI: navra approve abc-123                        -- Terminal
+  1. User clicks D-Bus notification "Approve" button  -- Desktop
+  2. User clicks tray menu "Approve"                  -- System tray
+  3. CLI: navra approve abc-123                        -- Terminal
 ```
 
-### Channel 1: MCP-native (file_approve / file_deny)
+There is deliberately **no agent-callable approval tool**: an agent
+that could approve its own gated actions would bypass the gate
+entirely. Approvals are resolved only by out-of-band human channels
+(desktop, tray, or an authenticated CLI session).
 
-The agent itself can call the `file_approve` or `file_deny` tools
-with the `request_id` returned in the approval-required response.
-This is useful for automated approval workflows where a supervisory
-agent decides whether to permit the action.
-
-### Channel 2: D-Bus desktop notifications
+### Channel 1: D-Bus desktop notifications
 
 On desktop Linux, navra sends a notification via
 `org.freedesktop.Notifications` with **Approve** and **Deny** action
@@ -104,7 +101,7 @@ Agent **claude** wants to **write**
 If the user dismisses the notification without clicking a button,
 the request is denied automatically.
 
-### Channel 3: System tray menu
+### Channel 2: System tray menu
 
 The navra system tray icon (via `ksni` / StatusNotifierItem) shows
 pending approvals as a submenu. Each entry displays which agent
@@ -116,7 +113,7 @@ The tray polls the `ApprovalStore` every second and updates its
 menu accordingly. When all pending approvals are resolved, the icon
 returns to its normal state.
 
-### Channel 4: CLI
+### Channel 3: CLI
 
 From any terminal (including over SSH):
 
@@ -125,10 +122,13 @@ navra approve <request-id>
 navra deny <request-id>
 ```
 
-These commands send a JSON-RPC `tools/call` request to the running
-server, invoking `file_approve` or `file_deny` with the given
-request ID. The server must be listening on TCP (`server.tcp` in
-config) for CLI approval to work.
+These commands call the authenticated admin endpoint
+`POST /api/approvals/{id}` on the running server. They require a
+bearer token: generate one with `navra token generate` and export it
+as `NAVRA_TOKEN` (or pass `--token` where supported). The server
+must be listening on TCP (`server.tcp` in config) for CLI approval
+to work. Requests without a valid token are rejected with 401 — an
+unauthenticated caller must never be able to resolve approvals.
 
 ## Grants cache
 
@@ -241,9 +241,9 @@ the tracing output instead of sending desktop notifications:
 INFO navra: Approval required (no notifier -- use CLI: navra approve <id>)
 ```
 
-In headless mode, approvals must be resolved via the CLI or the
-MCP-native `file_approve`/`file_deny` tools. The system tray is
-also unavailable (start the server with `--no-tray`).
+In headless mode, approvals must be resolved via the CLI (with
+`NAVRA_TOKEN`) or by resuming the session over ACP. The system tray
+is also unavailable (start the server with `--no-tray`).
 
 ## Configuration reference
 
