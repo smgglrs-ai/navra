@@ -11,6 +11,9 @@
 //! use navra_cognitive::{ForgeService, assemble};
 //! use std::path::Path;
 //!
+//! // Fails closed if checksums.sha256 is missing — generate it with
+//! // generate_checksums(), or use load_allow_unsigned() to skip
+//! // integrity verification.
 //! let forge = ForgeService::load(Path::new("cognitive_core")).unwrap();
 //! let output = assemble(&forge, "developer", "Fix the login bug", None, None).unwrap();
 //! println!("{}", output.system_prompt());

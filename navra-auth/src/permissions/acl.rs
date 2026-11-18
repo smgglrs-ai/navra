@@ -1220,3 +1220,37 @@ mod kani_proofs {
         assert_eq!(with_dot, with_dot2);
     }
 }
+
+/// Drift detection for proof/code linkage (F2).
+///
+/// The executable `PermissionEngine::deny_wins_eval` must agree with
+/// its Verus spec twin `spec_deny_wins_eval` across the FULL decision
+/// table. If the executable and the spec ever disagree, this test
+/// fails so the proof is not silently proving the wrong function.
+/// Kept outside the `verus!` block so it always runs under plain
+/// `cargo test`.
+#[cfg(test)]
+mod drift_tests {
+    use super::*;
+
+    #[test]
+    fn deny_wins_eval_matches_spec_twin_full_decision_table() {
+        for deny_matched in [false, true] {
+            for allow_matched in [false, true] {
+                for needs_approval in [false, true] {
+                    assert_eq!(
+                        PermissionEngine::deny_wins_eval(
+                            deny_matched,
+                            allow_matched,
+                            needs_approval
+                        ),
+                        spec_deny_wins_eval(deny_matched, allow_matched, needs_approval),
+                        "drift between deny_wins_eval and spec_deny_wins_eval at \
+                         (deny={deny_matched}, allow={allow_matched}, \
+                         approval={needs_approval})"
+                    );
+                }
+            }
+        }
+    }
+}
