@@ -165,11 +165,13 @@ mod tests {
     #[test]
     fn persona_list_empty_dir() {
         let dir = tempfile::tempdir().unwrap();
-        // Create the personas subdirectory but leave it empty
+        // Create the personas subdirectory but leave it empty — and
+        // unsigned: loading must fail closed (integrity error), not
+        // silently load an unverified core.
         std::fs::create_dir_all(dir.path().join("personas")).unwrap();
 
         let result = persona_list(Some(dir.path().to_str().unwrap()));
-        assert!(result.is_ok());
+        assert!(result.is_err(), "unsigned core must fail closed: {result:?}");
     }
 
     #[test]
@@ -183,8 +185,10 @@ mod tests {
             "persona_name: test\ndisplay_name: \"Test\"\ncore_mandate: \"Do testing.\"\n",
         )
         .unwrap();
+        // Generate the integrity manifest so the core is verifiable.
+        navra_cognitive::generate_checksums(dir.path()).unwrap();
 
         let result = persona_list(Some(dir.path().to_str().unwrap()));
-        assert!(result.is_ok());
+        assert!(result.is_ok(), "checksummed core must load: {result:?}");
     }
 }
