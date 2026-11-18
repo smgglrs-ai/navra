@@ -49,6 +49,14 @@ to check proofs.
 | Deny accumulation monotonic | `apply_ring_inheritance` | — | `deny_accumulation_monotonic` | Unbounded |
 | Higher ring never grants more | `apply_ring_inheritance` | — | `higher_ring_never_grants_more` | Unbounded |
 
+**Drift detection:** the Verus proofs target ghost spec functions
+(`spec_deny_wins_eval`); the executable `deny_wins_eval` is bound to
+them by the `drift_tests` module (full decision-table equality),
+which fails CI if either side changes without the other. Likewise,
+`kani_pre_dispatch_model_matches_run_pre_timeout_mapping` in
+pipeline.rs exercises the real `HookPipeline::run_pre` timeout path
+against the Kani model's property (timeout ⇒ Block, short-circuit).
+
 ## Capability Delegation
 
 | TLA+ (CapabilityDelegation.tla) | Rust function | Kani harness | Verus proof | Coverage |

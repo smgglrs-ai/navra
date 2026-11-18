@@ -432,3 +432,20 @@ means operators cannot allowlist a punycode-encoded domain by its
 readable form — a legitimate IDN must be listed by its exact
 `xn--` encoding.
 
+
+### Config-API mutation is elevation-gated with immutable auth fields
+
+All mutating routes under `/api` (permission-set and agent
+upsert/delete, config reload, approval listing and resolution)
+require an elevated permission set (`admin`/`root`), and the
+reserved set names `admin`/`root` can only be defined in
+`config.toml` — never through the API. A non-elevated agent may
+edit only its own config, and only the non-authorization fields
+(`token_hash` rotation, `model`, concurrency/context limits);
+`permissions`, `did`, signing keys, `capability_token`, `upstream`,
+and token TTL are immutable without elevation. Capability-token
+identities are additionally never eligible for self-edit:
+delegated token subjects must be DID-shaped (`did:…`, `agent:…`,
+`obo:…`), so a delegated token cannot forge a config agent's name.
+The internal agent-label endpoint is restricted to the caller's
+own agent unless elevated.
