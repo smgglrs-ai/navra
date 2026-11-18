@@ -728,8 +728,10 @@ pub struct FlowContext {
     pub budget_cfg: crate::config::BudgetConfig,
     pub flow_dirs: Vec<String>,
     pub docs_root: Option<String>,
-    /// Root capability payload for delegated teammate tokens.
-    pub root_payload: Option<navra_core::auth::capability::CapabilityPayload>,
+    /// Shared, self-refreshing root capability template for
+    /// delegated teammate tokens (the same instance wired into the
+    /// team spawn contexts and the task-delivery API).
+    pub root_payload: Option<crate::agent_spawn::RootPayloadRefresher>,
     /// Optional PII filter for model reasoning text.
     pub pii_filter: Option<std::sync::Arc<navra_core::safety::FilterPipeline>>,
     /// Audit log for persisting flow task results.

@@ -599,13 +599,25 @@ pub(crate) async fn wire_team_tools(
         tools: vec!["*".to_string()],
         credentials: vec![],
     };
+    /// Initial TTL for the root capability template. Refreshes (see
+    /// [`crate::agent_spawn::RootPayloadRefresher`]) derive their TTL
+    /// from this template's `exp - iat`, so changing it here changes
+    /// every subsequent re-mint window too.
+    const ROOT_PAYLOAD_TTL_SECS: u64 = 86400;
     let root_payload = navra_core::auth::capability::build_payload(
         root_signer.did(),
         root_signer.did(),
         root_cap,
         1,
-        86400,
+        ROOT_PAYLOAD_TTL_SECS,
     );
+
+    // ONE shared refresher for every mint site (team_message spawn
+    // paths, flow spawns, warm-pool bootstrap secret, task-endpoint
+    // adoption): all readers observe the same live template, so a
+    // refresh triggered anywhere rolls the window forward
+    // everywhere and divergent root templates cannot coexist.
+    let root_refresher = crate::agent_spawn::RootPayloadRefresher::new(root_payload);
 
     // team_message
     let msg_spawn_ctx = Arc::new(team_tools::TeammateSpawnContext {
@@ -618,7 +630,7 @@ pub(crate) async fn wire_team_tools(
                 .map(Arc::new)
                 .ok()
         }),
-        root_payload: Some(root_payload.clone()),
+        root_payload: Some(root_refresher.clone()),
         pii_filter: reasoning_pii_filter.clone(),
         audit_log: Some(Arc::clone(audit_log)),
         cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| util::expand_tilde(p)),
@@ -795,7 +807,7 @@ pub(crate) async fn wire_team_tools(
             .as_ref()
             .and_then(|d| d.default_root.clone())
             .or_else(|| cfg.cognitive_core.clone()),
-        root_payload: Some(root_payload.clone()),
+        root_payload: Some(root_refresher.clone()),
         pii_filter: reasoning_pii_filter.clone(),
         audit_log: Some(Arc::clone(audit_log)),
         cognitive_core_path: cfg.cognitive_core.as_ref().map(|p| util::expand_tilde(p)),
@@ -904,7 +916,7 @@ pub(crate) async fn wire_team_tools(
     let agent_task_api = Arc::new(crate::agent_task_api::AgentTaskApi {
         registry: Arc::clone(&team_registry),
         signer: Arc::clone(root_signer),
-        root_payload: Some(root_payload.clone()),
+        root_payload: Some(root_refresher.clone()),
     });
 
     (
