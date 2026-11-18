@@ -174,7 +174,14 @@ mod tests {
         )
         .unwrap();
         reg.send_message(&team, "worker", "do the thing").unwrap();
-        reg.set_k8s_sandbox(&team, "worker", "navra-agents-abc12".to_string());
+        // Bound at claim time — the only adoption path the API
+        // honors (unbound legacy mappings are refused).
+        reg.set_k8s_sandbox_with_pool(
+            &team,
+            "worker",
+            "navra-agents-abc12".to_string(),
+            "did:pool:navra-agents".to_string(),
+        );
         reg
     }
 
@@ -244,14 +251,22 @@ mod tests {
     }
 
     #[test]
-    fn unbound_sandbox_binds_to_first_pool_only() {
-        // Legacy mapping without a recorded pool: the first caller
-        // binds it, a different pool is then refused.
+    fn unbound_sandbox_adoption_is_refused() {
+        // Legacy mapping without a recorded pool: adoption is refused
+        // for every caller (binding to the first caller would be a
+        // race any pool-token holder could win). The response is the
+        // same NotFound an unknown sandbox gets — no existence leak.
         let reg = registry_with_claimed_teammate();
-        let api = api_with_registry(reg);
-        assert!(
-            api.task_for(Some("did:pool:pool-a"), Some("navra-agents-abc12"))
-                .is_ok()
+        // Re-record the sandbox without a pool binding (legacy path).
+        reg.set_k8s_sandbox("team-1", "worker", "navra-agents-abc12".to_string());
+        let api = AgentTaskApi {
+            registry: reg,
+            signer: Arc::new(Ed25519Signer::generate()),
+            root_payload: None,
+        };
+        assert_eq!(
+            api.task_for(Some("did:pool:pool-a"), Some("navra-agents-abc12")),
+            Err(TaskFetchError::NotFound)
         );
         assert_eq!(
             api.task_for(Some("did:pool:pool-b"), Some("navra-agents-abc12")),

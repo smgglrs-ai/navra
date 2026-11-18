@@ -934,10 +934,14 @@ impl TeamRegistry {
     /// `sandbox` by `pool_did`, enforcing single-adoption semantics:
     /// one pool identity per sandbox→teammate mapping.
     ///
-    /// The binding is normally recorded at claim time by the gateway
-    /// ([`TeamRegistry::set_k8s_sandbox_with_pool`]); a mapping left
-    /// unbound (legacy registries) is bound by the first pool to
-    /// adopt it. Either way:
+    /// The binding is recorded at claim time by the gateway
+    /// ([`TeamRegistry::set_k8s_sandbox_with_pool`]). A mapping left
+    /// unbound (legacy registries) is NOT adopted: binding to the
+    /// first caller would be a race any pool-token holder could win,
+    /// so unbound mappings are refused with the same
+    /// [`AdoptionError::UnknownSandbox`] as an unknown sandbox (no
+    /// existence leak) and a loud warning tells the operator to
+    /// re-claim the sandbox. Either way:
     ///
     /// - the *same* pool re-polling succeeds (idempotent — the
     ///   legitimate pod polls repeatedly and re-fetches after a
@@ -951,11 +955,10 @@ impl TeamRegistry {
         sandbox: &str,
         pool_did: &str,
     ) -> Result<(String, String), AdoptionError> {
-        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
-        let mut bound = false;
+        let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         let mut found = None;
-        'outer: for team in teams.values_mut() {
-            for (mate_id, tm) in team.teammates.iter_mut() {
+        'outer: for team in teams.values() {
+            for (mate_id, tm) in &team.teammates {
                 if tm.k8s_sandbox.as_deref() != Some(sandbox) {
                     continue;
                 }
@@ -963,16 +966,20 @@ impl TeamRegistry {
                     Some(b) if b == pool_did => Ok((team.team_id.clone(), mate_id.clone())),
                     Some(_) => Err(AdoptionError::PoolMismatch),
                     None => {
-                        tm.adopted_pool_did = Some(pool_did.to_string());
-                        bound = true;
-                        Ok((team.team_id.clone(), mate_id.clone()))
+                        // Legacy unbound mapping: refuse rather than
+                        // let the first caller win the binding race.
+                        tracing::warn!(
+                            sandbox = %sandbox,
+                            pool = %pool_did,
+                            "refusing adoption of unbound sandbox mapping \
+                             (legacy registry entry); re-claim the sandbox so \
+                             the claiming pool is recorded"
+                        );
+                        Err(AdoptionError::UnknownSandbox)
                     }
                 });
                 break 'outer;
             }
-        }
-        if bound {
-            self.persist(&teams);
         }
         found.unwrap_or(Err(AdoptionError::UnknownSandbox))
     }
@@ -2049,7 +2056,7 @@ mod persistence_tests {
     }
 
     #[test]
-    fn unbound_sandbox_is_adopted_by_first_pool_only() {
+    fn unbound_sandbox_adoption_is_refused() {
         let reg = TeamRegistry::default();
         let team = reg
             .create_team("t", None, "lead", 0, TeamBudget::default())
@@ -2068,17 +2075,18 @@ mod persistence_tests {
         )
         .unwrap();
         // Legacy path: sandbox recorded without a pool binding.
+        // First-caller binding is a race any pool-token holder could
+        // win, so every caller — first or not — is refused with the
+        // same UnknownSandbox an unknown sandbox gets.
         reg.set_k8s_sandbox(&team, "worker", "navra-agents-xyz".to_string());
 
-        // First caller binds the mapping...
         assert_eq!(
             reg.adopt_k8s_sandbox("navra-agents-xyz", "did:pool:first"),
-            Ok((team.clone(), "worker".to_string()))
+            Err(AdoptionError::UnknownSandbox)
         );
-        // ...and a different pool is then refused.
         assert_eq!(
             reg.adopt_k8s_sandbox("navra-agents-xyz", "did:pool:second"),
-            Err(AdoptionError::PoolMismatch)
+            Err(AdoptionError::UnknownSandbox)
         );
     }
 
