@@ -82,8 +82,22 @@ struct TaintLedgerEntry {
 const TAINT_LEDGER_TTL_MULTIPLIER: u64 = 24;
 
 /// Hard cap on taint-ledger entries. When reached, the stalest entry
-/// is evicted — a bound against unbounded growth from key churn.
+/// whose backing session is no longer live is evicted — a bound
+/// against unbounded growth from key churn. Entries whose session is
+/// still live are skipped (evicting one would launder its taint the
+/// moment the session TTL-expires); only when every entry is live
+/// does the stalest live entry go.
 const MAX_TAINT_LEDGER_ENTRIES: usize = 8192;
+
+/// Stable, non-reversible identifier for a ledger key in log output:
+/// the raw key can embed agent names / DIDs, so evictions (and any
+/// other ledger diagnostics) log only this hash.
+fn redacted_key_hash(key: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    key.hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Thread-safe session store wrapping a pluggable backend.
 #[derive(Clone)]
@@ -133,12 +147,29 @@ impl SessionStore {
         let now = now_epoch();
         let mut ledger = self.taint_ledger.write().unwrap_or_else(|e| e.into_inner());
         if ledger.len() >= MAX_TAINT_LEDGER_ENTRIES && !ledger.contains_key(id) {
-            // Cap reached for a new key: evict the stalest entry.
-            let victim = ledger
+            // Cap reached for a new key: evict. Candidates are
+            // ordered by staleness; entries whose backing session is
+            // still live in the backend are skipped — evicting a live
+            // session's entry launders its taint the moment the
+            // session TTL-expires. Only when every entry is live does
+            // the stalest live entry get evicted (the cap must hold).
+            let mut candidates: Vec<(String, i64)> = ledger
                 .iter()
-                .min_by_key(|(_, entry)| entry.last_accessed)
-                .map(|(key, _)| key.clone());
+                .map(|(key, entry)| (key.clone(), entry.last_accessed))
+                .collect();
+            candidates.sort_by_key(|(_, accessed)| *accessed);
+            let victim = candidates
+                .iter()
+                .find(|(key, _)| self.backend.get(key).is_none())
+                .map(|(key, _)| key.clone())
+                .or_else(|| candidates.first().map(|(key, _)| key.clone()));
             if let Some(victim) = victim {
+                tracing::warn!(
+                    key_hash = redacted_key_hash(&victim),
+                    remaining = ledger.len() - 1,
+                    "Taint-ledger cap reached — evicting stalest non-live entry \
+                     (persisted taint for this key is forgotten)"
+                );
                 ledger.remove(&victim);
             }
         }
@@ -242,6 +273,15 @@ impl SessionStore {
 
     pub fn touch(&self, id: &str) {
         self.backend.touch(id);
+        // The taint-ledger entry must stay as fresh as the session it
+        // belongs to: an active session whose ledger entry went stale
+        // would become an eviction candidate at the cap, and its
+        // eviction would launder the taint the moment the session
+        // TTL-expires.
+        let mut ledger = self.taint_ledger.write().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = ledger.get_mut(id) {
+            entry.last_accessed = now_epoch();
+        }
     }
 
     pub fn expire(&self, max_age_secs: u64) {
@@ -735,6 +775,147 @@ mod tests {
     fn list_all_empty_store() {
         let store = SessionStore::new();
         assert!(store.list_all().is_empty());
+    }
+
+    // --- taint-ledger eviction (cap enforcement) ---
+
+    /// Fill the ledger to the cap with entries whose sessions were
+    /// removed (idle/dead keys), plus one `live_key` whose session
+    /// stays in the backend. The live entry is made the stalest so a
+    /// naive staleness-only eviction would pick it.
+    fn ledger_at_cap_with_one_live(live_key: &str) -> SessionStore {
+        let store = SessionStore::new();
+        for i in 0..(MAX_TAINT_LEDGER_ENTRIES - 1) {
+            let key = format!("churn-{i}");
+            store.create(test_session(&key));
+            store.update_context_label(&key, DataLabel::UNTRUSTED_PUBLIC);
+            store.remove(&key);
+        }
+        store.create(test_session(live_key));
+        store.update_context_label(live_key, DataLabel::UNTRUSTED_SENSITIVE);
+        // Age the live entry to be the stalest of all; churn-0 to be
+        // the stalest among the dead entries (deterministic victim).
+        let mut ledger = store.taint_ledger.write().unwrap();
+        ledger.get_mut(live_key).unwrap().last_accessed = 0;
+        ledger.get_mut("churn-0").unwrap().last_accessed = 1;
+        drop(ledger);
+        assert_eq!(
+            store.taint_ledger.read().unwrap().len(),
+            MAX_TAINT_LEDGER_ENTRIES
+        );
+        store
+    }
+
+    #[test]
+    fn eviction_skips_live_session_entries() {
+        // Under cap pressure, an active session's ledger entry must
+        // not be evicted even when it is the stalest — evicting it
+        // would launder the session's taint once it TTL-expires.
+        let store = ledger_at_cap_with_one_live("live");
+        // A new key arrives, forcing an eviction.
+        store.create(test_session("newcomer"));
+        store.update_context_label("newcomer", DataLabel::UNTRUSTED_PUBLIC);
+
+        let ledger = store.taint_ledger.read().unwrap();
+        assert!(
+            ledger.contains_key("live"),
+            "a live session's ledger entry must never be the eviction victim"
+        );
+        assert!(
+            !ledger.contains_key("churn-0"),
+            "the stalest non-live entry must be evicted instead"
+        );
+        assert_eq!(ledger.len(), MAX_TAINT_LEDGER_ENTRIES);
+    }
+
+    #[test]
+    fn eviction_launders_nothing_for_live_session() {
+        // The end-to-end property: after cap pressure, the live
+        // session expires and re-creates — its taint survives.
+        let store = ledger_at_cap_with_one_live("live");
+        store.create(test_session("newcomer"));
+        store.update_context_label("newcomer", DataLabel::UNTRUSTED_PUBLIC);
+
+        // Live session TTL-expires, identity reconnects.
+        store.remove("live");
+        store.create(test_session("live"));
+        assert_eq!(
+            store.context_label("live"),
+            DataLabel::UNTRUSTED_SENSITIVE,
+            "live session's taint must survive cap-pressure eviction"
+        );
+    }
+
+    #[test]
+    fn eviction_removes_stale_idle_entries() {
+        // All entries dead: the stalest is evicted, the cap holds.
+        let store = ledger_at_cap_with_one_live("live");
+        store.remove("live"); // now every entry is non-live
+        store.create(test_session("newcomer"));
+        store.update_context_label("newcomer", DataLabel::UNTRUSTED_PUBLIC);
+
+        let ledger = store.taint_ledger.read().unwrap();
+        assert!(
+            !ledger.contains_key("live"),
+            "the stalest idle entry must be evicted"
+        );
+        assert_eq!(ledger.len(), MAX_TAINT_LEDGER_ENTRIES);
+    }
+
+    #[test]
+    fn eviction_falls_back_to_stalest_live_entry_when_all_live() {
+        // Cap must hold even when every entry backs a live session.
+        let store = SessionStore::new();
+        for i in 0..MAX_TAINT_LEDGER_ENTRIES {
+            let key = format!("live-{i}");
+            store.create(test_session(&key));
+            store.update_context_label(&key, DataLabel::UNTRUSTED_PUBLIC);
+            if i == 0 {
+                // Make one entry the stalest.
+                let mut ledger = store.taint_ledger.write().unwrap();
+                ledger.get_mut(&key).unwrap().last_accessed = 0;
+            }
+        }
+        store.create(test_session("newcomer"));
+        store.update_context_label("newcomer", DataLabel::UNTRUSTED_PUBLIC);
+        let ledger = store.taint_ledger.read().unwrap();
+        assert_eq!(
+            ledger.len(),
+            MAX_TAINT_LEDGER_ENTRIES,
+            "the cap must hold even when all entries are live"
+        );
+        assert!(!ledger.contains_key("live-0"));
+        assert!(ledger.contains_key("newcomer"));
+    }
+
+    #[test]
+    fn touch_refreshes_ledger_last_accessed() {
+        // An active session's ledger entry must not go stale: touch()
+        // refreshes the entry alongside the session.
+        let store = SessionStore::new();
+        store.create(test_session("t"));
+        store.update_context_label("t", DataLabel::UNTRUSTED_PUBLIC);
+
+        // Age the ledger entry far into the past.
+        {
+            let mut ledger = store.taint_ledger.write().unwrap();
+            ledger.get_mut("t").unwrap().last_accessed = 0;
+        }
+        store.touch("t");
+        let ledger = store.taint_ledger.read().unwrap();
+        let refreshed = ledger.get("t").expect("entry must exist").last_accessed;
+        drop(ledger);
+        assert!(
+            refreshed >= now_epoch() - 5,
+            "touch() must refresh the ledger entry's last_accessed"
+        );
+    }
+
+    #[test]
+    fn touch_missing_key_does_not_create_ledger_entry() {
+        let store = SessionStore::new();
+        store.touch("nope");
+        assert!(store.taint_ledger.read().unwrap().is_empty());
     }
 }
 

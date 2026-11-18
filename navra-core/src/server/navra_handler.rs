@@ -191,6 +191,11 @@ impl NavraHandler {
     /// AUTHENTICATED identities — the multi-client case where
     /// taint-laundering via re-init is an attack.
     ///
+    /// The prior label is JOINED with whatever label the interim
+    /// session (re-created under the same key by a concurrent call
+    /// during the handshake window) has acquired — a blind snapshot
+    /// restore would clobber taint gained mid-handshake.
+    ///
     /// Anonymous (dev-mode) identities are exempt: they share one
     /// process-wide session (see [`Self::session_id_for`]), so
     /// persisting taint across their re-inits would poison every
@@ -199,12 +204,64 @@ impl NavraHandler {
     /// on re-init is the correct semantics there.
     fn restore_prior_session(server: &McpServer, prior: Option<crate::session::Session>) {
         if let Some(mut session) = prior {
+            // Taint acquired during the handshake window (a
+            // concurrent call re-created the session under this key
+            // and tainted it) must survive the restore.
+            let interim = server.sessions().context_label(&session.id);
+            session.context_label = session.context_label.join(interim);
             session.initialized = true;
             session.last_accessed = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64;
             server.sessions().create(session);
+        }
+    }
+
+    /// Handshake body after authentication: drops the prior session
+    /// for this identity, runs the server-side initialize, discards
+    /// the UUID-keyed session `handle_initialize` mints (the rmcp
+    /// path keys sessions on identity, so that session is never
+    /// referenced again — without removal every handshake would leak
+    /// a session slot), then restores the prior session with its IFC
+    /// taint intact.
+    async fn initialize_authenticated(
+        &self,
+        request: rmcp::model::InitializeRequestParams,
+        agent: AgentIdentity,
+    ) -> Result<InitializeResult, ErrorData> {
+        let session_id = self.session_id_for(&agent);
+        // Drop the prior session object for this agent, then restore
+        // it after the handshake with its IFC taint intact (see
+        // `restore_prior_session`) — but only for authenticated
+        // identities; anonymous dev-mode clients start clean.
+        let prior_session = self.server.sessions().remove(&session_id);
+        let prior_session = if Self::is_anonymous_identity(&self.server, &agent) {
+            // Anonymous dev-mode re-init keeps its clean-slate
+            // semantics: drop any taint persisted for this
+            // connection's key in the session-store taint ledger as
+            // well, not just the session object.
+            self.server.sessions().clear_taint_ledger(&session_id);
+            None
+        } else {
+            prior_session
+        };
+        match self.server.handle_initialize(request, agent) {
+            Ok((result, navra_sid)) => {
+                // The UUID-keyed session minted by handle_initialize
+                // is orphaned on this path (session keys are
+                // identity-derived) — remove it so the session count
+                // reflects real sessions only.
+                self.server.sessions().remove(&navra_sid);
+                Self::restore_prior_session(&self.server, prior_session);
+                Ok(result)
+            }
+            Err(msg) => {
+                // A failed re-init must not destroy the existing
+                // session either — restore it.
+                Self::restore_prior_session(&self.server, prior_session);
+                Err(ErrorData::invalid_params(msg, None))
+            }
         }
     }
 }
@@ -246,34 +303,7 @@ impl ServerHandler for NavraHandler {
     ) -> Result<InitializeResult, ErrorData> {
         let agent =
             Self::agent_from_context(&context, &self.server, self.default_identity.as_ref())?;
-        let session_id = self.session_id_for(&agent);
-        // Drop the prior session object for this agent, then restore
-        // it after the handshake with its IFC taint intact (see
-        // `restore_prior_session`) — but only for authenticated
-        // identities; anonymous dev-mode clients start clean.
-        let prior_session = self.server.sessions().remove(&session_id);
-        let prior_session = if Self::is_anonymous_identity(&self.server, &agent) {
-            // Anonymous dev-mode re-init keeps its clean-slate
-            // semantics: drop any taint persisted for this
-            // connection's key in the session-store taint ledger as
-            // well, not just the session object.
-            self.server.sessions().clear_taint_ledger(&session_id);
-            None
-        } else {
-            prior_session
-        };
-        match self.server.handle_initialize(request, agent) {
-            Ok((result, _navra_sid)) => {
-                Self::restore_prior_session(&self.server, prior_session);
-                Ok(result)
-            }
-            Err(msg) => {
-                // A failed re-init must not destroy the existing
-                // session either — restore it.
-                Self::restore_prior_session(&self.server, prior_session);
-                Err(ErrorData::invalid_params(msg, None))
-            }
-        }
+        self.initialize_authenticated(request, agent).await
     }
 
     async fn call_tool(
@@ -574,5 +604,112 @@ mod tests {
         let server = anon_server();
         NavraHandler::restore_prior_session(&server, None);
         assert_eq!(server.sessions().count(), 0);
+    }
+
+    #[test]
+    fn restore_prior_session_joins_taint_acquired_during_handshake_window() {
+        // Concurrent-call simulation: between the remove and the
+        // restore (the initialize handshake window) another call
+        // re-creates the session under the same key and taints it.
+        // The restore must JOIN the prior label with the interim
+        // one, not blindly restore the snapshot — otherwise the
+        // handshake window launders the interim taint.
+        let server = anon_server();
+        let agent = AgentIdentity::new("someone", "dev");
+        let key = "rmcp:test:handshake-window";
+        server.ensure_session(key, &agent);
+        server
+            .sessions()
+            .update_context_label(key, DataLabel::UNTRUSTED_PUBLIC);
+        let prior = server.sessions().remove(key);
+        assert!(prior.is_some());
+
+        // Interim call during the handshake window.
+        server.ensure_session(key, &agent);
+        server
+            .sessions()
+            .update_context_label(key, DataLabel::UNTRUSTED_SENSITIVE);
+
+        NavraHandler::restore_prior_session(&server, prior);
+        let label = server.sessions().context_label(key);
+        assert_eq!(
+            label.integrity,
+            crate::ifc::Integrity::Untrusted,
+            "prior taint must survive the restore"
+        );
+        assert_eq!(
+            label.confidentiality,
+            crate::ifc::Confidentiality::Sensitive,
+            "interim-window taint must survive the restore (join, not clobber)"
+        );
+    }
+
+    #[tokio::test]
+    async fn initialize_does_not_leak_uuid_session() {
+        // handle_initialize mints a UUID-keyed session the rmcp path
+        // never references (its session keys are identity-derived).
+        // NavraHandler must remove it after the handshake so the
+        // session count does not grow per initialize.
+        let server = anon_server();
+        let handler = NavraHandler::new(Arc::clone(&server));
+        let agent = AgentIdentity::new("someone", "dev");
+        let key = handler.session_id_for(&agent);
+        server.ensure_session(&key, &agent);
+        let before = server.sessions().count();
+
+        let params = {
+            let mut p = crate::protocol::InitializeParams::new(
+                Default::default(),
+                crate::protocol::ClientInfo::new("client", ""),
+            );
+            p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+            p
+        };
+        handler
+            .initialize_authenticated(params, agent.clone())
+            .await
+            .expect("initialize must succeed");
+
+        assert_eq!(
+            server.sessions().count(),
+            before,
+            "initialize must not leak the UUID-keyed session"
+        );
+        assert!(
+            server.sessions().get(&key).is_some(),
+            "the identity-keyed session must be restored"
+        );
+    }
+
+    #[tokio::test]
+    async fn initialize_authenticated_restores_prior_session() {
+        // The identity-keyed session survives a re-initialize with
+        // its taint intact (authenticated, non-anonymous identity).
+        let server = anon_server();
+        let handler = NavraHandler::new(Arc::clone(&server));
+        let agent = AgentIdentity::new("someone", "dev");
+        let key = handler.session_id_for(&agent);
+        server.ensure_session(&key, &agent);
+        server
+            .sessions()
+            .update_context_label(&key, DataLabel::UNTRUSTED_PUBLIC);
+
+        let params = {
+            let mut p = crate::protocol::InitializeParams::new(
+                Default::default(),
+                crate::protocol::ClientInfo::new("client", ""),
+            );
+            p.protocol_version = crate::protocol::ProtocolVersion::V_2026_07_28;
+            p
+        };
+        handler
+            .initialize_authenticated(params, agent)
+            .await
+            .expect("initialize must succeed");
+        assert_eq!(
+            server.sessions().context_label(&key),
+            DataLabel::UNTRUSTED_PUBLIC,
+            "re-init must carry the identity session's taint forward"
+        );
     }
 }
