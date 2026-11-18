@@ -36,17 +36,26 @@ RUN apt-get update && \
 # of the target cluster's API server; keep the patch current — the
 # Trivy image scan gates on HIGH/CRITICAL CVEs, and older kubectl
 # builds carry vulnerable Go stdlib versions.
+#
+# The sha256s are pinned per-arch (recorded from dl.k8s.io, verified
+# against both the published .sha256 files and the downloaded
+# binaries on 2026-11-18) so the build fails on a tampered or
+# unexpectedly changed artifact instead of trusting the same-origin
+# .sha256 file served next to the binary.
 ARG KUBECTL_VERSION=v1.35.10
+ARG KUBECTL_SHA256_AMD64=c49a28f1f4efc4d475ed05f47f2ce8e563bf7bef69ed77fe1b924ea6d83b6327
+ARG KUBECTL_SHA256_ARM64=283f1be6a46b3695b625e25030106b8ffe18bd0d3a900f5b65c259ca407f04f5
 ARG TARGETARCH
 RUN if [ "${TARGETARCH:-amd64}" != "amd64" ] && [ "${TARGETARCH:-amd64}" != "arm64" ]; then \
         echo "unsupported arch: ${TARGETARCH}"; exit 1; \
     fi && \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) KUBECTL_SHA256="${KUBECTL_SHA256_AMD64}" ;; \
+        arm64) KUBECTL_SHA256="${KUBECTL_SHA256_ARM64}" ;; \
+    esac && \
     curl -fsSLo /usr/local/bin/kubectl \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH:-amd64}/kubectl" && \
-    curl -fsSLo /tmp/kubectl.sha256 \
-        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH:-amd64}/kubectl.sha256" && \
-    echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - && \
-    rm /tmp/kubectl.sha256 && \
+    echo "${KUBECTL_SHA256}  /usr/local/bin/kubectl" | sha256sum -c - && \
     chmod +x /usr/local/bin/kubectl
 
 WORKDIR /src
