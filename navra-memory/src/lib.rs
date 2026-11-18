@@ -33,7 +33,12 @@ pub use audit::{
 pub use decay::{cleanup_decayed, effective_score};
 pub use entity_graph::{EntityGraph, Relationship};
 pub use error::MemoryError;
+// Tag/PII sanitization helpers for the memory write path. The
+// underlying implementation lives in navra-safety (via navra-core's
+// re-export); re-exported here so the server's memory tools can
+// gate tags with the rest of the memory API.
 pub use knowledge::KnowledgeStore;
+pub use navra_core::safety::{sanitize_tags, tags_have_pii, text_has_pii};
 pub use pipeline::{
     ContentSanitizer, DistillationPipeline, extract_failure_insight, extract_success_insight,
 };
