@@ -936,13 +936,17 @@ async fn mrtr_test_server(
     let module = UpstreamModule::discover("mrtr", peer, None, &Default::default()).await;
     let server = std::sync::Arc::new(
         navra_core::McpServer::builder()
-            .allow_anonymous()
+            // Authenticated as "tester"/"dev" — the duplex has no
+            // HTTP headers, so the identity comes from the
+            // NoAuthenticator (dev mode). Unauthenticated peers are
+            // rejected at the handler boundary; only a
+            // NoAuthenticator in the chain yields an anonymous
+            // identity.
+            .authenticator(navra_core::auth::NoAuthenticator {
+                default_identity: navra_core::auth::AgentIdentity::new("tester", "dev"),
+            })
             .module(module)
-            // "dev" for direct handle_call_tool tests; "default" is
-            // the anonymous-fallback permission set the NavraHandler
-            // assigns to unauthenticated peers.
             .safety_profile("dev", navra_core::safety::build_pipeline("standard"))
-            .safety_profile("default", navra_core::safety::build_pipeline("standard"))
             .build(),
     );
     (server, client)
