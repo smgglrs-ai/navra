@@ -555,7 +555,7 @@ facets:
         )
         .unwrap();
 
-        ForgeService::load(dir).unwrap()
+        ForgeService::load_allow_unsigned(dir).unwrap()
     }
 
     #[test]
