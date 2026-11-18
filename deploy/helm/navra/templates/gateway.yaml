@@ -51,6 +51,14 @@ spec:
               {{- else }}
               value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:{{ include "navra.gatewayPort" . }}
               {{- end }}
+          {{- if and .Values.tls.enabled .Values.tls.requireClientCert }}
+            # Strict client-certificate verification on the TCP
+            # listener (tls.requireClientCert): every caller must
+            # present a certificate signed by the client CA (SVIDs
+            # under source=spire). See tls.rs.
+            - name: NAVRA_TLS_REQUIRE_CLIENT_CERT
+              value: "true"
+          {{- end }}
           {{- if .Values.tls.enabled }}
           {{- if eq .Values.tls.source "spire" }}
           # Cluster TLS from SPIRE SVIDs (NAVRA-201): trust the

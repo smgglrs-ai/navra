@@ -14,6 +14,34 @@
 //!   mints a fresh delegated token scoped to that teammate, and
 //!   returns it with the task spec. The agent switches to the fresh
 //!   token for all subsequent calls.
+//!
+//! # Adoption security (layered)
+//!
+//! The sandbox header is self-asserted, so the pool branch is
+//! defended in layers:
+//!
+//! 1. **Pool binding (enforced here)** — the registry binds each
+//!    sandbox→teammate mapping to the pool DID that claimed it
+//!    ([`TeamRegistry::adopt_k8s_sandbox`]). A caller whose pool DID
+//!    does not match the binding is refused; the same pool re-polls
+//!    idempotently. This kills cross-pool adoption and sandbox-name
+//!    spoofing by holders of other pools' bootstrap tokens.
+//! 2. **Short-lived, zero-capability bootstrap tokens** — minted
+//!    with a 24h TTL and no operations/tools
+//!    (`agent_spawn::mint_pool_bootstrap_token`), so a leaked
+//!    bootstrap token is inert beyond the task poll and expires
+//!    quickly.
+//! 3. **Known limitation / long-term fix** — the `X-Navra-Sandbox`
+//!    header is still self-asserted within a pool, and the route
+//!    (ui.rs) only forwards the decoded DID, so the task endpoint
+//!    cannot yet require the bootstrap-token marker claim or inspect
+//!    capabilities. The proper fix is transport-level: issue each
+//!    warm pod a SPIFFE X509-SVID (client certificate) bound to the
+//!    pod identity, require client certs on the internal listener
+//!    (`tls.require_client_cert` / `NAVRA_TLS_REQUIRE_CLIENT_CERT`),
+//!    and derive the sandbox identity from the verified SVID instead
+//!    of a header. Needs a route-level change (ui.rs) plus agent
+//!    SVID wiring — tracked for the lead.
 
 use std::sync::Arc;
 
@@ -70,12 +98,16 @@ impl AgentTaskApi {
 
         if did.starts_with("did:pool:") {
             // Warm-pool adoption: resolve the teammate by sandbox
-            // name, then mint a fresh scoped token.
+            // name — verifying the caller's pool DID against the
+            // mapping's binding (see the module docs on adoption
+            // security). Both an unknown sandbox and a cross-pool
+            // attempt map to NotFound: the response must not reveal
+            // that the sandbox exists.
             let sandbox = sandbox.ok_or(TaskFetchError::MissingSandboxHeader)?;
             let (team, mate) = self
                 .registry
-                .teammate_by_k8s_sandbox(sandbox)
-                .ok_or(TaskFetchError::NotFound)?;
+                .adopt_k8s_sandbox(sandbox, did)
+                .map_err(|_| TaskFetchError::NotFound)?;
 
             let (ops, tools, ttl) = self
                 .registry
@@ -173,6 +205,58 @@ mod tests {
         let payload = navra_core::auth::capability::decode_token(token, api.signer.as_ref())
             .expect("token decodes with the api signer");
         assert_eq!(payload.sub, "did:teammate:team-1:worker");
+    }
+
+    #[test]
+    fn same_pool_readoption_is_idempotent() {
+        // The adopted pod polls repeatedly (task: null while
+        // waiting) and re-fetches after a restart — every poll from
+        // the claiming pool must succeed and mint a fresh token.
+        let reg = registry_with_claimed_teammate();
+        let api = api_with_registry(reg);
+        for _ in 0..3 {
+            let spec = api
+                .task_for(Some("did:pool:navra-agents"), Some("navra-agents-abc12"))
+                .unwrap();
+            assert_eq!(spec["task"], "do the thing");
+            assert!(spec["token"].as_str().is_some());
+        }
+    }
+
+    #[test]
+    fn cross_pool_adoption_is_rejected() {
+        // The sandbox was bound to did:pool:navra-agents at claim
+        // time; a holder of a different pool's bootstrap token
+        // presenting the same sandbox name gets NotFound (no
+        // existence leak).
+        let reg = registry_with_claimed_teammate();
+        reg.set_k8s_sandbox_with_pool(
+            "team-1",
+            "worker",
+            "navra-agents-abc12".to_string(),
+            "did:pool:navra-agents".to_string(),
+        );
+        let api = api_with_registry(reg);
+        assert_eq!(
+            api.task_for(Some("did:pool:other-pool"), Some("navra-agents-abc12")),
+            Err(TaskFetchError::NotFound)
+        );
+    }
+
+    #[test]
+    fn unbound_sandbox_binds_to_first_pool_only() {
+        // Legacy mapping without a recorded pool: the first caller
+        // binds it, a different pool is then refused.
+        let reg = registry_with_claimed_teammate();
+        let api = api_with_registry(reg);
+        assert!(
+            api.task_for(Some("did:pool:pool-a"), Some("navra-agents-abc12"))
+                .is_ok()
+        );
+        assert_eq!(
+            api.task_for(Some("did:pool:pool-b"), Some("navra-agents-abc12")),
+            Err(TaskFetchError::NotFound)
+        );
     }
 
     #[test]

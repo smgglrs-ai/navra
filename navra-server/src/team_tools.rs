@@ -137,6 +137,15 @@ pub struct Teammate {
     /// which is how the task endpoint maps an adoption poll to this
     /// teammate.
     pub k8s_sandbox: Option<String>,
+    /// Pool identity (`did:pool:...`) that owns this teammate's
+    /// sandbox mapping — single-adoption binding. Normally set at
+    /// claim time (the gateway knows which pool a sandbox was
+    /// claimed from); an unbound mapping is bound by the first pool
+    /// identity that adopts it. Once bound, only that pool may
+    /// resolve the sandbox on the task endpoint, so a sandbox name
+    /// spoofed by a holder of a *different* pool's bootstrap token
+    /// is refused.
+    pub adopted_pool_did: Option<String>,
     /// Host path to the mounted workspace directory.
     pub workspace_path: Option<std::path::PathBuf>,
     /// Elapsed seconds at the time of the last `team_bb_notifications` call.
@@ -170,6 +179,16 @@ pub struct BlackboardNotification {
     pub key: String,
     pub author: String,
     pub timestamp_secs: u64,
+}
+
+/// Why a warm-pool sandbox adoption was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdoptionError {
+    /// No teammate is registered for the sandbox name.
+    UnknownSandbox,
+    /// The sandbox is bound to a different pool identity than the
+    /// caller's (cross-pool adoption / sandbox-name spoofing).
+    PoolMismatch,
 }
 
 /// Resource budget for a team tree.
@@ -261,6 +280,8 @@ struct TeammateSnapshot {
     container_id: Option<String>,
     sandbox_id: Option<String>,
     k8s_sandbox: Option<String>,
+    #[serde(default)]
+    adopted_pool_did: Option<String>,
     workspace_path: Option<std::path::PathBuf>,
     last_bb_check: Option<u64>,
     iterations: Option<u32>,
@@ -285,6 +306,7 @@ impl From<&Teammate> for TeammateSnapshot {
             container_id: tm.container_id.clone(),
             sandbox_id: tm.sandbox_id.clone(),
             k8s_sandbox: tm.k8s_sandbox.clone(),
+            adopted_pool_did: tm.adopted_pool_did.clone(),
             workspace_path: tm.workspace_path.clone(),
             last_bb_check: tm.last_bb_check,
             iterations: tm.iterations,
@@ -312,6 +334,7 @@ impl From<TeammateSnapshot> for Teammate {
             container_id: s.container_id,
             sandbox_id: s.sandbox_id,
             k8s_sandbox: s.k8s_sandbox,
+            adopted_pool_did: s.adopted_pool_did,
             workspace_path: s.workspace_path,
             last_bb_check: None, // restart returns all notifications (safe superset)
             iterations: s.iterations,
@@ -372,6 +395,10 @@ impl TeamRegistry {
     /// only by tests and external embedders; the server wires
     /// persistence via `load_or_new`.)
     #[cfg_attr(not(test), allow(dead_code))]
+    /// Builder: attach a persistence path to a registry constructed
+    /// via `Default` (the startup wiring composes it with loaded
+    /// state instead, so this is currently unused).
+    #[allow(dead_code)]
     pub fn with_persistence(mut self, path: std::path::PathBuf) -> Self {
         self.persist_path = Some(path);
         self
@@ -652,6 +679,7 @@ impl TeamRegistry {
                 container_id: None,
                 sandbox_id: None,
                 k8s_sandbox: None,
+                adopted_pool_did: None,
                 workspace_path: None,
                 last_bb_check: None,
                 iterations: None,
@@ -835,7 +863,11 @@ impl TeamRegistry {
     /// Record the adopted Kubernetes Sandbox name for a teammate
     /// spawned via warm-pool claim. Must be set before the adopted
     /// pod's next task poll so the gateway can route its adoption
-    /// request to this teammate.
+    /// request to this teammate. The gateway's claim path records
+    /// the pool binding too ([`set_k8s_sandbox_with_pool`]); this
+    /// unbound variant remains for callers without pool context
+    /// (legacy snapshots, tests).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn set_k8s_sandbox(&self, team_id: &str, teammate: &str, sandbox: String) {
         let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(team) = teams.get_mut(team_id)
@@ -846,8 +878,34 @@ impl TeamRegistry {
         self.persist(&teams);
     }
 
+    /// Record the adopted Kubernetes Sandbox name together with the
+    /// pool identity it was claimed from (`did:pool:{pool}`). The
+    /// binding is what the task endpoint verifies on adoption: only
+    /// this pool's bootstrap token may resolve the sandbox to this
+    /// teammate. Used by the gateway's warm-claim path, which knows
+    /// the claiming pool — a caller cannot influence it.
+    pub fn set_k8s_sandbox_with_pool(
+        &self,
+        team_id: &str,
+        teammate: &str,
+        sandbox: String,
+        pool_did: String,
+    ) {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(team) = teams.get_mut(team_id)
+            && let Some(tm) = team.teammates.get_mut(teammate)
+        {
+            tm.k8s_sandbox = Some(sandbox);
+            tm.adopted_pool_did = Some(pool_did);
+        }
+        self.persist(&teams);
+    }
+
     /// Resolve `(team_id, teammate_id)` for a teammate spawned in the
-    /// given Kubernetes Sandbox (warm-pool adoption lookup).
+    /// given Kubernetes Sandbox (warm-pool adoption lookup). The
+    /// authenticated adoption path is [`TeamRegistry::adopt_k8s_sandbox`];
+    /// this plain lookup remains for result routing and tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn teammate_by_k8s_sandbox(&self, sandbox: &str) -> Option<(String, String)> {
         let teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
         for team in teams.values() {
@@ -870,6 +928,53 @@ impl TeamRegistry {
             .get(teammate)?
             .k8s_sandbox
             .clone()
+    }
+
+    /// Resolve `(team_id, teammate_id)` for a warm-pool adoption of
+    /// `sandbox` by `pool_did`, enforcing single-adoption semantics:
+    /// one pool identity per sandbox→teammate mapping.
+    ///
+    /// The binding is normally recorded at claim time by the gateway
+    /// ([`TeamRegistry::set_k8s_sandbox_with_pool`]); a mapping left
+    /// unbound (legacy registries) is bound by the first pool to
+    /// adopt it. Either way:
+    ///
+    /// - the *same* pool re-polling succeeds (idempotent — the
+    ///   legitimate pod polls repeatedly and re-fetches after a
+    ///   restart), and
+    /// - a *different* pool presenting the sandbox name is refused
+    ///   ([`AdoptionError::PoolMismatch`]), which is what kills the
+    ///   escalation where any holder of any pool bootstrap token
+    ///   could adopt any sandbox by self-asserted name.
+    pub fn adopt_k8s_sandbox(
+        &self,
+        sandbox: &str,
+        pool_did: &str,
+    ) -> Result<(String, String), AdoptionError> {
+        let mut teams = self.teams.lock().unwrap_or_else(|e| e.into_inner());
+        let mut bound = false;
+        let mut found = None;
+        'outer: for team in teams.values_mut() {
+            for (mate_id, tm) in team.teammates.iter_mut() {
+                if tm.k8s_sandbox.as_deref() != Some(sandbox) {
+                    continue;
+                }
+                found = Some(match &tm.adopted_pool_did {
+                    Some(b) if b == pool_did => Ok((team.team_id.clone(), mate_id.clone())),
+                    Some(_) => Err(AdoptionError::PoolMismatch),
+                    None => {
+                        tm.adopted_pool_did = Some(pool_did.to_string());
+                        bound = true;
+                        Ok((team.team_id.clone(), mate_id.clone()))
+                    }
+                });
+                break 'outer;
+            }
+        }
+        if bound {
+            self.persist(&teams);
+        }
+        found.unwrap_or(Err(AdoptionError::UnknownSandbox))
     }
 
     /// Capabilities for minting a teammate's delegated token:
@@ -1887,6 +1992,131 @@ mod persistence_tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn adoption_binds_pool_and_rejects_cross_pool() {
+        let reg = TeamRegistry::default();
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "worker",
+            None,
+            "granite3.3:8b",
+            "local",
+            vec!["read".to_string()],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        // Claim-time binding: the gateway records the claiming pool.
+        reg.set_k8s_sandbox_with_pool(
+            &team,
+            "worker",
+            "navra-agents-abc12".to_string(),
+            "did:pool:navra-agents".to_string(),
+        );
+
+        // Same pool: idempotent re-adoption (repeated polls,
+        // restart redelivery).
+        assert_eq!(
+            reg.adopt_k8s_sandbox("navra-agents-abc12", "did:pool:navra-agents"),
+            Ok((team.clone(), "worker".to_string()))
+        );
+        assert_eq!(
+            reg.adopt_k8s_sandbox("navra-agents-abc12", "did:pool:navra-agents"),
+            Ok((team.clone(), "worker".to_string()))
+        );
+
+        // Cross-pool: a holder of a different pool's bootstrap token
+        // presenting the same (spoofed) sandbox name is refused.
+        assert_eq!(
+            reg.adopt_k8s_sandbox("navra-agents-abc12", "did:pool:other-pool"),
+            Err(AdoptionError::PoolMismatch)
+        );
+
+        // Unknown sandbox stays unknown.
+        assert_eq!(
+            reg.adopt_k8s_sandbox("nope", "did:pool:navra-agents"),
+            Err(AdoptionError::UnknownSandbox)
+        );
+    }
+
+    #[test]
+    fn unbound_sandbox_is_adopted_by_first_pool_only() {
+        let reg = TeamRegistry::default();
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "worker",
+            None,
+            "granite3.3:8b",
+            "local",
+            vec!["read".to_string()],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        // Legacy path: sandbox recorded without a pool binding.
+        reg.set_k8s_sandbox(&team, "worker", "navra-agents-xyz".to_string());
+
+        // First caller binds the mapping...
+        assert_eq!(
+            reg.adopt_k8s_sandbox("navra-agents-xyz", "did:pool:first"),
+            Ok((team.clone(), "worker".to_string()))
+        );
+        // ...and a different pool is then refused.
+        assert_eq!(
+            reg.adopt_k8s_sandbox("navra-agents-xyz", "did:pool:second"),
+            Err(AdoptionError::PoolMismatch)
+        );
+    }
+
+    #[test]
+    fn pool_binding_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let reg = reg_with_persistence(&dir);
+        let team = reg
+            .create_team("t", None, "lead", 0, TeamBudget::default())
+            .unwrap();
+        reg.add_teammate(
+            &team,
+            "worker",
+            None,
+            "granite3.3:8b",
+            "local",
+            vec!["read".to_string()],
+            vec![],
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        reg.set_k8s_sandbox_with_pool(
+            &team,
+            "worker",
+            "navra-agents-abc12".to_string(),
+            "did:pool:navra-agents".to_string(),
+        );
+
+        let restored = reg_with_persistence(&dir);
+        assert_eq!(
+            restored.adopt_k8s_sandbox("navra-agents-abc12", "did:pool:navra-agents"),
+            Ok((team, "worker".to_string()))
+        );
+        assert_eq!(
+            restored.adopt_k8s_sandbox("navra-agents-abc12", "did:pool:spoof"),
+            Err(AdoptionError::PoolMismatch)
         );
     }
 
