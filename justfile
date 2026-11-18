@@ -2,12 +2,16 @@
 build:
     cargo build
 
+# Build a single crate with capped parallelism (32 GB laptop: keep jobs low)
+build-crate crate:
+    CARGO_BUILD_JOBS=2 cargo build -p {{ crate }}
+
 # Run all tests safely (workspace parallel, then server serialized one binary at a time)
 test: test-workspace test-server
 
-# Run workspace tests (excludes navra-server)
+# Run workspace tests (excludes navra-server) with capped parallelism
 test-workspace:
-    cargo test --workspace --exclude navra-server
+    CARGO_BUILD_JOBS=2 cargo test --workspace --exclude navra-server
 
 # Run navra-server tests (one binary at a time, serialized, with cleanup)
 test-server:
@@ -28,16 +32,33 @@ test-server:
 test-crate crate:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{crate}}" = "navra-server" ]; then
+    if [ "{{ crate }}" = "navra-server" ]; then
         echo "ERROR: 'just test-crate navra-server' is blocked — it spawns 34+ parallel server processes and OOMs the machine." >&2
         echo "Use 'just test-server' instead (serialized, one binary at a time with cleanup)." >&2
         exit 1
     fi
-    cargo test -p {{crate}}
+    CARGO_BUILD_JOBS=2 cargo test -p {{ crate }}
 
-# Run clippy with warnings as errors
+# Run clippy with warnings as errors (whole workspace)
 clippy:
     cargo clippy -- -D warnings
+
+# Run clippy on a single crate with capped parallelism (prefer this on the laptop)
+clippy-crate crate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{ crate }}" = "navra-server" ]; then
+        echo "ERROR: 'just clippy-crate navra-server' runs integration-test targets too and can OOM." >&2
+        echo "Use 'just clippy-crate-server' instead." >&2
+        exit 1
+    fi
+    CARGO_BUILD_JOBS=2 cargo clippy -p {{ crate }} -- -D warnings
+
+# Run clippy on navra-server, one target kind at a time (lib/bin first, then tests)
+clippy-crate-server:
+    CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --lib -- -D warnings
+    CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --bins -- -D warnings
+    CARGO_BUILD_JOBS=2 cargo clippy -p navra-server --tests -- -D warnings
 
 # Format all code
 fmt:
@@ -47,8 +68,24 @@ fmt:
 fmt-check:
     cargo fmt -- --check
 
-# Run all checks: format, clippy, tests
+# Run all checks: format, clippy, tests (heavy — full workspace; prefer per-crate recipes on the laptop)
 check: fmt-check clippy test
+
+# Memory-frugal full gate for the 32 GB laptop: fmt, clippy crate-by-crate,
+# then tests via the existing serialized recipes. One cargo process at a time.
+check-laptop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just fmt-check
+    for crate in $(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]'); do
+        name=$(basename "$crate")
+        if [ "$name" = "navra-server" ]; then continue; fi
+        echo "=== clippy: $name ==="
+        just clippy-crate "$name"
+    done
+    just clippy-crate-server
+    just test-workspace
+    just test-server
 
 # Clean build artifacts
 clean:
@@ -56,7 +93,7 @@ clean:
 
 # Run a demo
 demo *ARGS:
-    cargo run -- demo {{ARGS}}
+    cargo run -- demo {{ ARGS }}
 
 # Run end-to-end live tests (protocol-only, no LLM needed)
 e2e:
@@ -64,15 +101,15 @@ e2e:
 
 # Run end-to-end live tests with agent smoke test (needs Ollama)
 e2e-agent *ARGS:
-    ./scripts/e2e-live.sh --with-agent {{ARGS}}
+    ./scripts/e2e-live.sh --with-agent {{ ARGS }}
 
 # Run full multi-agent live demo test (needs Ollama, 1-5 min)
 e2e-demo *ARGS:
-    ./scripts/e2e-live.sh --live-demo {{ARGS}}
+    ./scripts/e2e-live.sh --live-demo {{ ARGS }}
 
 # Run ASSERT compliance evaluation (needs Ollama + assert-ai)
 assert-eval *ARGS:
-    ./eval/assert/run-compliance.sh {{ARGS}}
+    ./eval/assert/run-compliance.sh {{ ARGS }}
 
 # Validate ASSERT config and behavior specs
 assert-check:
