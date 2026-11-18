@@ -56,11 +56,11 @@ pub async fn run_tool_loop(
 
     if config.allowed_tools.is_some() {
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-        eprintln!(
-            "  [tool-filter] {} server tools → {} allowed: {:?}",
-            mcp_tools.len(),
-            tools.len(),
-            tool_names
+        tracing::debug!(
+            server_tools = mcp_tools.len(),
+            allowed = tools.len(),
+            tool_names = ?tool_names,
+            "tool-filter: applying allowed_tools filter"
         );
     }
 
