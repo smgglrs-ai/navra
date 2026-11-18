@@ -9,6 +9,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   PII_NER_REPO: protectai/bert-base-NER-onnx
+  # Immutable commit revision of the model repo (was the moving `main`
+  # branch). Update deliberately, together with the sha256 sums below.
+  # Commit 84d28ab2bc28401b4353b26033eb043c8c8a0739 (2026-07-09).
+  PII_NER_REVISION: 84d28ab2bc28401b4353b26033eb043c8c8a0739
   PII_NER_DIR: /github/home/.local/share/navra/models/pii-ner
 
 jobs:
@@ -39,18 +43,26 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PII_NER_DIR }}
-          key: pii-ner-model-${{ env.PII_NER_REPO }}
+          key: pii-ner-model-${{ env.PII_NER_REPO }}-${{ env.PII_NER_REVISION }}
 
       - name: Download PII NER model
         run: |
           mkdir -p "$PII_NER_DIR"
+          # sha256 of the files at PII_NER_REVISION:
+          #   model.onnx   — LFS oid from the Hugging Face API
+          #   tokenizer.json — hashed from the downloaded file
+          declare -A EXPECTED_SHA256=(
+            [model.onnx]=e2165e300f6e0016c1f295bcdee36e084371e1f4f3564cd7e47cb833b58a75b7
+            [tokenizer.json]=cb26b43c98e8266ae3e99c2a583cf8315d73b33a17e6b20b4df7ff1f22392d34
+          )
           for file in model.onnx tokenizer.json; do
             if [ ! -f "$PII_NER_DIR/$file" ]; then
               echo "Downloading $file ..."
-              curl -sL "https://huggingface.co/$PII_NER_REPO/resolve/main/$file" -o "$PII_NER_DIR/$file"
+              curl -sL "https://huggingface.co/$PII_NER_REPO/resolve/${PII_NER_REVISION}/$file" -o "$PII_NER_DIR/$file"
             else
               echo "$file already cached"
             fi
+            echo "${EXPECTED_SHA256[$file]}  $PII_NER_DIR/$file" | sha256sum -c -
           done
 
       - name: Check formatting
@@ -90,3 +102,18 @@ jobs:
 
       - name: Build release
         run: cargo build --release
+
+  advisories:
+    name: cargo-deny advisories
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check dependency advisories
+        # Pinned to release v2.1.2 by commit SHA. Only the advisories
+        # section of deny.toml is checked here; tracked, commented
+        # ignores for unmaintained crates are the sole exceptions.
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
+        with:
+          command: check advisories

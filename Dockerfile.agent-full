@@ -11,10 +11,24 @@
 #            -e NAVRA_TASK="Review the project" \
 #            navra-agent-full:latest
 
-FROM registry.fedoraproject.org/fedora:latest AS builder
+# Base images digest-pinned (looked up 2026-11-18 via
+# `docker buildx imagetools inspect`); tag kept alongside for
+# readability. Digest bumps are required to pick up Fedora updates.
+FROM registry.fedoraproject.org/fedora:44@sha256:7c3386912aadb548067b267d51dc4a3de32273e8e7af4f03b7518a8fefb0bce5 AS builder
 
-RUN dnf install -y gcc gcc-c++ make pkg-config && dnf clean all
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0
+RUN dnf install -y gcc gcc-c++ make pkg-config curl && dnf clean all
+
+# Digest-verified rustup install (replaces `curl ... | sh`).
+# rustup-init 1.29.3 (edbc831ce 2026-11-02), sha256 recorded from
+# https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init.sha256
+ENV RUSTUP_INIT_VERSION=1.29.3
+ENV RUSTUP_INIT_SHA256=b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55
+RUN curl -fsSLo /tmp/rustup-init \
+        "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init" && \
+    echo "${RUSTUP_INIT_SHA256}  /tmp/rustup-init" | sha256sum -c - && \
+    chmod +x /tmp/rustup-init && \
+    /tmp/rustup-init -y --default-toolchain 1.96.0 && \
+    rm /tmp/rustup-init
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /src
@@ -22,7 +36,8 @@ COPY . .
 
 RUN cargo build --release --bin navra-agent
 
-FROM registry.fedoraproject.org/fedora-minimal:latest
+# Digest-pinned 2026-11-18 (see builder stage note above).
+FROM registry.fedoraproject.org/fedora-minimal:44@sha256:1c4023e4943a4f5f26a9137768f4439bee42e3f569e0dc5145cd31abac64b024
 
 COPY --from=builder /src/target/release/navra-agent /usr/bin/navra-agent
 

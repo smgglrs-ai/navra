@@ -7,11 +7,20 @@
 # Build:   podman build -f Dockerfile.mcp-filesystem -t mcp-filesystem:latest .
 # Run:     podman run --rm -v /workspace:/workspace:ro mcp-filesystem:latest /workspace
 
-FROM rust:1.96-bookworm AS builder
+# Builder base digest-pinned 2026-11-18 (rust:1.96-bookworm tag,
+# `docker buildx imagetools inspect`); update the digest to pick up
+# Rust patch releases / base image refreshes.
+FROM rust:1.96-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663 AS builder
 
 WORKDIR /build
-RUN git clone --depth 1 --branch v0.4.2 \
-    https://github.com/rust-mcp-stack/rust-mcp-filesystem.git .
+# Immutable: rust-mcp-filesystem v0.4.2 (tag) = commit
+# 28a1c9448f8fcd9fa555a6613bc1c4f733b3f640 (looked up on GitHub).
+# Fetch by commit SHA, not the mutable tag, so the build cannot be
+# silently retargeted by a moved tag.
+RUN git init . && \
+    git remote add origin https://github.com/rust-mcp-stack/rust-mcp-filesystem.git && \
+    git fetch --depth 1 origin 28a1c9448f8fcd9fa555a6613bc1c4f733b3f640 && \
+    git checkout --detach FETCH_HEAD
 
 ENV RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
 ENV CARGO_PROFILE_RELEASE_LTO=true \

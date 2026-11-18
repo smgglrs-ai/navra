@@ -23,7 +23,10 @@
 #            -v navra-data:/data \
 #            navra-server:latest
 
-FROM rust:1.96-bookworm AS builder
+# Builder base digest-pinned 2026-11-18 (rust:1.96-bookworm tag,
+# `docker buildx imagetools inspect`); update the digest to pick up
+# Rust patch releases / base image refreshes.
+FROM rust:1.96-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663 AS builder
 
 RUN apt-get update && \
     apt-get install -y musl-tools protobuf-compiler && \
@@ -40,6 +43,10 @@ RUN if [ "${TARGETARCH:-amd64}" != "amd64" ] && [ "${TARGETARCH:-amd64}" != "arm
     fi && \
     curl -fsSLo /usr/local/bin/kubectl \
         "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH:-amd64}/kubectl" && \
+    curl -fsSLo /tmp/kubectl.sha256 \
+        "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH:-amd64}/kubectl.sha256" && \
+    echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - && \
+    rm /tmp/kubectl.sha256 && \
     chmod +x /usr/local/bin/kubectl
 
 WORKDIR /src

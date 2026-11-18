@@ -1,0 +1,59 @@
+# cargo-deny configuration for the navra workspace.
+#
+# Policy: no vulnerability (RUSTSEC "vulnerability" / "unsound" with a
+# fix available) may be ignored. Ignoring a vulnerability requires
+# removing the entry and fixing the dependency instead. The `ignore`
+# list below is restricted to advisories with no safe upgrade path
+# (unmaintained crates locked in by transitive dependencies we cannot
+# bump without breaking changes upstream of us).
+
+[advisories]
+version = 2
+yanked = "deny"
+
+# Each entry below is a tracked, deliberate exception. Every one is an
+# "unmaintained" advisory (not an exploitable vulnerability). Remove
+# the entry as soon as the dependency chain offers a maintained
+# replacement.
+
+ignore = [
+    # `instant` is unmaintained. Pulled in transitively via ratatui
+    # (crossterm) in the navra-tui/navra-model stack. No maintained
+    # drop-in release exists; the crate is a no-op passthrough on
+    # modern platforms (std::time since 1.60). Unused on Linux targets.
+    "RUSTSEC-2024-0384",
+
+    # `paste` is no longer maintained. Transitively required by
+    # ratatui/navra-model. Macro-only crate, no runtime code, no
+    # fixed/affected versions - unmaintained only.
+    "RUSTSEC-2024-0436",
+
+    # `unsafe-libyaml` is unmaintained. Vendored C in serde_yaml,
+    # which is itself unmaintained; serde_yaml is still required by
+    # navra-cognitive. Unmaintained only - no known vulnerability.
+    "RUSTSEC-2024-0449",
+
+    # `rustls-pemfile` is unmaintained. The functionality moved into
+    # rustls-pki-types; still pulled in transitively by the rustls
+    # ecosystem (rcgen for local TLS certificates). Unmaintained only.
+    "RUSTSEC-2025-0134",
+
+    # The zbus/zvariant family (zvariant, zbus_names, zvariant_derive)
+    # is unmaintained following upstream's archive. Required by
+    # keyring/secret-service (Linux credential storage) and ksni (tray
+    # icon). No maintained fork is published on crates.io yet.
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
+
+    # `chrono` is unmaintained (chronotope announced the project is no
+    # longer maintained). Deeply embedded across the dependency graph
+    # (dsntk FEEL evaluator, tokenizers, oauth2, ...). The jiff
+    # migration is a workspace-wide source change, out of scope for a
+    # dependency bump. Unmaintained only - no vulnerability.
+    "RUSTSEC-2026-0543",
+
+    # `chrono-tz` is unmaintained (same chronotope announcement).
+    # Required by dsntk-feel-temporal. Unmaintained only.
+    "RUSTSEC-2026-0555",
+]
