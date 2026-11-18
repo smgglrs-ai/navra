@@ -3158,7 +3158,7 @@ mod tests {
 
     fn ws_token_router() -> axum::Router {
         let mut auth = navra_core::auth::TokenAuthenticator::new();
-        auth.register("sekrit", navra_core::auth::AgentIdentity::new("ui", "dev"));
+        auth.register("test-token-0123456789abcdef0123456789abcdef", navra_core::auth::AgentIdentity::new("ui", "dev"));
         let server = Arc::new(navra_core::McpServer::builder().authenticator(auth).build());
         build_router_with(&test_config(), server)
     }
@@ -3179,7 +3179,7 @@ mod tests {
     async fn ws_ui_rejects_cross_origin_upgrade() {
         let base = serve_router(ws_token_router()).await;
         assert_eq!(
-            raw_ws_status(&base, "/ws/ui?token=sekrit", Some("http://evil.example")).await,
+            raw_ws_status(&base, "/ws/ui?token=test-token-0123456789abcdef0123456789abcdef", Some("http://evil.example")).await,
             403
         );
     }
@@ -3189,7 +3189,7 @@ mod tests {
         let base = serve_router(ws_token_router()).await;
         // Valid token, no Origin (non-browser client): the upgrade
         // proceeds (101 Switching Protocols).
-        assert_eq!(raw_ws_status(&base, "/ws/ui?token=sekrit", None).await, 101);
+        assert_eq!(raw_ws_status(&base, "/ws/ui?token=test-token-0123456789abcdef0123456789abcdef", None).await, 101);
     }
 
     #[test]
