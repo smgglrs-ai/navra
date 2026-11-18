@@ -3159,7 +3159,7 @@ mod tests {
     fn ws_token_router() -> axum::Router {
         let mut auth = navra_core::auth::TokenAuthenticator::new();
         auth.register(
-            "test-token-0123456789abcdef0123456789abcdef",
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
             navra_core::auth::AgentIdentity::new("ui", "dev"),
         )
         .unwrap();
@@ -3185,7 +3185,7 @@ mod tests {
         assert_eq!(
             raw_ws_status(
                 &base,
-                "/ws/ui?token=test-token-0123456789abcdef0123456789abcdef",
+                "/ws/ui?token=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
                 Some("http://evil.example")
             )
             .await,
@@ -3201,7 +3201,7 @@ mod tests {
         assert_eq!(
             raw_ws_status(
                 &base,
-                "/ws/ui?token=test-token-0123456789abcdef0123456789abcdef",
+                "/ws/ui?token=9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
                 None
             )
             .await,

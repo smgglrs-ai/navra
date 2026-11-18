@@ -655,7 +655,7 @@ mod tests {
         let app = flow_api_router(
             reg,
             None,
-            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+            Some(token_server("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a")),
         );
 
         for uri in [
@@ -678,7 +678,7 @@ mod tests {
         let app = flow_api_router(
             reg,
             None,
-            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+            Some(token_server("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a")),
         );
 
         let resp = app
@@ -708,13 +708,13 @@ mod tests {
         let app = flow_api_router(
             reg,
             None,
-            Some(token_server("test-token-0123456789abcdef0123456789abcdef")),
+            Some(token_server("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a")),
         );
 
         let resp = app
             .oneshot(graph_request(
                 &format!("/flows/{id}/graph"),
-                Some("test-token-0123456789abcdef0123456789abcdef"),
+                Some("9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a"),
             ))
             .await
             .unwrap();

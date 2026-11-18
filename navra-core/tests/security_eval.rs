@@ -787,7 +787,7 @@ mod auth_chain {
     fn blake3_agent_has_no_capabilities() {
         let mut auth = TokenAuthenticator::new();
         auth.register(
-            "test-token-0123456789abcdef0123456789abcdef",
+            "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a",
             AgentIdentity::new("agent", "dev"),
         )
         .unwrap();
@@ -795,7 +795,7 @@ mod auth_chain {
         let mut headers = HeaderMap::new();
         headers.insert(
             "authorization",
-            "Bearer test-token-0123456789abcdef0123456789abcdef"
+            "Bearer 9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c5b4a"
                 .parse()
                 .unwrap(),
         );
@@ -842,7 +842,7 @@ mod auth_chain {
         let mut blake3 = TokenAuthenticator::new();
         blake3
             .register(
-                "legacy-token-0123456789abcdef012345",
+                "8d7c6b5a4938271605f4e3d2c1b0a9988776655",
                 AgentIdentity::new("legacy", "dev"),
             )
             .unwrap();
@@ -878,7 +878,7 @@ mod auth_chain {
         let mut h2 = HeaderMap::new();
         h2.insert(
             "authorization",
-            "Bearer legacy-token-0123456789abcdef012345"
+            "Bearer 8d7c6b5a4938271605f4e3d2c1b0a9988776655"
                 .parse()
                 .unwrap(),
         );
