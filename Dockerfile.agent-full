@@ -21,6 +21,15 @@ RUN dnf install -y gcc gcc-c++ make pkg-config curl && dnf clean all
 # Digest-verified rustup install (replaces `curl ... | sh`).
 # rustup-init 1.29.3 (edbc831ce 2026-11-02), sha256 recorded from
 # https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init.sha256
+# x86_64-only: fail closed on any other TARGETARCH (mirrors the
+# kubectl guard in Dockerfile.server). The pinned sha256 is only
+# valid for the x86_64-unknown-linux-gnu artifact; building this
+# image on arm64 must add the aarch64 sha and URL first.
+ARG TARGETARCH
+RUN if [ "${TARGETARCH:-amd64}" != "amd64" ]; then \
+        echo "Dockerfile.agent-full: unsupported architecture ${TARGETARCH} (rustup install is x86_64-only; add the aarch64 artifact before building on arm64)"; \
+        exit 1; \
+    fi
 ENV RUSTUP_INIT_VERSION=1.29.3
 ENV RUSTUP_INIT_SHA256=b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55
 RUN curl -fsSLo /tmp/rustup-init \
