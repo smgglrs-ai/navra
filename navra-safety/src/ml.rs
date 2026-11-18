@@ -20,29 +20,58 @@ const MAX_SCAN_CHARS: usize = 4_000;
 /// Character overlap between windows, so payloads spanning a window
 /// boundary are still visible to the model.
 const SCAN_OVERLAP: usize = 200;
-/// Approximate characters per tokenizer token used to convert the
-/// backend's token budget ([`Classifier::max_input_tokens`]) into a
-/// sub-window size in chars.
-///
-/// Backends truncate inputs to their token budget before inference
-/// (the ONNX backend caps at 512 tokens, i.e. the last ~3500 chars
-/// of a 4k-char window were never classified). English BPE
-/// tokenizers average ~3-4 chars/token; 3 is the conservative
-/// choice (smaller sub-windows, more calls, nothing skipped).
-const CHARS_PER_TOKEN: usize = 3;
 /// Floor for the derived sub-window size, so a backend reporting a
 /// very small token budget cannot degenerate into one-char windows.
 const MIN_SUB_WINDOW_CHARS: usize = 600;
+/// Total scan budget (chars) per `scan()` call across ALL windows.
+///
+/// Without it, a 10 MB tool output turned into ~7500 sequential
+/// model inferences — an unbounded latency/DoS sink. Inputs larger
+/// than the budget are scanned at the head and tail only (see
+/// [`SCAN_BUDGET_HALF`]), with a logged truncation warning; the
+/// dropped middle is a documented coverage gap.
+const TOTAL_SCAN_BUDGET: usize = 64 * 1024;
+/// Half of the total scan budget — the size of each head/tail
+/// segment when an input exceeds [`TOTAL_SCAN_BUDGET`].
+const SCAN_BUDGET_HALF: usize = TOTAL_SCAN_BUDGET / 2;
 
 /// Derive the sub-window size (chars) for a classifier from its
-/// token budget.
+/// reported character budget ([`Classifier::max_input_chars`]).
 ///
-/// `max_tokens * CHARS_PER_TOKEN` clamped to
-/// `[MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS]`.
-fn sub_window_chars(max_tokens: usize) -> usize {
-    max_tokens
-        .saturating_mul(CHARS_PER_TOKEN)
-        .clamp(MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS)
+/// Clamped to `[MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS]`.
+fn sub_window_chars(max_chars: usize) -> usize {
+    max_chars.clamp(MIN_SUB_WINDOW_CHARS, MAX_SCAN_CHARS)
+}
+
+/// Split oversized content into head and tail segments within the
+/// total scan budget.
+///
+/// Content within [`TOTAL_SCAN_BUDGET`] is returned whole. Larger
+/// content is split into the first and last [`SCAN_BUDGET_HALF`]
+/// chars (on char boundaries), with a warning logged for the dropped
+/// middle. Head+tail coverage keeps both leading metadata (file
+/// headers, prompt prefixes) and trailing payloads (where exfil
+/// content is typically appended) visible to the model.
+fn scan_segments(content: &str) -> Vec<&str> {
+    if content.len() <= TOTAL_SCAN_BUDGET {
+        return vec![content];
+    }
+    tracing::warn!(
+        len = content.len(),
+        budget = TOTAL_SCAN_BUDGET,
+        "ML safety scan input exceeds total scan budget; scanning head and tail only (middle dropped)"
+    );
+    // Head: first half, trimmed back to a char boundary.
+    let mut head_end = SCAN_BUDGET_HALF;
+    while head_end > 0 && !content.is_char_boundary(head_end) {
+        head_end -= 1;
+    }
+    // Tail: last half, advanced forward to a char boundary.
+    let mut tail_start = content.len() - SCAN_BUDGET_HALF;
+    while tail_start < content.len() && !content.is_char_boundary(tail_start) {
+        tail_start += 1;
+    }
+    vec![&content[..head_end], &content[tail_start..]]
 }
 
 /// Split content into overlapping windows of at most
@@ -124,33 +153,37 @@ impl ModelFilter for MlFilter {
         _ctx: &'a FilterContext<'a>,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
-            // Scan in bounded windows sized to the model's token
+            // Scan in bounded windows sized to the model's character
             // budget so oversized content cannot turn into a single
             // unbounded model call, and the backend's pre-inference
-            // truncation cannot skip the tail of a window.
-            let window_chars = sub_window_chars(self.model.max_input_tokens());
+            // truncation cannot skip the tail of a window. Total
+            // scanned chars are capped (head+tail) so a multi-MB
+            // input cannot become thousands of inferences.
+            let window_chars = sub_window_chars(self.model.max_input_chars());
             let mut best: Option<f32> = None;
-            for window in scan_windows(content, window_chars) {
-                match self.model.classify(window).await {
-                    Ok(output) => {
-                        if output.is_unsafe(self.threshold) {
-                            let conf = output
-                                .labels
-                                .iter()
-                                .find(|l| l.label != "safe")
-                                .map(|l| l.score)
-                                .unwrap_or(0.0);
-                            best = Some(best.map_or(conf, |b: f32| b.max(conf)));
+            for segment in scan_segments(content) {
+                for window in scan_windows(segment, window_chars) {
+                    match self.model.classify(window).await {
+                        Ok(output) => {
+                            if output.is_unsafe(self.threshold) {
+                                let conf = output
+                                    .labels
+                                    .iter()
+                                    .find(|l| l.label != "safe")
+                                    .map(|l| l.score)
+                                    .unwrap_or(0.0);
+                                best = Some(best.map_or(conf, |b: f32| b.max(conf)));
+                            }
                         }
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "ML safety filter inference failed, blocking (fail-closed)");
-                        return vec![Finding {
-                            start: 0,
-                            end: content.len(),
-                            category: "inference_failure".to_string(),
-                            confidence: 1.0,
-                        }];
+                        Err(e) => {
+                            tracing::warn!(error = %e, "ML safety filter inference failed, blocking (fail-closed)");
+                            return vec![Finding {
+                                start: 0,
+                                end: content.len(),
+                                category: "inference_failure".to_string(),
+                                confidence: 1.0,
+                            }];
+                        }
                     }
                 }
             }
@@ -277,45 +310,49 @@ impl ModelFilter for MultiLabelFilter {
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Finding>> + Send + 'a>> {
         Box::pin(async move {
             let mut findings = Vec::new();
-            // Scan in bounded windows sized to the model's token
+            // Scan in bounded windows sized to the model's character
             // budget so oversized content cannot turn into a single
             // unbounded model call, and the backend's pre-inference
-            // truncation cannot skip the tail of a window.
-            let window_chars = sub_window_chars(self.model.max_input_tokens());
-            for window in scan_windows(content, window_chars) {
-                let output = match self.model.classify(window).await {
-                    Ok(output) => output,
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Multi-label safety filter inference failed, blocking (fail-closed)");
-                        return vec![Finding {
-                            start: 0,
-                            end: content.len(),
-                            category: "inference_failure".to_string(),
-                            confidence: 1.0,
-                        }];
-                    }
-                };
-
-                for label in &output.labels {
-                    if label.label == "safe" {
-                        continue;
-                    }
-
-                    let triggered = if let Some(policy) = self.policies.get(&label.label) {
-                        label.score.is_nan() || label.score >= policy.threshold
-                    } else if let Some(fallback) = self.fallback_threshold {
-                        label.score.is_nan() || label.score >= fallback
-                    } else {
-                        false
+            // truncation cannot skip the tail of a window. Total
+            // scanned chars are capped (head+tail) so a multi-MB
+            // input cannot become thousands of inferences.
+            let window_chars = sub_window_chars(self.model.max_input_chars());
+            for segment in scan_segments(content) {
+                for window in scan_windows(segment, window_chars) {
+                    let output = match self.model.classify(window).await {
+                        Ok(output) => output,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Multi-label safety filter inference failed, blocking (fail-closed)");
+                            return vec![Finding {
+                                start: 0,
+                                end: content.len(),
+                                category: "inference_failure".to_string(),
+                                confidence: 1.0,
+                            }];
+                        }
                     };
 
-                    if triggered {
-                        findings.push(Finding {
-                            start: 0,
-                            end: content.len(),
-                            category: label.label.clone(),
-                            confidence: label.score,
-                        });
+                    for label in &output.labels {
+                        if label.label == "safe" {
+                            continue;
+                        }
+
+                        let triggered = if let Some(policy) = self.policies.get(&label.label) {
+                            label.score.is_nan() || label.score >= policy.threshold
+                        } else if let Some(fallback) = self.fallback_threshold {
+                            label.score.is_nan() || label.score >= fallback
+                        } else {
+                            false
+                        };
+
+                        if triggered {
+                            findings.push(Finding {
+                                start: 0,
+                                end: content.len(),
+                                category: label.label.clone(),
+                                confidence: label.score,
+                            });
+                        }
                     }
                 }
             }
@@ -406,6 +443,44 @@ mod tests {
             >,
         > {
             self.lengths.lock().unwrap().push(text.len());
+            Box::pin(async {
+                Ok(ClassifyOutput {
+                    labels: vec![ClassifyLabel {
+                        label: "safe".into(),
+                        score: 0.99,
+                    }],
+                })
+            })
+        }
+    }
+
+    /// Classifier that counts inference calls.
+    struct CountingClassifier {
+        calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingClassifier {
+        fn new() -> Self {
+            Self {
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl Classifier for CountingClassifier {
+        fn classify<'a>(
+            &'a self,
+            _text: &'a str,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>> + Send + 'a,
+            >,
+        > {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Box::pin(async {
                 Ok(ClassifyOutput {
                     labels: vec![ClassifyLabel {
@@ -554,14 +629,45 @@ mod tests {
     }
 
     #[test]
-    fn sub_window_chars_derives_from_token_budget() {
-        // Default ONNX-class budget: 512 tokens -> ~1536 chars.
-        assert_eq!(sub_window_chars(512), 512 * CHARS_PER_TOKEN);
+    fn sub_window_chars_clamps_char_budget() {
+        // Backend-reported char budget passes through (within bounds).
+        assert_eq!(sub_window_chars(1_536), 1_536);
         // Clamped to MAX_SCAN_CHARS for large budgets.
-        assert_eq!(sub_window_chars(10_000), MAX_SCAN_CHARS);
+        assert_eq!(sub_window_chars(100_000), MAX_SCAN_CHARS);
         // Floored for degenerate small budgets.
         assert_eq!(sub_window_chars(1), MIN_SUB_WINDOW_CHARS);
         assert_eq!(sub_window_chars(0), MIN_SUB_WINDOW_CHARS);
+    }
+
+    #[test]
+    fn scan_segments_within_budget_whole() {
+        assert_eq!(scan_segments("hello"), vec!["hello"]);
+        let text = "a".repeat(TOTAL_SCAN_BUDGET);
+        assert_eq!(scan_segments(&text), vec![text.as_str()]);
+    }
+
+    #[test]
+    fn scan_segments_oversized_head_and_tail() {
+        let text = "b".repeat(TOTAL_SCAN_BUDGET * 4);
+        let segments = scan_segments(&text);
+        assert_eq!(segments.len(), 2);
+        assert!(
+            segments[0].len() <= SCAN_BUDGET_HALF,
+            "head segment must be within half the budget"
+        );
+        assert!(
+            segments[1].len() <= SCAN_BUDGET_HALF,
+            "tail segment must be within half the budget"
+        );
+        assert!(segments[0].starts_with('b'));
+        assert!(segments[1].ends_with('b'));
+        // Head starts at 0; tail ends at the end of the text.
+        assert_eq!(segments[0].as_ptr(), text.as_ptr());
+        let tail_end = segments[1].as_ptr() as usize + segments[1].len();
+        assert_eq!(tail_end, text.as_ptr() as usize + text.len());
+        // Total scanned is bounded by the budget.
+        let total: usize = segments.iter().map(|s| s.len()).sum();
+        assert!(total <= TOTAL_SCAN_BUDGET);
     }
 
     #[tokio::test]
@@ -571,14 +677,19 @@ mod tests {
         // to its token budget (512 tokens ~ first ~1500 chars for
         // BPE English) — payloads placed in the tail of a window
         // were never classified. The filter must sub-window to the
-        // model's token budget so the tail is seen.
+        // model's reported character budget so the tail is seen.
         //
         // This mock emulates the backend's truncation: it only
-        // "reads" the first max_input_tokens * CHARS_PER_TOKEN
-        // chars of the text it receives.
+        // "reads" the first max_input_chars() chars of the text it
+        // receives — the backend's actual reported char budget, not
+        // a token-count heuristic.
         struct TruncatingClassifier;
 
         impl Classifier for TruncatingClassifier {
+            fn max_input_chars(&self) -> usize {
+                900
+            }
+
             fn classify<'a>(
                 &'a self,
                 text: &'a str,
@@ -591,7 +702,7 @@ mod tests {
             > {
                 let visible = &text[..text
                     .char_indices()
-                    .nth(self.max_input_tokens() * CHARS_PER_TOKEN)
+                    .nth(self.max_input_chars())
                     .map(|(i, _)| i)
                     .unwrap_or(text.len())];
                 Box::pin(async move {
@@ -622,7 +733,7 @@ mod tests {
 
         let filter = MlFilter::new(Arc::new(TruncatingClassifier), 0.5, "ml-unsafe");
         // 4k-char input with the injection payload at chars
-        // 2500-3700 — past the ~1536-char truncation point of a
+        // 2500-3700 — past the 900-char truncation point of a
         // single whole-window call.
         let mut input = "x".repeat(2_500);
         input.push_str("HARMFUL-PIPELINE-PAYLOAD ");
@@ -633,6 +744,175 @@ mod tests {
         assert!(
             findings.iter().any(|f| f.category == "ml-unsafe"),
             "payload at chars 2500-3700 must be classified despite token truncation"
+        );
+    }
+
+    #[tokio::test]
+    async fn ml_filter_detects_cjk_payload_in_cjk_dense_tail() {
+        // Regression: the sub-window used to be sized at a fixed
+        // 3-chars-per-token heuristic. CJK-dense text tokenizes at
+        // ~1 char/token, so a 512-token backend only reads the first
+        // ~512 chars of a 1536-char window — a CJK payload in the
+        // tail was never classified. The filter must size windows to
+        // the backend's measured character budget (1 char/token for
+        // this mock's dense-CJK tokenizer).
+        //
+        // This mock emulates a 1-char-per-token CJK tokenizer: the
+        // backend reads at most max_input_chars() = max_input_tokens()
+        // chars per inference.
+        struct CjkTruncatingClassifier;
+
+        impl Classifier for CjkTruncatingClassifier {
+            fn max_input_tokens(&self) -> usize {
+                512
+            }
+
+            fn max_input_chars(&self) -> usize {
+                // Dense CJK: 1 char per token.
+                512
+            }
+
+            fn classify<'a>(
+                &'a self,
+                text: &'a str,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                let visible = &text[..text
+                    .char_indices()
+                    .nth(self.max_input_chars())
+                    .map(|(i, _)| i)
+                    .unwrap_or(text.len())];
+                Box::pin(async move {
+                    if visible.contains("危险管道注入载荷") {
+                        Ok(ClassifyOutput {
+                            labels: vec![
+                                ClassifyLabel {
+                                    label: "hap".into(),
+                                    score: 0.9,
+                                },
+                                ClassifyLabel {
+                                    label: "safe".into(),
+                                    score: 0.1,
+                                },
+                            ],
+                        })
+                    } else {
+                        Ok(ClassifyOutput {
+                            labels: vec![ClassifyLabel {
+                                label: "safe".into(),
+                                score: 0.99,
+                            }],
+                        })
+                    }
+                })
+            }
+        }
+
+        let filter = MlFilter::new(Arc::new(CjkTruncatingClassifier), 0.5, "ml-unsafe");
+        // 2000-char CJK-dense input with the payload at chars
+        // 600-700. Under the old 3-chars/token sizing the first
+        // window covered chars 0-1536 but the mock only read the
+        // first 512; the next window started at char 1336 — the
+        // payload fell in the unclassified gap. With windows sized
+        // to the reported 512-char budget it is fully covered.
+        let mut input = "字".repeat(600);
+        input.push_str("危险管道注入载荷");
+        input.push_str(&"字".repeat(2_000 - input.chars().count()));
+        assert_eq!(input.chars().count(), 2_000);
+
+        let findings = filter.scan(&input, &test_ctx()).await;
+        assert!(
+            findings.iter().any(|f| f.category == "ml-unsafe"),
+            "CJK payload in the tail of a CJK-dense window must be detected"
+        );
+    }
+
+    #[tokio::test]
+    async fn ml_filter_scan_is_bounded_on_large_input() {
+        // Regression: a 10 MB tool output used to produce ~7500
+        // sequential inferences. Total scanned chars are now capped
+        // at TOTAL_SCAN_BUDGET (head + tail).
+        let model = Arc::new(CountingClassifier::new());
+        let filter = MlFilter::new(model.clone(), 0.5, "ml-unsafe");
+        let large = "z".repeat(1024 * 1024); // 1 MB, ~4x the budget
+        let findings = filter.scan(&large, &test_ctx()).await;
+        assert!(findings.is_empty());
+        let calls = model.call_count();
+        let max_calls = TOTAL_SCAN_BUDGET / MIN_SUB_WINDOW_CHARS + 2;
+        assert!(
+            calls <= max_calls,
+            "inference count {calls} must be bounded (<= {max_calls}) on oversized input"
+        );
+    }
+
+    #[tokio::test]
+    async fn ml_filter_head_and_tail_detected_middle_dropped() {
+        // Payloads in the head AND tail of an oversized input are
+        // both detected; a payload only in the dropped middle is
+        // missed (documented coverage gap, warned at scan time).
+        struct PayloadClassifier;
+
+        impl Classifier for PayloadClassifier {
+            fn classify<'a>(
+                &'a self,
+                text: &'a str,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                let hit = text.contains("HEAD-PAYLOAD") || text.contains("TAIL-PAYLOAD");
+                Box::pin(async move {
+                    if hit {
+                        Ok(ClassifyOutput {
+                            labels: vec![ClassifyLabel {
+                                label: "hap".into(),
+                                score: 0.9,
+                            }],
+                        })
+                    } else {
+                        Ok(ClassifyOutput {
+                            labels: vec![ClassifyLabel {
+                                label: "safe".into(),
+                                score: 0.99,
+                            }],
+                        })
+                    }
+                })
+            }
+        }
+
+        let filter = MlFilter::new(Arc::new(PayloadClassifier), 0.5, "ml-unsafe");
+        // Head payload near the start, tail payload near the end of
+        // a ~4x-budget input.
+        let mut input = String::from("HEAD-PAYLOAD ");
+        input.push_str(&"a".repeat(TOTAL_SCAN_BUDGET * 2));
+        input.push_str(&"b".repeat(TOTAL_SCAN_BUDGET * 2 - 64));
+        input.push_str(" TAIL-PAYLOAD");
+        assert!(input.len() > TOTAL_SCAN_BUDGET * 3);
+
+        let findings = filter.scan(&input, &test_ctx()).await;
+        assert!(
+            findings.iter().any(|f| f.category == "ml-unsafe"),
+            "payloads in the head and tail must both be detected"
+        );
+
+        // Middle-only payload: falls in the dropped zone and is
+        // (documentedly) missed.
+        let mut middle = "c".repeat(TOTAL_SCAN_BUDGET / 2 + 1_000);
+        middle.push_str("MIDDLE-PAYLOAD");
+        middle.push_str(&"d".repeat(TOTAL_SCAN_BUDGET * 2));
+        let findings = filter.scan(&middle, &test_ctx()).await;
+        assert!(
+            findings.is_empty(),
+            "middle-dropped payload is a documented coverage gap"
         );
     }
 

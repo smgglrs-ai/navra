@@ -41,7 +41,30 @@ pub trait Classifier: Send + Sync + 'static {
     fn max_input_tokens(&self) -> usize {
         512
     }
+
+    /// Maximum input length (in chars) the backend feeds to the
+    /// model in a single inference call.
+    ///
+    /// This is the backend's *actual* character budget — ideally
+    /// derived from its real tokenizer. A fixed 3-chars-per-token
+    /// heuristic undercounts CJK-dense text (many tokenizers emit
+    /// ~1 token per CJK char, so a 512-token budget is ~512 chars,
+    /// not ~1536), which truncated CJK inputs to a third of the
+    /// window and left tail payloads unclassified.
+    ///
+    /// The default falls back to the conservative ASCII heuristic
+    /// (`max_input_tokens() * 3`); backends with a real tokenizer
+    /// should override it with a measured value.
+    fn max_input_chars(&self) -> usize {
+        self.max_input_tokens()
+            .saturating_mul(CHARS_PER_TOKEN_DEFAULT)
+    }
 }
+
+/// Conservative default chars-per-token ratio (English BPE average
+/// ~3-4 chars/token) used when a backend does not report a measured
+/// character budget.
+const CHARS_PER_TOKEN_DEFAULT: usize = 3;
 
 /// Classification output containing scored labels.
 #[derive(Debug, Clone)]
@@ -251,6 +274,29 @@ mod tests {
         let triggered = output.exceeds_thresholds(&thresholds);
         assert_eq!(triggered.len(), 1);
         assert_eq!(triggered[0].label, "category_999");
+    }
+    #[test]
+    fn max_input_chars_default_derives_from_token_budget() {
+        struct Minimal;
+        impl Classifier for Minimal {
+            fn classify<'a>(
+                &'a self,
+                _text: &'a str,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<ClassifyOutput, ClassifyError>>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                Box::pin(async { Ok(ClassifyOutput { labels: vec![] }) })
+            }
+            fn max_input_tokens(&self) -> usize {
+                100
+            }
+        }
+        assert_eq!(Minimal.max_input_tokens(), 100);
+        assert_eq!(Minimal.max_input_chars(), 100 * 3);
     }
 }
 
