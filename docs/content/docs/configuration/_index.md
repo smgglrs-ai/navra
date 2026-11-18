@@ -363,6 +363,33 @@ Agents authenticate via `Authorization: Bearer <token>` or
 that send `ANTHROPIC_API_KEY` as `x-api-key`). Both headers feed
 into the same constant-time BLAKE3 hash comparison.
 
+### Bearer-token policy
+
+Tokens are stored as **unsalted BLAKE3 hashes**. BLAKE3 is fast,
+which makes it safe for high-entropy machine-generated tokens and
+unsafe for anything a human could guess: a weak token's hash can be
+brute-forced offline. The policy, enforced where the raw token is
+seen and documented here for config-supplied hashes:
+
+- **Minimum length: 32 characters.** `navra token generate` tokens
+  are 68 (`mcd_` + 64 hex, 256 bits of CSPRNG output).
+- **No common words.** Tokens containing substrings like
+  `password`, `secret`, `apikey`, `admin`, `navra`, `test`, or
+  other low-entropy markers are rejected.
+- **`token_hash` must be the BLAKE3 hex digest of the token** —
+  exactly 64 lowercase hex characters. Values that don't match
+  that shape fail server startup with a descriptive error; the
+  common failure is pasting the raw token instead of its hash,
+  which both leaks the secret into the config file and leaves the
+  agent unable to authenticate (the server looks up the *hash* of
+  the presented token).
+- Generate tokens with `navra token generate`; it prints the token
+  (for the client) and its hash (for `token_hash`) side by side.
+- The raw-token entropy guard can be bypassed in code with
+  `register_allow_weak` — an explicit risk-acceptance escape hatch
+  for deployments that cannot rotate a legacy token. There is no
+  config-level bypass: rotate the token instead.
+
 ## Model Proxy
 
 The gateway exposes two model proxy endpoints at `/v1`. All
