@@ -9,6 +9,12 @@
 #   certificates, so changing fullname/namespace later does not
 #   re-issue them. Delete the three secrets (see NOTES.txt) to
 #   rotate.
+# - Each secret records the sha256 of its issuing CA cert as the
+#   navra.io/tls-ca-sha256 annotation. Upgrades compare the
+#   recorded fingerprints across the set: a complete-looking set
+#   whose members were issued under different CAs (partial restore,
+#   manual secret swap) is regenerated atomically, exactly like a
+#   partial set.
 # - The server and client certificates expire after 825 days
 #   (browser-grade maximum); the CA lasts 3650 days. When the leaf
 #   certs approach expiry, rotate by deleting the tls secrets and
@@ -30,8 +36,12 @@
 {{- $caExists := hasKey $caSecret "data" }}
 {{- $srvExists := hasKey $serverSecret "data" }}
 {{- $cliExists := hasKey $clientSecret "data" }}
-{{- $complete := and $caExists $srvExists $cliExists }}
-{{- $partial := and (not $complete) (or $caExists $srvExists $cliExists) }}
+{{- $allPresent := and $caExists $srvExists $cliExists }}
+{{- /* Reuse the stored set only when it is complete AND every
+        member was issued under the CA currently stored in the CA
+        secret (fingerprint check below, after the fresh CA is
+        generated for comparison). */}}
+{{- $reuse := $allPresent }}
 {{- /* Distinct CA common name: a leaf whose issuer DN equals its
         own subject DN is treated as self-signed by OpenSSL chain
         building (check_issued compares names, not keys) — the CA
@@ -49,25 +59,61 @@
 {{- $server := genSignedCert $fullname (list "127.0.0.1") $sans 825 $ca }}
 {{- $client := genSignedCert (printf "%s-client" $fullname) nil nil 825 $ca }}
 
+{{- /* Fingerprint of the fresh CA (navra.io/tls-ca-sha256), used
+        both as the annotation on a fresh issue and as the value
+        compared against the stored set's recorded fingerprints.
+        Recorded as an annotation on all three secrets at issue
+        time so the NEXT upgrade can detect a complete-looking set
+        drawn from different CA generations — existence checks
+        alone would reuse such a mix verbatim and silently break
+        mTLS (leaves verifying against a CA nobody holds). */}}
+{{- $annSha := sha256sum $ca.Cert }}
+{{- if $allPresent }}
+  {{- $storedCaSha := sha256sum (index $caSecret.data "ca.crt" | b64dec) }}
+  {{- $caAnn := default "" (index $caSecret.metadata.annotations "navra.io/tls-ca-sha256") }}
+  {{- $srvAnn := default "" (index $serverSecret.metadata.annotations "navra.io/tls-ca-sha256") }}
+  {{- $cliAnn := default "" (index $clientSecret.metadata.annotations "navra.io/tls-ca-sha256") }}
+  {{- if and $caAnn $srvAnn $cliAnn }}
+    {{- /* Compare each secret's recorded fingerprint against the
+            sha256 of the CA cert actually stored in the CA secret.
+            Any mismatch (a leaf from another generation, or a CA
+            cert swapped without its leaves) means the set is
+            effectively partial: regenerate all three below. */}}
+    {{- if or (ne $caAnn $storedCaSha) (ne $srvAnn $storedCaSha) (ne $cliAnn $storedCaSha) }}
+      {{- $reuse = false }}
+    {{- end }}
+  {{- end }}
+  {{- /* First upgrade from a set issued before the annotation
+          existed: no fingerprint recorded. Treat as a legacy
+          complete set (keep the current reuse behavior) and stamp
+          the annotation now so later upgrades can compare. */}}
+  {{- if $reuse }}
+    {{- $annSha = $storedCaSha }}
+  {{- end }}
+{{- end }}
+{{- $partial := and (not $reuse) (or $caExists $srvExists $cliExists) }}
+
 {{- /* Reuse stored PEMs across upgrades (lookup returns an empty
         map when the secret does not exist — check .data presence,
-        not truthiness). Only a COMPLETE set is reused; a partial
-        set falls through to the freshly generated values above so
-        all three secrets rotate together from one CA. */}}
+        not truthiness). Only a COMPLETE set whose recorded CA
+        fingerprints all match the stored CA cert is reused; a
+        partial set (or a mix of CA generations) falls through to
+        the freshly generated values above so all three secrets
+        rotate together from one CA. */}}
 {{- $caCrt := $ca.Cert }}
-{{- if $complete }}
+{{- if $reuse }}
   {{- $caCrt = index $caSecret.data "ca.crt" | b64dec }}
 {{- end }}
 {{- $srvCrt := $server.Cert }}
 {{- $srvKey := $server.Key }}
-{{- if $complete }}
+{{- if $reuse }}
   {{- $srvCrt = index $serverSecret.data "tls.crt" | b64dec }}
   {{- $srvKey = index $serverSecret.data "tls.key" | b64dec }}
 {{- end }}
 {{- $cliCrt := $client.Cert }}
 {{- $cliKey := $client.Key }}
 {{- $cliPem := cat $client.Cert $client.Key }}
-{{- if $complete }}
+{{- if $reuse }}
   {{- $cliCrt = index $clientSecret.data "tls.crt" | b64dec }}
   {{- $cliKey = index $clientSecret.data "tls.key" | b64dec }}
   {{- $cliPem = index $clientSecret.data "tls.pem" | b64dec }}
@@ -83,10 +129,18 @@ metadata:
     {{- include "navra.labels" . | nindent 4 }}
   {{- if $partial }}
   # Marker for operators auditing an unexpected CA change: this
-  # upgrade found an incomplete TLS secret set and rotated all
-  # three secrets from a fresh CA (see NOTES.txt).
+  # upgrade found an incomplete (or CA-generation-mixed) TLS secret
+  # set and rotated all three secrets from a fresh CA (see
+  # NOTES.txt).
   annotations:
     navra.io/tls-rotated-from-partial-set: "true"
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
+  {{- else }}
+  # Fingerprint of the CA this secret's certificates were issued
+  # under — the next upgrade compares it across all three TLS
+  # secrets to detect a set drawn from different CA generations.
+  annotations:
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
   {{- end }}
 type: Opaque
 stringData:
@@ -102,6 +156,10 @@ metadata:
   {{- if $partial }}
   annotations:
     navra.io/tls-rotated-from-partial-set: "true"
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
+  {{- else }}
+  annotations:
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
   {{- end }}
 type: kubernetes.io/tls
 stringData:
@@ -120,6 +178,10 @@ metadata:
   {{- if $partial }}
   annotations:
     navra.io/tls-rotated-from-partial-set: "true"
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
+  {{- else }}
+  annotations:
+    navra.io/tls-ca-sha256: {{ $annSha | quote }}
   {{- end }}
 type: Opaque
 stringData:
