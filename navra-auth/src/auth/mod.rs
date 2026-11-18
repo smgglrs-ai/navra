@@ -11,6 +11,28 @@ use std::fmt;
 use subtle::ConstantTimeEq;
 use vstd::prelude::*;
 
+/// Check that a capability-token subject is a DID-shaped,
+/// namespaced identifier rather than a plain agent name.
+///
+/// Accepted shapes: `did:...` (including `did:key:` and
+/// `did:teammate:`), `agent:...` (navra's fallback DID for config
+/// agents without an explicit `did`), and `obo:...` (OAuth
+/// on-behalf-of exchanges). A bare name like `ops-admin` is
+/// rejected: it would otherwise become
+/// [`AgentIdentity::name`] verbatim and pass name-based
+/// authorization gates (e.g. the config-API self-edit path) as a
+/// config agent it is not.
+pub fn is_did_shaped(s: &str) -> bool {
+    let rest = s
+        .strip_prefix("did:")
+        .or_else(|| s.strip_prefix("agent:"))
+        .or_else(|| s.strip_prefix("obo:"));
+    match rest {
+        Some(rest) => !rest.is_empty(),
+        None => false,
+    }
+}
+
 /// Identity of an authenticated agent.
 #[derive(Debug, Clone)]
 pub struct AgentIdentity {

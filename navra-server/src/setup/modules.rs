@@ -361,9 +361,7 @@ pub(crate) async fn wire_modules(
                     // tool-prefix logic treats these tools as
                     // upstream-hosted (parity with [[upstream]]
                     // wiring in setup/upstream.rs).
-                    builder = builder
-                        .upstream_module(endpoint.domain.clone())
-                        .module(module);
+                    builder = builder.module_upstream(module);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -478,7 +476,7 @@ pub(crate) async fn wire_modules(
                     }
                     // Mark the module in `upstream_modules` (see the
                     // AID discovery block above for rationale).
-                    builder = builder.upstream_module(server.name.clone()).module(module);
+                    builder = builder.module_upstream(module);
                 }
                 Err(e) => {
                     tracing::debug!(

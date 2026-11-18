@@ -168,6 +168,17 @@ async fn handle_cap_delegate(
     if subject_did.is_empty() {
         return CallToolResult::error_msg("subject_did is required");
     }
+    // C-2 identity forge: the subject must be DID-shaped. A plain
+    // name like "ops-admin" would become AgentIdentity.name on
+    // authentication and pass name-based gates (e.g. the config-API
+    // self-edit path) as a config agent it is not.
+    if !navra_core::auth::is_did_shaped(&subject_did) {
+        return CallToolResult::error_msg(
+            "subject_did must be a DID-shaped identifier \
+             (e.g. 'did:key:...', 'did:teammate:...', 'agent:...') — \
+             plain agent names cannot be delegated to",
+        );
+    }
 
     let ring = args
         .get("ring")
@@ -1376,6 +1387,49 @@ mod tests {
             navra_core::auth::AgentIdentity::new(agent, "dev"),
             "test-session",
         )
+    }
+
+    #[tokio::test]
+    async fn cap_delegate_refuses_non_did_subject() {
+        // C-2: a delegated token whose subject is a plain agent name
+        // would forge AgentIdentity.name on authentication; the
+        // mint must be refused outright.
+        let mut agent = navra_core::auth::AgentIdentity::new("did:key:z6MkParent", "dev");
+        agent.capabilities = Some(navra_core::auth::capability::ResolvedCapabilities {
+            issuer_did: "did:key:z6MkRoot".to_string(),
+            subject_did: "did:key:z6MkParent".to_string(),
+            ring: 2,
+            paths: vec!["**".to_string()],
+            operations: ["read".to_string()].into_iter().collect(),
+            tools: vec!["cap_delegate".to_string()],
+            credentials: Vec::new(),
+            expires_at: 4_102_444_800,
+            obo_sub: None,
+            sandbox: None,
+            act_chain: Vec::new(),
+        });
+        let ctx = navra_core::auth::CallContext::new(agent, "test-session");
+        let signer = std::sync::Arc::new(navra_core::identity::Ed25519Signer::generate());
+
+        let result = handle_cap_delegate(
+            serde_json::json!({"subject_did": "ops-admin"}),
+            ctx,
+            signer,
+            std::collections::HashMap::new(),
+            3,
+            3600,
+        )
+        .await;
+
+        assert!(result.is_error == Some(true), "must be an error result");
+        let text = result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text())
+            .map(|t| t.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(text.contains("DID-shaped"), "got: {text}");
     }
 
     #[test]
