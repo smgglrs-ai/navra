@@ -7,6 +7,61 @@
 # (unmaintained crates locked in by transitive dependencies we cannot
 # bump without breaking changes upstream of us).
 
+[licenses]
+version = 2
+# The allowlist covers exactly the license expressions present in the
+# locked dependency tree (verified with `cargo deny list` on
+# 2026-11-18). Everything in the tree is a permissive license; there
+# are no GPL/AGPL/EPL obligations. Notes on the less-common entries:
+# - LGPL-2.1-or-later appears only as one OR-alternative in r-efi
+#   ("MIT OR Apache-2.0 OR LGPL-2.1-or-later"), which is satisfied by
+#   the MIT/Apache-2.0 entries, so LGPL itself is NOT allowed.
+# - CDLA-Permissive-2.0 covers the webpki-root-certs/webpki-roots
+#   certificate bundles (Mozilla root store data).
+# - Unlicense entries are all "Unlicense OR MIT" dual-licensed crates.
+# - Unicode-3.0 covers the ICU4X family and unicode-ident data tables.
+# When adding a dependency that introduces a new license, extend this
+# list deliberately in the same commit — never blanket-add.
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSD-1-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+]
+# Workspace-internal crates (e.g. navra-benchmarks) carry no license
+# field; they are never published.
+private = { ignore = true }
+confidence-threshold = 0.93
+
+[bans]
+# Disallow multiple versions of the same crate unless deliberately
+# duplicated (some duplication is locked in by the ort/tokio stacks).
+multiple-versions = "warn"
+# The workspace convention is versionless `path = "../..."` deps
+# between crates, which cargo-deny counts as wildcards. Every
+# external dependency is version-resolved via Cargo.lock, so
+# wildcards here are only intra-workspace path deps.
+wildcards = "allow"
+highlight = "all"
+
+[sources]
+# Only crates.io and our own path/git workspace deps are allowed.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
 [advisories]
 version = 2
 yanked = "deny"
