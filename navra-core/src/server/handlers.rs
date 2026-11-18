@@ -49,6 +49,40 @@ impl ToolFilter for IFCToolFilter {
     }
 }
 
+/// Canonicalize a path for ACL evaluation, following symlinks.
+///
+/// When the full path does not exist (a write creating a new file, or
+/// an upstream tool's virtual path argument), resolve the deepest
+/// existing ancestor and reattach the not-yet-existing remainder —
+/// every symlink that exists is followed, so a link inside an
+/// allowed tree pointing at a denied location is checked at its real
+/// location. Relative paths are returned unchanged (the ACL engine
+/// normalizes them lexically). Returns `None` when an absolute path
+/// cannot be resolved at all.
+fn canonicalize_for_acl(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    if !path.is_absolute() {
+        return Some(path.to_path_buf());
+    }
+    if let Ok(canon) = path.canonicalize() {
+        return Some(canon);
+    }
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    let mut probe = path.to_path_buf();
+    while let Some(name) = probe.file_name() {
+        tail.push(name.to_os_string());
+        let parent = probe.parent()?.to_path_buf();
+        if let Ok(canon) = parent.canonicalize() {
+            let mut full = canon;
+            for name in tail.iter().rev() {
+                full = full.join(name);
+            }
+            return Some(full);
+        }
+        probe = parent;
+    }
+    None
+}
+
 /// Usage-based tool pruning filter.
 ///
 /// Tracks which tools each agent has called across sessions.
@@ -410,11 +444,68 @@ impl McpServer {
             .into();
         }
 
-        // Rate limit check (kernel-enforced)
+        // Fuzzy tool-name resolution — BEFORE any permission gate.
+        // When auto-routing is enabled and the requested name matches
+        // a registered tool above the threshold, rewrite the request
+        // to the resolved name first, so every downstream gate
+        // (permissions, operations, domains, ACLs, IFC, hooks)
+        // evaluates the tool that will actually run. Routing must
+        // never bypass the gate pipeline.
+        if self.tool_routing.auto_route_threshold > 0.0 {
+            let tools_snapshot: HashMap<String, RegisteredTool> =
+                self.tools.read().unwrap_or_else(|e| e.into_inner()).clone();
+            if !tools_snapshot.contains_key(params.name.as_ref()) {
+                let registered_names: Vec<String> = tools_snapshot.keys().cloned().collect();
+                let tool_schemas: std::collections::HashMap<String, Option<Vec<String>>> =
+                    tools_snapshot
+                        .iter()
+                        .map(|(name, tool)| {
+                            let props: Option<Vec<String>> = tool
+                                .definition
+                                .input_schema
+                                .get("properties")
+                                .and_then(|p| p.as_object())
+                                .map(|p| p.keys().cloned().collect());
+                            (name.clone(), props)
+                        })
+                        .collect();
+                let candidates = super::routing::find_candidates(
+                    &params.name,
+                    &registered_names
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>(),
+                    &arguments,
+                    &tool_schemas,
+                    &self.tool_routing,
+                );
+                if let Some(top) = candidates.first()
+                    && top.score >= self.tool_routing.auto_route_threshold
+                    && top.edit_distance <= 2
+                {
+                    tracing::info!(
+                        requested = %params.name,
+                        routed_to = %top.name,
+                        score = top.score,
+                        edit_distance = top.edit_distance,
+                        "Auto-routing tool call (pre-gate resolution)"
+                    );
+                    self.metrics
+                        .routing_decisions
+                        .fetch_add(1, Ordering::Relaxed);
+                    params.name = std::borrow::Cow::Owned(top.name.clone());
+                }
+            }
+        }
+
+        // Rate limit check (kernel-enforced). Buckets are keyed on the
+        // derived identity (permission set + agent name) so two agents
+        // sharing a name across permission sets — or a client spoofing
+        // another agent's name — do not share or exhaust each other's
+        // quota.
+        let identity_key = format!("{}:{}", ctx.agent.permissions, ctx.agent.name);
         if self.quota_engine.has_limits()
-            && !self
-                .quota_engine
-                .check(&ctx.agent.name, &ctx.agent.permissions)
+            && !self.quota_engine.check(&identity_key, &ctx.agent.permissions)
         {
             return CallToolResult::error_msg(format!(
                 "Rate limit exceeded for agent '{}'",
@@ -483,7 +574,38 @@ impl McpServer {
                 ))
                 .into();
             }
-        } else if let Some(tp) = self.tool_permissions.get(&ctx.agent.permissions) {
+        } else if self.tool_permissions.is_empty() {
+            // No tool-level rules configured anywhere (dev/test
+            // servers without [permissions.*.tool_rules]): nothing
+            // to enforce.
+        } else {
+            // Fail closed: tool rules exist for other permission
+            // sets but this agent's set is unknown.
+            let tp = match self.tool_permissions.get(&ctx.agent.permissions) {
+                Some(tp) => tp,
+                None => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tools
+                        .calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::warn!(
+                        tool = %params.name,
+                        permission_set = %ctx.agent.permissions,
+                        "Tool denied: unknown permission set (default-deny)"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: unknown permission set '{}'",
+                        ctx.agent.permissions
+                    ))
+                    .into();
+                }
+            };
             match tp.check(&params.name) {
                 crate::permissions::tool_rules::ToolPolicy::Deny => {
                     // Deny is absolute — dynamic session grants cannot override
@@ -533,9 +655,86 @@ impl McpServer {
             }
         }
 
+        // Upstream scoping: `allowed_upstreams` restricts which upstream
+        // MCP servers the agent may use. Enforced on the tools/call path
+        // (not only tools/list) so a directly-named upstream tool is
+        // blocked even when it never appears in a listing.
+        if !ctx.agent.allowed_upstreams.is_empty() && self.is_upstream_tool(&params.name) {
+            let module = params.name.split('_').next().unwrap_or("");
+            let allowed = ctx.agent.allowed_upstreams.iter().any(|a| a == module);
+            if !allowed {
+                self.process_table.record_denied(
+                    &ctx.agent.name,
+                    &ctx.agent.permissions,
+                    agent_did,
+                    agent_ring,
+                );
+                self.metrics
+                    .tools
+                    .calls_denied
+                    .fetch_add(1, Ordering::Relaxed);
+                tracing::warn!(
+                    tool = %params.name,
+                    upstream = %module,
+                    agent = %ctx.agent.name,
+                    "Upstream tool denied by allowed_upstreams scoping"
+                );
+                return CallToolResult::error_msg(format!(
+                    "Permission denied: upstream '{}' is not in this agent's allowed upstreams",
+                    module
+                ))
+                .into();
+            }
+        }
+
         // Operations-based enforcement for upstream tools.
         // If a tool is classified as "write" and the agent's permission
         // set only allows "read", block it.
+        // When operations are configured for other permission sets but
+        // this one is unknown, fall back to an empty operation set
+        // (deny all write tools) — fail closed. Capability-token
+        // agents are exempt: their authorization comes from the
+        // verified token, not the permission-set maps.
+        let unknown_ops_fallback = !self.agent_operations.is_empty()
+            && ctx.agent.capabilities.is_none()
+            && !self.agent_operations.contains_key(&ctx.agent.permissions);
+        if unknown_ops_fallback
+            && let Some(tool_op) = self
+                .tool_operations
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(params.name.as_ref())
+                .cloned()
+        {
+            match tool_op {
+                navra_mcp::ToolOperation::Write => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    tracing::warn!(
+                        tool = %params.name,
+                        permission_set = %ctx.agent.permissions,
+                        "Write operation denied: unknown permission set (default-deny)"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ))
+                    .into();
+                }
+                navra_mcp::ToolOperation::Deny => {
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: '{}'",
+                        params.name
+                    ))
+                    .into();
+                }
+                _ => {}
+            }
+        }
         if let Some(ops) = self.agent_operations.get(&ctx.agent.permissions)
             && let Some(tool_op) = self
                 .tool_operations
@@ -577,14 +776,26 @@ impl McpServer {
         // Domain-based enforcement (semantic classification gate).
         // If domain_rules are configured for this permission set, check
         // the tool's classified domain:operation against allowed pairs.
-        if let Some(rules) = self.domain_rules.get(&ctx.agent.permissions)
+        // Unknown permission set with rules configured elsewhere:
+        // default-deny (empty rules deny everything). Capability-token
+        // agents are governed by their token instead.
+        let unknown_domain_fallback = !self.domain_rules.is_empty()
+            && ctx.agent.capabilities.is_none()
+            && !self.domain_rules.contains_key(&ctx.agent.permissions);
+        let empty_domain_rules =
+            navra_auth::permissions::DomainRules::new(std::collections::HashMap::new());
+        let domain_rules = self
+            .domain_rules
+            .get(&ctx.agent.permissions)
+            .unwrap_or(&empty_domain_rules);
+        if (self.domain_rules.contains_key(&ctx.agent.permissions) || unknown_domain_fallback)
             && let Some(class) = self
                 .tool_classifications
                 .read()
                 .unwrap_or_else(|e| e.into_inner())
                 .get(params.name.as_ref())
                 .cloned()
-            && rules.check(&class) == crate::permissions::DomainPolicy::Deny
+            && domain_rules.check(&class) == crate::permissions::DomainPolicy::Deny
         {
             self.process_table.record_denied(
                 &ctx.agent.name,
@@ -741,15 +952,38 @@ impl McpServer {
             }
         }
 
-        // Gateway-level path ACL check: extract path from tool arguments
-        // and validate against the agent's allow/deny patterns. This ensures
-        // upstream MCP tools respect navra's path ACLs.
-        if let Some(path_str) = arguments
-            .get("path")
-            .or_else(|| arguments.get("file_path"))
-            .or_else(|| arguments.get("repo_path"))
-            .and_then(|v| v.as_str())
-            && let Some(acl) = self.path_acls.get(&ctx.agent.permissions)
+        // Gateway-level path ACL check: extract path arguments from the
+        // tool call and validate against the agent's allow/deny patterns.
+        // This ensures upstream MCP tools respect navra's path ACLs.
+        //
+        // Path argument keys are derived from the tool's input schema
+        // (string properties whose name suggests a filesystem path);
+        // the legacy `path`/`file_path`/`repo_path` triple plus common
+        // variants is the fallback when no schema declares any.
+        let path_keys = self.path_argument_keys(&params.name);
+        let path_str = path_keys
+            .iter()
+            .find_map(|key| arguments.get(key.as_str()))
+            .and_then(|v| v.as_str());
+        // Unknown permission set with ACLs configured elsewhere:
+        // default-deny via a deny-all ACL (empty allow list).
+        // Capability-token agents are governed by their token.
+        let deny_all_acl = navra_auth::permissions::PathAcl {
+            ring: None,
+            allow: vec![],
+            deny: vec![],
+            operations: std::collections::HashSet::new(),
+            requires_approval: std::collections::HashSet::new(),
+        };
+        let unknown_acl_fallback = !self.path_acls.is_empty()
+            && ctx.agent.capabilities.is_none()
+            && !self.path_acls.contains_key(&ctx.agent.permissions);
+        if let Some(path_str) = path_str
+            && let Some(acl) = if unknown_acl_fallback {
+                Some(&deny_all_acl)
+            } else {
+                self.path_acls.get(&ctx.agent.permissions)
+            }
         {
             let path = std::path::Path::new(path_str);
             let annotations = self
@@ -758,12 +992,48 @@ impl McpServer {
                 .unwrap_or_else(|e| e.into_inner())
                 .get(params.name.as_ref())
                 .and_then(|t| t.definition.annotations.clone());
-            let tool_op = if crate::ifc::is_write_tool(&params.name, annotations.as_ref()) {
-                "write"
-            } else {
-                "read"
+            let is_write = crate::ifc::is_write_tool(&params.name, annotations.as_ref());
+            // Canonicalize (symlink-following) so ACL patterns match
+            // the real target: every symlink component that exists is
+            // resolved, so a link inside an allowed tree pointing
+            // outside is checked at its real location. Paths that do
+            // not fully exist yet (a write creating a new file, or an
+            // upstream tool's virtual path) resolve via their deepest
+            // existing ancestor. Write tools deny when even that
+            // fails; read tools fall back to the raw path.
+            let checked_path: Option<std::path::PathBuf> = canonicalize_for_acl(path);
+            let checked_path = match checked_path {
+                Some(p) => p,
+                None if is_write => {
+                    self.process_table.record_denied(
+                        &ctx.agent.name,
+                        &ctx.agent.permissions,
+                        agent_did,
+                        agent_ring,
+                    );
+                    self.metrics
+                        .tools
+                        .calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::info!(
+                        tool = %params.name,
+                        path = %path_str,
+                        "Path ACL denied: write path cannot be resolved (default-deny)"
+                    );
+                    return CallToolResult::error_msg(format!(
+                        "Access denied: path '{}' cannot be resolved for write access",
+                        path_str
+                    ))
+                    .into();
+                }
+                None => path.to_path_buf(),
             };
-            match navra_auth::permissions::PermissionEngine::check_acl(acl, tool_op, path) {
+            let tool_op = if is_write { "write" } else { "read" };
+            match navra_auth::permissions::PermissionEngine::check_acl(
+                acl,
+                tool_op,
+                &checked_path,
+            ) {
                 navra_auth::permissions::PermissionResult::Allowed => {}
                 result => {
                     self.process_table.record_denied(
@@ -988,7 +1258,14 @@ impl McpServer {
                     &self.tool_routing,
                 );
 
-                // Auto-route if top candidate exceeds threshold and edit distance <= 2
+                // Auto-route if top candidate exceeds threshold and edit distance <= 2.
+                // Normally unreachable: the pre-gate resolution above
+                // rewrote `params.name` before the gates ran. This
+                // branch only fires on a registry swap race, and it
+                // must still not execute the routed tool without the
+                // full gate pipeline — recurse through
+                // handle_call_tool so every gate re-evaluates the
+                // resolved name.
                 if let Some(top) = candidates.first() {
                     if top.score >= self.tool_routing.auto_route_threshold
                         && top.edit_distance <= 2
@@ -999,14 +1276,21 @@ impl McpServer {
                             routed_to = %top.name,
                             score = top.score,
                             edit_distance = top.edit_distance,
-                            "Auto-routing tool call"
+                            "Auto-routing tool call (post-gate re-entry)"
                         );
                         self.metrics
                             .routing_decisions
                             .fetch_add(1, Ordering::Relaxed);
 
-                        if let Some(tool) = tools_snapshot.get(&top.name) {
-                            (tool.handler)(arguments.clone(), ctx.clone()).await
+                        if tools_snapshot.contains_key(&top.name) {
+                            let mut routed = params.clone();
+                            routed.name = std::borrow::Cow::Owned(top.name.clone());
+                            // Preserve the MRTR retry fields taken
+                            // from the original request.
+                            routed.input_responses = ctx.mrtr_input_responses.clone();
+                            routed.request_state = ctx.mrtr_request_state.clone();
+                            let response = Box::pin(self.handle_call_tool(routed, ctx)).await;
+                            return response;
                         } else {
                             CallToolResult::error_msg(format!("Unknown tool: {}", params.name))
                                 .into()
@@ -1159,18 +1443,43 @@ impl McpServer {
             self.hooks
                 .run_post(&params.name, &arguments, result, &ctx)
                 .await
-        } else if let Some(pipeline) = self.safety_pipelines.get(&ctx.agent.permissions)
-            && pipeline.has_filters()
-        {
-            // Legacy path: apply safety filters directly when no hooks
-            // are configured
-            let (result, recs) = self
-                .apply_safety_filter(pipeline, result, &ctx, &params.name)
-                .await;
-            declass_recs.extend(recs);
-            result
         } else {
-            result
+            match self.safety_pipelines.get(&ctx.agent.permissions) {
+                Some(pipeline) if pipeline.has_filters() => {
+                    // Legacy path: apply safety filters directly when no hooks
+                    // are configured
+                    let (result, recs) = self
+                        .apply_safety_filter(pipeline, result, &ctx, &params.name)
+                        .await;
+                    declass_recs.extend(recs);
+                    result
+                }
+                Some(_) => result,
+                None if !self.safety_pipelines.is_empty() && ctx.agent.capabilities.is_none() => {
+                    // Fail closed: safety profiles are configured for
+                    // other permission sets but this agent's set is
+                    // unknown — returning unfiltered results would
+                    // leak whatever the filters exist to catch.
+                    // (Capability-token agents are governed by their
+                    // verified token instead.)
+                    tracing::warn!(
+                        tool = %params.name,
+                        permission_set = %ctx.agent.permissions,
+                        agent = %ctx.agent.name,
+                        "Result blocked: no safety profile for permission set (default-deny)"
+                    );
+                    self.metrics
+                        .tools
+                        .calls_denied
+                        .fetch_add(1, Ordering::Relaxed);
+                    return CallToolResult::error_msg(format!(
+                        "Permission denied: no safety profile configured for permission set '{}'",
+                        ctx.agent.permissions
+                    ))
+                    .into();
+                }
+                None => result,
+            }
         };
         // Hook-path recommendations arrive via the shared ledger
         // (the SafetyHook records there).
@@ -2456,8 +2765,8 @@ impl McpServer {
     }
 
     /// Is this tool registered by an upstream module? (Used by the
-    /// v2 Cedar action dispatch to namespace upstream tool calls.)
-    #[cfg(feature = "cedar")]
+    /// v2 Cedar action dispatch to namespace upstream tool calls, and
+    /// by allowed-upstreams enforcement on the call path.)
     pub(crate) fn is_upstream_tool(&self, tool_name: &str) -> bool {
         let index = self
             .upstream_tool_index
@@ -2466,6 +2775,63 @@ impl McpServer {
         index.iter().any(|(module, tools)| {
             self.upstream_modules.contains(module) && tools.iter().any(|t| t == tool_name)
         })
+    }
+
+    /// Candidate argument keys that carry filesystem paths for a tool.
+    ///
+    /// Derived from the tool's input schema — string properties whose
+    /// name suggests a filesystem path — so gateway path-ACL checks
+    /// cover tools that name the parameter anything (not just the
+    /// legacy `path`/`file_path`/`repo_path` triple). Falls back to
+    /// that triple plus common variants when the tool declares no
+    /// usable schema.
+    pub(crate) fn path_argument_keys(&self, tool_name: &str) -> Vec<String> {
+        const FALLBACK: &[&str] = &[
+            "path",
+            "file_path",
+            "repo_path",
+            "file",
+            "filename",
+            "dir",
+            "directory",
+            "workspace",
+            "root",
+            "target",
+            "destination",
+            "dest",
+        ];
+        let fallback = || FALLBACK.iter().map(|s| s.to_string()).collect();
+        let tools = self.tools.read().unwrap_or_else(|e| e.into_inner());
+        let Some(tool) = tools.get(tool_name) else {
+            return fallback();
+        };
+        let Some(props) = tool
+            .definition
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+        else {
+            return fallback();
+        };
+        let mut keys: Vec<String> = props
+            .iter()
+            .filter(|(name, spec)| {
+                let is_string = spec
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .is_some_and(|t| t == "string");
+                let n = name.to_lowercase();
+                is_string && (n.contains("path") || FALLBACK.contains(&n.as_str()))
+            })
+            .map(|(name, _)| name.clone())
+            .collect();
+        if keys.is_empty() {
+            return fallback();
+        }
+        // Prefer the legacy keys first so behavior is stable for
+        // tools that declare several path-like parameters.
+        keys.sort_by_key(|k| FALLBACK.iter().position(|f| f == k).unwrap_or(usize::MAX));
+        keys
     }
 
     /// Take the upstream refresh watchers registered on the builder.
