@@ -16,10 +16,13 @@
 
 # Port the gateway Service presents to the cluster (Service
 # `port`). The container always listens on 9315 (Service
-# `targetPort`) — set this to 80/443 for conventional ports
-# without touching the container's security context. Spawned
-# teammates' in-cluster URLs follow it automatically.
-gatewayPort: 9315
+# `targetPort`) — privileged ports are a local-listener concern
+# that the Service abstraction removes. Defaults to the
+# conventional port for the scheme: 80 without TLS, 443 with TLS.
+# Set explicitly to override (e.g. 9315 for parity with local
+# deployments). Spawned teammates' in-cluster URLs follow it
+# automatically.
+gatewayPort: ""
 
 # Replicas of the gateway StatefulSet. Pod 0 is the coordinator
 # (team/flow state, teammate spawning); pods 1+ are stateless

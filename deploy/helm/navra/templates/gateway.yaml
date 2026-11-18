@@ -47,9 +47,9 @@ spec:
           env:
             - name: NAVRA_COORDINATOR_URL
               {{- if .Values.tls.enabled }}
-              value: https://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}
+              value: https://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:{{ include "navra.gatewayPort" . }}
               {{- else }}
-              value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.gatewayPort }}
+              value: http://{{ include "navra.fullname" . }}-0.{{ include "navra.fullname" . }}-headless.{{ .Release.Namespace }}.svc.cluster.local:{{ include "navra.gatewayPort" . }}
               {{- end }}
           {{- if .Values.tls.enabled }}
           {{- if eq .Values.tls.source "spire" }}
@@ -227,7 +227,7 @@ spec:
     {{- include "navra.selectorLabels" . | nindent 4 }}
   ports:
     - name: mcp
-      port: {{ .Values.gatewayPort }}
+      port: {{ include "navra.gatewayPort" . }}
       targetPort: mcp
 ---
 # Headless Service: stable per-pod DNS for the coordinator URL
@@ -244,5 +244,5 @@ spec:
     {{- include "navra.selectorLabels" . | nindent 4 }}
   ports:
     - name: mcp
-      port: {{ .Values.gatewayPort }}
+      port: {{ include "navra.gatewayPort" . }}
       targetPort: mcp

@@ -15,6 +15,19 @@
 {{- printf "%s-agents" (include "navra.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{/* Gateway Service port. Defaults to the conventional port for the
+       scheme: 80 without TLS, 443 with TLS (privileged ports are a
+       local-listener concern — the Service presents the port while
+       the container keeps listening on 9315). Explicit gatewayPort
+       overrides both. */}}
+{{- define "navra.gatewayPort" -}}
+{{- $default := 80 -}}
+{{- if .Values.tls.enabled -}}
+{{- $default = 443 -}}
+{{- end -}}
+{{- .Values.gatewayPort | default $default -}}
+{{- end -}}
+
 {{- define "navra.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}

@@ -15,7 +15,7 @@ data:
     tcp = "{{ .Values.server.tcp | default "0.0.0.0:9315" }}"
     kubernetes_namespace = "{{ .Release.Namespace }}"
     kubernetes_gateway_service = "{{ include "navra.fullname" . }}"
-    kubernetes_gateway_port = {{ .Values.gatewayPort }}
+    kubernetes_gateway_port = {{ include "navra.gatewayPort" . }}
     {{- if .Values.warmPool.enabled }}
     kubernetes_warm_pool = "{{ include "navra.warmPoolName" . }}"
     {{- end }}
