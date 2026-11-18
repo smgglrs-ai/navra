@@ -120,8 +120,11 @@ pub struct ToolLoopConfig {
     /// execution→verification sandwich.
     pub reasoning_phases: Vec<(usize, usize, f32)>,
     /// Transparent RAG context retriever. When set, relevant context
-    /// is retrieved before each model call and injected as a system
-    /// message. The retriever handles score gating and budget gating.
+    /// is retrieved before each model call and injected as a
+    /// user-role message explicitly framed as untrusted data (never
+    /// as a system message). The retriever handles score gating and
+    /// budget gating, and should filter retrieved chunks for
+    /// injection/poisoning before returning them.
     pub context_retriever: Option<Arc<dyn ContextRetriever>>,
     /// Optional hook pipeline for intercepting model calls.
     /// When set, pre_model_call/post_model_call hooks run around

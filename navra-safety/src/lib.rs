@@ -37,6 +37,7 @@ pub mod injection;
 pub mod ml;
 #[cfg(feature = "onnx")]
 pub mod ner;
+pub mod normalize;
 #[cfg(feature = "onnx")]
 pub mod pii_classifier;
 pub mod poisoning;

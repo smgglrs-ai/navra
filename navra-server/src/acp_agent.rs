@@ -108,6 +108,7 @@ async fn execute_agent_run(
     let mut config = ToolLoopConfig {
         max_iterations: 10,
         temperature: Some(0.7),
+        hook_pipeline: Some(crate::ui_agent::model_hook_pipeline()),
         ..Default::default()
     };
 

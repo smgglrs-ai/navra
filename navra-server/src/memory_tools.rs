@@ -148,7 +148,9 @@ pub fn memory_query_def() -> ToolDefinition {
         "memory_query",
         "Search stored knowledge entries using full-text search. \
          Returns matching entries ranked by relevance. Optionally \
-         filter by kind and limit the number of results.",
+         filter by kind and limit the number of results. Queries are \
+         scoped to the caller's session by default; a global query \
+         requires an elevated permission set.",
         tool_input_schema(
             Some(HashMap::from([
                 (
@@ -192,6 +194,13 @@ pub fn memory_query_def() -> ToolDefinition {
                     serde_json::json!({
                         "type": "string",
                         "description": "Optional: filter to entries scoped to this session"
+                    }),
+                ),
+                (
+                    "global".to_string(),
+                    serde_json::json!({
+                        "type": "boolean",
+                        "description": "Explicitly request a global (cross-session) query. Requires an elevated permission set; otherwise the query is scoped to the caller's session."
                     }),
                 ),
             ])),
@@ -313,9 +322,48 @@ pub async fn handle_memory_store(
 }
 
 /// Handle memory_query tool call.
+///
+/// Legacy unscoped entry point: performs a caller-supplied (or
+/// global) search with no CallContext. Kept for existing wiring;
+/// prefer [`handle_memory_query_scoped`], which defaults the scope
+/// to the caller's session and requires an explicit privilege for
+/// global queries.
 pub async fn handle_memory_query(
     args: serde_json::Value,
     ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
+) -> navra_core::protocol::CallToolResult {
+    handle_memory_query_inner(args, ks, None).await
+}
+
+/// Permission sets allowed to query memory globally (across all
+/// sessions/teams). Any other caller is scoped to their session.
+const GLOBAL_MEMORY_QUERY_PERMISSIONS: &[&str] = &["admin", "root"];
+
+/// Handle memory_query with caller scoping.
+///
+/// - When the caller supplies no scope, the query defaults to the
+///   caller's own session (from `CallContext::session_id`).
+/// - Explicit scope parameters (session/entity/process) are honored:
+///   they only narrow the search.
+/// - A global query (no scope, explicit `"global": true`) requires
+///   the caller's permission set to be in
+///   [`GLOBAL_MEMORY_QUERY_PERMISSIONS`].
+// Not wired yet: the memory_query tool closure lives in
+// setup/tools.rs (lead-owned file). Once wired to pass its `_ctx`
+// here, global memory reads become session-scoped by default.
+#[allow(dead_code)]
+pub async fn handle_memory_query_scoped(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
+    ctx: &navra_auth::auth::CallContext,
+) -> navra_core::protocol::CallToolResult {
+    handle_memory_query_inner(args, ks, Some(ctx)).await
+}
+
+async fn handle_memory_query_inner(
+    args: serde_json::Value,
+    ks: std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>>,
+    ctx: Option<&navra_auth::auth::CallContext>,
 ) -> navra_core::protocol::CallToolResult {
     use navra_core::protocol::CallToolResult;
 
@@ -332,7 +380,7 @@ pub async fn handle_memory_query(
         .and_then(|k| navra_memory::MemoryType::from_str(k).ok());
 
     // Extract scope parameters
-    let scope = navra_memory::MemoryScope {
+    let mut scope = navra_memory::MemoryScope {
         entity_id: args
             .get("entity_id")
             .and_then(|v| v.as_str())
@@ -346,6 +394,30 @@ pub async fn handle_memory_query(
             .and_then(|v| v.as_str())
             .map(String::from),
     };
+
+    // Default the scope to the caller's session so one agent cannot
+    // silently read another session's memory. A global query is a
+    // privilege requiring an allowed permission set.
+    let wants_global = args
+        .get("global")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if scope.is_global()
+        && scope.session_id.is_none()
+        && !wants_global
+        && let Some(ctx) = ctx
+    {
+        scope.session_id = Some(ctx.session_id.clone());
+    }
+    if scope.is_global()
+        && wants_global
+        && let Some(ctx) = ctx
+        && !GLOBAL_MEMORY_QUERY_PERMISSIONS.contains(&ctx.agent.permissions.as_str())
+    {
+        return CallToolResult::error_msg(
+            "Global memory query requires an elevated permission set",
+        );
+    }
 
     let store = ks.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -1076,6 +1148,101 @@ mod tests {
     #[test]
     fn content_has_pii_none_sanitizer() {
         assert!(!content_has_pii("user@example.com", &None));
+    }
+
+    // --- Scoped memory_query tests ---
+
+    use navra_auth::auth::{AgentIdentity, CallContext};
+
+    fn query_ctx(session: &str, permissions: &str) -> CallContext {
+        CallContext::new(AgentIdentity::new("tester", permissions), session)
+    }
+
+    async fn scoped_ks() -> std::sync::Arc<std::sync::Mutex<navra_memory::KnowledgeStore>> {
+        let ks = std::sync::Arc::new(std::sync::Mutex::new(
+            navra_memory::KnowledgeStore::open_memory().unwrap(),
+        ));
+        {
+            let store = ks.lock().unwrap();
+            let entry = |id: &str, content: &str| navra_memory::MemoryEntry {
+                id: id.to_string(),
+                memory_type: navra_memory::MemoryType::Fact,
+                title: format!("entry {id}"),
+                content: content.to_string(),
+                tags: vec![],
+                created_at: 1000,
+                updated_at: None,
+            };
+            let scope = |session: &str| navra_memory::MemoryScope {
+                session_id: Some(session.to_string()),
+                ..Default::default()
+            };
+            store
+                .store_scoped(&entry("a", "alpha secret data"), &scope("sess-a"), None)
+                .unwrap();
+            store
+                .store_scoped(&entry("b", "beta secret data"), &scope("sess-b"), None)
+                .unwrap();
+        }
+        ks
+    }
+
+    #[tokio::test]
+    async fn memory_query_scoped_defaults_to_caller_session() {
+        let ks = scoped_ks().await;
+
+        // Caller in sess-a, no scope supplied: only sess-a entries visible
+        let args = serde_json::json!({"query": "secret"});
+        let result =
+            handle_memory_query_scoped(args, ks.clone(), &query_ctx("sess-a", "dev")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        let entries: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+        assert!(!entries.is_empty());
+        assert!(
+            entries.iter().all(|e| e["id"] != "b"),
+            "other session's entries must not leak: {text}"
+        );
+        assert!(entries.iter().any(|e| e["id"] == "a"));
+    }
+
+    #[tokio::test]
+    async fn memory_query_scoped_global_requires_privilege() {
+        let ks = scoped_ks().await;
+
+        // Non-privileged caller explicitly requesting global: denied
+        let args = serde_json::json!({"query": "secret", "global": true});
+        let result =
+            handle_memory_query_scoped(args, ks.clone(), &query_ctx("sess-a", "dev")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        assert!(text.contains("elevated permission"), "got: {text}");
+
+        // Privileged caller explicitly requesting global: allowed
+        let args = serde_json::json!({"query": "secret", "global": true});
+        let result =
+            handle_memory_query_scoped(args, ks.clone(), &query_ctx("sess-a", "admin")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        let entries: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+        assert!(
+            entries.iter().any(|e| e["id"] == "b"),
+            "admin global query: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn memory_query_scoped_explicit_narrowing_still_works() {
+        let ks = scoped_ks().await;
+
+        // Caller in sess-a explicitly querying sess-b's scope: honored
+        // (explicit narrowing is a caller choice, not a default)
+        let args = serde_json::json!({"query": "secret", "session_id": "sess-b"});
+        let result = handle_memory_query_scoped(args, ks, &query_ctx("sess-a", "dev")).await;
+        let text =
+            navra_protocol::compat::content_as_text(result.content.first().unwrap()).unwrap();
+        let entries: Vec<serde_json::Value> = serde_json::from_str(text).unwrap();
+        assert!(entries.iter().all(|e| e["id"] == "b"), "got: {text}");
     }
 
     #[tokio::test]
