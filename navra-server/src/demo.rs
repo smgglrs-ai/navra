@@ -156,7 +156,7 @@ pub(crate) async fn run_demo(project: &str) -> anyhow::Result<()> {
         println!("  │ ⚠ Safety filter: redacted \"sk_live_4eC39HqLyjW...\"");
     }
     if config_content.contains("whsec_") {
-        println!("  │ ⚠ Safety filter: redacted \"whsec_MfKQ9r8GKY...\"");
+        println!("  │ ⚠ Safety filter: redacted \"whsec_DEMO_WEBHOOK...\"");
     }
     println!("  │ Finding: CWE-798 Hardcoded API key in config.rs");
 

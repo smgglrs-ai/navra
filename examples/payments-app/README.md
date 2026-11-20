@@ -97,7 +97,7 @@ The demo produces a structured terminal output showing each act:
   ┌─ T3: scan-secrets (security_auditor) ────────────────
   │ Reading: src/config.rs → IFC: Trusted
   │ ⚠ Safety filter: redacted "sk_live_4eC39HqLyjW..."
-  │ ⚠ Safety filter: redacted "whsec_MfKQ9r8GKY..."
+  │ ⚠ Safety filter: redacted "whsec_DEMO_WEBHOOK..."
   │ Finding: CWE-798 Hardcoded API key in config.rs
   │ Reading: src/secrets.rs → IFC: Confidential ⚡
   │ ⚡ Context tainted: Confidential (Bell-LaPadula)

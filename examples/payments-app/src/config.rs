@@ -15,7 +15,7 @@ impl PaymentConfig {
             // VULN: Hardcoded API key (should use environment variable)
             api_key: "sk_live_4eC39HqLyjWDarjtT1zdp7dc".to_string(),
             // VULN: Hardcoded webhook secret
-            webhook_secret: "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2lg0LY4".to_string(),
+            webhook_secret: "whsec_DEMO_WEBHOOK_SECRET_NOT_A_REAL_KEY".to_string(),
             // VULN: Password in connection string
             db_connection: "postgres://payments:P@ssw0rd!@db.internal:5432/payments".to_string(),
         }
